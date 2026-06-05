@@ -1,0 +1,22 @@
+{
+  "schema": "zerker.policy.v1",
+  "risk_thresholds": {
+    "low": {
+      "min_trust": 0.0,
+      "min_policy_authority": "low"
+    },
+    "medium": {
+      "min_trust": 0.65,
+      "min_policy_authority": "medium"
+    },
+    "high": {
+      "min_trust": 0.9,
+      "min_policy_authority": "policy"
+    }
+  },
+  "deny_labels": [
+    "secret",
+    "credential",
+    "private-key"
+  ]
+}

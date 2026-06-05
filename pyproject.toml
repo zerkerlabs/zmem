@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "zerker-memory"
+version = "0.1.0"
+description = "Open-source, local-first portable memory with proof for AI agents"
+requires-python = ">=3.10"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+  {name = "Zerker Memory contributors"}
+]
+keywords = ["ai-agents", "memory", "local-first", "mcp", "proof", "provenance", "treeship", "neuro-symbolic"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Software Development :: Libraries",
+]
+
+[project.urls]
+Homepage = "https://zmem.sh"
+Repository = "https://github.com/zerkerlabs/zmem"
+Issues = "https://github.com/zerkerlabs/zmem/issues"
+
+[project.scripts]
+zerker-memory = "zerker_memory.cli:main"
+zmem = "zerker_memory.cli:main"
+zerker = "zerker_memory.cli:main"
+zerker-memory-mcp = "zerker_memory.mcp:main"
+
+[tool.setuptools.packages.find]
+include = ["zerker_memory*"]

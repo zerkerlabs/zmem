@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "zerker-memory": {
+      "command": "zmem",
+      "args": [
+        "--db",
+        ".zerker/memory.sqlite",
+        "mcp"
+      ]
+    }
+  }
+}

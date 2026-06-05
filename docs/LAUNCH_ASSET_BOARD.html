@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Zerker Memory Durable Launch Asset Board</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f3eee6;
+      --card: #fffdf8;
+      --ink: #1f1a17;
+      --muted: #6a5f58;
+      --line: #d7cdc2;
+      --accent: #9a4d1a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Georgia, "Times New Roman", serif;
+      background: radial-gradient(circle at top, #fff8ef, var(--bg) 58%);
+      color: var(--ink);
+    }
+    main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 56px; }
+    h1 { margin: 0 0 12px; font-size: 2.4rem; }
+    p { line-height: 1.5; }
+    .lede { max-width: 760px; color: var(--muted); }
+    .callouts { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin: 22px 0 28px; }
+    .callout, .asset-card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 10px 30px rgba(43, 24, 10, 0.06); }
+    .callout { padding: 16px 18px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+    .asset-card { padding: 18px; }
+    .asset-card h2 { margin: 0 0 10px; font-size: 1.1rem; }
+    .asset-kind { margin: 0 0 8px; text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.72rem; color: var(--accent); font-weight: 700; }
+    .asset-meta { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+    .refs { margin: 8px 0 0 18px; padding: 0; }
+    code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; font-size: 0.92em; }
+    a { color: var(--accent); }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Durable Launch Asset Board</h1>
+  <p class="lede">Use this repo-level board when another chat needs the eight-shot Phase-1 launch storyboard before a fresh proof pack exists. It mirrors the shipped launch asset contract, keeps the save paths on one screen, and points at the durable docs first.</p>
+  <section class="callouts">
+    <div class="callout"><strong>Start here</strong><br><a href="PHASE1_EXTERNAL_OPERATOR_BRIEF.md">PHASE1_EXTERNAL_OPERATOR_BRIEF.md</a></div>
+    <div class="callout"><strong>Asset brief</strong><br><a href="LAUNCH_ASSET_OPERATOR_PROMPT.md">LAUNCH_ASSET_OPERATOR_PROMPT.md</a></div>
+    <div class="callout"><strong>Launch audit</strong><br><a href="PUBLIC_LAUNCH_AUDIT.md">PUBLIC_LAUNCH_AUDIT.md</a></div>
+    <div class="callout"><strong>Fresh pack board</strong><br><a href="../.zerker/launch-proof/LAUNCH_ASSET_BOARD.html">../.zerker/launch-proof/LAUNCH_ASSET_BOARD.html</a></div>
+  </section>
+  <section class="grid">
+    <article class="asset-card">
+      <p class="asset-kind">terminal</p>
+      <h2>install-status.png</h2>
+      <p><strong>Capture ID:</strong> <code>install-status</code></p>
+      <p><strong>Command:</strong> <code>bash install.sh</code></p>
+      <p><strong>Capture cue:</strong> End on <code>Zerker Memory status</code>.</p>
+      <p><strong>Save as:</strong> <code>assets/install-status.png</code></p>
+    </article>
+    <article class="asset-card">
+      <p class="asset-kind">terminal</p>
+      <h2>first-run-status.png</h2>
+      <p><strong>Capture ID:</strong> <code>first-run-status</code></p>
+      <p><strong>Command:</strong> <code>bash examples/first_run.sh</code></p>
+      <p><strong>Capture cue:</strong> End on <code>Manual pack ready: yes</code>.</p>
+      <p><strong>Save as:</strong> <code>assets/first-run-status.png</code></p>
+    </article>
+    <article class="asset-card">
+      <p class="asset-kind">terminal</p>
+      <h2>release-pack-summary.png</h2>
+      <p><strong>Capture ID:</strong> <code>release-pack-summary</code></p>
+      <p><strong>Command:</strong> <code>zmem release-pack --summary-only</code></p>
+      <p><strong>Capture cue:</strong> Show launch proof, handoff, public verify script, logs dir, and the current strict publish gate result.</p>
+      <p><strong>Save as:</strong> <code>assets/release-pack-summary.png</code></p>
+      <div class="asset-meta">
+        <strong>Reference files</strong>
+        <ul class="refs">
+          <li><a href="PHASE1_EXTERNAL_OPERATOR_BRIEF.md">Phase-1 external operator brief</a></li>
+          <li><a href="LAUNCH_ASSET_OPERATOR_PROMPT.md">Launch asset operator prompt</a></li>
+        </ul>
+      </div>
+    </article>
+    <article class="asset-card">
+      <p class="asset-kind">browser</p>
+      <h2>proof-report-overview.png</h2>
+      <p><strong>Capture ID:</strong> <code>proof-report-overview</code></p>
+      <p><strong>Command:</strong> <code>open .zerker/launch-proof/index.html</code></p>
+      <p><strong>Capture cue:</strong> Show the proof overview and artifact inventory.</p>
+      <p><strong>Save as:</strong> <code>assets/proof-report-overview.png</code></p>
+      <div class="asset-meta">
+        <strong>Reference files</strong>
+        <ul class="refs">
+          <li><a href="../.zerker/launch-proof/index.html">Fresh proof report when generated</a></li>
+          <li><a href="PUBLIC_LAUNCH_AUDIT.md">Durable launch audit fallback</a></li>
+        </ul>
+      </div>
+    </article>
+    <article class="asset-card">
+      <p class="asset-kind">terminal</p>
+      <h2>transcript-proof.png</h2>
+      <p><strong>Capture ID:</strong> <code>transcript-proof</code></p>
+      <p><strong>Command:</strong> <code>less .zerker/launch-proof/terminal-transcript.txt</code></p>
+      <p><strong>Capture cue:</strong> Capture <code>inject</code>, <code>why</code>, <code>verify</code>, <code>bundle verify</code>, <code>snapshot verify</code>, and <code>bt explain</code>.</p>
+      <p><strong>Save as:</strong> <code>assets/transcript-proof.png</code></p>
+      <div class="asset-meta">
+        <strong>Reference files</strong>
+        <ul class="refs">
+          <li><a href="../.zerker/launch-proof/terminal-transcript.txt">Fresh transcript when generated</a></li>
+        </ul>
+      </div>
+    </article>
+    <article class="asset-card">
+      <p class="asset-kind">ui</p>
+      <h2>ui-release-pack.gif</h2>
+      <p><strong>Capture ID:</strong> <code>ui-release-pack</code></p>
+      <p><strong>Command:</strong> <code>zmem --db ".zerker/launch-proof/memory.sqlite" ui</code></p>
+      <p><strong>Capture cue:</strong> Show the <code>zmem ui</code> release-pack action and the proof-review surface.</p>
+      <p><strong>Save as:</strong> <code>assets/ui-release-pack.gif</code></p>
+      <div class="asset-meta">
+        <strong>Reference files</strong>
+        <ul class="refs">
+          <li><a href="LAUNCH_ASSET_OPERATOR_PROMPT.md">Launch asset operator prompt</a></li>
+          <li><a href="../.zerker/launch-proof/index.html">Fresh proof report when generated</a></li>
+        </ul>
+      </div>
+    </article>
+    <article class="asset-card">
+      <p class="asset-kind">terminal</p>
+      <h2>handoff-restore-terminal.png</h2>
+      <p><strong>Capture ID:</strong> <code>handoff-restore-terminal</code></p>
+      <p><strong>Command:</strong> <code>zmem --db .zerker/imports/launch-proof-restore.sqlite restore --handoff-dir .zerker/handoff</code></p>
+      <p><strong>Capture cue:</strong> Show snapshot verification plus restored memory and receipt counts.</p>
+      <p><strong>Save as:</strong> <code>assets/handoff-restore-terminal.png</code></p>
+      <div class="asset-meta">
+        <strong>Reference files</strong>
+        <ul class="refs">
+          <li><a href="../.zerker/handoff/README.md">Handoff README when generated</a></li>
+          <li><a href="../.zerker/handoff/handoff.json">Handoff manifest when generated</a></li>
+        </ul>
+      </div>
+    </article>
+    <article class="asset-card">
+      <p class="asset-kind">ui</p>
+      <h2>ui-handoff-restore.gif</h2>
+      <p><strong>Capture ID:</strong> <code>ui-handoff-restore</code></p>
+      <p><strong>Command:</strong> <code>zmem --db ".zerker/imports/launch-proof-restore.sqlite" ui</code></p>
+      <p><strong>Capture cue:</strong> Show the receive-side proof path after restoring the packaged handoff.</p>
+      <p><strong>Save as:</strong> <code>assets/ui-handoff-restore.gif</code></p>
+      <div class="asset-meta">
+        <strong>Reference files</strong>
+        <ul class="refs">
+          <li><a href="PHASE1_EXTERNAL_OPERATOR_BRIEF.md">Phase-1 external operator brief</a></li>
+          <li><a href="../.zerker/launch-proof/RECEIVE_VERIFY_HANDOFF.md">Fresh receive-side handoff when generated</a></li>
+        </ul>
+      </div>
+    </article>
+  </section>
+</main>
+</body>
+</html>

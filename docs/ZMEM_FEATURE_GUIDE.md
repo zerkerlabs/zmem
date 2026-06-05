@@ -1,0 +1,264 @@
+# zmem Feature Guide
+
+`zmem` is open-source, local-first portable memory with proof for AI agents.
+
+Use this as the one-page map of what is built and how to try it.
+
+For the clean builder setup path across Codex, Claude Code, Cursor, and other MCP
+clients, see `docs/BUILDER_EXPERIENCE.md`.
+
+## Product Shape
+
+`zmem` starts as a local memory system and becomes portable when you package proof or handoff state.
+
+```text
+Agents / MCP clients
+  -> zmem policy gate
+  -> local SQLite memory
+  -> receipts, why, bundles, snapshots
+  -> handoff / restore across agents or machines
+```
+
+Core promise:
+
+> Start local. Connect agents. Govern recall. Export proof. Move memory state across machines or agents when needed.
+
+## Quick Preview
+
+```bash
+bash install.sh
+zmem status --summary-only
+zmem eval
+zmem ui
+```
+
+Local preview URLs in this workspace:
+
+- Landing: `http://127.0.0.1:8775/`
+- Console: `http://127.0.0.1:8776/`
+- Repo/docs: `http://127.0.0.1:8777/`
+- Launch proof report: `http://127.0.0.1:8777/.zerker/launch-proof/`
+
+## Features
+
+### Local Memory Core
+
+What it does:
+
+- Stores memory locally in SQLite.
+- Supports SQLite FTS search plus safe fallback search.
+- Tracks typed memories: `episodic`, `semantic`, `procedural`, and `policy`.
+- Supports lifecycle states: active, proposed, quarantined, rejected, revoked, forgotten.
+
+Try it:
+
+```bash
+zmem init --with-policy --with-agent-prompt --with-mcp-config --with-provider-config
+zmem remember "Production deploys require approval" --type policy --scope project
+zmem search "deploy"
+```
+
+### Governance And Policy Gate
+
+What it does:
+
+- Separates trust from authority.
+- Gates memory injection before an agent can use memory.
+- Blocks risky memory by status, authority, labels, type, scope, source, and task risk.
+- Records withheld memory instead of silently dropping it.
+
+Try it:
+
+```bash
+zmem inject "deploy the service" --agent codex --risk high --scope project
+zmem why <action-id>
+```
+
+### Review Queue
+
+What it does:
+
+- Lets agents propose memory without immediately making it authoritative.
+- Lets humans or systems promote, reject, quarantine, or revoke memories.
+
+Try it:
+
+```bash
+zmem propose "New production endpoint is https://example.internal" --type procedural --scope project
+zmem queue --scope project
+zmem promote <memory-id>
+zmem reject <memory-id> --reason "unverified"
+zmem revoke <memory-id> --reason "stale"
+```
+
+### Proof Layer
+
+What it does:
+
+- Writes an append-only event log.
+- Maintains Merkle roots for tamper-evident state.
+- Builds a selected-memory Merkle tree for each injection receipt.
+- Includes per-memory inclusion proofs so agents know which proved memory root backed the injected memory.
+- Emits action receipts for injected and withheld memories.
+- Explains decisions with `why`.
+- Exports verifiable bundles and snapshots.
+
+Try it:
+
+```bash
+zmem inject "ship after approval" --agent codex --risk high --scope project
+zmem why <action-id>
+zmem verify <action-id>
+zmem bundle <action-id> --out-dir .zerker/exports
+zmem bundle verify .zerker/exports/<bundle>.bundle.json
+zmem snapshot --out-dir .zerker/exports
+zmem snapshot verify .zerker/exports/<snapshot>.snapshot.json
+```
+
+### Portability And Handoff
+
+What it does:
+
+- Packages a memory snapshot, latest receipt bundle, handoff manifest, README, and Treeship-ready statement.
+- Restores handoff state into a new empty store.
+- Lets another agent, operator, or machine receive the same governed state.
+
+Try it:
+
+```bash
+zmem handoff --summary-only
+zmem --db .zerker/imported.sqlite restore --handoff-dir .zerker/handoff
+```
+
+### MCP And Agent Setup
+
+What it does:
+
+- Runs an MCP server for agent clients.
+- Directly installs configs for Codex and Claude Code.
+- Exports manual MCP import packs for Cursor, OpenClaw, Hermes, and generic MCP clients.
+- Ships `.zerker/AGENT_PROMPT.md` so agents know when to inject, remember, propose, and explain memory usage.
+- Runs agent smoke and MCP stdio smoke.
+
+Try it:
+
+```bash
+zmem mcp-config --include-policy
+zmem agent install codex
+zmem agent install claude-code
+zmem agent install cursor --summary-only
+zmem agent pack --summary-only
+zmem doctor --agent codex --agent claude-code
+zmem doctor --agent cursor
+zmem agent smoke --agent codex
+zmem agent mcp-smoke --agent codex
+zmem mcp
+```
+
+### Local Console
+
+What it does:
+
+- Opens a browser UI for adding memory, topic inspection, memory review, injection preview, receipts, snapshots, and release proof actions.
+- Lets users ask what ZMem knows about a person, project, task, or decision before handing memory to an agent.
+- Shows release-pack, launch-proof, handoff, restore, launch-asset, and return-packet actions.
+
+Try it:
+
+```bash
+zmem --db .zerker/memory.sqlite ui
+```
+
+In this preview:
+
+```text
+http://127.0.0.1:8776/
+```
+
+### Launch Proof And Release Pack
+
+What it does:
+
+- Generates a local launch-proof report.
+- Packages proof artifacts, receipt bundle, snapshot, BT export, public-verify packet, and return-packet skeleton.
+- Keeps strict public publish blocked until clean-shell logs and screenshots/GIFs exist.
+
+Try it:
+
+```bash
+zmem launch-proof --summary-only
+zmem release-pack --summary-only
+zmem verify-operator-packet .zerker/launch-proof/public-verify-operator-packet.tar.gz --summary-only
+zmem verify-public-verify --summary-only
+zmem verify-launch-assets --summary-only
+zmem verify-return-packet .zerker/launch-proof/public-verify-return-packet.tar.gz --summary-only
+```
+
+Preview:
+
+```text
+http://127.0.0.1:8777/.zerker/launch-proof/
+```
+
+### Behavior-Tree Recovery Memory
+
+What it does:
+
+- Ingests behavior-tree trace events.
+- Lists traces.
+- Explains deterministic fallback/recovery behavior.
+- Exports BehaviorTree.CPP/Groot2 XML plus a proof manifest.
+
+Try it:
+
+```bash
+zmem --db .zerker/bt.sqlite bt ingest examples/bt_trace.jsonl
+zmem --db .zerker/bt.sqlite bt explain trace_demo_recovery --question "why did the robot fall back?"
+zmem --db .zerker/bt.sqlite bt export trace_demo_recovery --out-dir .zerker/exports
+```
+
+### Provider Governance
+
+What it does:
+
+- Adds governance over external recall providers.
+- Supports Mem0/Zep scaffolding.
+- Imports external memories into quarantine by default with provenance labels.
+
+Try it:
+
+```bash
+zmem provider init
+zmem provider doctor
+zmem provider search "deploy runbook" --provider mem0 --user-id <user>
+zmem provider import "deploy runbook" --provider mem0 --scope project --type procedural
+zmem queue --scope project
+```
+
+## What Is Not Built Yet
+
+- Hosted SaaS.
+- Team control plane with roles, retention, and shared review queues.
+- Fully signed public Treeship publish/verify workflow.
+- Production vector/graph replacement.
+- Memory strength, decay, reinforcement scoring, and curation policy templates.
+- Optional semantic indexing layered on top of the structured local store.
+- Public alpha completion evidence: live GitHub/raw installer proof, clean-shell packaged install logs, and final launch screenshots/GIFs.
+
+## Product Signal
+
+The strongest builder signal is not "give agents a bigger vector store." It is: make memory local, inspectable, structured, curated, and provable.
+
+See [MOLTBOOK_ZMEM_PRODUCT_SIGNAL.md](MOLTBOOK_ZMEM_PRODUCT_SIGNAL.md) and [ZMEM_PROBLEM_SOLUTION_MATRIX.md](ZMEM_PROBLEM_SOLUTION_MATRIX.md) for the captured strategy notes.
+
+## Best Mental Model
+
+`zmem` is not just a memory database.
+
+It is:
+
+- a local memory store,
+- a policy gate,
+- an MCP-connected agent interface,
+- a receipt/proof system,
+- and a portable handoff format.

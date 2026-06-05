@@ -1,0 +1,980 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ZMem</title>
+    <meta name="description" content="Local-first verifiable memory for AI agents. Give every memory provenance, policy, receipts, and a trust gate before it influences action." />
+    <meta property="og:title" content="ZMem" />
+    <meta property="og:description" content="Local-first verifiable memory for AI agents. Give every memory provenance, policy, receipts, and a trust gate before it influences action." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #10110f;
+        --panel: #171916;
+        --ink: #f3f1e8;
+        --muted: #b8b8aa;
+        --line: #33372e;
+        --green: #92d66f;
+        --amber: #f0b35a;
+        --red: #e06f62;
+        --blue: #8db7c7;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+        background: var(--bg);
+        color: var(--ink);
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        letter-spacing: 0;
+      }
+
+      body {
+        overflow-x: hidden;
+      }
+
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      .hero {
+        position: relative;
+        min-height: 92vh;
+        display: grid;
+        align-items: center;
+        border-bottom: 1px solid var(--line);
+        overflow: hidden;
+      }
+
+      #memory-canvas {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        opacity: 0.82;
+      }
+
+      .hero::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background:
+          linear-gradient(90deg, rgba(16, 17, 15, 0.95), rgba(16, 17, 15, 0.68) 48%, rgba(16, 17, 15, 0.92)),
+          linear-gradient(0deg, rgba(16, 17, 15, 1), rgba(16, 17, 15, 0) 44%);
+        pointer-events: none;
+      }
+
+      .nav {
+        position: absolute;
+        z-index: 2;
+        top: 0;
+        left: 0;
+        right: 0;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 22px clamp(20px, 5vw, 72px);
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: var(--ink);
+        font-weight: 700;
+      }
+
+      .mark {
+        width: 18px;
+        height: 18px;
+        border: 2px solid var(--green);
+        transform: rotate(45deg);
+      }
+
+      .nav-links {
+        display: flex;
+        gap: 22px;
+      }
+
+      .hero-inner {
+        position: relative;
+        z-index: 1;
+        width: min(1120px, calc(100% - 40px));
+        margin: 0 auto;
+        padding-top: 72px;
+      }
+
+      .eyebrow {
+        color: var(--green);
+        font-size: 13px;
+        font-weight: 700;
+        text-transform: uppercase;
+        margin-bottom: 18px;
+      }
+
+      h1 {
+        max-width: 820px;
+        margin: 0;
+        font-size: clamp(50px, 8vw, 112px);
+        line-height: 0.92;
+        font-weight: 760;
+      }
+
+      .hero-copy {
+        max-width: 650px;
+        margin: 28px 0 0;
+        color: var(--muted);
+        font-size: clamp(18px, 2vw, 23px);
+        line-height: 1.45;
+      }
+
+      .hero-note {
+        max-width: 660px;
+        margin: 18px 0 0;
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.6;
+      }
+
+      .hero-note strong,
+      .hero-note a {
+        color: var(--ink);
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 34px;
+      }
+
+      .button {
+        display: inline-flex;
+        align-items: center;
+        min-height: 44px;
+        padding: 0 18px;
+        border: 1px solid var(--line);
+        background: rgba(23, 25, 22, 0.78);
+        border-radius: 6px;
+        color: var(--ink);
+        font-weight: 650;
+      }
+
+      .button.primary {
+        background: var(--green);
+        border-color: var(--green);
+        color: #11170f;
+      }
+
+      .proof {
+        width: min(1120px, calc(100% - 40px));
+        margin: -58px auto 0;
+        position: relative;
+        z-index: 3;
+        border: 1px solid var(--line);
+        background: rgba(23, 25, 22, 0.96);
+        border-radius: 8px;
+        overflow: hidden;
+      }
+
+      .code-panel {
+        margin-top: 28px;
+        border: 1px solid var(--line);
+        background: rgba(23, 25, 22, 0.96);
+        border-radius: 8px;
+        overflow: hidden;
+        min-width: 0;
+      }
+
+      #install .section-copy {
+        margin-bottom: 34px;
+      }
+
+      #install .code-panel {
+        margin-top: 0;
+        position: relative;
+        z-index: 1;
+      }
+
+      .proof-path {
+        margin-top: 34px;
+        display: grid;
+        grid-template-columns: 1.15fr 0.85fr;
+        gap: 16px;
+        align-items: start;
+      }
+
+      .story-panel,
+      .terminal-panel {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #141612;
+        overflow: hidden;
+      }
+
+      .story-panel {
+        padding: 22px;
+      }
+
+      .story-list {
+        display: grid;
+        gap: 12px;
+      }
+
+      .story-step {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 14px;
+        align-items: start;
+        padding: 14px 0;
+        border-top: 1px solid rgba(255, 255, 255, 0.06);
+      }
+
+      .story-step:first-child {
+        border-top: 0;
+        padding-top: 0;
+      }
+
+      .story-step:last-child {
+        padding-bottom: 0;
+      }
+
+      .story-step strong {
+        display: block;
+        margin-bottom: 6px;
+        font-size: 18px;
+      }
+
+      .story-step p {
+        margin: 0;
+        color: var(--muted);
+        line-height: 1.55;
+      }
+
+      .story-chip {
+        display: inline-flex;
+        align-items: center;
+        min-height: 28px;
+        padding: 0 10px;
+        border-radius: 999px;
+        background: #24301f;
+        color: var(--green);
+        font-weight: 800;
+        font-size: 12px;
+        text-transform: uppercase;
+      }
+
+      .terminal-panel .mini-title {
+        padding: 18px 22px 0;
+      }
+
+      .quickstart-grid {
+        margin-top: 30px;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+        align-items: start;
+      }
+
+      .quickstart-grid > div {
+        min-width: 0;
+      }
+
+      .proof-top {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        border-bottom: 1px solid var(--line);
+      }
+
+      .proof-item {
+        padding: 18px;
+        border-right: 1px solid var(--line);
+      }
+
+      .proof-item:last-child {
+        border-right: 0;
+      }
+
+      .label {
+        color: var(--muted);
+        font-size: 12px;
+        text-transform: uppercase;
+        font-weight: 750;
+      }
+
+      .value {
+        margin-top: 8px;
+        font-size: 18px;
+        font-weight: 700;
+      }
+
+      .green {
+        color: var(--green);
+      }
+
+      .amber {
+        color: var(--amber);
+      }
+
+      .red {
+        color: var(--red);
+      }
+
+      pre {
+        margin: 0;
+        padding: 22px;
+        overflow-x: auto;
+        color: #d9e3d0;
+        font-size: clamp(12px, 1.25vw, 14px);
+        line-height: 1.55;
+        white-space: pre;
+        max-width: 100%;
+      }
+
+      section {
+        width: min(1120px, calc(100% - 40px));
+        margin: 0 auto;
+        padding: 84px 0;
+      }
+
+      h2 {
+        max-width: 760px;
+        margin: 0 0 18px;
+        font-size: clamp(34px, 5vw, 62px);
+        line-height: 1;
+      }
+
+      .section-copy {
+        max-width: 780px;
+        color: var(--muted);
+        font-size: 19px;
+        line-height: 1.55;
+      }
+
+      .grid {
+        margin-top: 36px;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 14px;
+      }
+
+      .card {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        padding: 22px;
+        min-height: 190px;
+      }
+
+      .card h3 {
+        margin: 0 0 12px;
+        font-size: 20px;
+      }
+
+      .card p {
+        color: var(--muted);
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      .flow {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 18px;
+        align-items: start;
+      }
+
+      .steps {
+        display: grid;
+        gap: 10px;
+      }
+
+      .step {
+        display: flex;
+        gap: 14px;
+        align-items: center;
+        border: 1px solid var(--line);
+        background: var(--panel);
+        border-radius: 8px;
+        padding: 14px 16px;
+      }
+
+      .num {
+        width: 28px;
+        height: 28px;
+        display: grid;
+        place-items: center;
+        border-radius: 50%;
+        background: #26351f;
+        color: var(--green);
+        font-weight: 800;
+        flex: 0 0 auto;
+      }
+
+      .footer {
+        border-top: 1px solid var(--line);
+        color: var(--muted);
+        padding: 34px clamp(20px, 5vw, 72px);
+        display: flex;
+        justify-content: space-between;
+        gap: 20px;
+      }
+
+      .wave-grid {
+        margin-top: 36px;
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 14px;
+      }
+
+      .mini-title {
+        color: var(--green);
+        font-size: 13px;
+        font-weight: 800;
+        text-transform: uppercase;
+        margin: 0 0 10px;
+      }
+
+      .wave {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #141612;
+        padding: 22px;
+      }
+
+      .wave small {
+        display: block;
+        color: var(--green);
+        font-weight: 800;
+        text-transform: uppercase;
+        margin-bottom: 10px;
+      }
+
+      .persona-grid {
+        margin-top: 36px;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 14px;
+      }
+
+      .persona {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 22px;
+        background: #141612;
+      }
+
+      .persona strong {
+        display: block;
+        margin-bottom: 10px;
+        font-size: 21px;
+      }
+
+      .persona span {
+        display: block;
+        color: var(--muted);
+        line-height: 1.5;
+      }
+
+      .status-band {
+        border-top: 1px solid var(--line);
+        border-bottom: 1px solid var(--line);
+        background: #151712;
+        width: 100%;
+      }
+
+      .status-inner {
+        width: min(1120px, calc(100% - 40px));
+        margin: 0 auto;
+        padding: 66px 0;
+      }
+
+      .status-grid {
+        display: grid;
+        grid-template-columns: 1.1fr 0.9fr 0.9fr;
+        gap: 14px;
+        margin-top: 30px;
+      }
+
+      .status-card {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 20px;
+        background: #10110f;
+      }
+
+      .status-card strong {
+        display: block;
+        margin-bottom: 10px;
+        font-size: 19px;
+      }
+
+      .status-card ul {
+        margin: 0;
+        padding-left: 18px;
+        color: var(--muted);
+        line-height: 1.65;
+      }
+
+      @media (max-width: 920px) {
+        .nav-links {
+          display: none;
+        }
+
+        .proof-top,
+        .grid,
+        .flow,
+        .proof-path,
+        .persona-grid,
+        .status-grid,
+        .quickstart-grid,
+        .wave-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .proof-item {
+          border-right: 0;
+          border-bottom: 1px solid var(--line);
+        }
+
+        .proof-item:last-child {
+          border-bottom: 0;
+        }
+
+        .footer {
+          flex-direction: column;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header class="hero">
+        <canvas id="memory-canvas" aria-hidden="true"></canvas>
+        <nav class="nav">
+          <div class="brand"><span class="mark"></span>ZMem</div>
+          <div class="nav-links">
+            <a href="#why">Why</a>
+            <a href="#proof-path">Proof</a>
+            <a href="#how">How</a>
+            <a href="#install">Install</a>
+          </div>
+        </nav>
+        <div class="hero-inner">
+          <div class="eyebrow">Open-source verifiable memory for AI agents</div>
+          <h1>Memory your agents can trust, inspect, and prove.</h1>
+          <p class="hero-copy">
+            ZMem gives every memory provenance, policy, receipts, and a trust gate before it
+            influences action. Keep durable agent memory local and usable without turning it into
+            another opaque vector store.
+          </p>
+        <div class="actions">
+          <a class="button primary" href="#install">Start locally</a>
+          <a class="button" href="#dashboard">See dashboard</a>
+          <a class="button" href="#ships">What ships</a>
+          <a class="button" href="https://github.com/zerkerlabs/zerker-memory/blob/main/docs/ZMEM_FEATURE_GUIDE.md">Feature guide</a>
+        </div>
+        <p class="hero-note">Launching at <strong>zmem.sh</strong> from Zerker Labs, with portable proof designed to pair cleanly with <a href="https://treeship.dev">treeship.dev</a>.</p>
+        </div>
+      </header>
+
+      <div class="proof" aria-label="Receipt preview">
+        <div class="proof-top">
+          <div class="proof-item">
+            <div class="label">Store</div>
+            <div class="value green">local agent memory</div>
+          </div>
+          <div class="proof-item">
+            <div class="label">Select</div>
+            <div class="value red">policy-gated memory</div>
+          </div>
+          <div class="proof-item">
+            <div class="label">Verify</div>
+            <div class="value amber">memory receipt</div>
+          </div>
+        </div>
+        <pre>{
+  "agent": "cursor",
+  "task": "continue the release plan",
+  "memory": "ZMem is local-first proof-backed memory",
+  "source": "human",
+  "decision": "inject",
+  "why": "active, project-scoped, trusted",
+  "memory_root": "df1ff27342037bd...",
+  "receipt": "verified"
+}</pre>
+      </div>
+
+      <section id="why">
+        <h2>Agents need memory they can trust, not just retrieve.</h2>
+        <p class="section-copy">
+          The real pain is continuity with control. Agents lose memory between sessions, vector
+          stores hide what was remembered, and summaries drift away from evidence. ZMem keeps
+          memory local, queryable, reviewable, and attached to proof-backed receipts.
+        </p>
+        <div class="grid">
+          <article class="card">
+            <h3>Know what it knows</h3>
+            <p>Structured local memory with SQLite, FTS search, typed records, scopes, labels, source, trust, and authority.</p>
+          </article>
+          <article class="card">
+            <h3>Control what it uses</h3>
+            <p>Agents can propose memory without making it authoritative. Humans or policies can promote, reject, quarantine, or revoke.</p>
+          </article>
+          <article class="card">
+            <h3>Verify the memory</h3>
+            <p>Action receipts show what was injected, what was withheld, and which memory root backed the agent's decision.</p>
+          </article>
+        </div>
+      </section>
+
+      <section>
+        <h2>Provenance and policy for the memory layer you already have.</h2>
+        <p class="section-copy">
+          Storage is not the hard part anymore. The hard part is knowing whether a stored memory
+          should be allowed to shape a future action. ZMem records where memory came from, keeps
+          risky memory reviewable, and gates retrieval through policy before an agent can use it.
+        </p>
+        <div class="grid">
+          <article class="card">
+            <h3>Know the source</h3>
+            <p>Track source kind, scope, labels, trust, authority, lineage, and lifecycle on every memory record.</p>
+          </article>
+          <article class="card">
+            <h3>Refuse unsafe recall</h3>
+            <p>Similarity search finds candidates; policy decides what can influence a task, tool call, or handoff.</p>
+          </article>
+          <article class="card">
+            <h3>Answer incidents</h3>
+            <p>When an agent acts, <code>why</code> and receipts show what it knew, where that memory came from, and why it was allowed.</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="ships">
+        <h2>One interface for memory, agents, and proof.</h2>
+        <p class="section-copy">
+          ZMem starts as a lightweight local tool and grows into a governed memory gateway. The
+          open-source build ships the core loop: save, inspect, review, continue, verify, and hand off.
+        </p>
+        <div class="grid">
+          <article class="card">
+            <h3>Memory core</h3>
+            <p>SQLite store, FTS search, typed memories, quarantine, review queue, revocation, lineage, and restore.</p>
+          </article>
+          <article class="card">
+            <h3>Agent continuity</h3>
+            <p>MCP server, local dashboard, Codex and Claude Code wiring, plus Cursor, OpenClaw, Hermes, and generic MCP packs.</p>
+          </article>
+          <article class="card">
+            <h3>Proof layer</h3>
+            <p>Event Merkle roots, selected-memory Merkle trees, action receipts, <code>why</code>, bundles, snapshots, handoff, and proof reports.</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="proof-path">
+        <h2>Continue an agent without losing the audit trail.</h2>
+        <p class="section-copy">
+          Start on one agent, package the relevant memory state, restore it somewhere else, and prove
+          what the next agent was allowed to use. The dashboard shows connected agent artifacts and
+          the handoff path in one place.
+        </p>
+        <div class="proof-path">
+          <article class="story-panel">
+            <p class="mini-title">Continuity path</p>
+            <div class="story-list">
+              <div class="story-step">
+                <span class="story-chip">Step 1</span>
+                <div>
+                  <strong>Remember locally</strong>
+                  <p>Store durable project, user, policy, or workflow memories in a local SQLite database.</p>
+                </div>
+              </div>
+              <div class="story-step">
+                <span class="story-chip">Step 2</span>
+                <div>
+                  <strong>Inject through policy</strong>
+                  <p>Preview what an agent can use. Quarantined, revoked, or low-authority memory is withheld and recorded.</p>
+                </div>
+              </div>
+              <div class="story-step">
+                <span class="story-chip">Step 3</span>
+                <div>
+                  <strong>Handoff with receipts</strong>
+                  <p>Export a snapshot, receipt bundle, restore guide, and handoff manifest so another agent can continue from the same governed state.</p>
+                </div>
+              </div>
+            </div>
+          </article>
+          <article class="terminal-panel">
+            <p class="mini-title">Agent-to-agent handoff</p>
+            <pre>zmem agent pack --summary-only
+zmem handoff --summary-only
+zmem --db .zerker/imported.sqlite restore --handoff-dir .zerker/handoff
+zmem verify &lt;action-id&gt;
+zmem ui</pre>
+          </article>
+        </div>
+      </section>
+
+      <section id="dashboard">
+        <h2>A local dashboard for memory you can actually use.</h2>
+        <p class="section-copy">
+          Add memories, ask what ZMem knows, inspect receipts, preview injection decisions, and
+          see which agent setup artifacts are ready. The console is local, browser-based, and backed
+          by the same SQLite store your agents use.
+        </p>
+        <div class="grid">
+          <article class="card">
+            <h3>Topic inspector</h3>
+            <p>Ask what the local store knows about a person, project, task, or decision before an agent uses it.</p>
+          </article>
+          <article class="card">
+            <h3>Proof inspector</h3>
+            <p>Open receipts, memory roots, bundles, snapshots, and why reports without reading raw JSON first.</p>
+          </article>
+          <article class="card">
+            <h3>Agent handoff</h3>
+            <p>See MCP setup state, manual-agent packs, snapshots, restore paths, and cross-agent continuity commands.</p>
+          </article>
+        </div>
+      </section>
+
+
+      <section>
+        <h2>Built for real agent memory pain.</h2>
+        <p class="section-copy">
+          Agent builders are converging on the same problems: agents forget, vector stores hide
+          state, session handoffs fail, and summarized memory is useful but hard to prove. ZMem
+          makes those problems explicit.
+        </p>
+        <div class="persona-grid">
+          <div class="persona">
+            <strong>Continuity</strong>
+            <span>Agents can pick up project memory after restarts, new sessions, and handoffs.</span>
+          </div>
+          <div class="persona">
+            <strong>Inspection</strong>
+            <span>Memory is human-readable, searchable, scoped, typed, and visible in the local dashboard.</span>
+          </div>
+          <div class="persona">
+            <strong>Accountability</strong>
+            <span>Receipts preserve what was remembered, injected, withheld, revoked, and restored.</span>
+          </div>
+        </div>
+      </section>
+
+      <div class="status-band">
+        <div class="status-inner">
+          <p class="mini-title">Available now</p>
+          <h2>A complete local memory loop for agent builders.</h2>
+          <p class="section-copy">
+            ZMem gives agents a durable local memory store, a review surface, MCP wiring, portable
+            handoff, and proof artifacts in one installable package. Start with one agent, then move
+            the same governed state across sessions, tools, and machines.
+          </p>
+          <div class="status-grid">
+            <article class="status-card">
+              <strong class="green">Memory system</strong>
+              <ul>
+                <li>Local SQLite store</li>
+                <li>Typed, searchable memories</li>
+                <li>Review, quarantine, revoke</li>
+              </ul>
+            </article>
+            <article class="status-card">
+              <strong class="amber">Agent continuity</strong>
+              <ul>
+                <li>MCP server and setup packs</li>
+                <li>Dashboard inspection</li>
+                <li>Snapshot, restore, handoff</li>
+              </ul>
+            </article>
+            <article class="status-card">
+              <strong class="red">Proof layer</strong>
+              <ul>
+                <li>Merkle event log</li>
+                <li>Action receipts and why</li>
+                <li>Release proof bundles</li>
+              </ul>
+            </article>
+          </div>
+        </div>
+      </div>
+
+      <section id="how">
+        <div class="flow">
+          <div>
+            <h2>The proof-backed memory loop.</h2>
+            <p class="section-copy">
+              Keep the product simple at the surface: remember useful facts, review risky memory,
+              continue across agents, and verify what changed.
+            </p>
+          </div>
+          <div class="steps">
+            <div class="step"><span class="num">1</span><strong>Remember locally</strong></div>
+            <div class="step"><span class="num">2</span><strong>Review before trust</strong></div>
+            <div class="step"><span class="num">3</span><strong>Continue through MCP</strong></div>
+            <div class="step"><span class="num">4</span><strong>Verify receipts and handoffs</strong></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="install">
+        <h2>Install locally. See everything.</h2>
+        <p class="section-copy">
+          Bootstrap ZMem, open the dashboard, then connect your agent. Codex and Claude Code get
+          direct config installs; Cursor and other MCP clients get importable local packs plus a
+          prompt that tells the agent when to inject, remember, and explain memory.
+        </p>
+        <div class="quickstart-grid">
+          <div>
+            <div class="mini-title">Start local</div>
+            <div class="code-panel">
+              <pre>bash install.sh
+zmem status --summary-only
+zmem ui</pre>
+            </div>
+            <p class="section-copy">For the verified first-run walkthrough, use <code>bash examples/first_run.sh</code>.</p>
+          </div>
+          <div>
+            <div class="mini-title">Connect agents</div>
+            <div class="code-panel">
+              <pre>zmem agent install codex
+zmem agent install claude-code
+zmem agent install cursor --summary-only
+zmem agent pack --summary-only
+zmem doctor --agent codex --agent claude-code --agent cursor
+zmem agent mcp-smoke --agent codex</pre>
+            </div>
+          </div>
+        </div>
+        <div class="story-panel" style="margin-top:16px">
+          <div class="story-list">
+            <div class="story-step">
+              <span class="story-chip">1</span>
+              <div><strong>Direct where possible</strong><p>Codex writes to <code>~/.codex/config.toml</code>; Claude Code writes to <code>~/.claude/mcp.json</code>.</p></div>
+            </div>
+            <div class="story-step">
+              <span class="story-chip">2</span>
+              <div><strong>Import where safer</strong><p>Cursor, OpenClaw, Hermes, and generic MCP clients receive project-local JSON, snippets, and checklists under <code>.zerker/agents/</code>.</p></div>
+            </div>
+            <div class="story-step">
+              <span class="story-chip">3</span>
+              <div><strong>Attach the agent prompt</strong><p><code>.zerker/AGENT_PROMPT.md</code> tells agents to call <code>memory.inject</code>, use only injected memory, write durable memory carefully, and call <code>memory.why</code> when memory shaped an action.</p></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Open-source memory infrastructure for agents.</h2>
+        <p class="section-copy">
+          Zerker proves the critical loop: propose memory, quarantine risk, authorize injection,
+          explain decisions, revoke lineage, export proof, and hand the state to another agent.
+          The roadmap builds from that foundation into signed memory transitions, memory quality
+          scoring, semantic overlays, and shared team memory.
+        </p>
+        <div class="code-panel">
+          <pre>bash install.sh
+zmem ui
+zmem agent pack --summary-only
+zmem handoff --summary-only</pre>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <span>ZMem</span>
+      <span>Local memory. Symbolic control. Portable proof. Built by Zerker Labs with Treeship-ready receipts.</span>
+    </footer>
+
+    <script>
+      const canvas = document.getElementById("memory-canvas");
+      const ctx = canvas.getContext("2d");
+      let width = 0;
+      let height = 0;
+      let nodes = [];
+
+      function resize() {
+        const dpr = window.devicePixelRatio || 1;
+        width = canvas.clientWidth;
+        height = canvas.clientHeight;
+        canvas.width = Math.floor(width * dpr);
+        canvas.height = Math.floor(height * dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        nodes = Array.from({ length: Math.max(42, Math.floor(width / 22)) }, (_, i) => ({
+          x: Math.random() * width,
+          y: Math.random() * height,
+          r: 1.5 + Math.random() * 2.8,
+          vx: -0.18 + Math.random() * 0.36,
+          vy: -0.14 + Math.random() * 0.28,
+          trust: i % 7 === 0 ? "amber" : i % 11 === 0 ? "red" : "green",
+        }));
+      }
+
+      function color(node, alpha = 1) {
+        if (node.trust === "red") return `rgba(224,111,98,${alpha})`;
+        if (node.trust === "amber") return `rgba(240,179,90,${alpha})`;
+        return `rgba(146,214,111,${alpha})`;
+      }
+
+      function tick() {
+        ctx.clearRect(0, 0, width, height);
+        for (const node of nodes) {
+          node.x += node.vx;
+          node.y += node.vy;
+          if (node.x < -20) node.x = width + 20;
+          if (node.x > width + 20) node.x = -20;
+          if (node.y < -20) node.y = height + 20;
+          if (node.y > height + 20) node.y = -20;
+        }
+
+        for (let i = 0; i < nodes.length; i++) {
+          for (let j = i + 1; j < nodes.length; j++) {
+            const a = nodes[i];
+            const b = nodes[j];
+            const dx = a.x - b.x;
+            const dy = a.y - b.y;
+            const dist = Math.hypot(dx, dy);
+            if (dist < 135) {
+              const alpha = (1 - dist / 135) * 0.24;
+              ctx.strokeStyle = `rgba(184,184,170,${alpha})`;
+              ctx.lineWidth = 1;
+              ctx.beginPath();
+              ctx.moveTo(a.x, a.y);
+              ctx.lineTo(b.x, b.y);
+              ctx.stroke();
+            }
+          }
+        }
+
+        for (const node of nodes) {
+          ctx.fillStyle = color(node, 0.95);
+          ctx.beginPath();
+          ctx.arc(node.x, node.y, node.r, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        requestAnimationFrame(tick);
+      }
+
+      window.addEventListener("resize", resize);
+      resize();
+      tick();
+    </script>
+  </body>
+</html>

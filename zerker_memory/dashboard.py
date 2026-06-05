@@ -1,0 +1,1625 @@
+from __future__ import annotations
+
+import argparse
+import json
+from http import HTTPStatus
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
+from typing import Any
+from urllib.parse import parse_qs, urlparse
+
+from .exporter import export_bundle, export_snapshot
+from .store import MemoryStore, default_db_path, default_policy_path
+
+
+INDEX_HTML = """<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Zerker Memory Console</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #162019;
+      --muted: #637065;
+      --line: #d9e1da;
+      --paper: #f6f7f3;
+      --panel: #ffffff;
+      --accent: #1f7a5a;
+      --warn: #9b4b22;
+      --bad: #9f2f37;
+      --good: #1f7a5a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--paper);
+      color: var(--ink);
+    }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      padding: 22px 28px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255,255,255,.86);
+      position: sticky;
+      top: 0;
+      z-index: 3;
+      backdrop-filter: blur(12px);
+    }
+    h1 { margin: 0; font-size: 20px; letter-spacing: 0; }
+    main { padding: 24px 28px 40px; display: grid; gap: 22px; }
+    .topline { color: var(--muted); font-size: 13px; margin-top: 4px; }
+    .grid { display: grid; grid-template-columns: 1.2fr .8fr; gap: 22px; align-items: start; }
+    .hero {
+      display: grid;
+      gap: 18px;
+      padding: 22px;
+      border-radius: 14px;
+      border: 1px solid #d4ddd6;
+      background:
+        radial-gradient(circle at top left, rgba(31,122,90,.12), transparent 40%),
+        linear-gradient(135deg, #ffffff, #f0f4ee);
+      box-shadow: 0 10px 30px rgba(22, 32, 25, .05);
+    }
+    .hero h2 {
+      font-size: 24px;
+      margin: 0;
+      letter-spacing: -.02em;
+    }
+    .hero p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.5;
+      max-width: 760px;
+    }
+    .hero-grid {
+      display: grid;
+      gap: 14px;
+      grid-template-columns: 1.15fr .85fr;
+      align-items: start;
+    }
+    .checklist, .command-list {
+      display: grid;
+      gap: 10px;
+      min-width: 0;
+    }
+    .check {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 11px 12px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: rgba(255,255,255,.82);
+    }
+    .check strong {
+      display: block;
+      margin-bottom: 3px;
+      font-size: 13px;
+    }
+    .check span {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.4;
+    }
+    .dot {
+      flex: 0 0 10px;
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      margin-top: 4px;
+      background: #c6d1c8;
+    }
+    .dot.ready { background: var(--good); }
+    .dot.pending { background: var(--warn); }
+    .command-list pre {
+      margin: 0;
+      font-size: 12px;
+      line-height: 1.45;
+      max-height: none;
+      background: #17211a;
+      color: #eef6ef;
+      border-color: #17211a;
+    }
+    .metrics { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap: 12px; }
+    .metric, section {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+    .metric { padding: 14px; min-height: 76px; }
+    .metric strong { display: block; font-size: 24px; margin-bottom: 4px; }
+    .metric span { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+    section { padding: 16px; }
+    h2 { font-size: 15px; margin: 0 0 14px; }
+    h3 { font-size: 13px; margin: 0 0 8px; }
+    .toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    input, select, textarea {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 9px 10px;
+      font: inherit;
+      background: #fff;
+      color: var(--ink);
+    }
+    input[type="search"] { min-width: 260px; }
+    textarea { width: 100%; min-height: 82px; resize: vertical; }
+    button {
+      border: 1px solid #b8c8bd;
+      background: #fff;
+      color: var(--ink);
+      border-radius: 6px;
+      padding: 9px 11px;
+      font: inherit;
+      cursor: pointer;
+    }
+    button.primary { background: var(--accent); color: white; border-color: var(--accent); }
+    button.danger { color: var(--bad); border-color: #e4b9bd; }
+    .list { display: grid; gap: 10px; }
+    .item {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      background: #fff;
+    }
+    .meta { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 8px; }
+    .pill {
+      font-size: 12px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 3px 7px;
+      color: var(--muted);
+      background: #fbfcfa;
+    }
+    .pill.active { color: var(--good); border-color: #b8d9ca; }
+    .pill.quarantined, .pill.proposed { color: var(--warn); border-color: #e9c8ad; }
+    .pill.revoked, .pill.deprecated { color: var(--bad); border-color: #e5b6bb; }
+    .content { line-height: 1.45; margin-bottom: 10px; }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .proof-grid { display: grid; grid-template-columns: repeat(3, minmax(160px, 1fr)); gap: 10px; margin-bottom: 12px; }
+    .proof-cell {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px;
+      background: #fbfcfa;
+      min-width: 0;
+    }
+    .proof-cell span { display: block; color: var(--muted); font-size: 12px; margin-bottom: 4px; }
+    .proof-cell strong {
+      display: block;
+      font-size: 13px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .proof-status { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 12px; }
+    .helper {
+      margin: 0 0 12px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .story-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(160px, 1fr));
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .story-card {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 12px;
+      background: #fbfcfa;
+    }
+    .story-card strong {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 13px;
+    }
+    .story-card p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    .story-card code {
+      display: inline-block;
+      margin-top: 8px;
+      padding: 4px 6px;
+      border-radius: 6px;
+      background: #17211a;
+      color: #eef6ef;
+      font-size: 11px;
+    }
+    .workflow {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(150px, 1fr));
+      gap: 10px;
+    }
+    .flow-step {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      background: #fbfcfa;
+      min-height: 116px;
+    }
+    .flow-step span {
+      display: inline-grid;
+      place-items: center;
+      width: 24px;
+      height: 24px;
+      margin-bottom: 10px;
+      border-radius: 999px;
+      background: var(--accent);
+      color: #fff;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .flow-step strong {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 13px;
+    }
+    .flow-step p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(110px, 1fr));
+      gap: 8px;
+      margin: 10px 0;
+    }
+    pre {
+      overflow: auto;
+      padding: 12px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: #fbfcfa;
+      max-height: 360px;
+    }
+    .empty { color: var(--muted); padding: 16px 0; }
+    @media (max-width: 900px) {
+      .grid { grid-template-columns: 1fr; }
+      .metrics { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
+      .proof-grid { grid-template-columns: 1fr; }
+      .story-grid { grid-template-columns: 1fr; }
+      .workflow { grid-template-columns: 1fr; }
+      .form-grid { grid-template-columns: 1fr; }
+      header { align-items: flex-start; flex-direction: column; }
+      input[type="search"] { min-width: 0; width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Zerker Memory Console</h1>
+      <div class="topline" id="dbPath">Loading local memory state...</div>
+    </div>
+    <div class="toolbar">
+      <button id="refreshBtn">Refresh</button>
+      <button class="primary" id="snapshotBtn">Export Snapshot</button>
+    </div>
+  </header>
+  <main>
+    <div class="metrics" id="metrics"></div>
+    <section id="onboarding" class="hero" hidden></section>
+    <section>
+      <h2>Use ZMem</h2>
+      <div class="workflow">
+        <div class="flow-step"><span>1</span><strong>Save memory</strong><p>Add a fact, preference, decision, or policy into the local store.</p></div>
+        <div class="flow-step"><span>2</span><strong>Review control</strong><p>Promote trusted memories and reject or revoke anything that should not guide an agent.</p></div>
+        <div class="flow-step"><span>3</span><strong>Preview injection</strong><p>See exactly what an agent would receive before a task runs.</p></div>
+        <div class="flow-step"><span>4</span><strong>Prove and hand off</strong><p>Export receipts, snapshots, or a handoff for another agent or machine.</p></div>
+      </div>
+    </section>
+    <section>
+      <h2>Agent Continuity</h2>
+      <p class="helper">Connect builders through direct config or manual MCP import, attach the shared agent prompt, then prove the connection with smoke checks before handing memory to another agent or machine.</p>
+      <div id="continuity" class="empty">Agent continuity state will appear here.</div>
+    </section>
+    <section>
+      <h2>What Does ZMem Know?</h2>
+      <p class="helper">Ask before you hand context to an agent. ZMem searches active and queued memory, then shows source, status, trust, and scope in one compact view.</p>
+      <div class="toolbar" style="margin-bottom:12px">
+        <input id="topicQuery" type="search" placeholder="Ask about a person, project, task, or decision">
+        <button class="primary" id="topicSearchBtn">Inspect Topic</button>
+        <button id="topicExampleBtn">Use Example</button>
+      </div>
+      <div id="topicSummary" class="empty">Topic memory will appear here.</div>
+    </section>
+    <div class="grid">
+      <section>
+        <h2>Add Memory</h2>
+        <p class="helper">Save a local memory in one step. Human-entered semantic and policy memories become active by default; agent or external memories stay reviewable.</p>
+        <textarea id="rememberContent" placeholder="Example: The launch positioning is local-first memory for AI agents with verifiable transition receipts."></textarea>
+        <div class="form-grid">
+          <select id="rememberType" aria-label="Memory type">
+            <option value="semantic" selected>Semantic</option>
+            <option value="episodic">Episodic</option>
+            <option value="procedural">Procedural</option>
+            <option value="policy">Policy</option>
+          </select>
+          <select id="rememberSource" aria-label="Source">
+            <option value="human" selected>Human</option>
+            <option value="agent">Agent</option>
+            <option value="external">External</option>
+          </select>
+          <input id="rememberScope" value="project" aria-label="Memory scope">
+          <input id="rememberLabels" placeholder="labels, comma-separated" aria-label="Memory labels">
+        </div>
+        <div class="toolbar">
+          <button class="primary" id="rememberBtn">Save Memory</button>
+          <button id="rememberExampleBtn">Use Example</button>
+        </div>
+      </section>
+      <section>
+        <h2>Inject Preview</h2>
+        <p class="helper">Preview the governed memory an agent would receive for a real task, then inspect or bundle the resulting receipt.</p>
+        <textarea id="task" placeholder="Task an agent is about to perform"></textarea>
+        <div class="toolbar" style="margin:10px 0">
+          <input id="agent" value="codex" aria-label="Agent">
+          <select id="risk"><option>low</option><option selected>medium</option><option>high</option></select>
+          <input id="scope" value="project" aria-label="Scope">
+          <button id="demoTaskBtn">Load deploy demo</button>
+          <button class="primary" id="injectBtn">Preview</button>
+        </div>
+      </section>
+    </div>
+    <section>
+      <h2>Review Queue</h2>
+      <div class="list" id="queue"></div>
+    </section>
+    <section>
+      <h2>Release Artifacts</h2>
+      <p class="helper">Run the one-command release pack, or create the launch-proof report, package a shared handoff, and restore that handoff into a fresh local import DB from the same console you use to review receipts.</p>
+      <div class="toolbar" style="margin-bottom:12px">
+        <button class="primary" id="releasePackBtn">Run Release Pack</button>
+        <button id="launchProofBtn">Generate Launch Proof</button>
+        <button id="handoffBtn">Generate Handoff</button>
+        <button id="restoreHandoffBtn">Restore Handoff</button>
+        <button id="verifyLaunchAssetsBtn">Verify Launch Assets</button>
+        <button id="verifyReturnPacketBtn">Verify Return Packet</button>
+      </div>
+      <div id="releaseStatus" class="empty">Launch-proof and handoff readiness will appear here.</div>
+    </section>
+    <section>
+      <h2>Proof Inspector</h2>
+      <div id="proofSummary" class="empty">Run an injection preview, inspect a receipt, export a bundle, or export a snapshot.</div>
+      <pre id="rawOutput">{}</pre>
+    </section>
+    <section>
+      <h2>Memories</h2>
+      <div class="toolbar" style="margin-bottom:12px">
+        <input id="search" type="search" placeholder="Search active and queued memory">
+        <select id="status">
+          <option value="">All statuses</option>
+          <option value="active">Active</option>
+          <option value="quarantined">Quarantined</option>
+          <option value="proposed">Proposed</option>
+          <option value="deprecated">Deprecated</option>
+          <option value="revoked">Revoked</option>
+          <option value="forgotten">Forgotten</option>
+        </select>
+        <button id="searchBtn">Search</button>
+      </div>
+      <div class="list" id="memories"></div>
+    </section>
+    <section>
+      <h2>Recent Receipts</h2>
+      <div class="list" id="receipts"></div>
+    </section>
+  </main>
+  <script>
+    const $ = (id) => document.getElementById(id);
+
+    async function api(path, options = {}) {
+      const response = await fetch(path, {
+        headers: {'content-type': 'application/json'},
+        ...options,
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || response.statusText);
+      return payload;
+    }
+
+    function pill(value) {
+      return `<span class="pill ${String(value).replace(/[^a-z0-9_-]/gi, '')}">${value}</span>`;
+    }
+
+    function memoryItem(memory, controls = true) {
+      const labels = (memory.labels || []).map(pill).join('');
+      return `<div class="item">
+        <div class="meta">
+          ${pill(memory.status)}${pill(memory.type)}${pill(memory.authority)}
+          ${pill('trust ' + Number(memory.trust).toFixed(2))}${labels}
+        </div>
+        <div class="content">${escapeHtml(memory.content)}</div>
+        <div class="topline">${memory.id} · ${memory.scope} · ${memory.source_kind}</div>
+        ${controls ? `<div class="actions" style="margin-top:10px">
+          <button data-action="promote" data-id="${memory.id}">Promote</button>
+          <button data-action="reject" data-id="${memory.id}">Reject</button>
+          <button class="danger" data-action="revoke" data-id="${memory.id}">Revoke</button>
+        </div>` : ''}
+      </div>`;
+    }
+
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>"']/g, (char) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+    }
+
+    function shortHash(value) {
+      if (!value) return 'none';
+      const text = String(value);
+      return text.length > 18 ? text.slice(0, 18) + '...' : text;
+    }
+
+    function proofCell(label, value) {
+      return `<div class="proof-cell"><span>${escapeHtml(label)}</span><strong title="${escapeHtml(value)}">${escapeHtml(value)}</strong></div>`;
+    }
+
+    function renderLaunchAssetStoryboard(assets, missingPaths) {
+      if (!assets || !assets.length) return `<div class="empty">Launch asset storyboard unavailable.</div>`;
+      const missing = new Set((missingPaths || []).map((path) => String(path)));
+      return assets.map((asset) => {
+        const outputPath = String(asset.output_path || '');
+        const ready = outputPath && !missing.has(outputPath);
+        return `<div class="story-card">
+          <strong>${escapeHtml(String(asset.deliverable || 'unknown'))}</strong>
+          <p>${escapeHtml(String(asset.id || 'unknown'))}</p>
+          <code>${escapeHtml(outputPath || 'missing output path')}</code>
+          <p>${escapeHtml(ready ? 'Captured in the proof pack.' : 'Still missing from the proof pack.')}</p>
+        </div>`;
+      }).join('');
+    }
+
+    function renderCodeList(paths, emptyText) {
+      if (!paths || !paths.length) return `<div class="empty">${escapeHtml(emptyText)}</div>`;
+      return paths.map((path) => `<code>${escapeHtml(path)}</code>`).join('<br>');
+    }
+
+    function renderTopicSummary(query, memories) {
+      if (!query) return '<div class="empty">Enter a topic to inspect local memory.</div>';
+      if (!memories.length) {
+        return `<div class="empty">No local memory matched "${escapeHtml(query)}". That absence is useful: the agent should not pretend it knows.</div>`;
+      }
+      const active = memories.filter((memory) => memory.status === 'active').length;
+      const queued = memories.filter((memory) => memory.status === 'quarantined' || memory.status === 'proposed').length;
+      const proofCells = `
+        <div class="proof-grid">
+          ${proofCell('Topic', query)}
+          ${proofCell('Matches', String(memories.length))}
+          ${proofCell('Active / queued', `${active} / ${queued}`)}
+        </div>`;
+      return `${proofCells}<div class="list">${memories.slice(0, 8).map((memory) => memoryItem(memory, false)).join('')}</div>`;
+    }
+
+    function renderContinuity(state) {
+      const continuity = state.agent_continuity || {};
+      const agents = continuity.agents || [];
+      const agentCards = agents.map((agent) => `<div class="story-card">
+        <strong>${escapeHtml(agent.label)}</strong>
+        <p>${escapeHtml(agent.ready ? agent.ready_text : agent.next_step)}</p>
+        <p>${escapeHtml(agent.mode)}</p>
+        <code>${escapeHtml(agent.path)}</code>
+      </div>`).join('');
+      const commands = (continuity.commands || []).map((command) => `<code>${escapeHtml(command)}</code>`).join('<br>');
+      $('continuity').innerHTML = `
+        <div class="proof-status">
+          ${pill(continuity.mcp_ready ? 'mcp ready' : 'mcp missing')}
+          ${pill(continuity.manual_pack_ready ? 'manual pack ready' : 'manual pack missing')}
+          ${pill(continuity.handoff_ready ? 'handoff ready' : 'handoff pending')}
+        </div>
+        <div class="story-grid">${agentCards}</div>
+        <div class="proof-grid">
+          ${proofCell('Memory DB', continuity.db_path || 'unknown')}
+          ${proofCell('Handoff', continuity.handoff_path || '.zerker/handoff')}
+          ${proofCell('Manual pack', continuity.manual_pack_path || '.zerker/agents/manual-agent-pack.md')}
+        </div>
+        <p class="helper">Continue elsewhere:</p>
+        <pre>${commands}</pre>`;
+    }
+
+    function renderOutput(payload) {
+      $('rawOutput').textContent = JSON.stringify(payload, null, 2);
+      $('proofSummary').innerHTML = renderSummary(payload);
+    }
+
+    function renderReleaseStatus(state) {
+      const release = state.release_readiness || {};
+      if (!release.repo_surface_present) {
+        $('releaseStatus').innerHTML = '<div class="empty">Release checks appear in the full repo where README, QUICKSTART, landing, and smoke scripts are present.</div>';
+        return;
+      }
+      if (!release.launch_proof_ready) {
+        const nextStep = escapeHtml((release.strict_publish_next_steps || [])[0] || 'zmem release-pack --summary-only');
+        $('releaseStatus').innerHTML = `
+          <div class="proof-status">
+            ${pill('launch proof missing')}
+            ${pill(release.handoff_ready ? 'handoff ok' : 'handoff missing')}
+            ${pill('release pack needed')}
+            ${pill(release.strict_publish_ready ? 'strict publish ok' : 'strict publish blocked')}
+          </div>
+          <div class="story-grid">
+            <div class="story-card">
+              <strong>Generate release pack first</strong>
+              <p>Run <code>zmem release-pack --summary-only</code> before forwarding the clean-shell handoff or asking another chat to capture launch assets.</p>
+              <code>${nextStep}</code>
+            </div>
+            <div class="story-card">
+              <strong>Public verify</strong>
+              <p>${escapeHtml(release.public_verify_details || 'Pending')}</p>
+              <code>zmem release-pack --summary-only</code>
+            </div>
+            <div class="story-card">
+              <strong>Launch assets</strong>
+              <p>${escapeHtml(release.launch_assets_details || 'Pending')}</p>
+              <code>zmem release-pack --summary-only</code>
+            </div>
+            <div class="story-card">
+              <strong>Return packet</strong>
+              <p>${escapeHtml(release.return_packet_details || 'Pending')}</p>
+              <code>zmem release-pack --summary-only</code>
+            </div>
+          </div>
+        `;
+        return;
+      }
+      const blockers = (release.strict_publish_blockers || []).map((item) => pill(item)).join('');
+      const warnings = (release.strict_publish_warnings || []).map((item) => pill(item)).join('');
+      const nextSteps = (release.strict_publish_next_steps || []).map((step) => `<code>${escapeHtml(step)}</code>`).join('<br>');
+      const publicVerifyMissing = renderCodeList(release.public_verify_missing_paths || [], 'Clean-shell logs are complete.');
+      const launchAssetMissing = renderCodeList(release.launch_assets_missing_paths || [], 'Launch assets are complete.');
+      const launchAssetStoryboard = renderLaunchAssetStoryboard(release.expected_launch_assets || [], release.launch_assets_missing_paths || []);
+      const returnPacketMissing = renderCodeList(release.return_packet_missing_paths || [], 'Return packet roots are structurally present.');
+      $('releaseStatus').innerHTML = `
+        <div class="proof-status">
+          ${pill(release.launch_proof_ready ? 'launch proof ok' : 'launch proof missing')}
+          ${pill(release.handoff_ready ? 'handoff ok' : 'handoff missing')}
+          ${pill(release.operator_packet_ready ? 'operator packet ok' : 'operator packet pending')}
+          ${pill(release.public_verify_ready ? 'public verify ok' : 'public verify pending')}
+          ${pill(release.launch_assets_ready ? 'launch assets ok' : 'launch assets pending')}
+          ${pill(release.return_packet_ready ? 'return packet ok' : 'return packet pending')}
+          ${pill(release.local_alpha_ready ? 'local alpha ok' : 'local alpha blocked')}
+          ${pill(release.strict_publish_ready ? 'strict publish ok' : 'strict publish blocked')}
+        </div>
+        <div class="proof-grid">
+          ${proofCell('Launch proof dir', release.launch_proof_dir || '.zerker/launch-proof')}
+          ${proofCell('Handoff dir', release.handoff_dir || '.zerker/handoff')}
+          ${proofCell('Capture checklist', release.capture_checklist_path || '.zerker/launch-proof/CAPTURE_CHECKLIST.md')}
+          ${proofCell('Launch asset handoff', release.launch_asset_handoff_path || '.zerker/launch-proof/LAUNCH_ASSET_HANDOFF.md')}
+          ${proofCell('Public verify handoff', release.public_verify_handoff_path || '.zerker/launch-proof/PUBLIC_VERIFY_HANDOFF.md')}
+          ${proofCell('Receive-side handoff', release.receive_verify_handoff_path || '.zerker/launch-proof/RECEIVE_VERIFY_HANDOFF.md')}
+          ${proofCell('Public verify script', release.public_verify_script_path || '.zerker/launch-proof/PUBLIC_VERIFY_COMMANDS.sh')}
+          ${proofCell('Operator packet', release.operator_packet_archive_path || '.zerker/launch-proof/public-verify-operator-packet.tar.gz')}
+          ${proofCell('Public verify logs', `${release.public_verify_present_count || 0}/${release.public_verify_expected_count || 0}`)}
+          ${proofCell('Public verify result', release.public_verify_result_path || '.zerker/launch-proof/public-verify-result.json')}
+          ${proofCell('Public verify summary', release.public_verify_summary_path || '.zerker/launch-proof/public-verify-summary.md')}
+          ${proofCell('Launch assets', `${release.launch_assets_present_count || 0}/${release.launch_assets_expected_count || 0}`)}
+          ${proofCell('Return packet archive', release.return_packet_archive_path || '.zerker/launch-proof/public-verify-return-packet.tar.gz')}
+          ${proofCell('Return finalize', release.return_packet_finalize_script_path || '.zerker/launch-proof/FINALIZE_RETURN_PACKET.sh')}
+          ${proofCell('Assets dir', release.launch_assets_outputs_dir_path || '.zerker/launch-proof/assets')}
+          ${proofCell('Next strict step', (release.strict_publish_next_steps || [])[0] || 'none')}
+        </div>
+        <div class="story-grid">
+          <div class="story-card">
+            <strong>Operator packet</strong>
+            <p>${escapeHtml(release.operator_packet_details || 'Pending')}</p>
+            <code>${escapeHtml(release.operator_packet_archive_path || '.zerker/launch-proof/public-verify-operator-packet.tar.gz')}</code>
+          </div>
+          <div class="story-card">
+            <strong>Public verify</strong>
+            <p>${escapeHtml(release.public_verify_details || 'Pending')}</p>
+            <code>${escapeHtml(release.public_verify_result_path || '.zerker/launch-proof/public-verify-result.json')}</code>
+          </div>
+          <div class="story-card">
+            <strong>Launch assets</strong>
+            <p>${escapeHtml(release.launch_assets_details || 'Pending')}</p>
+            <code>${escapeHtml(release.launch_assets_outputs_dir_path || '.zerker/launch-proof/assets')}</code>
+          </div>
+          <div class="story-card">
+            <strong>Return packet</strong>
+            <p>${escapeHtml(release.return_packet_details || 'Pending')}</p>
+            <code>${escapeHtml(release.return_packet_archive_path || '.zerker/launch-proof/public-verify-return-packet.tar.gz')}</code>
+          </div>
+        </div>
+        <h3>Missing public-verify logs</h3>
+        <div class="content">${publicVerifyMissing}</div>
+        <h3>Missing launch assets</h3>
+        <div class="content">${launchAssetMissing}</div>
+        <h3>Launch asset storyboard</h3>
+        <div class="story-grid">${launchAssetStoryboard}</div>
+        <h3>Return-packet roots</h3>
+        <div class="content">${returnPacketMissing}</div>
+        ${(blockers || warnings) ? `<div class="proof-status">${blockers}${warnings}</div>` : ''}
+        ${nextSteps ? `<div class="content">${nextSteps}</div>` : ''}
+      `;
+    }
+
+    function renderOnboarding(state) {
+      const onboarding = state.onboarding || {};
+      if (!onboarding.show) {
+        $('onboarding').hidden = true;
+        $('onboarding').innerHTML = '';
+        return;
+      }
+      const checks = (onboarding.checks || []).map((check) => `<div class="check">
+        <div class="dot ${check.ready ? 'ready' : 'pending'}"></div>
+        <div>
+          <strong>${escapeHtml(check.label)}</strong>
+          <span>${escapeHtml(check.detail)}</span>
+        </div>
+      </div>`).join('');
+      const commands = (onboarding.commands || []).join('\\n');
+      $('onboarding').hidden = false;
+      $('onboarding').innerHTML = `
+        <div>
+          <h2>Start with a governed-memory proof run</h2>
+          <p>${escapeHtml(onboarding.message || 'Initialize the local workspace, run the proof harness, and reopen the console once receipts exist.')}</p>
+        </div>
+        <div class="hero-grid">
+          <div class="checklist">${checks}</div>
+          <div class="command-list">
+            <h3>First-run commands</h3>
+            <pre>${escapeHtml(commands)}</pre>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderSummary(payload) {
+      if (!payload || typeof payload !== 'object') return '<div class="empty">No proof selected.</div>';
+      if (payload.format === 'bundle' && payload.payload) return renderBundleSummary(payload);
+      if (payload.format === 'snapshot' && payload.payload) return renderSnapshotSummary(payload);
+      if (payload.schema === 'zerker.release_pack.v1') return renderReleasePackSummary(payload);
+      if (payload.schema === 'zerker.launch_proof.v1') return renderLaunchProofSummary(payload);
+      if (payload.schema === 'zerker.handoff.v1') return renderHandoffSummary(payload);
+      if (payload.schema === 'zerker.restore_handoff.v1') return renderRestoreSummary(payload);
+      if (payload.schema === 'zerker.launch_assets_verify.v1') return renderLaunchAssetsSummary(payload);
+      if (payload.schema === 'zerker.return_packet_verify.v1') return renderReturnPacketSummary(payload);
+      if (payload.id && payload.content && payload.status) return renderMemorySummary(payload);
+      if (payload.receipt_schema || payload.action_id) return renderReceiptSummary(payload);
+      if (payload.ok === false) return `<div class="proof-status">${pill('error')}</div><div class="content">${escapeHtml(payload.error || 'Action failed')}</div>`;
+      return renderEmptyProofState();
+    }
+
+    function renderMemorySummary(memory) {
+      return `<div class="proof-status">
+          ${pill('memory saved')}${pill(memory.status)}${pill(memory.type)}${pill(memory.authority)}
+        </div>
+        <div class="proof-grid">
+          ${proofCell('Memory', memory.id || 'none')}
+          ${proofCell('Scope', memory.scope || 'global')}
+          ${proofCell('Source', memory.source_kind || 'unknown')}
+          ${proofCell('Trust', String(memory.trust || 0))}
+        </div>
+        <div class="content">${escapeHtml(memory.content || '')}</div>`;
+    }
+
+    function renderReleasePackSummary(result) {
+      const handoff = result.handoff || {};
+      const launchProof = result.launch_proof || {};
+      const prelaunch = result.prelaunch || {};
+      const operatorPacket = result.operator_packet || {};
+      const publicVerify = result.public_verify || {};
+      const launchAssets = result.launch_assets || {};
+      const nextSteps = (result.next_steps || []).map((step) => `<code>${escapeHtml(step)}</code>`).join('<br>');
+      const publicVerifyMissing = renderCodeList(publicVerify.missing_paths || [], 'Clean-shell logs are complete.');
+      const launchAssetMissing = renderCodeList(launchAssets.missing_paths || [], 'Launch assets are complete.');
+      const launchAssetStoryboard = renderLaunchAssetStoryboard(result.expected_launch_assets || [], launchAssets.missing_paths || []);
+      const returnPacketMissing = renderCodeList((result.return_packet || {}).missing_paths || [], 'Return packet roots are structurally present.');
+      return `<div class="proof-status">
+          ${pill('release pack')}${pill(result.ok ? 'ready' : 'blocked')}${pill(operatorPacket.ok ? 'operator packet ok' : 'operator packet pending')}${pill(prelaunch.ok ? 'prelaunch ok' : 'prelaunch blocked')}
+        </div>
+        <div class="proof-grid">
+          ${proofCell('Launch proof report', launchProof.report_path || 'not written')}
+          ${proofCell('Launch proof manifest', launchProof.manifest_path || 'not written')}
+          ${proofCell('Handoff manifest', handoff.manifest_path || 'not written')}
+          ${proofCell('Prelaunch', prelaunch.ok ? 'ok' : 'blocked')}
+          ${proofCell('Action', launchProof.action_id || handoff.action_id || 'none')}
+          ${proofCell('Handoff dir', handoff.out_dir || 'not written')}
+          ${proofCell('Operator packet', result.operator_packet_archive_path || 'not written')}
+          ${proofCell('Public verify logs', `${publicVerify.present_count || 0}/${publicVerify.expected_count || 0}`)}
+          ${proofCell('Public verify result', publicVerify.result_path || '.zerker/launch-proof/public-verify-result.json')}
+          ${proofCell('Public verify summary', result.public_verify_summary_path || '.zerker/launch-proof/public-verify-summary.md')}
+          ${proofCell('Launch assets', `${launchAssets.present_count || 0}/${launchAssets.expected_count || 0}`)}
+          ${proofCell('Capture checklist', result.capture_checklist_path || 'not written')}
+          ${proofCell('Launch asset handoff', result.launch_asset_handoff_path || 'not written')}
+          ${proofCell('Receive-side handoff', result.receive_verify_handoff_path || 'not written')}
+          ${proofCell('Return packet archive', result.return_packet_archive_path || '.zerker/launch-proof/public-verify-return-packet.tar.gz')}
+          ${proofCell('Return finalize', result.return_packet_finalize_script_path || 'not written')}
+        </div>
+        <div class="story-grid">
+          <div class="story-card">
+            <strong>Operator packet</strong>
+            <p>${escapeHtml(operatorPacket.details || 'Pending')}</p>
+            <code>${escapeHtml(result.operator_packet_archive_path || '.zerker/launch-proof/public-verify-operator-packet.tar.gz')}</code>
+          </div>
+          <div class="story-card">
+            <strong>Public verify</strong>
+            <p>${escapeHtml(publicVerify.details || 'Pending')}</p>
+            <code>${escapeHtml(publicVerify.result_path || '.zerker/launch-proof/public-verify-result.json')}</code>
+          </div>
+          <div class="story-card">
+            <strong>Launch assets</strong>
+            <p>${escapeHtml(launchAssets.details || 'Pending')}</p>
+            <code>${escapeHtml(result.launch_assets_dir_path || '.zerker/launch-proof/assets')}</code>
+          </div>
+          <div class="story-card">
+            <strong>Return packet</strong>
+            <p>${escapeHtml((result.return_packet || {}).details || 'Pending')}</p>
+            <code>${escapeHtml(result.return_packet_archive_path || '.zerker/launch-proof/public-verify-return-packet.tar.gz')}</code>
+          </div>
+        </div>
+        <h3>Missing public-verify logs</h3>
+        <div class="content">${publicVerifyMissing}</div>
+        <h3>Missing launch assets</h3>
+        <div class="content">${launchAssetMissing}</div>
+        <h3>Launch asset storyboard</h3>
+        <div class="story-grid">${launchAssetStoryboard}</div>
+        <h3>Return-packet roots</h3>
+        <div class="content">${returnPacketMissing}</div>
+        ${nextSteps ? `<div class="content">${nextSteps}</div>` : ''}`;
+    }
+
+    function renderEmptyProofState() {
+      return `<div class="proof-status">
+          ${pill('launch proof path')}${pill('console demo')}
+        </div>
+        <div class="story-grid">
+          <div class="story-card">
+            <strong>1. Generate governed state</strong>
+            <p>Initialize the workspace, run readiness, and create receipts you can review in the console.</p>
+            <code>zmem init && zmem doctor && zmem eval</code>
+          </div>
+          <div class="story-card">
+            <strong>2. Preview a high-risk task</strong>
+            <p>Use the deploy demo to show authorized policy memory and quarantined memory in one proof view.</p>
+            <code>Load deploy demo -> Preview</code>
+          </div>
+          <div class="story-card">
+            <strong>3. Export portable proof</strong>
+            <p>Bundle the receipt or export a snapshot so launch screenshots include a verifiable artifact path.</p>
+            <code>Bundle receipt or Export Snapshot</code>
+          </div>
+        </div>`;
+    }
+
+    function renderReceiptSummary(receipt) {
+      const injected = receipt.injected_memory_ids || [];
+      const withheld = receipt.withheld || receipt.withheld_memory_ids || [];
+      return `<div class="proof-status">
+          ${pill('receipt')}${pill(receipt.risk || 'risk unknown')}${pill(receipt.agent_id || 'agent unknown')}
+        </div>
+        <div class="proof-grid">
+          ${proofCell('Action', receipt.action_id || 'none')}
+          ${proofCell('Merkle root', shortHash(receipt.merkle_root))}
+          ${proofCell('Injected / withheld', `${injected.length} / ${withheld.length}`)}
+        </div>
+        <div class="content">${escapeHtml(receipt.task || 'No task text')}</div>`;
+    }
+
+    function renderBundleSummary(result) {
+      const bundle = result.payload;
+      const proof = bundle.proof || {};
+      return `<div class="proof-status">
+          ${pill('bundle')}${pill(proof.verified ? 'verified' : 'unverified')}${pill(result.format)}
+        </div>
+        <div class="proof-grid">
+          ${proofCell('Path', result.path || 'not written')}
+          ${proofCell('Action', bundle.action_id || 'none')}
+          ${proofCell('Bundle hash', shortHash(bundle.bundle_hash))}
+          ${proofCell('Receipt root', shortHash(proof.receipt_merkle_root))}
+          ${proofCell('Computed root', shortHash(proof.computed_merkle_root))}
+          ${proofCell('Events / memories', `${proof.event_count || 0} / ${(bundle.supporting_memory_ids || []).length}`)}
+        </div>`;
+    }
+
+    function renderSnapshotSummary(result) {
+      const snapshot = result.payload;
+      return `<div class="proof-status">
+          ${pill('snapshot')}${pill(result.format)}
+        </div>
+        <div class="proof-grid">
+          ${proofCell('Path', result.path || 'not written')}
+          ${proofCell('Snapshot hash', shortHash(snapshot.snapshot_hash))}
+          ${proofCell('Merkle root', shortHash(snapshot.merkle_root))}
+          ${proofCell('Memories', String(snapshot.memory_count || 0))}
+          ${proofCell('Events', String(snapshot.event_count || 0))}
+          ${proofCell('Receipts', String(snapshot.receipt_count || 0))}
+        </div>`;
+    }
+
+    function renderLaunchProofSummary(result) {
+      return `<div class="proof-status">
+          ${pill('launch proof')}${pill(result.ok ? 'ready' : 'failed')}
+        </div>
+        <div class="proof-grid">
+          ${proofCell('Manifest', result.manifest_path || 'not written')}
+          ${proofCell('Report', result.report_path || 'not written')}
+          ${proofCell('Transcript', result.transcript_path || 'not written')}
+          ${proofCell('Capture checklist', result.capture_checklist_path || 'not written')}
+          ${proofCell('Launch asset handoff', result.launch_asset_handoff_path || 'not written')}
+          ${proofCell('Receive-side handoff', result.receive_verify_handoff_path || 'not written')}
+          ${proofCell('Public verify script', result.public_verify_script_path || 'not written')}
+          ${proofCell('Return finalize', result.return_packet_finalize_script_path || 'not written')}
+          ${proofCell('Public verify logs dir', result.public_verify_logs_dir_path || 'not written')}
+          ${proofCell('Action', result.action_id || 'none')}
+          ${proofCell('Bundle', result.bundle_path || 'not written')}
+          ${proofCell('Snapshot', result.snapshot_path || 'not written')}
+          ${proofCell('BT XML', result.bt_xml_path || 'not written')}
+          ${proofCell('Launch assets dir', result.launch_assets_dir_path || 'not written')}
+        </div>`;
+    }
+
+    function renderHandoffSummary(result) {
+      return `<div class="proof-status">
+          ${pill('handoff')}${pill(result.ok ? 'ready' : 'failed')}
+        </div>
+        <div class="proof-grid">
+          ${proofCell('README', result.readme_path || 'not written')}
+          ${proofCell('Manifest', result.manifest_path || 'not written')}
+          ${proofCell('Snapshot', result.snapshot_path || 'not written')}
+          ${proofCell('Action', result.action_id || 'snapshot only')}
+          ${proofCell('Bundle', result.bundle_path || 'none')}
+          ${proofCell('Treeship', result.treeship_path || 'none')}
+        </div>`;
+    }
+
+    function renderRestoreSummary(result) {
+      const restore = result.restore || {};
+      return `<div class="proof-status">
+          ${pill('handoff restore')}${pill(result.ok ? 'ready' : 'failed')}
+        </div>
+        <div class="proof-grid">
+          ${proofCell('Source', result.source || 'not found')}
+          ${proofCell('Imported DB', result.db_path || 'not written')}
+          ${proofCell('Snapshot', result.snapshot_path || 'not found')}
+          ${proofCell('Bundle', result.bundle_path || 'none')}
+          ${proofCell('Memories', String(restore.memory_count || 0))}
+          ${proofCell('Receipts', String(restore.receipt_count || 0))}
+        </div>`;
+    }
+
+    function renderReturnPacketSummary(result) {
+      const missing = (result.missing_paths || []).map((path) => `<code>${escapeHtml(path)}</code>`).join('<br>');
+      const failedSteps = (result.failed_steps || []).join(', ');
+      return `<div class="proof-status">
+          ${pill('return packet')}${pill(result.ok ? 'ready' : 'failed')}
+        </div>
+        <div class="proof-grid">
+          ${proofCell('Archive', result.archive_path || 'not found')}
+          ${proofCell('Manifest', result.manifest_path || 'not found')}
+          ${proofCell('Public verify result', result.public_verify_result_path || 'not found')}
+          ${proofCell('Public verify', `${result.public_verify_present_count || 0}/${result.public_verify_expected_count || 0} logs`)}
+          ${proofCell('Launch assets', `${result.launch_assets_present_count || 0}/${result.launch_assets_expected_count || 0} assets`)}
+          ${proofCell('Action', result.action_id || 'none')}
+        </div>
+        <div class="story-grid">
+          <div class="story-card">
+            <strong>Archive status</strong>
+            <p>${escapeHtml(result.details || 'Unknown')}</p>
+            <code>${escapeHtml(result.archive_path || '.zerker/launch-proof/public-verify-return-packet.tar.gz')}</code>
+          </div>
+          <div class="story-card">
+            <strong>Failed steps</strong>
+            <p>${escapeHtml(failedSteps || 'None')}</p>
+            <code>${escapeHtml(result.public_verify_result_path || '.zerker/launch-proof/public-verify-result.json')}</code>
+          </div>
+          <div class="story-card">
+            <strong>Missing paths</strong>
+            <p>${escapeHtml((result.missing_paths || []).length ? 'Return packet is incomplete.' : 'Return packet matches the shipped contract.')}</p>
+            <code>${escapeHtml(result.manifest_path || 'launch-proof.json')}</code>
+          </div>
+        </div>
+        ${missing ? `<div class="content">${missing}</div>` : ''}`;
+    }
+
+    function renderLaunchAssetsSummary(result) {
+      const missing = (result.missing_paths || []).map((path) => `<code>${escapeHtml(path)}</code>`).join('<br>');
+      const launchAssetStoryboard = renderLaunchAssetStoryboard(result.expected_launch_assets || [], result.missing_paths || []);
+      return `<div class="proof-status">
+          ${pill('launch assets')}${pill(result.ok ? 'ready' : 'failed')}
+        </div>
+        <div class="proof-grid">
+          ${proofCell('Outputs dir', result.outputs_dir_path || 'not found')}
+          ${proofCell('Checklist', result.checklist_path || 'not found')}
+          ${proofCell('Handoff', result.handoff_path || 'not found')}
+          ${proofCell('Assets', `${result.present_count || 0}/${result.expected_count || 0}`)}
+        </div>
+        <div class="story-grid">
+          <div class="story-card">
+            <strong>Asset status</strong>
+            <p>${escapeHtml(result.details || 'Unknown')}</p>
+            <code>${escapeHtml(result.outputs_dir_path || '.zerker/launch-proof/assets')}</code>
+          </div>
+          <div class="story-card">
+            <strong>Checklist source</strong>
+            <p>${escapeHtml(result.ok ? 'Storyboard is complete.' : 'Use the generated checklist to finish the remaining captures.')}</p>
+            <code>${escapeHtml(result.checklist_path || '.zerker/launch-proof/CAPTURE_CHECKLIST.md')}</code>
+          </div>
+          <div class="story-card">
+            <strong>Operator handoff</strong>
+            <p>${escapeHtml(result.handoff_path ? 'Forward the generated handoff when another operator is recording the launch assets.' : 'Launch-asset handoff not found.')}</p>
+            <code>${escapeHtml(result.handoff_path || '.zerker/launch-proof/LAUNCH_ASSET_HANDOFF.md')}</code>
+          </div>
+        </div>
+        <h3>Launch asset storyboard</h3>
+        <div class="story-grid">${launchAssetStoryboard}</div>
+        ${missing ? `<div class="content">${missing}</div>` : ''}`;
+    }
+
+    async function load() {
+      const state = await api('/api/state');
+      $('dbPath').textContent = state.stats.db_path;
+      renderOnboarding(state);
+      renderReleaseStatus(state);
+      renderContinuity(state);
+      $('metrics').innerHTML = [
+        ['Memories', state.stats.memory_count],
+        ['Queued', (state.stats.memory_status.quarantined || 0) + (state.stats.memory_status.proposed || 0)],
+        ['Receipts', state.stats.receipt_count],
+        ['Events', state.stats.event_count],
+      ].map(([label, value]) => `<div class="metric"><strong>${value}</strong><span>${label}</span></div>`).join('');
+      $('queue').innerHTML = state.queue.length ? state.queue.map((m) => memoryItem(m)).join('') : '<div class="empty">Nothing waiting for review.</div>';
+      $('memories').innerHTML = state.memories.length ? state.memories.map((m) => memoryItem(m)).join('') : '<div class="empty">No memories yet.</div>';
+      $('receipts').innerHTML = state.receipts.length ? state.receipts.map((receipt) => `<div class="item">
+        <div class="meta">${pill(receipt.risk)}${pill(receipt.agent_id)}</div>
+        <div class="content">${escapeHtml(receipt.task)}</div>
+        <div class="topline">${receipt.action_id} · ${receipt.created_at}</div>
+        <div class="actions" style="margin-top:10px">
+          <button data-action="why" data-id="${receipt.action_id}">Why</button>
+          <button data-action="bundle" data-id="${receipt.action_id}">Bundle</button>
+        </div>
+      </div>`).join('') : '<div class="empty">No receipts yet.</div>';
+    }
+
+    async function search() {
+      const params = new URLSearchParams();
+      if ($('search').value) params.set('q', $('search').value);
+      if ($('status').value) params.set('status', $('status').value);
+      const result = await api('/api/memories?' + params.toString());
+      $('memories').innerHTML = result.memories.length ? result.memories.map((m) => memoryItem(m)).join('') : '<div class="empty">No matching memories.</div>';
+    }
+
+    async function inspectTopic() {
+      const query = $('topicQuery').value.trim();
+      const params = new URLSearchParams();
+      if (query) params.set('q', query);
+      const result = query ? await api('/api/memories?' + params.toString()) : {memories: []};
+      $('topicSummary').innerHTML = renderTopicSummary(query, result.memories || []);
+    }
+
+    async function act(action, id) {
+      const body = action === 'reject' || action === 'revoke' ? {reason: 'dashboard review'} : {};
+      const result = await api(`/api/memories/${id}/${action}`, {method: 'POST', body: JSON.stringify(body)});
+      renderOutput(result);
+      await load();
+    }
+
+    function loadDemoTask() {
+      $('task').value = 'deploy service to production after approval check';
+      $('agent').value = 'codex';
+      $('risk').value = 'high';
+      $('scope').value = 'project';
+      renderOutput({mode: 'demo', hint: 'Preview the launch-ready deploy task to generate a receipt and then bundle it.'});
+    }
+
+    function loadMemoryExample() {
+      $('rememberContent').value = 'ZMem should be positioned as local-first memory for AI agents with verifiable transition receipts.';
+      $('rememberType').value = 'semantic';
+      $('rememberSource').value = 'human';
+      $('rememberScope').value = 'project';
+      $('rememberLabels').value = 'positioning, launch';
+    }
+
+    function loadTopicExample() {
+      $('topicQuery').value = 'durable memory source';
+      inspectTopic().catch((error) => {
+        $('topicSummary').innerHTML = `<div class="empty">${escapeHtml(error.message)}</div>`;
+      });
+    }
+
+    document.body.addEventListener('click', async (event) => {
+      const button = event.target.closest('button[data-action]');
+      if (!button) return;
+      const action = button.dataset.action;
+      const id = button.dataset.id;
+      try {
+        if (action === 'why') renderOutput(await api(`/api/receipts/${id}`));
+        else if (action === 'bundle') renderOutput(await api(`/api/receipts/${id}/bundle`, {method: 'POST', body: '{}'}));
+        else await act(action, id);
+      } catch (error) {
+        renderOutput({ok:false, error:error.message});
+      }
+    });
+
+    $('refreshBtn').addEventListener('click', load);
+    $('searchBtn').addEventListener('click', search);
+    $('topicSearchBtn').addEventListener('click', inspectTopic);
+    $('topicExampleBtn').addEventListener('click', loadTopicExample);
+    $('topicQuery').addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') inspectTopic();
+    });
+    $('demoTaskBtn').addEventListener('click', loadDemoTask);
+    $('rememberExampleBtn').addEventListener('click', loadMemoryExample);
+    $('rememberBtn').addEventListener('click', async () => {
+      const labels = $('rememberLabels').value.split(',').map((label) => label.trim()).filter(Boolean);
+      const result = await api('/api/memories', {
+        method: 'POST',
+        body: JSON.stringify({
+          content: $('rememberContent').value,
+          memory_type: $('rememberType').value,
+          source_kind: $('rememberSource').value,
+          scope: $('rememberScope').value || 'project',
+          labels,
+        }),
+      });
+      renderOutput(result);
+      $('rememberContent').value = '';
+      await load();
+    });
+    $('snapshotBtn').addEventListener('click', async () => {
+      renderOutput(await api('/api/snapshot', {method: 'POST', body: '{}'}));
+      await load();
+    });
+    $('releasePackBtn').addEventListener('click', async () => {
+      renderOutput(await api('/api/release/release-pack', {method: 'POST', body: '{}'}));
+      await load();
+    });
+    $('launchProofBtn').addEventListener('click', async () => {
+      renderOutput(await api('/api/release/launch-proof', {method: 'POST', body: '{}'}));
+      await load();
+    });
+    $('handoffBtn').addEventListener('click', async () => {
+      renderOutput(await api('/api/release/handoff', {method: 'POST', body: '{}'}));
+      await load();
+    });
+    $('restoreHandoffBtn').addEventListener('click', async () => {
+      renderOutput(await api('/api/release/restore-handoff', {method: 'POST', body: '{}'}));
+      await load();
+    });
+    $('verifyLaunchAssetsBtn').addEventListener('click', async () => {
+      renderOutput(await api('/api/release/verify-launch-assets', {method: 'POST', body: '{}'}));
+      await load();
+    });
+    $('verifyReturnPacketBtn').addEventListener('click', async () => {
+      renderOutput(await api('/api/release/verify-return-packet', {method: 'POST', body: '{}'}));
+      await load();
+    });
+    $('injectBtn').addEventListener('click', async () => {
+      const result = await api('/api/inject', {
+        method: 'POST',
+        body: JSON.stringify({task: $('task').value, agent: $('agent').value, risk: $('risk').value, scope: $('scope').value || null}),
+      });
+      renderOutput(result);
+      await load();
+    });
+    load().catch((error) => $('dbPath').textContent = error.message);
+  </script>
+</body>
+</html>
+"""
+
+
+class DashboardServer(HTTPServer):
+    def __init__(self, server_address: tuple[str, int], store: MemoryStore):
+        super().__init__(server_address, DashboardHandler)
+        self.store = store
+
+
+class DashboardHandler(BaseHTTPRequestHandler):
+    server: DashboardServer
+
+    def do_GET(self) -> None:
+        parsed = urlparse(self.path)
+        try:
+            if parsed.path == "/":
+                self._send_html(INDEX_HTML)
+                return
+            if parsed.path == "/api/state":
+                self._send_json(
+                    {
+                        "stats": self.server.store.stats(),
+                        "onboarding": build_onboarding_state(self.server.store),
+                        "agent_continuity": build_agent_continuity_state(self.server.store),
+                        "release_readiness": build_release_readiness_state(self.server.store),
+                        "queue": [memory.to_dict() for memory in self.server.store.queue()],
+                        "memories": [memory.to_dict() for memory in self.server.store.list_memories(limit=100)],
+                        "receipts": self.server.store.list_receipts(limit=25),
+                    }
+                )
+                return
+            if parsed.path == "/api/memories":
+                params = parse_qs(parsed.query)
+                query = first(params, "q")
+                status = first(params, "status")
+                if query:
+                    memories = self.server.store.search(query, include_quarantined=True)
+                    if status:
+                        memories = [memory for memory in memories if memory.status == status]
+                else:
+                    memories = self.server.store.list_memories(status=status or None, limit=100)
+                self._send_json({"memories": [memory.to_dict() for memory in memories]})
+                return
+            if parsed.path.startswith("/api/receipts/"):
+                if re_receipt_action(parsed.path):
+                    self._send_error(HTTPStatus.METHOD_NOT_ALLOWED, "use POST for receipt actions")
+                    return
+                action_id = parsed.path.rsplit("/", 1)[-1]
+                self._send_json(self.server.store.why(action_id))
+                return
+            self._send_error(HTTPStatus.NOT_FOUND, "not found")
+        except Exception as exc:
+            self._send_error(HTTPStatus.BAD_REQUEST, str(exc))
+
+    def do_POST(self) -> None:
+        parsed = urlparse(self.path)
+        try:
+            payload = self._read_json()
+            if parsed.path == "/api/memories":
+                content = required_str(payload, "content").strip()
+                if not content:
+                    raise ValueError("memory content is required")
+                self._send_json(
+                    self.server.store.remember(
+                        content,
+                        memory_type=payload.get("memory_type", "semantic"),
+                        scope=payload.get("scope") or "project",
+                        source_kind=payload.get("source_kind", "human"),
+                        labels=payload.get("labels") or [],
+                    ).to_dict()
+                )
+                return
+            if parsed.path == "/api/inject":
+                self._send_json(
+                    self.server.store.inject(
+                        required_str(payload, "task"),
+                        agent_id=required_str(payload, "agent"),
+                        risk=payload.get("risk", "medium"),
+                        scope=payload.get("scope"),
+                    )
+                )
+                return
+            if parsed.path == "/api/snapshot":
+                out_dir = Path(payload["out_dir"]) if payload.get("out_dir") else None
+                self._send_json(export_snapshot(self.server.store.snapshot(), out_dir=out_dir))
+                return
+            if parsed.path == "/api/release/launch-proof":
+                self._send_json(create_dashboard_launch_proof(self.server.store))
+                return
+            if parsed.path == "/api/release/release-pack":
+                self._send_json(create_dashboard_release_pack(self.server.store))
+                return
+            if parsed.path == "/api/release/handoff":
+                self._send_json(create_dashboard_handoff(self.server.store))
+                return
+            if parsed.path == "/api/release/restore-handoff":
+                self._send_json(create_dashboard_handoff_restore(self.server.store))
+                return
+            if parsed.path == "/api/release/verify-launch-assets":
+                self._send_json(create_dashboard_launch_assets_verify(self.server.store))
+                return
+            if parsed.path == "/api/release/verify-return-packet":
+                self._send_json(create_dashboard_return_packet_verify(self.server.store))
+                return
+            receipt_match = re_receipt_action(parsed.path)
+            if receipt_match:
+                action_id, action = receipt_match
+                if action == "bundle":
+                    out_dir = Path(payload["out_dir"]) if payload.get("out_dir") else None
+                    self._send_json(export_bundle(self.server.store.receipt_bundle(action_id), out_dir=out_dir))
+                    return
+            match = re_memory_action(parsed.path)
+            if match:
+                memory_id, action = match
+                if action == "promote":
+                    self._send_json(self.server.store.promote(memory_id).to_dict())
+                    return
+                if action == "reject":
+                    self._send_json(self.server.store.reject(memory_id, reason=payload.get("reason")).to_dict())
+                    return
+                if action == "revoke":
+                    self._send_json(self.server.store.revoke(memory_id, reason=payload.get("reason")))
+                    return
+            self._send_error(HTTPStatus.NOT_FOUND, "not found")
+        except Exception as exc:
+            self._send_error(HTTPStatus.BAD_REQUEST, str(exc))
+
+    def log_message(self, format: str, *args: Any) -> None:
+        return
+
+    def _read_json(self) -> dict[str, Any]:
+        length = int(self.headers.get("content-length") or 0)
+        if length == 0:
+            return {}
+        return json.loads(self.rfile.read(length).decode("utf-8"))
+
+    def _send_html(self, html: str) -> None:
+        body = html.encode("utf-8")
+        self.send_response(HTTPStatus.OK)
+        self.send_header("content-type", "text/html; charset=utf-8")
+        self.send_header("content-length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _send_json(self, value: Any, status: HTTPStatus = HTTPStatus.OK) -> None:
+        body = json.dumps(value, indent=2, sort_keys=True).encode("utf-8")
+        self.send_response(status)
+        self.send_header("content-type", "application/json")
+        self.send_header("content-length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _send_error(self, status: HTTPStatus, message: str) -> None:
+        self._send_json({"ok": False, "error": message}, status=status)
+
+
+def re_memory_action(path: str) -> tuple[str, str] | None:
+    parts = path.strip("/").split("/")
+    if len(parts) == 4 and parts[0] == "api" and parts[1] == "memories":
+        return parts[2], parts[3]
+    return None
+
+
+def re_receipt_action(path: str) -> tuple[str, str] | None:
+    parts = path.strip("/").split("/")
+    if len(parts) == 4 and parts[0] == "api" and parts[1] == "receipts":
+        return parts[2], parts[3]
+    return None
+
+
+def first(params: dict[str, list[str]], key: str) -> str | None:
+    values = params.get(key) or []
+    return values[0] if values else None
+
+
+def build_onboarding_state(store: MemoryStore) -> dict[str, Any]:
+    stats = store.stats()
+    root = store.db_path.parent
+    policy_path = store.policy_path or default_policy_path()
+    setup_checks = [
+        {
+            "label": "Workspace initialized",
+            "ready": store.db_path.exists(),
+            "detail": f"SQLite memory store at {store.db_path}",
+        },
+        {
+            "label": "Policy file present",
+            "ready": policy_path.exists(),
+            "detail": f"Policy gate config at {policy_path}",
+        },
+        {
+            "label": "Agent wiring present",
+            "ready": (root / "mcp.json").exists() and (root / "AGENT_PROMPT.md").exists(),
+            "detail": "MCP config and agent prompt are ready for Codex-style loops",
+        },
+        {
+            "label": "Provider config present",
+            "ready": (root / "providers.json").exists(),
+            "detail": f"Optional governance overlay config at {root / 'providers.json'}",
+        },
+    ]
+    commands = [
+        "zmem init --with-policy --with-agent-prompt --with-mcp-config --with-provider-config",
+        "zmem status --summary-only",
+        "zmem doctor",
+        "zmem eval",
+        "zmem demo",
+        "zmem ui",
+    ]
+    empty = stats["memory_count"] == 0 and stats["receipt_count"] == 0
+    return {
+        "show": empty,
+        "message": "This workspace has no memories or receipts yet. Create the local policy files, run the readiness check, generate a proof run, then use the console to capture the governed-memory story.",
+        "checks": setup_checks,
+        "commands": commands,
+    }
+
+
+def build_agent_continuity_state(store: MemoryStore) -> dict[str, Any]:
+    root = Path.cwd()
+    zerker_dir = store.db_path.parent
+    agents_dir = zerker_dir / "agents"
+    handoff_dir = root / ".zerker" / "handoff"
+    codex_path = Path.home() / ".codex" / "config.toml"
+    claude_path = Path.home() / ".claude" / "mcp.json"
+    manual_pack_path = agents_dir / "manual-agent-pack.md"
+    agents = [
+        {
+            "label": "Codex",
+            "path": str(codex_path),
+            "ready": codex_path.exists(),
+            "mode": "Direct config install",
+            "ready_text": "Config found; attach .zerker/AGENT_PROMPT.md and run smoke.",
+            "next_step": "Run zmem agent install codex.",
+        },
+        {
+            "label": "Claude Code",
+            "path": str(claude_path),
+            "ready": claude_path.exists(),
+            "mode": "Direct config install",
+            "ready_text": "Config found; attach .zerker/AGENT_PROMPT.md to project instructions.",
+            "next_step": "Run zmem agent install claude-code.",
+        },
+        {
+            "label": "Cursor",
+            "path": str(agents_dir / "cursor-mcp.json"),
+            "ready": (agents_dir / "cursor-mcp.json").exists(),
+            "mode": "Manual MCP import",
+            "ready_text": "Import the JSON or paste the snippet into Cursor MCP settings.",
+            "next_step": "Run zmem agent install cursor --summary-only.",
+        },
+        {
+            "label": "OpenClaw",
+            "path": str(agents_dir / "openclaw-mcp.json"),
+            "ready": (agents_dir / "openclaw-mcp.json").exists(),
+            "mode": "Manual MCP import",
+            "ready_text": "Import the JSON or paste the snippet into OpenClaw.",
+            "next_step": "Run zmem agent install openclaw --summary-only.",
+        },
+        {
+            "label": "Hermes",
+            "path": str(agents_dir / "hermes-mcp.json"),
+            "ready": (agents_dir / "hermes-mcp.json").exists(),
+            "mode": "Manual MCP import",
+            "ready_text": "Import the JSON or paste the snippet into Hermes.",
+            "next_step": "Run zmem agent install hermes --summary-only.",
+        },
+        {
+            "label": "Generic MCP",
+            "path": str(agents_dir / "generic-mcp.json"),
+            "ready": (agents_dir / "generic-mcp.json").exists(),
+            "mode": "Manual MCP import",
+            "ready_text": "Use this config for any stdio MCP client.",
+            "next_step": "Run zmem agent install generic --summary-only.",
+        },
+    ]
+    return {
+        "db_path": str(store.db_path),
+        "mcp_ready": (zerker_dir / "mcp.json").exists(),
+        "manual_pack_ready": manual_pack_path.exists(),
+        "manual_pack_path": str(manual_pack_path),
+        "handoff_ready": (handoff_dir / "handoff.json").exists(),
+        "handoff_path": str(handoff_dir),
+        "agents": agents,
+        "commands": [
+            "zmem agent install codex",
+            "zmem agent install claude-code",
+            "zmem agent pack --summary-only",
+            "zmem agent prompt",
+            "zmem doctor --agent codex --agent claude-code --agent cursor",
+            "zmem agent mcp-smoke --agent codex",
+            "zmem handoff --summary-only",
+            "zmem --db .zerker/imported.sqlite restore --handoff-dir .zerker/handoff",
+        ],
+    }
+
+
+def build_release_readiness_state(store: MemoryStore) -> dict[str, Any]:
+    from .cli import (
+        CLEAN_SHELL_OPERATOR_PROMPT_FILENAME,
+        CLEAN_SHELL_PUBLIC_VERIFY_FILENAME,
+        LAUNCH_ASSET_HANDOFF_FILENAME,
+        PUBLIC_VERIFY_HANDOFF_FILENAME,
+        PUBLIC_VERIFY_RESULT_FILENAME,
+        PUBLIC_VERIFY_SUMMARY_FILENAME,
+        RECEIVE_VERIFY_HANDOFF_FILENAME,
+        RETURN_PACKET_FINALIZE_FILENAME,
+        default_handoff_dir,
+        default_launch_proof_dir,
+        launch_asset_outputs_dir,
+        launch_asset_status,
+        operator_packet_status,
+        public_verify_status,
+        read_launch_proof_manifest,
+        return_packet_status,
+    )
+
+    root = Path.cwd()
+    launch_proof_dir = default_launch_proof_dir(cwd=root)
+    handoff_dir = default_handoff_dir(cwd=root)
+    repo_surface_present = any(
+        (root / relative_path).exists()
+        for relative_path in ("README.md", "install.sh", "scripts/release_smoke.py", "docs/PRODUCT_STATUS.md")
+    )
+    if not repo_surface_present:
+        return {
+            "repo_surface_present": False,
+            "db_path": str(store.db_path),
+            "launch_proof_dir": str(launch_proof_dir),
+            "handoff_dir": str(handoff_dir),
+            "capture_checklist_path": str(launch_proof_dir / "CAPTURE_CHECKLIST.md"),
+            "public_verify_script_path": str(launch_proof_dir / "PUBLIC_VERIFY_COMMANDS.sh"),
+            "public_verify_result_path": str(launch_proof_dir / PUBLIC_VERIFY_RESULT_FILENAME),
+            "return_packet_finalize_script_path": str(launch_proof_dir / RETURN_PACKET_FINALIZE_FILENAME),
+            "receive_verify_handoff_path": str(launch_proof_dir / RECEIVE_VERIFY_HANDOFF_FILENAME),
+            "launch_assets_outputs_dir_path": str(launch_asset_outputs_dir(launch_proof_dir)),
+        }
+    public_verify = public_verify_status(root)
+    operator_packet = operator_packet_status(root)
+    asset_status = launch_asset_status(root)
+    return_packet = return_packet_status(root)
+    manifest = read_launch_proof_manifest(root)
+    manifest_assets = manifest.get("launch_assets", []) if isinstance(manifest, dict) else []
+    launch_proof_ready = (launch_proof_dir / "index.html").exists() and (launch_proof_dir / "launch-proof.json").exists()
+    handoff_ready = (handoff_dir / "handoff.json").exists()
+    blocker_names = []
+    if not launch_proof_ready:
+        blocker_names.append("launch_proof_artifacts")
+    if not handoff_ready:
+        blocker_names.append("handoff_artifacts")
+    if not public_verify["ready"]:
+        blocker_names.append("public_verify_evidence")
+    if not asset_status["ready"]:
+        blocker_names.append("launch_assets")
+    strict_publish_ready = not blocker_names
+    readiness = {
+        "repo_surface_present": True,
+        "launch_proof_ready": launch_proof_ready,
+        "handoff_ready": handoff_ready,
+        "launch_proof_dir": str(launch_proof_dir),
+        "handoff_dir": str(handoff_dir),
+        "capture_checklist_path": str(launch_proof_dir / "CAPTURE_CHECKLIST.md"),
+        "launch_asset_handoff_path": str(launch_proof_dir / LAUNCH_ASSET_HANDOFF_FILENAME),
+        "public_verify_handoff_path": str(launch_proof_dir / PUBLIC_VERIFY_HANDOFF_FILENAME),
+        "receive_verify_handoff_path": str(launch_proof_dir / RECEIVE_VERIFY_HANDOFF_FILENAME),
+        "public_verify_checklist_path": str(launch_proof_dir / "PUBLIC_VERIFY_CHECKLIST.md"),
+        "public_verify_script_path": str(launch_proof_dir / "PUBLIC_VERIFY_COMMANDS.sh"),
+        "operator_packet_ready": bool(operator_packet["ready"]),
+        "operator_packet_details": str(operator_packet["details"]),
+        "operator_packet_archive_path": str(operator_packet["archive_path"]),
+        "operator_packet_missing_paths": list(operator_packet.get("missing_paths", [])),
+        "public_verify_ready": bool(public_verify["ready"]),
+        "public_verify_details": str(public_verify["details"]),
+        "public_verify_logs_dir_path": str(public_verify["logs_dir_path"]),
+        "public_verify_result_path": str(launch_proof_dir / PUBLIC_VERIFY_RESULT_FILENAME),
+        "public_verify_summary_path": str(launch_proof_dir / PUBLIC_VERIFY_SUMMARY_FILENAME),
+        "public_verify_runbook_path": str(launch_proof_dir / CLEAN_SHELL_PUBLIC_VERIFY_FILENAME),
+        "public_verify_operator_prompt_path": str(launch_proof_dir / CLEAN_SHELL_OPERATOR_PROMPT_FILENAME),
+        "return_packet_finalize_script_path": str(launch_proof_dir / RETURN_PACKET_FINALIZE_FILENAME),
+        "public_verify_expected_count": int(public_verify["expected_count"]),
+        "public_verify_present_count": int(public_verify["present_count"]),
+        "public_verify_missing_paths": list(public_verify.get("missing_paths", [])),
+        "launch_assets_ready": bool(asset_status["ready"]),
+        "launch_assets_details": str(asset_status["details"]),
+        "launch_assets_outputs_dir_path": str(asset_status["outputs_dir_path"]),
+        "launch_assets_expected_count": int(asset_status["expected_count"]),
+        "launch_assets_present_count": int(asset_status["present_count"]),
+        "launch_assets_missing_paths": list(asset_status.get("missing_paths", [])),
+        "expected_launch_assets": [
+        asset
+        for asset in manifest_assets
+        if isinstance(asset, dict) and asset.get("id") and asset.get("deliverable") and asset.get("output_path")
+        ],
+        "return_packet_ready": bool(return_packet["ready"]),
+        "return_packet_details": str(return_packet["details"]),
+        "return_packet_archive_path": str(return_packet["archive_path"]),
+        "return_packet_missing_paths": list(return_packet.get("missing_paths", [])),
+        "local_alpha_ready": launch_proof_ready and handoff_ready,
+        "local_alpha_blockers": [],
+        "local_alpha_warnings": [],
+        "strict_publish_ready": strict_publish_ready,
+        "strict_publish_blockers": [{"name": name} for name in blocker_names],
+        "strict_publish_warnings": [],
+        "strict_publish_next_steps": [
+            "zmem release-pack --summary-only",
+            "zmem verify-public-verify --summary-only",
+            "zmem verify-launch-assets --summary-only",
+            "zmem verify-return-packet .zerker/launch-proof/public-verify-return-packet.tar.gz --summary-only",
+        ],
+    }
+    readiness["db_path"] = str(store.db_path)
+    return readiness
+
+
+def create_dashboard_launch_proof(store: MemoryStore) -> dict[str, Any]:
+    from .cli import run_launch_proof
+
+    providers_path = store.db_path.parent / "providers.json"
+    return run_launch_proof(
+        policy_path=store.policy_path or default_policy_path(),
+        providers_path=providers_path,
+        out_dir=None,
+        agent_id="codex",
+        scope="project",
+        task="deploy service to production after approval check",
+        bt_trace_path=Path("examples") / "bt_trace.jsonl",
+    )
+
+
+def create_dashboard_release_pack(store: MemoryStore) -> dict[str, Any]:
+    from .cli import run_release_pack
+
+    providers_path = store.db_path.parent / "providers.json"
+    return run_release_pack(
+        store,
+        policy_path=store.policy_path or default_policy_path(),
+        providers_path=providers_path,
+        agent_id="codex",
+        scope="project",
+        task="deploy service to production after approval check",
+        bt_trace_path=Path("examples") / "bt_trace.jsonl",
+        action_id=None,
+        allow_placeholders=True,
+    )
+
+
+def create_dashboard_handoff(store: MemoryStore) -> dict[str, Any]:
+    from .cli import create_handoff_package
+
+    providers_path = store.db_path.parent / "providers.json"
+    return create_handoff_package(
+        store,
+        providers_path=providers_path,
+        out_dir=None,
+        action_id=None,
+    )
+
+
+def create_dashboard_handoff_restore(store: MemoryStore) -> dict[str, Any]:
+    from .cli import default_handoff_dir, restore_handoff_package
+
+    target_dir = store.db_path.parent / "imports"
+    target_dir.mkdir(parents=True, exist_ok=True)
+    target_db = target_dir / "imported.sqlite"
+    suffix = 2
+    while target_db.exists():
+        target_db = target_dir / f"imported-{suffix}.sqlite"
+        suffix += 1
+    target_store = MemoryStore(target_db, policy_path=store.policy_path)
+    return restore_handoff_package(target_store, handoff_dir=default_handoff_dir(cwd=Path.cwd()))
+
+
+def create_dashboard_return_packet_verify(store: MemoryStore) -> dict[str, Any]:
+    from .cli import default_launch_proof_dir, verify_return_packet_archive
+
+    archive_path = default_launch_proof_dir(cwd=Path.cwd()) / "public-verify-return-packet.tar.gz"
+    return verify_return_packet_archive(archive_path)
+
+
+def create_dashboard_launch_assets_verify(store: MemoryStore) -> dict[str, Any]:
+    from .cli import verify_launch_assets
+
+    return verify_launch_assets(Path.cwd())
+
+
+def required_str(payload: dict[str, Any], key: str) -> str:
+    value = payload.get(key)
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"missing required string field: {key}")
+    return value
+
+
+def serve(store: MemoryStore, *, host: str, port: int) -> None:
+    store.init()
+    server = DashboardServer((host, port), store)
+    print(f"Zerker Memory Console running at http://{host}:{port}")
+    server.serve_forever()
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Run the Zerker Memory local review console")
+    parser.add_argument("--db", type=Path, default=default_db_path(), help="SQLite database path")
+    parser.add_argument("--policy", type=Path, default=default_policy_path(), help="Policy config JSON path")
+    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--port", type=int, default=8765)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    serve(MemoryStore(args.db, policy_path=args.policy), host=args.host, port=args.port)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
