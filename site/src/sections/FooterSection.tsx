@@ -13,7 +13,7 @@ const footerColumns = [
   {
     heading: 'Developers',
     links: [
-      { label: 'Documentation', href: 'https://github.com/zerkerlabs/zmem' },
+      { label: 'Documentation', href: '/docs' },
       { label: 'GitHub', href: 'https://github.com/zerkerlabs/zmem', external: true },
       { label: 'CLI Reference', href: null },
       { label: 'MCP Tools', href: null },
