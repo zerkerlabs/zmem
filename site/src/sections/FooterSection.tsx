@@ -33,10 +33,9 @@ export default function FooterSection() {
           {/* Brand Column */}
           <div>
             <div className="flex items-center gap-2.5">
-              <span
-                className="inline-block h-4 w-4 border-2 border-zlime"
-                style={{ transform: 'rotate(45deg)' }}
-              />
+              <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true" className="text-zlime">
+                <path d="M9 1.5 16.5 9 9 16.5 1.5 9 9 1.5Z" fill="none" stroke="currentColor" strokeWidth="2" />
+              </svg>
               <span className="font-heading text-xl font-bold text-zlime">ZMem</span>
             </div>
             <p className="mt-3 text-sm leading-relaxed text-zmuted">
