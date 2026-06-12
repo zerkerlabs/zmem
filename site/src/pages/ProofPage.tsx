@@ -45,12 +45,12 @@ const gates = [
 ];
 
 const benchmarkRows = [
-  { item: 'LongMemEval adapter', status: 'planned', note: 'Benchmark adapter for long-context memory QA.' },
-  { item: 'LoCoMo adapter', status: 'planned', note: 'Conversation memory benchmark adapter.' },
-  { item: 'Metrics', status: 'planned', note: 'Accuracy, F1, recall@k, latency, tokens, abstention.' },
-  { item: 'Per-run isolated DB', status: 'planned', note: 'Every benchmark run gets its own memory store.' },
-  { item: 'Benchmark receipt bundle', status: 'planned', note: 'Runs should be reproducible and proof-bearing.' },
-  { item: 'Optional Treeship URL', status: 'planned', note: 'Publish benchmark receipts when public proof matters.' },
+  { item: 'Synthetic matrix', status: 'verified', note: 'Current local matrix verifies with mode result hashes and aggregate Merkle roots.' },
+  { item: 'LongMemEval scaffold', status: 'alpha', note: 'Local JSON/JSONL adapter with provisional deterministic scoring and proof artifacts.' },
+  { item: 'LoCoMo scaffold', status: 'alpha', note: 'Local conversation-memory scaffold with comparison/report proof-hop coverage.' },
+  { item: 'Metrics', status: 'alpha', note: 'Accuracy, stable wins/misses, latency, tokens, abstention, and proof verification.' },
+  { item: 'Rendered reports', status: 'alpha', note: 'Matrix reports, dashboards, and public pages surface hashes and proof roots.' },
+  { item: 'Public claims', status: 'gated', note: 'Official rankings wait for primary-source methods and reproducible benchmark submissions.' },
 ];
 
 const statusCode = `Workspace ready: yes

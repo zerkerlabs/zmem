@@ -9,6 +9,7 @@ import InstallSection from '@/sections/InstallSection';
 import ProofOfWorkSection from '@/sections/ProofOfWorkSection';
 import FooterSection from '@/sections/FooterSection';
 import ProofPage from '@/pages/ProofPage';
+import DocsPage from '@/pages/DocsPage';
 
 function HomePage() {
   return (
@@ -26,11 +27,12 @@ function HomePage() {
 
 function App() {
   const isProofPage = window.location.pathname === '/proof';
+  const isDocsPage = window.location.pathname === '/docs';
 
   return (
     <LenisProvider>
       <Navigation />
-      {isProofPage ? <ProofPage /> : <HomePage />}
+      {isProofPage ? <ProofPage /> : isDocsPage ? <DocsPage /> : <HomePage />}
       <FooterSection />
     </LenisProvider>
   );

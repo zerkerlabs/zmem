@@ -2,6 +2,12 @@ import { useEffect, useState } from 'react';
 import { useLenisInstance } from '@/hooks/useLenis';
 import { Menu, X } from 'lucide-react';
 
+type NavLink = {
+  label: string;
+  target: string;
+  external?: boolean;
+};
+
 export default function Navigation() {
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -37,11 +43,11 @@ export default function Navigation() {
     }
   };
 
-  const navLinks = [
+  const navLinks: NavLink[] = [
     { label: 'Product', target: '#memory-loop' },
     { label: 'Proof', target: '/proof' },
     { label: 'Install', target: '#install' },
-    { label: 'Docs', target: 'https://github.com/zerkerlabs/zmem', external: true },
+    { label: 'Docs', target: '/docs' },
   ];
 
   return (
