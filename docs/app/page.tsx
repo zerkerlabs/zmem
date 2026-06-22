@@ -60,7 +60,7 @@ export default function HomePage() {
               <p><span>$</span> zmem status --summary-only</p>
               <p>Workspace ready: <strong>yes</strong></p>
               <p>Memory proof: <strong>ready</strong></p>
-              <p>Launch proof: <strong>verified</strong></p>
+              <p>Agent handoff: <strong>ready</strong></p>
               <p className="zmem-terminal-muted">receipt root sha256:7bb4...91e2</p>
             </div>
           </aside>

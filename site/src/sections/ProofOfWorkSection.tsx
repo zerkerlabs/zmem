@@ -8,19 +8,18 @@ import StatusBadge from '@/components/StatusBadge';
 gsap.registerPlugin(ScrollTrigger);
 
 const tableRows = [
-  { feature: 'Local SQLite store', status: 'built' as const, shipped: 'alpha', proof: 'zmem status --summary-only' },
-  { feature: 'FTS search', status: 'built' as const, shipped: 'alpha', proof: 'zmem search "query" --scope project' },
-  { feature: 'Typed memory records', status: 'built' as const, shipped: 'alpha', proof: 'zmem remember --type semantic "fact"' },
-  { feature: 'Review queue', status: 'built' as const, shipped: 'alpha', proof: 'zmem queue --scope project' },
-  { feature: 'Policy injection', status: 'built' as const, shipped: 'alpha', proof: 'zmem inject --agent codex --risk medium "task"' },
-  { feature: 'MCP server', status: 'built' as const, shipped: 'alpha', proof: 'python3 -m zerker_memory mcp' },
-  { feature: 'Agent setup packs', status: 'built' as const, shipped: 'alpha', proof: 'zmem agent pack --summary-only' },
-  { feature: 'Memory receipts', status: 'built' as const, shipped: 'alpha', proof: 'zmem why <action-id>' },
-  { feature: 'Merkle proofs', status: 'built' as const, shipped: 'alpha', proof: 'zmem verify <action-id>' },
-  { feature: 'Handoff bundles', status: 'built' as const, shipped: 'alpha', proof: 'zmem handoff --summary-only' },
-  { feature: 'Treeship export', status: 'built' as const, shipped: 'alpha', proof: 'zmem treeship publish <action-id>' },
-  { feature: 'Launch proof pack', status: 'built' as const, shipped: 'alpha gate', proof: 'zmem release-pack --summary-only' },
-  { feature: 'Strict public publish', status: 'blocked' as const, shipped: 'needs evidence', proof: 'clean-shell logs + launch assets' },
+  { feature: 'Local memory store', status: 'built' as const, shipped: 'Private SQLite state per workspace', proof: 'zmem status --summary-only' },
+  { feature: 'Hybrid-ready retrieval', status: 'built' as const, shipped: 'FTS baseline with benchmark hooks', proof: 'zmem search "query" --scope project' },
+  { feature: 'Typed memory records', status: 'built' as const, shipped: 'Semantic, episodic, policy, and task memory', proof: 'zmem remember --type semantic "fact"' },
+  { feature: 'Review lifecycle', status: 'built' as const, shipped: 'Queue, promote, revoke, restore', proof: 'zmem queue --scope project' },
+  { feature: 'Agent context injection', status: 'built' as const, shipped: 'Scoped context for Codex and MCP clients', proof: 'zmem inject --agent codex --risk medium "task"' },
+  { feature: 'MCP server', status: 'built' as const, shipped: 'Agent-readable tools over local memory', proof: 'python3 -m zerker_memory mcp' },
+  { feature: 'Agent setup packs', status: 'built' as const, shipped: 'Codex, Claude Code, Cursor, and generic MCP setup', proof: 'zmem agent pack --summary-only' },
+  { feature: 'Memory receipts', status: 'built' as const, shipped: 'Records what memory shaped an action', proof: 'zmem why <action-id>' },
+  { feature: 'Merkle verification', status: 'built' as const, shipped: 'Tamper-evident local proof roots', proof: 'zmem verify <action-id>' },
+  { feature: 'Portable handoff', status: 'built' as const, shipped: 'Move memory state between sessions or machines', proof: 'zmem handoff --summary-only' },
+  { feature: 'Treeship export', status: 'built' as const, shipped: 'Optional public proof URL', proof: 'zmem treeship publish <action-id>' },
+  { feature: 'Benchmark evidence', status: 'alpha' as const, shipped: 'Synthetic and long-memory adapters', proof: 'zmem bench ...' },
 ];
 
 export default function ProofOfWorkSection() {
@@ -60,12 +59,12 @@ export default function ProofOfWorkSection() {
           className="section-heading font-heading font-bold text-zink"
           style={{ fontSize: 'clamp(36px, 5vw, 64px)', letterSpacing: '-0.03em', lineHeight: 1.0 }}
         >
-          What is built, and what is still gated.
+          What ZMem can prove today.
         </h2>
 
         <p className="section-desc mt-6 max-w-[640px] text-[17px] leading-relaxed text-zmuted">
-          The alpha has a real local product surface and a strict launch gate. Product features are mapped
-          to commands; public publish stays blocked until clean-shell logs and final assets exist.
+          ZMem is designed so memory is not a black box. The product surfaces below map to
+          local commands that create, retrieve, review, verify, and hand off agent memory.
         </p>
 
         <Card className="mt-16 overflow-hidden p-0">
@@ -73,8 +72,8 @@ export default function ProofOfWorkSection() {
           <div className="hidden border-b border-zline px-6 py-4 md:grid md:grid-cols-[35%_15%_20%_30%]">
             <span className="text-eyebrow text-zmuted">Feature</span>
             <span className="text-eyebrow text-zmuted">Status</span>
-            <span className="text-eyebrow text-zmuted">Shipped</span>
-            <span className="text-eyebrow text-zmuted">Proof</span>
+            <span className="text-eyebrow text-zmuted">What it means</span>
+            <span className="text-eyebrow text-zmuted">Try it</span>
           </div>
 
           {/* Table Rows */}
@@ -94,8 +93,8 @@ export default function ProofOfWorkSection() {
         </Card>
 
         <p className="mt-6 text-sm text-zdim">
-          Keep this page short; use the generated launch pack for full operator evidence at{' '}
-          <a href="/proof" className="text-zlime transition-colors hover:text-zink">zmem.sh/proof</a>
+          For the deeper receipt model, see{' '}
+          <a href="/proof" className="text-zlime transition-colors hover:text-zink">how ZMem proof works</a>.
         </p>
       </div>
     </section>

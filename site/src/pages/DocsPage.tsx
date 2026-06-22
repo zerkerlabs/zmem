@@ -14,8 +14,8 @@ const guides = [
   'Receipts',
   'Handoff',
   'Benchmarks',
-  'Provider governance',
-  'Launch proof',
+  'Builders',
+  'Proof model',
 ];
 
 export default function DocsPage() {
@@ -28,24 +28,24 @@ export default function DocsPage() {
             className="mt-5 max-w-[860px] font-heading font-bold leading-[0.96] text-zink"
             style={{ fontSize: 'clamp(44px, 7vw, 82px)' }}
           >
-            The real docs home now lives in Fumadocs.
+            ZMem docs for users and builders.
           </h1>
           <p className="mt-6 max-w-[680px] text-[17px] leading-relaxed text-zmuted">
-            This Vite page stays as the product bridge. The full guide tree is a separate
-            Next/Fumadocs app in <span className="font-mono text-zink">docs/</span>.
+            Learn how to install ZMem, connect agent tools, operate memory across sessions,
+            verify receipts, restore handoffs, and measure retrieval quality.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
             <a
-              href="https://github.com/zerkerlabs/zmem"
+              href="https://docs.zmem.sh"
               className="rounded-full bg-zlime px-6 py-3 text-cta text-[#030303] transition-colors hover:bg-[#7BC45A]"
             >
-              GitHub
+              Open docs
             </a>
             <a
-              href="https://github.com/zerkerlabs/zmem/blob/main/QUICKSTART.md"
+              href="https://github.com/zerkerlabs/zmem"
               className="rounded-full border border-zline px-6 py-3 text-cta text-zink transition-colors hover:border-zlime hover:text-zlime"
             >
-              Quickstart
+              GitHub
             </a>
           </div>
         </div>
@@ -56,11 +56,11 @@ export default function DocsPage() {
           <Card>
             <p className="text-eyebrow text-zmuted">Local docs</p>
             <h2 className="mt-3 font-heading text-3xl font-semibold tracking-tight text-zink">
-              Run the docs app beside the product site.
+              Run the docs locally.
             </h2>
             <p className="mt-4 text-sm leading-relaxed text-zmuted">
-              Deploy <span className="font-mono text-zink">docs/</span> as the docs
-              project behind docs.zmem.sh.
+              The public docs live at docs.zmem.sh and can also run from the repository
+              when you want to preview changes.
             </p>
           </Card>
           <CodeBlock code={docsRun} title="fumadocs" />

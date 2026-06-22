@@ -35,7 +35,7 @@ zmem doctor
 
 `zmem status --summary-only` is the shortest truth surface. It reports workspace state, proof counts, agent handoff readiness, and the next useful command.
 
-Use it after installs, restores, benchmark runs, release proof refreshes, and agent config changes.
+Use it after installs, restores, benchmark runs, receipt refreshes, and agent config changes.
 
 ## Release Smoke
 
@@ -46,5 +46,4 @@ python3 scripts/release_smoke.py --summary-only
 python3 scripts/release_smoke.py --require-install-mode packaged
 ```
 
-The summary path refreshes the release packet and checks the local launch contract. The packaged path is for final clean-shell public proof.
-
+The summary path checks local packaging, receipts, and install readiness. The packaged path verifies that the install flow still works from the release artifact.

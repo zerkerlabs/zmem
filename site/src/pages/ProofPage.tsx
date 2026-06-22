@@ -3,44 +3,40 @@ import CodeBlock from '@/components/CodeBlock';
 import StatusBadge from '@/components/StatusBadge';
 
 const featureRows = [
-  { feature: 'Local SQLite memory', status: 'built' as const, proof: 'zmem status --summary-only' },
-  { feature: 'FTS retrieval baseline', status: 'built' as const, proof: 'zmem search "deploy runbook" --scope project' },
-  { feature: 'Typed memory records', status: 'built' as const, proof: 'zmem remember --type semantic "fact"' },
-  { feature: 'Review lifecycle', status: 'built' as const, proof: 'zmem queue / promote / reject / revoke' },
-  { feature: 'Policy-scoped injection', status: 'built' as const, proof: 'zmem inject --agent codex --risk medium "task"' },
-  { feature: 'Agent MCP setup', status: 'built' as const, proof: 'zmem agent install cursor --summary-only' },
-  { feature: 'Manual agent pack', status: 'built' as const, proof: 'zmem agent pack --summary-only' },
-  { feature: 'Action receipts', status: 'built' as const, proof: 'zmem why <action-id>' },
-  { feature: 'Merkle verification', status: 'built' as const, proof: 'zmem verify <action-id>' },
-  { feature: 'Handoff restore', status: 'built' as const, proof: 'zmem handoff --summary-only' },
-  { feature: 'Treeship publish', status: 'built' as const, proof: 'zmem treeship publish <action-id>' },
-  { feature: 'Bench harness', status: 'alpha' as const, proof: 'zmem bench ...' },
+  { feature: 'Capture source', status: 'built' as const, proof: 'zmem remember --type semantic "fact"' },
+  { feature: 'Review before trust', status: 'built' as const, proof: 'zmem queue / promote / reject / revoke' },
+  { feature: 'Inject scoped context', status: 'built' as const, proof: 'zmem inject --agent codex --risk medium "task"' },
+  { feature: 'Explain influence', status: 'built' as const, proof: 'zmem why <action-id>' },
+  { feature: 'Verify integrity', status: 'built' as const, proof: 'zmem verify <action-id>' },
+  { feature: 'Export evidence', status: 'built' as const, proof: 'zmem bundle <action-id>' },
+  { feature: 'Publish public proof', status: 'built' as const, proof: 'zmem treeship publish <action-id>' },
+  { feature: 'Hand off state', status: 'built' as const, proof: 'zmem handoff --summary-only' },
 ];
 
-const gates = [
+const proofSteps = [
   {
-    title: 'Local alpha gate',
-    status: 'ready' as const,
-    detail: 'Local workspace, release pack, handoff, operator packet, and receipt surfaces are generated.',
-    command: 'zmem release-pack --summary-only',
+    title: 'A memory is written with provenance',
+    status: 'built' as const,
+    detail: 'Each useful memory can carry source metadata, actor context, timestamps, and content hashes.',
+    command: 'zmem remember --source <uri> "fact"',
   },
   {
-    title: 'Clean-shell public verify',
-    status: 'blocked' as const,
-    detail: 'Strict publish remains blocked until the external clean-shell logs are captured.',
-    command: '.zerker/launch-proof/PUBLIC_VERIFY_COMMANDS.sh',
+    title: 'An agent receives scoped context',
+    status: 'built' as const,
+    detail: 'ZMem injects approved memory and records which memories were included or withheld.',
+    command: 'zmem inject --agent codex --risk medium "task"',
   },
   {
-    title: 'Launch assets',
-    status: 'blocked' as const,
-    detail: 'Final screenshots and GIFs must be saved under the launch-proof asset paths.',
-    command: 'zmem verify-launch-assets --summary-only',
+    title: 'The action gets a receipt',
+    status: 'built' as const,
+    detail: 'The receipt links action, memory ids, digests, policy state, and the local Merkle root.',
+    command: 'zmem why <action-id>',
   },
   {
-    title: 'Return packet',
-    status: 'blocked' as const,
-    detail: 'The return archive exists, but it is not acceptable until logs and assets are present.',
-    command: 'zmem verify-return-packet .zerker/launch-proof/public-verify-return-packet.tar.gz --summary-only',
+    title: 'The proof can be shared',
+    status: 'built' as const,
+    detail: 'Local bundles stay private by default; Treeship publishing is optional when a public URL is useful.',
+    command: 'zmem treeship publish <action-id>',
   },
 ];
 
@@ -53,18 +49,12 @@ const benchmarkRows = [
   { item: 'Public claims', status: 'gated', note: 'Official rankings wait for primary-source methods and reproducible benchmark submissions.' },
 ];
 
-const statusCode = `Workspace ready: yes
-Memory proof ready: yes
-Manual pack ready: yes
-Strict publish ready: no
-
-Agent handoff:
-  Codex: ok
-  Claude Code: ok
-  Cursor: ok
-  OpenClaw: ok
-  Hermes: ok
-  Generic MCP Agent: ok`;
+const statusCode = `Memory store: local
+Receipt mode: enabled
+Merkle root: sha256:7bb4...91e2
+Agent context: scoped
+Proof export: local bundle
+Public proof: optional Treeship URL`;
 
 const proofCode = `$ zmem inject --agent codex --risk medium "continue release"
 # returns action id
@@ -88,11 +78,11 @@ export default function ProofPage() {
             className="mt-5 max-w-[860px] font-heading font-bold leading-[0.95] text-zink"
             style={{ fontSize: 'clamp(44px, 7vw, 96px)' }}
           >
-            What exists, what is proven, and what is still gated.
+            Proof for memory-influenced agent actions.
           </h1>
           <p className="mt-6 max-w-[680px] text-[17px] leading-relaxed text-zmuted">
-            This page is the compact public map of ZMem alpha readiness. It separates built product
-            surfaces from launch evidence, and keeps every claim tied to a command or explicit gate.
+            ZMem records where memory came from, what an agent saw, what was withheld, and how that
+            memory shaped an action. The point is simple: useful memory should be inspectable.
           </p>
         </div>
       </section>
@@ -100,13 +90,13 @@ export default function ProofPage() {
       <section className="py-20">
         <div className="mx-auto grid max-w-[1120px] grid-cols-1 gap-6 px-6 lg:grid-cols-[0.9fr_1.1fr]">
           <Card>
-            <p className="text-eyebrow text-zmuted">Current state</p>
+              <p className="text-eyebrow text-zmuted">Current state</p>
             <h2 className="mt-3 font-heading text-3xl font-semibold tracking-tight text-zink">
-              Local product ready. Strict public publish still gated.
+              Local-first by default. Shareable when needed.
             </h2>
             <p className="mt-4 text-sm leading-relaxed text-zmuted">
-              The repo can run local memory, agent setup, handoff, receipts, and release-pack generation.
-              The remaining launch gate is external evidence: clean-shell public verify logs and final assets.
+              ZMem keeps memory and receipts on the user's machine first. When a team needs evidence,
+              a receipt bundle or optional Treeship proof URL can show what influenced the agent.
             </p>
           </Card>
           <CodeBlock code={statusCode} title="zmem status --summary-only" />
@@ -119,11 +109,11 @@ export default function ProofPage() {
             <div>
               <p className="text-eyebrow text-zlime">Feature matrix</p>
               <h2 className="mt-3 font-heading text-4xl font-semibold tracking-tight text-zink">
-                Built surfaces mapped to commands.
+                The proof path is made of product actions.
               </h2>
             </div>
             <p className="max-w-[420px] text-sm leading-relaxed text-zmuted">
-              A feature counts here only when it has a concrete local command or generated artifact.
+              These commands let an operator or agent capture, inspect, verify, and share memory evidence.
             </p>
           </div>
 
@@ -151,22 +141,22 @@ export default function ProofPage() {
 
       <section className="py-20">
         <div className="mx-auto max-w-[1120px] px-6">
-          <p className="text-eyebrow text-zlime">Launch gates</p>
+          <p className="text-eyebrow text-zlime">Receipt lifecycle</p>
           <h2 className="mt-3 max-w-[760px] font-heading text-4xl font-semibold tracking-tight text-zink">
-            The alpha does not pretend external proof already happened.
+            From remembered fact to verifiable action.
           </h2>
           <div className="mt-10 grid grid-cols-1 gap-5 md:grid-cols-2">
-            {gates.map((gate) => (
-              <Card key={gate.title}>
+            {proofSteps.map((step) => (
+              <Card key={step.title}>
                 <div className="flex items-start justify-between gap-4">
                   <h3 className="font-heading text-2xl font-semibold tracking-tight text-zink">
-                    {gate.title}
+                    {step.title}
                   </h3>
-                  <StatusBadge status={gate.status} />
+                  <StatusBadge status={step.status} />
                 </div>
-                <p className="mt-4 text-sm leading-relaxed text-zmuted">{gate.detail}</p>
+                <p className="mt-4 text-sm leading-relaxed text-zmuted">{step.detail}</p>
                 <code className="mt-5 block rounded bg-[#0A0A0A] px-3.5 py-2.5 font-mono text-[11px] text-[#D9E3D0]">
-                  {gate.command}
+                  {step.command}
                 </code>
               </Card>
             ))}
