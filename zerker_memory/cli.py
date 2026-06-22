@@ -23,10 +23,48 @@ from .providers import (
     write_provider_config_template,
 )
 from .store import MemoryStore, default_db_path, default_policy_path
+from .workspaces import (
+    current_workspace,
+    list_workspaces,
+    register_workspace,
+    use_workspace,
+    workspace_status_for_paths,
+)
 
 
 def print_json(value: object) -> None:
     print(json.dumps(value, indent=2, sort_keys=True))
+
+
+def compact_export_summary(artifact: dict[str, object]) -> dict[str, object]:
+    payload = artifact.get("payload")
+    summary: dict[str, object] = {
+        "artifact_id": artifact.get("artifact_id"),
+        "format": artifact.get("format"),
+        "path": artifact.get("path"),
+        "sha256": artifact.get("sha256"),
+        "payload": "written_to_path",
+    }
+    if isinstance(payload, dict):
+        subject = payload.get("subject")
+        evidence = payload.get("evidence")
+        if payload.get("kind"):
+            summary["kind"] = payload.get("kind")
+        if payload.get("predicate"):
+            summary["predicate"] = payload.get("predicate")
+        if isinstance(subject, dict):
+            summary["subject"] = {
+                key: subject.get(key)
+                for key in ("type", "id", "agent_id")
+                if subject.get(key) is not None
+            }
+        if isinstance(evidence, dict):
+            summary["evidence"] = {
+                key: evidence.get(key)
+                for key in ("task_hash", "merkle_root", "hash_alg", "merkle_alg", "bundle_hash", "bundle_verified")
+                if evidence.get(key) is not None
+            }
+    return summary
 
 
 _RELEASE_ARTIFACT_LOCK_DEPTH = 0
@@ -103,6 +141,11 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
     demo = sub.add_parser("demo", help="Run a local end-to-end Zerker Memory demo")
     demo.add_argument("--scope", default="project")
     demo.add_argument("--agent", default="codex")
+
+    poison_demo = sub.add_parser("poison-demo", help="Run a memory-poisoning incident reconstruction demo")
+    poison_demo.add_argument("--scope", default="project")
+    poison_demo.add_argument("--agent", default="codex")
+    poison_demo.add_argument("--out-dir", type=Path, default=Path(".zerker/poison-demo"))
 
     mcp_config = sub.add_parser("mcp-config", help="Print an MCP client config for Zerker Memory")
     mcp_config.add_argument("--name", default="zerker-memory")
@@ -224,6 +267,21 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
         help="Print only the compact human-readable status summary",
     )
 
+    workspace = sub.add_parser("workspace", aliases=["ws"], help="Manage Zerker Memory workspaces and active project profiles")
+    workspace_sub = workspace.add_subparsers(dest="workspace_command", required=True)
+    workspace_register = workspace_sub.add_parser("register", help="Register a project-local memory workspace")
+    workspace_register.add_argument("--name", help="Human-readable workspace name")
+    workspace_register.add_argument("--root", type=Path, default=Path.cwd(), help="Project root to register")
+    workspace_register.add_argument("--db-path", type=Path, help="Memory DB path for this workspace")
+    workspace_register.add_argument("--policy-path", type=Path, help="Policy JSON path for this workspace")
+    workspace_register.add_argument("--prompt-path", type=Path, help="Agent prompt path for this workspace")
+    workspace_register.add_argument("--no-current", action="store_true", help="Register without making this the active workspace")
+    workspace_sub.add_parser("list", help="List registered Zerker Memory workspaces")
+    workspace_sub.add_parser("current", help="Show the active Zerker Memory workspace")
+    workspace_use = workspace_sub.add_parser("use", help="Switch the active Zerker Memory workspace")
+    workspace_use.add_argument("identifier", help="Workspace id, exact name, or root path")
+    workspace_sub.add_parser("status", help="Show whether this CLI DB path matches the active workspace")
+
     prelaunch = sub.add_parser("prelaunch", help="Audit local alpha release readiness before publishing")
     prelaunch.add_argument(
         "--allow-placeholders",
@@ -247,6 +305,11 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
     remember.add_argument("--scope", default="global")
     remember.add_argument("--source", choices=["human", "system", "tool", "document", "agent", "import"], default="human")
     remember.add_argument("--label", action="append", default=[])
+    remember.add_argument("--source-uri")
+    remember.add_argument("--actor-uri")
+    remember.add_argument("--session-id")
+    remember.add_argument("--parent-action-id")
+    remember.add_argument("--environment-hash")
 
     propose = sub.add_parser("propose", help="Propose a memory, usually quarantined unless human/system authored")
     propose.add_argument("content")
@@ -254,6 +317,11 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
     propose.add_argument("--scope", default="global")
     propose.add_argument("--source", choices=["human", "system", "tool", "document", "agent", "import"], default="agent")
     propose.add_argument("--label", action="append", default=[])
+    propose.add_argument("--source-uri")
+    propose.add_argument("--actor-uri")
+    propose.add_argument("--session-id")
+    propose.add_argument("--parent-action-id")
+    propose.add_argument("--environment-hash")
 
     promote = sub.add_parser("promote", help="Promote a memory to active status")
     promote.add_argument("memory_id")
@@ -345,6 +413,21 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
     provider_import.add_argument("--zep-base-url")
     provider_import.add_argument("--zep-api-key")
 
+    retrieval_providers = sub.add_parser("retrieval-providers", help="Check embedding and reranker provider readiness")
+    retrieval_providers_sub = retrieval_providers.add_subparsers(dest="retrieval_providers_command", required=True)
+    retrieval_providers_doctor = retrieval_providers_sub.add_parser("doctor", help="Report retrieval provider readiness without live calls")
+    retrieval_providers_doctor.add_argument("--config", type=Path, help="Retrieval provider config JSON path")
+    retrieval_providers_doctor.add_argument(
+        "--summary",
+        action="store_true",
+        help="Print a compact human-readable readiness summary before the JSON result",
+    )
+    retrieval_providers_doctor.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Print only the compact human-readable readiness summary",
+    )
+
     inject = sub.add_parser("inject", help="Retrieve authorized memories for an agent action")
     inject.add_argument("task")
     inject.add_argument("--agent", required=True)
@@ -399,6 +482,117 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
     snapshot.add_argument("snapshot_path", nargs="?", type=Path)
     snapshot.add_argument("--out", type=Path)
     snapshot.add_argument("--out-dir", type=Path)
+
+    bench = sub.add_parser("bench", help="Run local proof-bearing memory benchmarks")
+    bench_sub = bench.add_subparsers(dest="bench_command", required=True)
+    bench_sub.add_parser("list", help="List available benchmarks")
+    bench_run = bench_sub.add_parser("run", help="Run a benchmark")
+    from .bench import BENCHMARK_RETRIEVAL_MODES, BENCHMARK_RETRIEVAL_RUN_MODES
+
+    bench_run.add_argument("benchmark", choices=["synthetic", "longmemeval", "locomo"])
+    bench_run.add_argument("--dataset", type=Path, help="Local dataset path for benchmark adapters that require one")
+    bench_run.add_argument("--split", default="default", help="Dataset split for local dataset benchmark adapters")
+    bench_run.add_argument("--out", type=Path, required=True)
+    bench_run.add_argument("--seed", type=int, default=0)
+    bench_run.add_argument("--run-id")
+    bench_run.add_argument(
+        "--context-budget-tokens",
+        type=int,
+        help="Optional context-packing token budget for benchmark injection.",
+    )
+    bench_run.add_argument("--retrieval-mode", choices=BENCHMARK_RETRIEVAL_RUN_MODES, default="fts")
+    bench_run.add_argument(
+        "--retrieval-provider-config",
+        type=Path,
+        help="Optional local provider config to record, redacted, in benchmark artifacts.",
+    )
+    bench_run.add_argument(
+        "--allow-network-providers",
+        action="store_true",
+        help="Allow explicitly selected network retrieval providers for this benchmark run.",
+    )
+    bench_matrix = bench_sub.add_parser("matrix", help="Run all local retrieval modes for one benchmark")
+    bench_matrix.add_argument("benchmark", choices=["synthetic", "longmemeval", "locomo"])
+    bench_matrix.add_argument("--dataset", type=Path, help="Local dataset path for benchmark adapters that require one")
+    bench_matrix.add_argument("--split", default="default", help="Dataset split for local dataset benchmark adapters")
+    bench_matrix.add_argument("--out", type=Path, required=True)
+    bench_matrix.add_argument("--seed", type=int, default=0)
+    bench_matrix.add_argument("--run-id")
+    bench_matrix.add_argument(
+        "--context-budget-tokens",
+        type=int,
+        help="Optional context-packing token budget for every run in the benchmark matrix.",
+    )
+    bench_matrix.add_argument(
+        "--retrieval-provider-config",
+        type=Path,
+        help="Optional local provider config to record, redacted, in benchmark artifacts.",
+    )
+    bench_matrix.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Print only the compact human-readable benchmark matrix summary",
+    )
+    bench_report = bench_sub.add_parser("report", help="Render a benchmark, comparison, or matrix report")
+    bench_report.add_argument("run_dir", type=Path, help="Run directory, comparison JSON path, or matrix target")
+    bench_report.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Print only the compact human-readable benchmark report summary",
+    )
+    bench_dashboard = bench_sub.add_parser(
+        "dashboard",
+        help="Render a standalone benchmark matrix or comparison HTML artifact",
+    )
+    bench_dashboard.add_argument(
+        "matrix",
+        type=Path,
+        help="Benchmark matrix directory, benchmark-matrix.json path, or benchmark-comparison.json path",
+    )
+    bench_dashboard.add_argument("--out", type=Path, help="Output HTML path")
+    bench_dashboard.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Print only the compact human-readable benchmark dashboard summary",
+    )
+    bench_public_page = bench_sub.add_parser("public-page", help="Render a public-facing benchmark evidence HTML page")
+    bench_public_page.add_argument("matrix", type=Path, help="Benchmark matrix directory or benchmark-matrix.json path")
+    bench_public_page.add_argument("--out", type=Path, help="Output HTML path")
+    bench_public_page.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Print only the compact human-readable public benchmark page summary",
+    )
+    bench_verify = bench_sub.add_parser("verify", help="Verify a benchmark result, comparison, or matrix artifact")
+    bench_verify.add_argument("result_json", type=Path)
+    bench_verify.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Print only the compact human-readable benchmark verification summary",
+    )
+    bench_compare = bench_sub.add_parser("compare", help="Compare benchmark result JSON files")
+    bench_compare.add_argument("result_jsons", nargs="+", type=Path)
+    bench_compare.add_argument("--out", type=Path, help="Optional output path or directory for benchmark-comparison.json")
+    bench_compare.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Print only the compact human-readable benchmark comparison summary",
+    )
+    bench_compare_matrices = bench_sub.add_parser(
+        "compare-matrices",
+        help="Compare benchmark matrix artifacts by retrieval mode",
+    )
+    bench_compare_matrices.add_argument("matrix_jsons", nargs="+", type=Path)
+    bench_compare_matrices.add_argument(
+        "--out",
+        type=Path,
+        help="Optional output path or directory for benchmark-matrix-comparison.json",
+    )
+    bench_compare_matrices.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Print only the compact human-readable benchmark matrix comparison summary",
+    )
 
     restore = sub.add_parser("restore", help="Restore a snapshot or handoff package into an empty local memory store")
     restore.add_argument("snapshot_path", nargs="?", type=Path)
@@ -583,12 +777,28 @@ def main(argv: list[str] | None = None) -> int:
                 mcp_config_result = write_json_file(Path.cwd() / ".zerker" / "mcp.json", config, force=False)
             if args.with_provider_config:
                 provider_config_result = write_provider_config_template(args.providers, force=False)
+            workspace_result = None
+            try:
+                workspace_result = register_workspace(
+                    name=Path.cwd().name,
+                    root=Path.cwd(),
+                    db_path=args.db,
+                    policy_path=args.policy,
+                    prompt_path=Path.cwd() / ".zerker" / "AGENT_PROMPT.md",
+                )
+            except OSError as exc:
+                workspace_result = {
+                    "ok": False,
+                    "error": "workspace_registry_write_failed",
+                    "details": str(exc),
+                }
             print_json(
                 {
                     "ok": True,
                     "product": "Zerker Memory",
                     "db": str(args.db),
                     "policy": str(args.policy),
+                    "workspace_profile": workspace_result,
                     "policy_written": bool(policy_result and policy_result["written"]),
                     "agent_prompt_written": bool(prompt_result and prompt_result["written"]),
                     "mcp_config_written": bool(mcp_config_result and mcp_config_result["written"]),
@@ -605,6 +815,9 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.command == "demo":
             print_json(run_demo(store, scope=args.scope, agent_id=args.agent))
+            return 0
+        if args.command == "poison-demo":
+            print_json(run_poisoning_demo(store, scope=args.scope, agent_id=args.agent, out_dir=args.out_dir))
             return 0
         if args.command == "mcp-config":
             config = build_mcp_config(
@@ -750,6 +963,33 @@ def main(argv: list[str] | None = None) -> int:
             if not args.summary_only:
                 print_json(result)
             return 0 if result["ok"] else 1
+        if args.command in {"workspace", "ws"}:
+            if args.workspace_command == "register":
+                print_json(
+                    register_workspace(
+                        name=args.name,
+                        root=args.root,
+                        db_path=args.db_path,
+                        policy_path=args.policy_path,
+                        prompt_path=args.prompt_path,
+                        make_current=not args.no_current,
+                    )
+                )
+                return 0
+            if args.workspace_command == "list":
+                print_json(list_workspaces())
+                return 0
+            if args.workspace_command == "current":
+                result = current_workspace()
+                print_json(result)
+                return 0 if result["ok"] else 1
+            if args.workspace_command == "use":
+                result = use_workspace(args.identifier)
+                print_json(result)
+                return 0 if result["ok"] else 1
+            if args.workspace_command == "status":
+                print_json(workspace_status_for_paths(db_path=args.db, policy_path=args.policy))
+                return 0
         if args.command == "prelaunch":
             result = run_prelaunch_check(
                 cwd=Path.cwd(),
@@ -771,6 +1011,11 @@ def main(argv: list[str] | None = None) -> int:
                 source_kind=args.source,
                 labels=args.label,
                 status="active" if args.source in {"human", "system"} else None,
+                source_uri=args.source_uri,
+                actor_uri=args.actor_uri,
+                session_id=args.session_id,
+                parent_action_id=args.parent_action_id,
+                environment_hash=args.environment_hash,
             )
             print_json(record.to_dict())
             return 0
@@ -781,6 +1026,11 @@ def main(argv: list[str] | None = None) -> int:
                 scope=args.scope,
                 source_kind=args.source,
                 labels=args.label,
+                source_uri=args.source_uri,
+                actor_uri=args.actor_uri,
+                session_id=args.session_id,
+                parent_action_id=args.parent_action_id,
+                environment_hash=args.environment_hash,
             )
             print_json(record.to_dict())
             return 0
@@ -894,6 +1144,14 @@ def main(argv: list[str] | None = None) -> int:
                     }
                 )
                 return 0
+        if args.command == "retrieval-providers":
+            if args.retrieval_providers_command == "doctor":
+                result = build_retrieval_provider_readiness_report(config_path=args.config)
+                if args.summary or args.summary_only:
+                    print(render_retrieval_provider_readiness_summary(result), end="")
+                if not args.summary_only:
+                    print_json(result)
+                return 0 if result["ok"] else 1
         if args.command == "inject":
             print_json(store.inject(args.task, agent_id=args.agent, risk=args.risk, scope=args.scope))
             return 0
@@ -951,7 +1209,7 @@ def main(argv: list[str] | None = None) -> int:
                 command_template=args.command_template,
                 dry_run=args.dry_run,
             )
-            result["export"] = artifact
+            result["export"] = compact_export_summary(artifact)
             print_json(result)
             return 0 if result["ok"] else 1
         if args.command == "bundle":
@@ -980,6 +1238,131 @@ def main(argv: list[str] | None = None) -> int:
                 return 0 if result["ok"] else 1
             print_json(export_snapshot(store.snapshot(), out=args.out, out_dir=args.out_dir))
             return 0
+        if args.command == "bench":
+            from .bench import (
+                compare_benchmark_matrices,
+                compare_benchmark_results,
+                list_benchmarks,
+                render_benchmark_dashboard,
+                render_public_benchmark_page,
+                render_benchmark_report,
+                run_benchmark_matrix,
+                run_longmemeval_benchmark,
+                run_locomo_benchmark,
+                run_synthetic_benchmark,
+                verify_benchmark_artifact,
+                write_benchmark_comparison_artifacts,
+                write_benchmark_matrix_comparison_artifacts,
+            )
+
+            if args.bench_command == "list":
+                print_json(list_benchmarks())
+                return 0
+            if args.bench_command == "run":
+                if args.benchmark == "synthetic":
+                    result = run_synthetic_benchmark(
+                        args.out,
+                        seed=args.seed,
+                        run_id=args.run_id,
+                        context_budget_tokens=args.context_budget_tokens,
+                        retrieval_mode=args.retrieval_mode,
+                        retrieval_provider_config_path=args.retrieval_provider_config,
+                        allow_network_providers=args.allow_network_providers,
+                    )
+                elif args.benchmark == "longmemeval":
+                    if args.dataset is None:
+                        raise ValueError("longmemeval requires --dataset <local-path>")
+                    result = run_longmemeval_benchmark(
+                        args.out,
+                        args.dataset,
+                        args.split,
+                        seed=args.seed,
+                        run_id=args.run_id,
+                        context_budget_tokens=args.context_budget_tokens,
+                        retrieval_mode=args.retrieval_mode,
+                        retrieval_provider_config_path=args.retrieval_provider_config,
+                        allow_network_providers=args.allow_network_providers,
+                    )
+                elif args.benchmark == "locomo":
+                    if args.dataset is None:
+                        raise ValueError("locomo requires --dataset <local-path>")
+                    result = run_locomo_benchmark(
+                        args.out,
+                        args.dataset,
+                        args.split,
+                        seed=args.seed,
+                        run_id=args.run_id,
+                        context_budget_tokens=args.context_budget_tokens,
+                        retrieval_mode=args.retrieval_mode,
+                        retrieval_provider_config_path=args.retrieval_provider_config,
+                        allow_network_providers=args.allow_network_providers,
+                    )
+                else:
+                    raise ValueError(f"unsupported benchmark: {args.benchmark}")
+                print_json(result)
+                return 0 if result["ok"] else 1
+            if args.bench_command == "matrix":
+                result = run_benchmark_matrix(
+                    args.out,
+                    args.benchmark,
+                    dataset=args.dataset,
+                    split=args.split,
+                    seed=args.seed,
+                    run_id=args.run_id,
+                    context_budget_tokens=args.context_budget_tokens,
+                    retrieval_provider_config_path=args.retrieval_provider_config,
+                )
+                if args.summary_only:
+                    print(render_benchmark_summary(result), end="")
+                else:
+                    print_json(result)
+                return 0 if result["ok"] else 1
+            if args.bench_command == "report":
+                result = render_benchmark_report(args.run_dir)
+                if args.summary_only:
+                    print(render_benchmark_summary(result), end="")
+                else:
+                    print_json(result)
+                return 0
+            if args.bench_command == "dashboard":
+                result = render_benchmark_dashboard(args.matrix, out=args.out)
+                if args.summary_only:
+                    print(render_benchmark_summary(result), end="")
+                else:
+                    print_json(result)
+                return 0
+            if args.bench_command == "public-page":
+                result = render_public_benchmark_page(args.matrix, out=args.out)
+                if args.summary_only:
+                    print(render_benchmark_summary(result), end="")
+                else:
+                    print_json(result)
+                return 0
+            if args.bench_command == "verify":
+                result = verify_benchmark_artifact(args.result_json)
+                if args.summary_only:
+                    print(render_benchmark_summary(result), end="")
+                else:
+                    print_json(result)
+                return 0 if result["ok"] else 1
+            if args.bench_command == "compare":
+                result = compare_benchmark_results(args.result_jsons)
+                if args.out is not None:
+                    result.update(write_benchmark_comparison_artifacts(result, args.out))
+                if args.summary_only:
+                    print(render_benchmark_summary(result), end="")
+                else:
+                    print_json(result)
+                return 0 if result["ok"] else 1
+            if args.bench_command == "compare-matrices":
+                result = compare_benchmark_matrices(args.matrix_jsons)
+                if args.out is not None:
+                    result.update(write_benchmark_matrix_comparison_artifacts(result, args.out))
+                if args.summary_only:
+                    print(render_benchmark_summary(result), end="")
+                else:
+                    print_json(result)
+                return 0 if result["ok"] else 1
         if args.command == "restore":
             if args.handoff_dir is not None:
                 result = restore_handoff_package(store, handoff_dir=args.handoff_dir)
@@ -1155,6 +1538,601 @@ def provider_live_overrides(args) -> dict[str, dict[str, str | None]]:
         }
     )
     return overrides
+
+
+def build_retrieval_provider_readiness_report(*, config_path: Path | None = None, env: dict[str, str] | None = None) -> dict:
+    from .retrieval_providers import (
+        default_retrieval_provider_config_path,
+        load_retrieval_provider_config,
+        retrieval_provider_readiness,
+    )
+
+    path = config_path or default_retrieval_provider_config_path()
+    result = retrieval_provider_readiness(load_retrieval_provider_config(path), env=env)
+    result["config_path"] = str(path)
+    return result
+
+
+def render_retrieval_provider_readiness_summary(result: dict) -> str:
+    lines = [
+        "Retrieval provider readiness",
+        f"Ready: {'yes' if result.get('ok') else 'no'}",
+        f"Config: {result.get('config_path', 'unknown')}",
+        "Checks:",
+    ]
+    for check in result.get("checks", []):
+        api_key_env = check.get("api_key_env")
+        if api_key_env:
+            key_status = f"api_key_env={api_key_env}, api_key_ready={'yes' if check.get('api_key_ready') else 'no'}"
+        else:
+            key_status = "api_key_ready=n/a"
+        lines.append(
+            "  "
+            f"{check.get('kind')} {check.get('provider_id')}: "
+            f"default={'yes' if check.get('default') else 'no'}, "
+            f"enabled={'yes' if check.get('enabled') else 'no'}, "
+            f"hosted={'yes' if check.get('hosted') else 'no'}, "
+            f"{key_status}"
+        )
+    return "\n".join(lines) + "\n"
+
+
+def _benchmark_question_summary_for_cli(question_summary: object) -> dict[str, object]:
+    if not isinstance(question_summary, dict):
+        return {
+            "question_count": 0,
+            "visible_delta_question_count": 0,
+            "stable_misses": {"count": 0, "question_ids": []},
+            "stable_wins": {"count": 0, "question_ids": []},
+        }
+    stable_misses = question_summary.get("stable_misses")
+    stable_wins = question_summary.get("stable_wins")
+    return {
+        "question_count": int(question_summary.get("question_count", 0) or 0),
+        "visible_delta_question_count": int(question_summary.get("visible_delta_question_count", 0) or 0),
+        "stable_misses": {
+            "count": int(stable_misses.get("count", 0) or 0) if isinstance(stable_misses, dict) else 0,
+            "question_ids": [str(question_id) for question_id in stable_misses.get("question_ids", [])]
+            if isinstance(stable_misses, dict)
+            else [],
+        },
+        "stable_wins": {
+            "count": int(stable_wins.get("count", 0) or 0) if isinstance(stable_wins, dict) else 0,
+            "question_ids": [str(question_id) for question_id in stable_wins.get("question_ids", [])]
+            if isinstance(stable_wins, dict)
+            else [],
+        },
+    }
+
+
+def _append_benchmark_target_lines(lines: list[str], summary: dict[str, object]) -> None:
+    lines.append(f"Benchmark: {summary.get('benchmark') or 'n/a'}")
+    lines.append(f"Dataset: {summary.get('dataset') or 'n/a'}")
+    lines.append(f"Split: {summary.get('split') or 'n/a'}")
+    if summary.get("context_budget_tokens") is not None:
+        lines.append(f"Context budget tokens: {summary.get('context_budget_tokens')}")
+
+
+def _append_benchmark_question_summary_lines(lines: list[str], question_summary: dict[str, object]) -> None:
+    stable_misses = question_summary.get("stable_misses")
+    stable_wins = question_summary.get("stable_wins")
+    stable_miss_ids = stable_misses.get("question_ids", []) if isinstance(stable_misses, dict) else []
+    stable_win_ids = stable_wins.get("question_ids", []) if isinstance(stable_wins, dict) else []
+    lines.extend(
+        [
+            f"Questions: {question_summary.get('question_count', 0)}",
+            f"Visible deltas: {question_summary.get('visible_delta_question_count', 0)}",
+            f"Stable wins: {stable_wins.get('count', 0) if isinstance(stable_wins, dict) else 0}",
+            f"Stable misses: {stable_misses.get('count', 0) if isinstance(stable_misses, dict) else 0}",
+        ]
+    )
+    if stable_miss_ids:
+        lines.append(f"Stable miss ids: {', '.join(str(question_id) for question_id in stable_miss_ids)}")
+    if stable_win_ids:
+        lines.append(f"Stable win ids: {', '.join(str(question_id) for question_id in stable_win_ids)}")
+    if stable_win_ids and int(question_summary.get("visible_delta_question_count", 0) or 0) == 0:
+        lines.append(f"Recovered stable win spotlight ids: {', '.join(str(question_id) for question_id in stable_win_ids)}")
+
+
+def _append_benchmark_budget_context_lines(lines: list[str], summary: dict[str, object]) -> None:
+    budget_context_question_ids = summary.get("budget_context_question_ids")
+    if not isinstance(budget_context_question_ids, list) or not budget_context_question_ids:
+        return
+    lines.append(f"Budget-dropped stable context: {summary.get('budget_context_question_count', len(budget_context_question_ids))}")
+    lines.append(
+        "Budget-dropped stable context ids: "
+        + ", ".join(str(question_id) for question_id in budget_context_question_ids)
+    )
+
+
+def _format_benchmark_cli_delta(value: object) -> str:
+    if isinstance(value, int):
+        return f"{value:+d}"
+    if isinstance(value, float):
+        return f"{value:+.3f}"
+    return "n/a"
+
+
+def _append_benchmark_memory_count_delta_lines(lines: list[str], summary: dict[str, object]) -> None:
+    memory_count_deltas = summary.get("memory_count_deltas")
+    if not isinstance(memory_count_deltas, list):
+        return
+    for delta in memory_count_deltas:
+        if not isinstance(delta, dict):
+            continue
+        lines.append(
+            "Memory count delta "
+            f"{delta.get('question_id') or 'unknown'} ({delta.get('retrieval_mode') or 'unknown'}): "
+            f"retrieved={_format_benchmark_cli_delta(delta.get('retrieved_memory_count_delta'))} "
+            f"injected={_format_benchmark_cli_delta(delta.get('injected_memory_count_delta'))} "
+            f"withheld={_format_benchmark_cli_delta(delta.get('withheld_memory_count_delta'))}"
+        )
+
+
+def _append_benchmark_efficiency_delta_lines(lines: list[str], summary: dict[str, object]) -> None:
+    efficiency_deltas = summary.get("efficiency_deltas")
+    if not isinstance(efficiency_deltas, list):
+        return
+    for delta in efficiency_deltas:
+        if not isinstance(delta, dict):
+            continue
+        lines.append(
+            "Efficiency delta "
+            f"{delta.get('question_id') or 'unknown'} ({delta.get('retrieval_mode') or 'unknown'}): "
+            f"retrieval_latency_ms={_format_benchmark_cli_delta(delta.get('retrieval_latency_ms_delta'))} "
+            f"total_tokens={_format_benchmark_cli_delta(delta.get('total_tokens_delta'))}"
+        )
+
+
+def _append_benchmark_mode_proof_lines(lines: list[str], mode_proofs: object) -> None:
+    if not isinstance(mode_proofs, list):
+        return
+    for mode_proof in mode_proofs:
+        if not isinstance(mode_proof, dict):
+            continue
+        lines.append(
+            "Mode proof "
+            f"{mode_proof.get('retrieval_mode') or 'unknown'}: "
+            f"result_hash={mode_proof.get('result_hash') or 'n/a'} "
+            f"aggregate_merkle_root={mode_proof.get('aggregate_merkle_root') or 'n/a'}"
+        )
+
+
+def _append_benchmark_mode_comparison_lines(lines: list[str], mode_comparisons: object) -> None:
+    if not isinstance(mode_comparisons, list):
+        return
+    for mode_comparison in mode_comparisons:
+        if not isinstance(mode_comparison, dict):
+            continue
+        proof = mode_comparison.get("proof") if isinstance(mode_comparison.get("proof"), dict) else {}
+        question_summary = _benchmark_question_summary_for_cli(mode_comparison.get("question_summary"))
+        stable_misses = question_summary.get("stable_misses", {})
+        stable_wins = question_summary.get("stable_wins", {})
+        lines.append(
+            "Mode comparison "
+            f"{mode_comparison.get('retrieval_mode') or 'unknown'}: "
+            f"verification={proof.get('verification_status') or mode_comparison.get('verification_status') or 'unknown'} "
+            f"visible_deltas={question_summary.get('visible_delta_question_count', 0)} "
+            f"stable_wins={stable_wins.get('count', 0) if isinstance(stable_wins, dict) else 0} "
+            f"stable_misses={stable_misses.get('count', 0) if isinstance(stable_misses, dict) else 0}"
+        )
+        retrieval_mode = str(mode_comparison.get("retrieval_mode") or "unknown")
+        stable_miss_ids = stable_misses.get("question_ids", []) if isinstance(stable_misses, dict) else []
+        stable_win_ids = stable_wins.get("question_ids", []) if isinstance(stable_wins, dict) else []
+        if stable_miss_ids:
+            lines.append(
+                f"Mode comparison {retrieval_mode} stable miss ids: "
+                f"{', '.join(str(question_id) for question_id in stable_miss_ids)}"
+            )
+        if stable_win_ids:
+            lines.append(
+                f"Mode comparison {retrieval_mode} stable win ids: "
+                f"{', '.join(str(question_id) for question_id in stable_win_ids)}"
+            )
+        budget_context_ids = mode_comparison.get("budget_context_question_ids", [])
+        if not isinstance(budget_context_ids, list):
+            budget_context_ids = []
+        if not budget_context_ids:
+            nested_comparison = mode_comparison.get("comparison")
+            if isinstance(nested_comparison, dict):
+                budget_context_ids = [
+                    str(question.get("question_id"))
+                    for question in nested_comparison.get("questions", [])
+                    if isinstance(question, dict)
+                    and question.get("question_id")
+                    and any(
+                        bool(run.get("budget_dropped_memories"))
+                        for run in question.get("runs", [])
+                        if isinstance(run, dict)
+                    )
+                ]
+        if budget_context_ids:
+            lines.append(
+                f"Mode comparison {retrieval_mode} budget context ids: "
+                f"{', '.join(str(question_id) for question_id in budget_context_ids)}"
+            )
+        matrix_run_proofs = mode_comparison.get("matrix_run_proofs", [])
+        if not isinstance(matrix_run_proofs, list):
+            matrix_run_proofs = []
+        if not matrix_run_proofs:
+            raw_matrix_runs = mode_comparison.get("matrix_runs")
+            if isinstance(raw_matrix_runs, list):
+                matrix_run_proofs = [
+                    {
+                        "matrix_run_id": matrix_run.get("matrix_run_id"),
+                        "result_hash": matrix_run.get("result_hash"),
+                        "aggregate_merkle_root": matrix_run.get("aggregate_merkle_root"),
+                    }
+                    for matrix_run in raw_matrix_runs
+                    if isinstance(matrix_run, dict)
+                ]
+        for matrix_run_proof in matrix_run_proofs:
+            if not isinstance(matrix_run_proof, dict):
+                continue
+            lines.append(
+                "Mode comparison "
+                f"{retrieval_mode} proof hop {matrix_run_proof.get('matrix_run_id') or 'unknown'}: "
+                f"result_hash={matrix_run_proof.get('result_hash') or 'n/a'} "
+                f"aggregate_merkle_root={matrix_run_proof.get('aggregate_merkle_root') or 'n/a'}"
+            )
+
+
+def _benchmark_comparison_summary_for_cli(result: dict[str, object]) -> dict[str, object]:
+    target = result.get("target") if isinstance(result.get("target"), dict) else {}
+    questions = result.get("questions")
+    runs = result.get("runs")
+
+    budget_context_question_ids: list[str] = []
+    memory_count_deltas: list[dict[str, object]] = []
+    efficiency_deltas: list[dict[str, object]] = []
+    if isinstance(questions, list):
+        for question in questions:
+            if not isinstance(question, dict):
+                continue
+            question_id = str(question.get("question_id") or "unknown")
+            question_runs = question.get("runs")
+            if isinstance(question_runs, list) and any(
+                isinstance(run, dict) and run.get("budget_dropped_memories") for run in question_runs
+            ):
+                budget_context_question_ids.append(question_id)
+            for delta in question.get("deltas", []):
+                if not isinstance(delta, dict):
+                    continue
+                if any(
+                    delta.get(key) not in (None, 0)
+                    for key in (
+                        "retrieved_memory_count_delta",
+                        "injected_memory_count_delta",
+                        "withheld_memory_count_delta",
+                    )
+                ):
+                    memory_count_deltas.append(
+                        {
+                            "question_id": question_id,
+                            "retrieval_mode": delta.get("retrieval_mode"),
+                            "retrieved_memory_count_delta": delta.get("retrieved_memory_count_delta"),
+                            "injected_memory_count_delta": delta.get("injected_memory_count_delta"),
+                            "withheld_memory_count_delta": delta.get("withheld_memory_count_delta"),
+                        }
+                    )
+                if any(
+                    delta.get(key) not in (None, 0)
+                    for key in (
+                        "retrieval_latency_ms_delta",
+                        "total_tokens_delta",
+                    )
+                ):
+                    efficiency_deltas.append(
+                        {
+                            "question_id": question_id,
+                            "retrieval_mode": delta.get("retrieval_mode"),
+                            "retrieval_latency_ms_delta": delta.get("retrieval_latency_ms_delta"),
+                            "total_tokens_delta": delta.get("total_tokens_delta"),
+                        }
+                    )
+
+    mode_proofs: list[dict[str, object]] = []
+    if isinstance(runs, list):
+        for run in runs:
+            if not isinstance(run, dict):
+                continue
+            proof = run.get("proof") if isinstance(run.get("proof"), dict) else {}
+            mode_proofs.append(
+                {
+                    "retrieval_mode": run.get("retrieval_mode"),
+                    "result_hash": run.get("result_hash"),
+                    "aggregate_merkle_root": proof.get("aggregate_merkle_root"),
+                }
+            )
+
+    return {
+        "benchmark": target.get("benchmark"),
+        "dataset": target.get("dataset"),
+        "split": target.get("split"),
+        "context_budget_tokens": target.get("context_budget_tokens"),
+        "budget_context_question_count": len(budget_context_question_ids),
+        "budget_context_question_ids": budget_context_question_ids,
+        "memory_count_deltas": memory_count_deltas,
+        "efficiency_deltas": efficiency_deltas,
+        "mode_proofs": mode_proofs,
+        "question_summary": _benchmark_question_summary_for_cli(result.get("question_summary")),
+    }
+
+
+def render_benchmark_summary(result: dict[str, object]) -> str:
+    schema = str(result.get("schema") or "")
+    if schema == "zerker.benchmark_verify.v1":
+        artifact_type = str(result.get("artifact_type") or "unknown")
+        failed_checks = [
+            str(check.get("name"))
+            for check in result.get("checks", [])
+            if isinstance(check, dict) and not check.get("ok")
+        ]
+        verification_status = "ok" if result.get("ok") else "failed"
+        lines = [
+            "Benchmark verify",
+            f"Ready: {'yes' if result.get('ok') else 'no'}",
+            f"Artifact: {artifact_type}",
+            f"Verification: {verification_status}",
+            f"Failed checks: {', '.join(failed_checks) if failed_checks else 'none'}",
+        ]
+        if artifact_type == "comparison":
+            summary = result.get("summary") if isinstance(result.get("summary"), dict) else {}
+            if summary:
+                _append_benchmark_target_lines(lines, summary)
+            else:
+                target = result.get("target")
+                _append_benchmark_target_lines(
+                    lines,
+                    {
+                        "benchmark": target.get("benchmark") if isinstance(target, dict) else None,
+                        "dataset": target.get("dataset") if isinstance(target, dict) else None,
+                        "split": target.get("split") if isinstance(target, dict) else None,
+                        "context_budget_tokens": (
+                            target.get("context_budget_tokens") if isinstance(target, dict) else None
+                        ),
+                    },
+                )
+            _append_benchmark_question_summary_lines(
+                lines,
+                _benchmark_question_summary_for_cli(summary.get("question_summary") if summary else result.get("question_summary")),
+            )
+            _append_benchmark_memory_count_delta_lines(lines, summary)
+            _append_benchmark_efficiency_delta_lines(lines, summary)
+            _append_benchmark_budget_context_lines(lines, summary)
+            _append_benchmark_mode_proof_lines(lines, summary.get("mode_proofs"))
+            lines.append(f"Comparison JSON: {result.get('artifact_path', 'n/a')}")
+            return "\n".join(lines) + "\n"
+
+        if artifact_type == "matrix":
+            summary = result.get("summary") if isinstance(result.get("summary"), dict) else {}
+            comparison_verification_status = (
+                result.get("comparison_verification_status")
+                or summary.get("comparison_verification_status")
+                or "unknown"
+            )
+            lines.append(f"Comparison verification: {comparison_verification_status}")
+            if summary:
+                _append_benchmark_target_lines(lines, summary)
+                _append_benchmark_question_summary_lines(
+                    lines,
+                    _benchmark_question_summary_for_cli(summary.get("question_summary")),
+                )
+                _append_benchmark_budget_context_lines(lines, summary)
+                _append_benchmark_mode_proof_lines(lines, summary.get("mode_proofs"))
+            else:
+                _append_benchmark_target_lines(
+                    lines,
+                    {
+                        "benchmark": result.get("benchmark"),
+                        "dataset": result.get("dataset"),
+                        "split": result.get("split"),
+                        "context_budget_tokens": result.get("context_budget_tokens"),
+                    },
+                )
+            lines.append(f"Matrix JSON: {result.get('artifact_path', 'n/a')}")
+            if result.get("comparison_path"):
+                lines.append(f"Comparison JSON: {result.get('comparison_path')}")
+            return "\n".join(lines) + "\n"
+
+        if artifact_type == "matrix_comparison":
+            summary = result.get("summary") if isinstance(result.get("summary"), dict) else {}
+            target = summary if summary else result.get("target")
+            compatibility = result.get("compatibility") if isinstance(result.get("compatibility"), dict) else {}
+            warnings = compatibility.get("warnings", []) if isinstance(compatibility.get("warnings"), list) else []
+            target_summary = {
+                "benchmark": target.get("benchmark") if isinstance(target, dict) else None,
+                "dataset": target.get("dataset") if isinstance(target, dict) else None,
+                "split": target.get("split") if isinstance(target, dict) else None,
+                "context_budget_tokens": (
+                    target.get("context_budget_tokens") if isinstance(target, dict) else None
+                ),
+            }
+            lines.extend(
+                [
+                    f"Matrix count: {result.get('matrix_count', 0)}",
+                    f"Compared modes: {len(summary.get('compared_retrieval_modes', compatibility.get('compared_retrieval_modes', [])))}",
+                    f"Comparison axis: {compatibility.get('comparison_axis', 'n/a')}",
+                    f"Compatibility warnings: {', '.join(str(warning) for warning in warnings) if warnings else 'none'}",
+                ]
+            )
+            _append_benchmark_target_lines(lines, target_summary)
+            _append_benchmark_mode_comparison_lines(
+                lines,
+                summary.get("mode_comparisons") if summary else result.get("mode_comparisons"),
+            )
+            lines.append(f"Comparison JSON: {result.get('artifact_path', 'n/a')}")
+            return "\n".join(lines) + "\n"
+
+        lines.append(f"Artifact path: {result.get('artifact_path', 'n/a')}")
+        return "\n".join(lines) + "\n"
+
+    if schema == "zerker.benchmark_comparison.v1":
+        proof = result.get("proof")
+        summary = _benchmark_comparison_summary_for_cli(result)
+        lines = [
+            "Benchmark comparison",
+            f"Ready: {'yes' if result.get('ok') else 'no'}",
+            f"Verification: {proof.get('verification_status', 'unknown') if isinstance(proof, dict) else 'unknown'}",
+            (
+                f"Comparison axis: {result.get('compatibility', {}).get('comparison_axis', 'n/a')}"
+                if isinstance(result.get("compatibility"), dict)
+                else "Comparison axis: n/a"
+            ),
+            f"Result count: {result.get('result_count', 0)}",
+        ]
+        _append_benchmark_target_lines(lines, summary)
+        _append_benchmark_question_summary_lines(
+            lines,
+            _benchmark_question_summary_for_cli(summary.get("question_summary")),
+        )
+        _append_benchmark_memory_count_delta_lines(lines, summary)
+        _append_benchmark_efficiency_delta_lines(lines, summary)
+        _append_benchmark_budget_context_lines(lines, summary)
+        _append_benchmark_mode_proof_lines(lines, summary.get("mode_proofs"))
+        if result.get("comparison_path"):
+            lines.append(f"Comparison JSON: {result.get('comparison_path')}")
+        if result.get("report_path"):
+            lines.append(f"Report: {result.get('report_path')}")
+        if result.get("dashboard_path"):
+            lines.append(f"Dashboard: {result.get('dashboard_path')}")
+        return "\n".join(lines) + "\n"
+
+    if schema == "zerker.benchmark_matrix_comparison.v1":
+        target = result.get("target")
+        proof = result.get("proof")
+        compatibility = result.get("compatibility") if isinstance(result.get("compatibility"), dict) else {}
+        warnings = compatibility.get("warnings", []) if isinstance(compatibility.get("warnings"), list) else []
+        summary = {
+            "benchmark": target.get("benchmark") if isinstance(target, dict) else None,
+            "dataset": target.get("dataset") if isinstance(target, dict) else None,
+            "split": target.get("split") if isinstance(target, dict) else None,
+        }
+        lines = [
+            "Benchmark matrix comparison",
+            f"Ready: {'yes' if result.get('ok') else 'no'}",
+            f"Verification: {proof.get('verification_status', 'unknown') if isinstance(proof, dict) else 'unknown'}",
+            f"Matrix count: {result.get('matrix_count', 0)}",
+            f"Compared modes: {len(compatibility.get('compared_retrieval_modes', []))}",
+            f"Comparison axis: {compatibility.get('comparison_axis', 'n/a')}",
+            f"Compatibility warnings: {', '.join(str(warning) for warning in warnings) if warnings else 'none'}",
+        ]
+        _append_benchmark_target_lines(lines, summary)
+        _append_benchmark_mode_comparison_lines(
+            lines,
+            result.get("mode_comparisons"),
+        )
+        if result.get("comparison_path"):
+            lines.append(f"Comparison JSON: {result.get('comparison_path')}")
+        if result.get("report_path"):
+            lines.append(f"Report: {result.get('report_path')}")
+        if result.get("dashboard_path"):
+            lines.append(f"Dashboard: {result.get('dashboard_path')}")
+        return "\n".join(lines) + "\n"
+
+    if schema == "zerker.benchmark_matrix.v1":
+        summary = result.get("summary") if isinstance(result.get("summary"), dict) else {}
+        question_summary = _benchmark_question_summary_for_cli(
+            summary.get("question_summary") if summary else result.get("question_summary")
+        )
+        lines = [
+            "Benchmark matrix",
+            f"Ready: {'yes' if result.get('ok') else 'no'}",
+            f"Verification: {result.get('verification_status') or summary.get('verification_status') or 'unknown'}",
+            "Comparison verification: "
+            f"{result.get('comparison_verification_status') or summary.get('comparison_verification_status') or 'unknown'}",
+        ]
+        if summary:
+            _append_benchmark_target_lines(lines, summary)
+        else:
+            _append_benchmark_target_lines(
+                lines,
+                {
+                    "benchmark": result.get("benchmark"),
+                    "dataset": result.get("dataset"),
+                    "split": result.get("split"),
+                },
+            )
+        _append_benchmark_question_summary_lines(lines, question_summary)
+        _append_benchmark_budget_context_lines(lines, summary)
+        _append_benchmark_mode_proof_lines(lines, summary.get("mode_proofs"))
+        lines.append(f"Matrix JSON: {result.get('matrix_path', 'n/a')}")
+        lines.append(f"Comparison JSON: {result.get('comparison_path', 'n/a')}")
+        lines.append(f"Report: {result.get('report_path', 'n/a')}")
+        return "\n".join(lines) + "\n"
+
+    summary = result.get("summary") if isinstance(result.get("summary"), dict) else {}
+    question_summary = _benchmark_question_summary_for_cli(summary.get("question_summary"))
+    verification_status = summary.get("verification_status") or result.get("verification_status") or "unknown"
+    comparison_verification_status = (
+        summary.get("comparison_verification_status") or result.get("comparison_verification_status") or "unknown"
+    )
+
+    if schema == "zerker.benchmark_report.v1":
+        lines = [
+            "Benchmark report",
+            f"Ready: {'yes' if result.get('ok') else 'no'}",
+            f"Artifact: {result.get('artifact_type', 'unknown')}",
+            f"Verification: {verification_status}",
+        ]
+        if result.get("artifact_type") == "matrix":
+            lines.append(f"Comparison verification: {comparison_verification_status}")
+        if summary:
+            _append_benchmark_target_lines(lines, summary)
+            if result.get("artifact_type") == "matrix_comparison":
+                _append_benchmark_mode_comparison_lines(lines, summary.get("mode_comparisons"))
+            else:
+                _append_benchmark_question_summary_lines(lines, question_summary)
+                _append_benchmark_memory_count_delta_lines(lines, summary)
+                _append_benchmark_efficiency_delta_lines(lines, summary)
+                _append_benchmark_budget_context_lines(lines, summary)
+                _append_benchmark_mode_proof_lines(lines, summary.get("mode_proofs"))
+        lines.append(f"Report: {result.get('report_path', 'n/a')}")
+        return "\n".join(lines) + "\n"
+
+    if schema in {
+        "zerker.benchmark_dashboard.v1",
+        "zerker.benchmark_comparison_dashboard.v1",
+        "zerker.benchmark_matrix_comparison_dashboard.v1",
+    }:
+        lines = [
+            "Benchmark dashboard",
+            f"Ready: {'yes' if result.get('ok') else 'no'}",
+            f"Artifact: {result.get('artifact_type', 'matrix')}",
+            f"Verification: {verification_status}",
+        ]
+        if schema == "zerker.benchmark_dashboard.v1":
+            lines.append(f"Comparison verification: {comparison_verification_status}")
+        if summary:
+            _append_benchmark_target_lines(lines, summary)
+            if result.get("artifact_type") == "matrix_comparison":
+                _append_benchmark_mode_comparison_lines(lines, summary.get("mode_comparisons"))
+            else:
+                _append_benchmark_question_summary_lines(lines, question_summary)
+                _append_benchmark_memory_count_delta_lines(lines, summary)
+                _append_benchmark_efficiency_delta_lines(lines, summary)
+                _append_benchmark_budget_context_lines(lines, summary)
+                _append_benchmark_mode_proof_lines(lines, summary.get("mode_proofs"))
+        lines.append(f"Dashboard: {result.get('dashboard_path', 'n/a')}")
+        return "\n".join(lines) + "\n"
+
+    if schema == "zerker.public_benchmark_page.v1":
+        lines = [
+            "Public benchmark page",
+            f"Ready: {'yes' if result.get('ok') else 'no'}",
+            f"Claim status: {result.get('claim_status', 'unknown')}",
+            f"Verification: {verification_status}",
+            f"Comparison verification: {comparison_verification_status}",
+        ]
+        if summary:
+            _append_benchmark_target_lines(lines, summary)
+            _append_benchmark_question_summary_lines(lines, question_summary)
+            _append_benchmark_budget_context_lines(lines, summary)
+            _append_benchmark_mode_proof_lines(lines, summary.get("mode_proofs"))
+        lines.append(f"Page: {result.get('page_path', 'n/a')}")
+        return "\n".join(lines) + "\n"
+
+    return json.dumps(result, indent=2, sort_keys=True) + "\n"
 
 
 def strip_command_separator(command: list[str]) -> list[str]:
@@ -1902,6 +2880,7 @@ def build_status_report(
         "mcp_config": mcp_config_path.exists(),
         "providers": providers_path.exists(),
     }
+    workspace_profile = workspace_status_for_paths(db_path=store.db_path, policy_path=store.policy_path)
     proof_ready = stats["receipt_count"] > 0
     manual_pack_ready = manual_pack.exists()
     release_readiness = build_release_readiness(root)
@@ -1928,6 +2907,7 @@ def build_status_report(
             "providers_path": str(providers_path),
             "checks": core_checks,
         },
+        "workspace_profile": workspace_profile,
         "stats": stats,
         "latest_receipt": latest_receipt,
         "manual_agent_pack": {
@@ -1980,7 +2960,14 @@ def build_status_next_steps(
         if step not in steps:
             steps.append(step)
 
-    configured_agent = next((preset for preset in agent_presets() if agents.get(preset, {}).get("configured")), None)
+    configured_agent = next(
+        (
+            preset
+            for preset in agent_presets()
+            if agents.get(preset, {}).get("configured") and agents.get(preset, {}).get("checklist_present")
+        ),
+        None,
+    ) or next((preset for preset in agent_presets() if agents.get(preset, {}).get("configured")), None)
     if not all(core_checks.values()):
         append_step("zmem init --with-policy --with-agent-prompt --with-mcp-config --with-provider-config")
     if not proof_ready:
@@ -2044,6 +3031,9 @@ def build_status_next_steps(
 
 def render_status_summary(result: dict) -> str:
     workspace = result["workspace"]
+    profile = result.get("workspace_profile") or {}
+    current_profile = profile.get("current") or {}
+    matched_profile = profile.get("matched") or {}
     stats = result["stats"]
     latest_receipt = result.get("latest_receipt")
     release = result.get("release_readiness") or {}
@@ -2061,6 +3051,12 @@ def render_status_summary(result: dict) -> str:
         f"  Prompt: {'ok' if workspace['checks']['prompt'] else 'missing'} ({workspace['prompt_path']})",
         f"  MCP config: {'ok' if workspace['checks']['mcp_config'] else 'missing'} ({workspace['mcp_config_path']})",
         f"  Providers: {'ok' if workspace['checks']['providers'] else 'missing'} ({workspace['providers_path']})",
+        "",
+        "Profile:",
+        f"  Registry: {profile.get('registry_path', 'unknown')}",
+        f"  Current: {current_profile.get('name', 'none')} ({profile.get('current_id') or 'none'})",
+        f"  Match: {profile.get('match_state', 'unknown')}",
+        f"  Matched workspace: {matched_profile.get('name', 'none')} ({matched_profile.get('id', 'none')})",
         "",
         "Proof:",
         f"  Memories: {stats['memory_count']}",
@@ -2806,6 +3802,100 @@ def run_demo(store: MemoryStore, *, scope: str, agent_id: str) -> dict:
     }
 
 
+def run_poisoning_demo(store: MemoryStore, *, scope: str, agent_id: str, out_dir: Path) -> dict:
+    store.init()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    poisoned = store.remember(
+        "Payment service owner is Mallory",
+        memory_type="semantic",
+        scope=scope,
+        source_kind="tool",
+        actor_id=agent_id,
+        actor_uri=f"agent://{agent_id}/session-1",
+        session_id="session://poisoning-demo/session-1",
+        source_uri="conversation://poisoning-demo/session-1/message-17",
+        parent_action_id="act_untrusted_tool_read",
+        labels=["payment-service", "owner", "poison-demo"],
+        status="active",
+    )
+    # Simulate later sessions by adding benign memories between the poisoned write and the action.
+    store.remember(
+        "Payment service deploys through the standard production pipeline",
+        memory_type="semantic",
+        scope=scope,
+        source_kind="human",
+        actor_id="human",
+        actor_uri="actor://demo-operator",
+        session_id="session://poisoning-demo/session-2",
+        labels=["payment-service", "deploy"],
+    )
+    store.remember(
+        "Payment service incidents require owner confirmation",
+        memory_type="policy",
+        scope=scope,
+        source_kind="human",
+        actor_id="human",
+        actor_uri="actor://demo-operator",
+        session_id="session://poisoning-demo/session-3",
+        labels=["payment-service", "incident"],
+    )
+    action = store.inject(
+        "who is the payment service owner",
+        agent_id=agent_id,
+        risk="medium",
+        scope=scope,
+    )
+    why = store.why(action["action_id"])
+    provenance = why["injected_memory_write_receipts"].get(poisoned.id, store.memory_write_receipt(poisoned.id))
+    bundle = store.receipt_bundle(action["action_id"])
+    bundle_path = out_dir / "incident-bundle.json"
+    bundle_path.write_text(json.dumps(bundle, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    report_path = out_dir / "incident-report.md"
+    report = [
+        "# ZMem Memory-Poisoning Incident Reconstruction",
+        "",
+        "## Scenario",
+        "A prompt-injected tool result writes a false owner fact. Three sessions later, an agent retrieves that memory while answering an operational question.",
+        "",
+        "## Forward Chain",
+        f"- Poisoned memory: `{poisoned.id}`",
+        f"- Later action: `{action['action_id']}`",
+        f"- Injected memories: `{', '.join(action['injected_memory_ids'])}`",
+        "",
+        "## Backward Reconstruction",
+        f"- Actor URI: `{provenance['actor_uri']}`",
+        f"- Source session: `{provenance['session_id']}`",
+        f"- Source URI: `{provenance['source_uri']}`",
+        f"- Parent action receipt: `{provenance['parent_action_id']}`",
+        f"- Content digest: `{provenance['content_digest']}`",
+        f"- Write event hash: `{provenance['event_hash']}`",
+        f"- Write Merkle root: `{provenance['merkle_root']}`",
+        "",
+        "## Commands To Narrate",
+        f"1. `zmem --db {store.db_path} why {action['action_id']}`",
+        f"2. `zmem --db {store.db_path} bundle {action['action_id']} --out-dir {out_dir}`",
+        f"3. Open `{bundle_path}` and show `supporting_memory_write_receipts.{poisoned.id}`.",
+        "",
+    ]
+    report_path.write_text("\n".join(report), encoding="utf-8")
+    return {
+        "ok": True,
+        "schema": "zerker.poisoning_demo.v1",
+        "db": str(store.db_path),
+        "scope": scope,
+        "poisoned_memory_id": poisoned.id,
+        "action_id": action["action_id"],
+        "injected_memory_ids": action["injected_memory_ids"],
+        "provenance": provenance,
+        "bundle_path": str(bundle_path),
+        "report_path": str(report_path),
+        "next_steps": [
+            f"zmem --db {store.db_path} why {action['action_id']}",
+            f"open {report_path}",
+        ],
+    }
+
+
 def default_launch_proof_dir(*, cwd: Path | None = None) -> Path:
     root = cwd or Path.cwd()
     return root / ".zerker" / "launch-proof"
@@ -2840,8 +3930,8 @@ DURABLE_CLEAN_SHELL_RUNBOOK_PATH = Path("docs") / CLEAN_SHELL_PUBLIC_VERIFY_FILE
 DURABLE_CLEAN_SHELL_OPERATOR_PROMPT_PATH = Path("docs") / CLEAN_SHELL_OPERATOR_PROMPT_FILENAME
 DURABLE_LAUNCH_ASSET_OPERATOR_PROMPT_PATH = Path("docs/LAUNCH_ASSET_OPERATOR_PROMPT.md")
 DURABLE_LAUNCH_ASSET_BOARD_PATH = Path("docs") / LAUNCH_ASSET_BOARD_FILENAME
-PUBLIC_REPO_URL = "https://github.com/zerkerlabs/zerker-memory"
-PUBLIC_RAW_INSTALL_URL = "https://raw.githubusercontent.com/zerkerlabs/zerker-memory/main/install.sh"
+PUBLIC_REPO_URL = "https://github.com/zerkerlabs/zmem"
+PUBLIC_RAW_INSTALL_URL = "https://raw.githubusercontent.com/zerkerlabs/zmem/main/install.sh"
 PUBLIC_VERIFY_LOG_FILENAMES = [
     "operator-packet-verify.log",
     "curl-install.log",
@@ -5408,8 +6498,12 @@ def write_launch_asset_board(
                 "<body>",
                 "<main>",
                 "  <h1>Launch Asset Board</h1>",
-                "  <p class=\"lede\">Use this proof-pack board while capturing the final launch screenshots and GIFs. It keeps the storyboard, save paths, and the most relevant source files on one screen.</p>",
+                "  <p class=\"lede\">Use this proof-pack board while capturing the final launch screenshots and GIFs. It keeps the storyboard, save paths, and the most relevant source files on one screen. The asset pass is only complete after <code>zmem verify-public-verify --summary-only</code> reports <code>Ready: yes</code>, <code>zmem verify-launch-assets --summary-only</code> reports the full capture set, <code>FINALIZE_RETURN_PACKET.sh</code> reruns, and <code>zmem verify-return-packet .zerker/launch-proof/public-verify-return-packet.tar.gz --summary-only</code> reports <code>Ready: yes</code>.</p>",
                 '  <section class="callouts">',
+                '    <div class="callout"><strong>Proof gate</strong><br><code>zmem verify-public-verify --summary-only</code> must report <code>Ready: yes</code> before the asset pass is complete.</div>',
+                '    <div class="callout"><strong>Asset verify</strong><br><code>zmem verify-launch-assets --summary-only</code> must report the full capture set before handback.</div>',
+                '    <div class="callout"><strong>Finalize</strong><br>Rerun <code>FINALIZE_RETURN_PACKET.sh</code> after the clean-shell proof and asset pass both succeed.</div>',
+                '    <div class="callout"><strong>Receive-side accept</strong><br><code>zmem verify-return-packet .zerker/launch-proof/public-verify-return-packet.tar.gz --summary-only</code> must report <code>Ready: yes</code> before Phase 1 is marked complete.</div>',
                 f'    <div class="callout"><strong>Checklist</strong><br><a href="{html.escape(workspace_relative_path(capture_checklist_path, cwd=board_path.parent))}">{html.escape(workspace_relative_path(capture_checklist_path, cwd=board_path.parent))}</a></div>',
                 f'    <div class="callout"><strong>Proof report</strong><br><a href="{html.escape(workspace_relative_path(report_path, cwd=board_path.parent))}">{html.escape(workspace_relative_path(report_path, cwd=board_path.parent))}</a></div>',
                 f'    <div class="callout"><strong>Transcript</strong><br><a href="{html.escape(workspace_relative_path(transcript_path, cwd=board_path.parent))}">{html.escape(workspace_relative_path(transcript_path, cwd=board_path.parent))}</a></div>',
@@ -5457,14 +6551,19 @@ def write_launch_asset_handoff(
         f"2. Keep `{workspace_relative_path(launch_asset_board_path)}` open while capturing so the save paths and references stay visible.",
         f"3. Use `{workspace_relative_path(report_path)}` and `{workspace_relative_path(summary_path)}` as the proof references while recording.",
         f"4. Save every screenshot or GIF under `{workspace_relative_path(launch_asset_outputs_dir(report_path.parent))}` with the exact filenames below.",
-        "5. Run `zmem verify-launch-assets --summary-only` to confirm the storyboard is complete.",
-        "6. Hand back the populated assets directory or let it ride inside the return-packet archive after the clean-shell pass.",
+        "5. Run `zmem verify-public-verify --summary-only` before treating the screenshot/GIF pass as complete.",
+        "6. Run `zmem verify-launch-assets --summary-only` to confirm the storyboard is complete.",
+        f"7. After the clean-shell proof and asset pass both succeed, rerun `{workspace_relative_path(report_path.parent / RETURN_PACKET_FINALIZE_FILENAME)}`.",
+        f"8. Hand back the populated assets directory or let it ride inside `{workspace_relative_path(report_path.parent / RETURN_PACKET_ARCHIVE_FILENAME)}` only after the self-check and receive-side acceptance commands pass.",
         "",
         "## Success Criteria",
         "",
         f"- `{workspace_relative_path(launch_asset_outputs_dir(report_path.parent))}` contains all required launch assets:",
         *[f"  - `{asset['deliverable']}` from `{asset['id']}`" for asset in launch_assets],
+        "- `zmem verify-public-verify --summary-only` reports `Ready: yes` before the asset pass is considered complete.",
         f"- `zmem verify-launch-assets --summary-only` reports `{len(launch_assets)}/{len(launch_assets)} captured` before handback.",
+        f"- `{workspace_relative_path(report_path.parent / RETURN_PACKET_FINALIZE_FILENAME)}` is rerun after the asset pass whenever the clean-shell proof packet is being handed back.",
+        f"- `zmem verify-return-packet {workspace_relative_path(report_path.parent / RETURN_PACKET_ARCHIVE_FILENAME)} --summary-only` reports `Ready: yes` before Phase 1 is marked complete.",
         f"- Local alpha gate snapshot in this generated pack: `{local_alpha_gate_text or 'unknown'}`.",
         f"- Strict publish gate snapshot in this generated pack: `{strict_publish_gate_text or 'unknown'}`.",
         "",
@@ -5488,7 +6587,10 @@ def write_launch_asset_handoff(
         f"- Required asset root: `{workspace_relative_path(launch_asset_outputs_dir(report_path.parent))}`.",
         f"- Checklist source of truth: `{workspace_relative_path(checklist_path)}`.",
         f"- Capture board: `{workspace_relative_path(launch_asset_board_path)}`.",
+        "- Verify the clean-shell proof first: `zmem verify-public-verify --summary-only`.",
         "- Verify the storyboard locally: `zmem verify-launch-assets --summary-only`.",
+        f"- Finalize the return packet: `{workspace_relative_path(report_path.parent / RETURN_PACKET_FINALIZE_FILENAME)}`.",
+        f"- Receive-side accept: `zmem verify-return-packet {workspace_relative_path(report_path.parent / RETURN_PACKET_ARCHIVE_FILENAME)} --summary-only`.",
         f"- If the clean-shell pass is also complete, the one-file shortcut stays `{workspace_relative_path(report_path.parent / RETURN_PACKET_ARCHIVE_FILENAME)}`.",
         "",
     ]
@@ -6207,7 +7309,7 @@ def write_public_verify_script(*, script_path: Path, logs_dir_path: Path) -> Non
                 "",
                 'printf "Bootstrap note: the repo should already exist from the initial clean-shell install used to restore this packet.\\n"',
                 'printf "This script reruns the raw installer itself and records public-verify-logs/curl-install.log for the proof bundle.\\n"',
-                'run_and_log curl-install bash -lc \'curl -fsSL https://raw.githubusercontent.com/zerkerlabs/zerker-memory/main/install.sh | bash\'',
+                'run_and_log curl-install bash -lc \'curl -fsSL https://raw.githubusercontent.com/zerkerlabs/zmem/main/install.sh | bash\'',
                 'cd "$REPO_DIR"',
                 'run_and_log first-run bash examples/first_run.sh',
                 'run_and_log release-pack zmem release-pack --summary-only',
