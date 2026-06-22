@@ -2,12 +2,20 @@
 
 This is the short orchestration dashboard for Zerker Memory. Every autonomous build run should update this file after it updates `docs/BUILD_LOG.md`.
 
+## Benchmark Scripts
+`2026-06-22T21:48:00Z`
+
+- Reviewed the remaining untracked L6 benchmark scripts and kept them separate from downloaded `data/` payloads and `.treeship/` runtime state.
+- Added tests for official LongMemEval conversion, official LoCoMo conversion, local LoCoMo token-F1/exact-match scoring, LongMemEval judge label parsing, the `OPENAI_API_KEY` guard on optional LLM answer generation, and session/sample-scoped memory reuse in official benchmark runs.
+- Verified `python3 -m unittest tests.test_bench_scripts -q` (`Ran 5 tests`), `python3 -m unittest tests.test_bench.BenchmarkHarnessTest.test_longmemeval_shared_session_reuses_history_memory tests.test_bench.BenchmarkHarnessTest.test_locomo_shared_sample_reuses_history_memory -q` (`Ran 2 tests`), and `python3 -m unittest tests.test_bench -q` (`Ran 132 tests`) passed.
+- Next safe L6 slice is documentation for the exact local scoring workflow with pinned dataset hashes and receipt bundles before any public benchmark claim.
+
 ## Launch Oversight
-`2026-06-22T21:44:20Z`
+`2026-06-22T22:45:21Z`
 
 - Current phase remains `Phase 1 - Public Alpha Launch Gate`, and this bounded pass stayed on launch/readiness oversight only.
 - Reverified `bash scripts/gstack_check.sh`, `git status --short -uno`, `git remote -v`, `gh auth status`, `python3 scripts/release_smoke.py --summary-only`, `python3 -m zerker_memory status --summary-only`, `python3 -m zerker_memory verify-operator-packet .zerker/launch-proof/public-verify-operator-packet.tar.gz --summary-only`, `python3 -m zerker_memory verify-public-verify --summary-only`, `python3 -m zerker_memory verify-launch-assets --summary-only`, `python3 -m zerker_memory verify-return-packet .zerker/launch-proof/public-verify-return-packet.tar.gz --summary-only`, and `python3 -m zerker_memory prelaunch --summary-only`. The authoritative post-refresh state stayed unchanged: operator packet `Ready: yes`, public verify `0/6`, launch assets `0/8`, return packet `Ready: no`, and strict publish blocked only on `launch_assets` plus `public_verify_evidence`.
-- `origin` still targets `https://github.com/zerkerlabs/zmem.git`, `gh auth status` still fails because the active `rezker1` token is invalid, and the focused stale-target scan across active launch entrypoints plus supporting scripts, tests, `zerker_memory`, `README.md`, `QUICKSTART.md`, and coordinator docs again found no non-historical stale public repo, raw-installer, `rezkerlabs`, or stale GitHub repo targets.
+- `origin` still targets `https://github.com/zerkerlabs/zmem.git`, `gh auth status` still fails because the active `rezker1` token is invalid, `git status --short -uno` still shows only the same broader benchmark-script, benchmark-harness, and coordinator-doc drift, and the focused stale-target scan across active launch entrypoints plus supporting scripts, tests, `zerker_memory`, `README.md`, `QUICKSTART.md`, and coordinator docs again found no non-historical stale public repo, raw-installer, `rezkerlabs`, or stale GitHub repo targets.
 - Next highest-leverage launch step is still external: forward `.zerker/launch-proof/CLEAN_SHELL_OPERATOR_PROMPT.md`, `.zerker/launch-proof/CLEAN_SHELL_PUBLIC_VERIFY.md`, and `.zerker/launch-proof/public-verify-operator-packet.tar.gz` to a networked operator with valid GitHub auth, then accept handback only after `verify-public-verify`, `verify-launch-assets`, `verify-return-packet`, and `prelaunch` all report ready.
 
 ## Live Coordinator

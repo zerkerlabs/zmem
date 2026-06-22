@@ -1,5 +1,15 @@
 # Benchmark Lane Log
 
+## 2026-06-22T21:48:00Z - L6 benchmarks - external scoring scripts cleaned
+
+- Scope: reviewed and tested local benchmark adapter/scoring scripts without committing downloaded datasets or runtime outputs.
+- Files touched: `zerker_memory/bench.py`, `scripts/bench/`, `tests/test_bench.py`, `tests/test_bench_scripts.py`, `docs/CONTINUOUS_BUILD/benchmark.log.md`, `docs/BUILD_LOG.md`, `docs/CURRENT_STATE.md`.
+- Behavior changed: adds script-level support for converting official LongMemEval/LoCoMo records into ZMem benchmark records, local LoCoMo token-F1/exact-match scoring, optional OpenAI-backed answer generation, and optional LongMemEval judge integration. Official benchmark runs now scope memories by LongMemEval session / LoCoMo sample so multiple questions from one conversation reuse the same history instead of duplicating it per question. The network/LLM paths remain explicit and guarded by `OPENAI_API_KEY` or repository availability.
+- Tests: `python3 -m unittest tests.test_bench_scripts -q` -> passed (`Ran 5 tests`); `python3 -m unittest tests.test_bench.BenchmarkHarnessTest.test_longmemeval_shared_session_reuses_history_memory tests.test_bench.BenchmarkHarnessTest.test_locomo_shared_sample_reuses_history_memory -q` -> passed (`Ran 2 tests`); `python3 -m unittest tests.test_bench -q` -> passed (`Ran 132 tests`).
+- Artifacts/receipts: no dataset payloads or scored receipts committed.
+- Blockers: official datasets under `data/` are still local-only/untracked; public benchmark claims still require reproducible commands, pinned dataset hashes, and receipt bundles.
+- Next safe slice: add docs for the exact local benchmark scoring workflow and keep fixture-sized data in tests rather than committing downloaded datasets.
+
 ## 2026-06-22 - coordinator
 
 - Scope: seeded lane for LongMemEval/LoCoMo adapters, isolated DBs, benchmark receipts, reproducible matrix comparisons, and public result summaries.

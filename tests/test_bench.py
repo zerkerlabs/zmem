@@ -7268,6 +7268,49 @@ class BenchmarkHarnessTest(unittest.TestCase):
             self.assertTrue(all(check["ok"] for check in verify["checks"]))
             self.assertEqual(result["summary"]["accuracy"], 1.0)
 
+    def test_longmemeval_shared_session_reuses_history_memory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            dataset = Path(tmp) / "longmemeval-shared-session.jsonl"
+            records = [
+                {
+                    "question_id": "lme-shared-1",
+                    "session_id": "session-alpha",
+                    "split": "small",
+                    "category": "single_session_user_recall",
+                    "history": ["The launch owner is Nia."],
+                    "question": "Who owns launch?",
+                    "answer": "Nia.",
+                    "supporting_facts": ["The launch owner is Nia."],
+                    "should_abstain": False,
+                },
+                {
+                    "question_id": "lme-shared-2",
+                    "session_id": "session-alpha",
+                    "split": "small",
+                    "category": "single_session_user_recall",
+                    "history": ["The launch owner is Nia."],
+                    "question": "Who is responsible for launch?",
+                    "answer": "Nia.",
+                    "supporting_facts": ["The launch owner is Nia."],
+                    "should_abstain": False,
+                },
+            ]
+            dataset.write_text("\n".join(json.dumps(record, sort_keys=True) for record in records) + "\n", encoding="utf-8")
+
+            result = run_longmemeval_benchmark(Path(tmp) / "bench", dataset, "small", seed=0, run_id="lme-shared")
+            run_dir = Path(result["run_dir"])
+            after_snapshot = json.loads((run_dir / "snapshots" / "after.snapshot.json").read_text(encoding="utf-8"))
+            result_payload = json.loads((run_dir / "benchmark-result.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(after_snapshot["memory_count"], 1)
+            self.assertEqual(
+                {
+                    tuple(question["expected_supporting_memory_ids"])
+                    for question in result_payload["questions"]
+                },
+                {(after_snapshot["memories"][0]["id"],)},
+            )
+
     def test_longmemeval_json_array_split_filtering_works(self):
         with tempfile.TemporaryDirectory() as tmp:
             dataset = Path(tmp) / "dataset.json"
@@ -7378,6 +7421,49 @@ class BenchmarkHarnessTest(unittest.TestCase):
             self.assertTrue(all(check["ok"] for check in verify["checks"]))
             self.assertEqual(result["summary"]["accuracy"], 1.0)
             self.assertEqual(result["summary"]["scoring"], "provisional-local")
+
+    def test_locomo_shared_sample_reuses_history_memory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            dataset = Path(tmp) / "locomo-shared-sample.jsonl"
+            records = [
+                {
+                    "question_id": "locomo-shared-1",
+                    "sample_id": "dialog-alpha",
+                    "split": "dev",
+                    "category": "single_hop",
+                    "history": ["The dashboard owner is Mina."],
+                    "question": "Who owns the dashboard?",
+                    "answer": "Mina.",
+                    "supporting_facts": ["The dashboard owner is Mina."],
+                    "should_abstain": False,
+                },
+                {
+                    "question_id": "locomo-shared-2",
+                    "sample_id": "dialog-alpha",
+                    "split": "dev",
+                    "category": "single_hop",
+                    "history": ["The dashboard owner is Mina."],
+                    "question": "Who is responsible for the dashboard?",
+                    "answer": "Mina.",
+                    "supporting_facts": ["The dashboard owner is Mina."],
+                    "should_abstain": False,
+                },
+            ]
+            dataset.write_text("\n".join(json.dumps(record, sort_keys=True) for record in records) + "\n", encoding="utf-8")
+
+            result = run_locomo_benchmark(Path(tmp) / "bench", dataset, "dev", seed=0, run_id="locomo-shared")
+            run_dir = Path(result["run_dir"])
+            after_snapshot = json.loads((run_dir / "snapshots" / "after.snapshot.json").read_text(encoding="utf-8"))
+            result_payload = json.loads((run_dir / "benchmark-result.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(after_snapshot["memory_count"], 1)
+            self.assertEqual(
+                {
+                    tuple(question["expected_supporting_memory_ids"])
+                    for question in result_payload["questions"]
+                },
+                {(after_snapshot["memories"][0]["id"],)},
+            )
 
     def test_locomo_json_wrapper_split_filtering_works(self):
         with tempfile.TemporaryDirectory() as tmp:

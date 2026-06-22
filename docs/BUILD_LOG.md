@@ -2,6 +2,63 @@
 
 This file tracks product-build slices so parallel Codex runs and hourly automations do not become invisible.
 
+## 2026-06-22 - Launch Gate Rechecked, Still External
+
+Shipped:
+
+- Stayed strictly on the launch/readiness oversight lane and updated [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/LAUNCH_READINESS_NOW.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/LAUNCH_READINESS_NOW.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md), and [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/launch.log.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/launch.log.md) with the latest authoritative Phase 1 gate state.
+- Landed one narrow oversight slice only: repo-local launch verification was rerun end to end, the stale-target scan was refreshed against the active public surfaces, and the next blocked step remained the same external operator handoff.
+- Kept the slice surgical: no product code, installer copy, README/QUICKSTART content, site assets, or generated `.zerker/launch-proof/` artifacts were edited by hand.
+
+Verification:
+
+- `bash scripts/gstack_check.sh` -> passed (`GSTACK_OK source=codex-skills path=/Users/zzo/.Codex/skills/gstack/bin command_on_path=no`)
+- `git status --short -uno` -> preserved the existing broader benchmark-script, benchmark-harness, and coordinator-doc drift
+- `git remote -v` -> passed (`origin` still `https://github.com/zerkerlabs/zmem.git`)
+- `gh auth status` -> blocked as expected (`rezker1` token invalid)
+- `python3 scripts/release_smoke.py --summary-only` -> passed (`Release smoke summary checks completed.`)
+- `python3 -m zerker_memory status --summary-only` -> passed (`Workspace ready: yes`, `Doctor: ok`, `Strict publish ready: no`)
+- `python3 -m zerker_memory verify-operator-packet .zerker/launch-proof/public-verify-operator-packet.tar.gz --summary-only` -> passed (`Ready: yes`)
+- `python3 -m zerker_memory verify-public-verify --summary-only` -> blocked as expected (`0/6` logs)
+- `python3 -m zerker_memory verify-launch-assets --summary-only` -> blocked as expected (`0/8` assets)
+- `python3 -m zerker_memory verify-return-packet .zerker/launch-proof/public-verify-return-packet.tar.gz --summary-only` -> blocked as expected (`Ready: no`)
+- `python3 -m zerker_memory prelaunch --summary-only` -> blocked as expected (`launch_assets`, `public_verify_evidence`)
+- Focused stale-target scan across `README.md`, `QUICKSTART.md`, `install.sh`, `scripts/`, `tests/`, `zerker_memory/`, and active coordinator docs found no non-historical stale `zerkerlabs/zerker-memory`, stale raw-installer, `rezkerlabs`, or stale GitHub repo targets.
+
+Blockers:
+
+- Clean-shell public proof is still missing all `6/6` required logs.
+- Launch asset capture is still missing all `8/8` required screenshots/GIFs.
+- Local GitHub CLI auth is still blocked by the invalid `rezker1` token, so the remaining launch step stays external.
+
+Next:
+
+- Forward `.zerker/launch-proof/CLEAN_SHELL_OPERATOR_PROMPT.md`, `.zerker/launch-proof/CLEAN_SHELL_PUBLIC_VERIFY.md`, and `.zerker/launch-proof/public-verify-operator-packet.tar.gz` to a networked operator with valid GitHub auth, then accept handback only after `verify-public-verify`, `verify-launch-assets`, `verify-return-packet`, and `prelaunch` all report ready.
+
+## 2026-06-22 - Benchmark Script Cleanup Landed
+
+Shipped:
+
+- Reviewed and added [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/scripts/bench`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/scripts/bench) as the L6 script surface for external benchmark conversion/scoring.
+- Updated [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/bench.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/bench.py) so official LongMemEval and LoCoMo runs reuse session/sample-scoped benchmark history instead of duplicating conversation memory per question.
+- Added [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_bench_scripts.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_bench_scripts.py) and scoped-memory regressions in [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_bench.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_bench.py) to keep deterministic converter/scorer behavior and official benchmark memory scoping locked without committing downloaded datasets.
+- Kept `.treeship/` runtime state and `data/` benchmark payloads untracked.
+
+Verification:
+
+- `python3 -m unittest tests.test_bench_scripts -q` -> passed (`Ran 5 tests`)
+- `python3 -m unittest tests.test_bench.BenchmarkHarnessTest.test_longmemeval_shared_session_reuses_history_memory tests.test_bench.BenchmarkHarnessTest.test_locomo_shared_sample_reuses_history_memory -q` -> passed (`Ran 2 tests`)
+- `python3 -m unittest tests.test_bench -q` -> passed (`Ran 132 tests`)
+
+Blockers:
+
+- Public benchmark claims are still blocked on reproducible commands, pinned dataset hashes, and receipt bundles.
+- LongMemEval judge and LLM answerer paths are optional network/API paths and require explicit credentials/setup.
+
+Next:
+
+- Add docs for the local scoring workflow and keep fixture-sized examples in tests rather than committing official downloaded datasets.
+
 ## 2026-06-22 - Launch Gate Reverified, Still External
 
 Shipped:

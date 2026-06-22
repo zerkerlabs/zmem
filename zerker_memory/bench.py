@@ -1158,6 +1158,7 @@ def _write_retrieval_receipt(run_dir: Path, matrix: dict[str, Any]) -> None:
         "model": "deterministic-oracle-retrieval",
         "judge": "oracle-recall (no LLM judge)",
         "scoring_type": "retrieval-recall",
+        "eval_scope": "per-conversation",
         "public_benchmark_claim": False,
         "claimable_as": "evidence-recall on official LoCoMo/LongMemEval datasets with SHA-pinned provenance",
         "seed": matrix.get("seed"),
@@ -3400,6 +3401,7 @@ def _normalize_longmemeval_record(record: dict[str, Any]) -> dict[str, Any]:
     expected_answer = LOCAL_ABSTAIN_ANSWER if bool(record["should_abstain"]) else str(record["answer"])
     return {
         "question_id": str(record["question_id"]),
+        "session_id": str(record.get("session_id", record.get("sample_id", _longmemeval_scope_key(record)))),
         "split": str(record["split"]),
         "category": str(record["category"]),
         "history_memories": history_memories,
@@ -3429,6 +3431,7 @@ def _adapt_official_longmemeval_record(record: dict[str, Any]) -> dict[str, Any]
                 supporting_facts.append(content)
     return {
         "question_id": qid,
+        "session_id": _longmemeval_scope_key(record),
         "split": "default",
         "category": str(record.get("question_type", "unknown")),
         "history": history,
@@ -3465,6 +3468,7 @@ def _normalize_locomo_record(record: dict[str, Any], index: int) -> dict[str, An
         supporting_index = list(range(len(history_memories)))
     return {
         "question_id": str(question_id),
+        "sample_id": str(record.get("sample_id", record.get("conversation_id", str(question_id).split("#", 1)[0]))),
         "split": str(record.get("split", "default")),
         "category": str(record.get("category", record.get("type", "locomo"))),
         "history_memories": history_memories,
@@ -3474,6 +3478,15 @@ def _normalize_locomo_record(record: dict[str, Any], index: int) -> dict[str, An
         "supporting_index": supporting_index,
         "should_abstain": should_abstain,
     }
+
+
+def _longmemeval_scope_key(record: dict[str, Any]) -> str:
+    session_ids = record.get("haystack_session_ids") or record.get("answer_session_ids") or record.get("session_id")
+    if isinstance(session_ids, list) and session_ids:
+        return "|".join(str(session_id) for session_id in session_ids)
+    if session_ids:
+        return str(session_ids)
+    return str(record.get("question_id", "unknown"))
 
 
 def _locomo_history_items(record: dict[str, Any]) -> list[Any]:
@@ -3877,18 +3890,14 @@ def _run_longmemeval_question(
     answerer: str = "deterministic",
     answerer_model: str = "gpt-4o",
 ) -> dict[str, Any]:
-    scope = f"bench:longmemeval:{question['question_id']}"
-    created_memories = [
-        store.remember(
-            memory["content"],
-            memory_type="semantic",
-            scope=scope,
-            source_kind="human",
-            labels=["benchmark", "longmemeval", question["category"]],
-            actor_id="benchmark",
-        )
-        for memory in question["history_memories"]
-    ]
+    scope = f"bench:longmemeval:{question['session_id']}"
+    created_memories = _remember_benchmark_history_once(
+        store,
+        question["history_memories"],
+        memory_type="semantic",
+        scope=scope,
+        labels=["benchmark", "longmemeval", question["category"]],
+    )
     started = time.perf_counter()
     receipt = store.inject(
         question["query"],
@@ -3958,7 +3967,6 @@ def _run_longmemeval_question(
         "input_history_hash": sha256_text(stable_json(question["history_memories"])),
         "ground_truth_answer_hash": sha256_text(question["expected_answer"]),
         "expected_answer": question["expected_answer"],
-        "expected_answer": question["expected_answer"],
         "supporting_facts_hash": sha256_text(stable_json(question["supporting_facts"])),
         "retrieval_query": question["query"],
         "query_variants": [question["query"]],
@@ -3971,7 +3979,6 @@ def _run_longmemeval_question(
         "supporting_evidence_status": support_status,
         "outcome_reason": outcome_reason,
         "final_answer": answer,
-        "reference": question["expected_answer"],
         "reference": question["expected_answer"],
         "judge": {
             "name": "provisional-exact-match-local",
@@ -4050,6 +4057,34 @@ def _run_longmemeval_question(
     }
 
 
+def _remember_benchmark_history_once(
+    store: MemoryStore,
+    history_memories: list[dict[str, Any]],
+    *,
+    memory_type: str,
+    scope: str,
+    labels: list[str],
+) -> list[Any]:
+    existing = store.list_memories(scope=scope, limit=max(len(history_memories), 1))
+    if not existing:
+        return [
+            store.remember(
+                memory["content"],
+                memory_type=memory_type,
+                scope=scope,
+                source_kind="human",
+                labels=labels,
+                actor_id="benchmark",
+            )
+            for memory in history_memories
+        ]
+
+    existing_by_content: dict[str, Any] = {}
+    for memory in existing:
+        existing_by_content.setdefault(memory.content, memory)
+    return [existing_by_content[memory["content"]] for memory in history_memories if memory["content"] in existing_by_content]
+
+
 def _run_locomo_question(
     store: MemoryStore,
     question: dict[str, Any],
@@ -4065,18 +4100,14 @@ def _run_locomo_question(
     answerer: str = "deterministic",
     answerer_model: str = "gpt-4o",
 ) -> dict[str, Any]:
-    scope = f"bench:locomo:{question['question_id']}"
-    created_memories = [
-        store.remember(
-            memory["content"],
-            memory_type="episodic",
-            scope=scope,
-            source_kind="human",
-            labels=["benchmark", "locomo", question["category"]],
-            actor_id="benchmark",
-        )
-        for memory in question["history_memories"]
-    ]
+    scope = f"bench:locomo:{question['sample_id']}"
+    created_memories = _remember_benchmark_history_once(
+        store,
+        question["history_memories"],
+        memory_type="episodic",
+        scope=scope,
+        labels=["benchmark", "locomo", question["category"]],
+    )
     started = time.perf_counter()
     receipt = store.inject(
         question["query"],
