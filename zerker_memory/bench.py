@@ -2880,6 +2880,8 @@ def _matrix_comparison_mode_summary(mode_comparisons: Any) -> list[dict[str, Any
     for mode_comparison in mode_comparisons:
         if not isinstance(mode_comparison, dict):
             continue
+        nested_comparison = mode_comparison.get("comparison")
+        nested_questions = nested_comparison.get("questions") if isinstance(nested_comparison, dict) else None
         budget_context_question_ids = _matrix_comparison_mode_budget_context_question_ids(mode_comparison)
         summaries.append(
             {
@@ -2889,6 +2891,8 @@ def _matrix_comparison_mode_summary(mode_comparisons: Any) -> list[dict[str, Any
                 "question_summary": _question_summary_payload(mode_comparison.get("question_summary")),
                 "budget_context_question_count": len(budget_context_question_ids),
                 "budget_context_question_ids": budget_context_question_ids,
+                "memory_count_deltas": _comparison_memory_count_deltas(nested_questions),
+                "efficiency_deltas": _comparison_efficiency_deltas(nested_questions),
                 "matrix_run_proofs": _matrix_comparison_mode_proof_summary(mode_comparison.get("matrix_runs")),
             }
         )

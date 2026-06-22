@@ -1698,6 +1698,82 @@ def _append_benchmark_mode_proof_lines(lines: list[str], mode_proofs: object) ->
         )
 
 
+def _mode_comparison_memory_count_deltas(mode_comparison: object) -> list[dict[str, object]]:
+    if not isinstance(mode_comparison, dict):
+        return []
+    memory_count_deltas = mode_comparison.get("memory_count_deltas")
+    if isinstance(memory_count_deltas, list):
+        return [delta for delta in memory_count_deltas if isinstance(delta, dict)]
+    nested_comparison = mode_comparison.get("comparison")
+    if not isinstance(nested_comparison, dict):
+        return []
+    question_deltas: list[dict[str, object]] = []
+    retrieval_mode = mode_comparison.get("retrieval_mode")
+    for question in nested_comparison.get("questions", []):
+        if not isinstance(question, dict):
+            continue
+        question_id = question.get("question_id")
+        for delta in question.get("deltas", []):
+            if not isinstance(delta, dict):
+                continue
+            if all(
+                delta.get(key) in (None, 0)
+                for key in (
+                    "retrieved_memory_count_delta",
+                    "injected_memory_count_delta",
+                    "withheld_memory_count_delta",
+                )
+            ):
+                continue
+            question_deltas.append(
+                {
+                    "question_id": question_id,
+                    "retrieval_mode": delta.get("retrieval_mode") or retrieval_mode,
+                    "retrieved_memory_count_delta": delta.get("retrieved_memory_count_delta"),
+                    "injected_memory_count_delta": delta.get("injected_memory_count_delta"),
+                    "withheld_memory_count_delta": delta.get("withheld_memory_count_delta"),
+                }
+            )
+    return question_deltas
+
+
+def _mode_comparison_efficiency_deltas(mode_comparison: object) -> list[dict[str, object]]:
+    if not isinstance(mode_comparison, dict):
+        return []
+    efficiency_deltas = mode_comparison.get("efficiency_deltas")
+    if isinstance(efficiency_deltas, list):
+        return [delta for delta in efficiency_deltas if isinstance(delta, dict)]
+    nested_comparison = mode_comparison.get("comparison")
+    if not isinstance(nested_comparison, dict):
+        return []
+    question_deltas: list[dict[str, object]] = []
+    retrieval_mode = mode_comparison.get("retrieval_mode")
+    for question in nested_comparison.get("questions", []):
+        if not isinstance(question, dict):
+            continue
+        question_id = question.get("question_id")
+        for delta in question.get("deltas", []):
+            if not isinstance(delta, dict):
+                continue
+            if all(
+                delta.get(key) in (None, 0)
+                for key in (
+                    "retrieval_latency_ms_delta",
+                    "total_tokens_delta",
+                )
+            ):
+                continue
+            question_deltas.append(
+                {
+                    "question_id": question_id,
+                    "retrieval_mode": delta.get("retrieval_mode") or retrieval_mode,
+                    "retrieval_latency_ms_delta": delta.get("retrieval_latency_ms_delta"),
+                    "total_tokens_delta": delta.get("total_tokens_delta"),
+                }
+            )
+    return question_deltas
+
+
 def _append_benchmark_mode_comparison_lines(lines: list[str], mode_comparisons: object) -> None:
     if not isinstance(mode_comparisons, list):
         return
@@ -1750,6 +1826,21 @@ def _append_benchmark_mode_comparison_lines(lines: list[str], mode_comparisons: 
             lines.append(
                 f"Mode comparison {retrieval_mode} budget context ids: "
                 f"{', '.join(str(question_id) for question_id in budget_context_ids)}"
+            )
+        for delta in _mode_comparison_memory_count_deltas(mode_comparison):
+            lines.append(
+                "Mode comparison "
+                f"{retrieval_mode} memory count delta {delta.get('question_id') or 'unknown'}: "
+                f"retrieved={_format_benchmark_cli_delta(delta.get('retrieved_memory_count_delta'))} "
+                f"injected={_format_benchmark_cli_delta(delta.get('injected_memory_count_delta'))} "
+                f"withheld={_format_benchmark_cli_delta(delta.get('withheld_memory_count_delta'))}"
+            )
+        for delta in _mode_comparison_efficiency_deltas(mode_comparison):
+            lines.append(
+                "Mode comparison "
+                f"{retrieval_mode} efficiency delta {delta.get('question_id') or 'unknown'}: "
+                f"retrieval_latency_ms={_format_benchmark_cli_delta(delta.get('retrieval_latency_ms_delta'))} "
+                f"total_tokens={_format_benchmark_cli_delta(delta.get('total_tokens_delta'))}"
             )
         matrix_run_proofs = mode_comparison.get("matrix_run_proofs", [])
         if not isinstance(matrix_run_proofs, list):
@@ -2007,6 +2098,7 @@ def render_benchmark_summary(result: dict[str, object]) -> str:
             "benchmark": target.get("benchmark") if isinstance(target, dict) else None,
             "dataset": target.get("dataset") if isinstance(target, dict) else None,
             "split": target.get("split") if isinstance(target, dict) else None,
+            "context_budget_tokens": target.get("context_budget_tokens") if isinstance(target, dict) else None,
         }
         lines = [
             "Benchmark matrix comparison",

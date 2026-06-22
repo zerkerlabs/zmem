@@ -1205,6 +1205,247 @@ class BenchmarkHarnessTest(unittest.TestCase):
                 for expected_mode_line in expected_mode_lines:
                     self.assertIn(expected_mode_line, output)
 
+    def test_cli_compare_matrices_summary_only_surfaces_budget_context_and_delta_details(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            dataset = self._write_richer_locomo_jsonl(tmp_path)
+            out = tmp_path / "bench"
+            first = run_benchmark_matrix(
+                out,
+                "locomo",
+                dataset=dataset,
+                split="dev",
+                seed=0,
+                run_id="summary-matrix-budget-a",
+                context_budget_tokens=200,
+            )
+            second = run_benchmark_matrix(
+                out,
+                "locomo",
+                dataset=dataset,
+                split="dev",
+                seed=0,
+                run_id="summary-matrix-budget-b",
+                context_budget_tokens=200,
+            )
+            comparison_path = tmp_path / "matrix-comparison-budget" / "benchmark-matrix-comparison.json"
+
+            output = self._main_text(
+                [
+                    "bench",
+                    "compare-matrices",
+                    str(first["matrix_path"]),
+                    str(second["matrix_path"]),
+                    "--out",
+                    str(comparison_path),
+                    "--summary-only",
+                ]
+            )
+
+            persisted_comparison = json.loads(comparison_path.read_text(encoding="utf-8"))
+            anchor_mode = next(
+                mode for mode in persisted_comparison["mode_comparisons"] if mode["retrieval_mode"] == "fts"
+            )
+            budget_context_ids = [
+                question["question_id"]
+                for question in anchor_mode["comparison"]["questions"]
+                if any(run.get("budget_dropped_memories") for run in question.get("runs", []))
+            ]
+            expected_memory_count_deltas = [
+                {
+                    "question_id": question["question_id"],
+                    "retrieval_mode": delta["retrieval_mode"],
+                    "retrieved_memory_count_delta": delta.get("retrieved_memory_count_delta"),
+                    "injected_memory_count_delta": delta.get("injected_memory_count_delta"),
+                    "withheld_memory_count_delta": delta.get("withheld_memory_count_delta"),
+                }
+                for question in anchor_mode["comparison"]["questions"]
+                for delta in question.get("deltas", [])
+                if any(
+                    delta.get(key) not in (None, 0)
+                    for key in (
+                        "retrieved_memory_count_delta",
+                        "injected_memory_count_delta",
+                        "withheld_memory_count_delta",
+                    )
+                )
+            ]
+            expected_efficiency_deltas = [
+                {
+                    "question_id": question["question_id"],
+                    "retrieval_mode": delta["retrieval_mode"],
+                    "retrieval_latency_ms_delta": delta.get("retrieval_latency_ms_delta"),
+                    "total_tokens_delta": delta.get("total_tokens_delta"),
+                }
+                for question in anchor_mode["comparison"]["questions"]
+                for delta in question.get("deltas", [])
+                if any(
+                    delta.get(key) not in (None, 0)
+                    for key in (
+                        "retrieval_latency_ms_delta",
+                        "total_tokens_delta",
+                    )
+                )
+            ]
+
+            self.assertIn("Benchmark matrix comparison", output)
+            self.assertIn("Verification: ok", output)
+            self.assertIn("Matrix count: 2", output)
+            self.assertIn("Benchmark: locomo", output)
+            self.assertIn(f"Dataset: {dataset}", output)
+            self.assertIn("Split: dev", output)
+            self.assertIn("Context budget tokens: 200", output)
+            self.assertIn(
+                "Mode comparison fts budget context ids: " + ", ".join(budget_context_ids),
+                output,
+            )
+            for delta in expected_memory_count_deltas:
+                self.assertIn(
+                    "Mode comparison fts memory count delta "
+                    f"{delta['question_id']}: "
+                    f"retrieved={delta['retrieved_memory_count_delta']:+d} "
+                    f"injected={delta['injected_memory_count_delta']:+d} "
+                    f"withheld={delta['withheld_memory_count_delta']:+d}",
+                    output,
+                )
+            for delta in expected_efficiency_deltas:
+                self.assertIn(
+                    "Mode comparison fts efficiency delta "
+                    f"{delta['question_id']}: retrieval_latency_ms=",
+                    output,
+                )
+            for matrix_run in anchor_mode["matrix_runs"]:
+                self.assertIn(
+                    "Mode comparison fts proof hop "
+                    f"{matrix_run['matrix_run_id']}: result_hash={matrix_run['result_hash']} "
+                    f"aggregate_merkle_root={matrix_run['aggregate_merkle_root']}",
+                    output,
+                )
+            self.assertIn(f"Comparison JSON: {comparison_path}", output)
+            self.assertIn("Report: ", output)
+            self.assertIn("Dashboard: ", output)
+
+    def test_cli_matrix_comparison_verify_report_and_dashboard_summary_only_surface_delta_details(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            dataset = self._write_richer_locomo_jsonl(tmp_path)
+            out = tmp_path / "bench"
+            compare_out = tmp_path / "matrix-comparison"
+            first = run_benchmark_matrix(
+                out,
+                "locomo",
+                dataset=dataset,
+                split="dev",
+                seed=0,
+                run_id="verify-matrix-budget-a",
+                context_budget_tokens=200,
+            )
+            second = run_benchmark_matrix(
+                out,
+                "locomo",
+                dataset=dataset,
+                split="dev",
+                seed=0,
+                run_id="verify-matrix-budget-b",
+                context_budget_tokens=200,
+            )
+            comparison = self._main_json(
+                [
+                    "bench",
+                    "compare-matrices",
+                    str(first["matrix_path"]),
+                    str(second["matrix_path"]),
+                    "--out",
+                    str(compare_out),
+                ]
+            )
+            comparison_path = Path(comparison["comparison_path"])
+            comparison_payload = json.loads(comparison_path.read_text(encoding="utf-8"))
+            anchor_mode = next(
+                mode for mode in comparison_payload["mode_comparisons"] if mode["retrieval_mode"] == "fts"
+            )
+            budget_context_ids = [
+                question["question_id"]
+                for question in anchor_mode["comparison"]["questions"]
+                if any(run.get("budget_dropped_memories") for run in question.get("runs", []))
+            ]
+            expected_memory_count_deltas = [
+                {
+                    "question_id": question["question_id"],
+                    "retrieval_mode": delta["retrieval_mode"],
+                    "retrieved_memory_count_delta": delta.get("retrieved_memory_count_delta"),
+                    "injected_memory_count_delta": delta.get("injected_memory_count_delta"),
+                    "withheld_memory_count_delta": delta.get("withheld_memory_count_delta"),
+                }
+                for question in anchor_mode["comparison"]["questions"]
+                for delta in question.get("deltas", [])
+                if any(
+                    delta.get(key) not in (None, 0)
+                    for key in (
+                        "retrieved_memory_count_delta",
+                        "injected_memory_count_delta",
+                        "withheld_memory_count_delta",
+                    )
+                )
+            ]
+            expected_efficiency_deltas = [
+                {
+                    "question_id": question["question_id"],
+                    "retrieval_mode": delta["retrieval_mode"],
+                    "retrieval_latency_ms_delta": delta.get("retrieval_latency_ms_delta"),
+                    "total_tokens_delta": delta.get("total_tokens_delta"),
+                }
+                for question in anchor_mode["comparison"]["questions"]
+                for delta in question.get("deltas", [])
+                if any(
+                    delta.get(key) not in (None, 0)
+                    for key in (
+                        "retrieval_latency_ms_delta",
+                        "total_tokens_delta",
+                    )
+                )
+            ]
+
+            verify_output = self._main_text(["bench", "verify", str(comparison_path), "--summary-only"])
+            report_output = self._main_text(["bench", "report", str(comparison_path), "--summary-only"])
+            dashboard_output = self._main_text(["bench", "dashboard", str(comparison_path), "--summary-only"])
+
+            for output in (verify_output, report_output, dashboard_output):
+                self.assertIn("Artifact: matrix_comparison", output)
+                self.assertIn("Verification: ok", output)
+                self.assertIn("Context budget tokens: 200", output)
+                self.assertIn(
+                    "Mode comparison fts budget context ids: " + ", ".join(budget_context_ids),
+                    output,
+                )
+                for delta in expected_memory_count_deltas:
+                    self.assertIn(
+                        "Mode comparison fts memory count delta "
+                        f"{delta['question_id']}: "
+                        f"retrieved={delta['retrieved_memory_count_delta']:+d} "
+                        f"injected={delta['injected_memory_count_delta']:+d} "
+                        f"withheld={delta['withheld_memory_count_delta']:+d}",
+                        output,
+                    )
+                for delta in expected_efficiency_deltas:
+                    latency_delta = delta["retrieval_latency_ms_delta"]
+                    token_delta = delta["total_tokens_delta"]
+                    latency_display = f"{latency_delta:+.3f}" if isinstance(latency_delta, float) else f"{latency_delta:+d}"
+                    token_display = f"{token_delta:+.3f}" if isinstance(token_delta, float) else f"{token_delta:+d}"
+                    self.assertIn(
+                        "Mode comparison fts efficiency delta "
+                        f"{delta['question_id']}: retrieval_latency_ms={latency_display} "
+                        f"total_tokens={token_display}",
+                        output,
+                    )
+                for matrix_run in anchor_mode["matrix_runs"]:
+                    self.assertIn(
+                        "Mode comparison fts proof hop "
+                        f"{matrix_run['matrix_run_id']}: result_hash={matrix_run['result_hash']} "
+                        f"aggregate_merkle_root={matrix_run['aggregate_merkle_root']}",
+                        output,
+                    )
+
     def test_richer_same_adapter_matrix_comparison_report_and_dashboard_surfaces_mode_summaries(self):
         cases = (
             (
