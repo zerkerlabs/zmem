@@ -7296,6 +7296,7 @@ def write_public_verify_script(*, script_path: Path, logs_dir_path: Path) -> Non
                 ')"',
                 "}",
                 "write_result() {",
+                "  set +u",
                 '  local exit_code="${1:-0}"',
                 '  local ok="false"',
                 '  local details="public verify failed"',
