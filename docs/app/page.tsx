@@ -19,14 +19,14 @@ const areas = [
   {
     title: 'Prove and Benchmark',
     href: '/docs/receipts',
-    body: 'Inspect receipts and run benchmark evidence without turning internal launch operations into public documentation.',
+    body: 'Trace what memory influenced an answer, package evidence, and compare retrieval quality with reproducible benchmark runs.',
   },
 ];
 
 const stats = [
   ['8', 'core guides'],
-  ['6/6', 'verify logs'],
-  ['8/8', 'launch assets'],
+  ['MCP', 'agent ready'],
+  ['Local', 'proof-first'],
 ];
 
 export default function HomePage() {
@@ -36,10 +36,10 @@ export default function HomePage() {
         <section className="zmem-hero">
           <div>
             <p className="zmem-eyebrow">ZMem documentation</p>
-            <h1 className="zmem-title">Memory docs for agents that need receipts.</h1>
+            <h1 className="zmem-title">Build reliable memory into AI agents.</h1>
             <p className="zmem-copy">
-              Full guides for installing ZMem, connecting agents, managing the memory lifecycle,
-              verifying receipts, handing off work, running benchmarks, and governing provider-backed retrieval.
+              Learn how to install ZMem, connect agent tools, manage memory across sessions,
+              inspect provenance, hand off work, and measure retrieval quality.
             </p>
             <div className="zmem-actions">
               <Link className="zmem-button primary" href="/docs">
