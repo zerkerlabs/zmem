@@ -1,0 +1,13 @@
+{
+  "title": "ZMem",
+  "pages": [
+    "index",
+    "install",
+    "agents",
+    "builders",
+    "memory-lifecycle",
+    "receipts",
+    "handoff",
+    "benchmarks"
+  ]
+}

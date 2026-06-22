@@ -1,0 +1,50 @@
+---
+title: Install
+description: Bootstrap ZMem locally and verify the first readiness snapshot.
+---
+
+## One-Command Bootstrap
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/zerkerlabs/zmem/main/install.sh | bash
+cd "${ZERKER_MEMORY_HOME:-$HOME/.zerker-memory}/repo"
+zmem status --summary-only
+```
+
+The installer creates the local environment, initializes `.zerker/`, runs the day-one checks, generates the manual agent pack, and ends on the compact readiness snapshot.
+
+## From A Fresh Clone
+
+```bash
+bash install.sh
+```
+
+For a manual editable setup:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python3 -m pip install -e .
+zmem init --with-policy --with-agent-prompt --with-mcp-config --with-provider-config
+zmem status --summary-only
+zmem eval
+zmem doctor
+```
+
+## Readiness Check
+
+`zmem status --summary-only` is the shortest truth surface. It reports workspace state, proof counts, agent handoff readiness, and the next useful command.
+
+Use it after installs, restores, benchmark runs, release proof refreshes, and agent config changes.
+
+## Release Smoke
+
+Before tagging or public launch work:
+
+```bash
+python3 scripts/release_smoke.py --summary-only
+python3 scripts/release_smoke.py --require-install-mode packaged
+```
+
+The summary path refreshes the release packet and checks the local launch contract. The packaged path is for final clean-shell public proof.
+

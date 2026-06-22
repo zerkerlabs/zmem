@@ -1,0 +1,41 @@
+---
+title: Receipts
+description: Verify what memory influenced an action and where the supporting evidence came from.
+---
+
+Receipts are the core ZMem wedge. A memory system that only retrieves facts can be useful; a memory system that proves what influenced an action can be trusted, debugged, benchmarked, and audited.
+
+## Action Explanation
+
+After `zmem inject` returns an action id:
+
+```bash
+zmem why <action-id>
+zmem verify <action-id>
+```
+
+## Receipt Bundle
+
+```bash
+zmem bundle <action-id> --out-dir .zerker/exports
+zmem bundle verify .zerker/exports/<bundle>.bundle.json
+```
+
+A receipt bundle proves which governed memories were available before the action and whether the receipt Merkle root matches the supporting event chain.
+
+Core fields include the bundle hash, action receipt, supporting memories, supporting events, computed Merkle root, receipt Merkle root, and verification status.
+
+## Treeship Statement
+
+```bash
+zmem export <action-id> --format treeship --out-dir .zerker/exports
+zmem treeship doctor
+zmem treeship publish <action-id> --dry-run --command-template "treeship prove {statement} --action {action_id}"
+```
+
+The Treeship export is a portable statement derived from a verified receipt bundle. It records enough evidence to make the proof shareable without turning local memory into a hosted dependency.
+
+## Provenance Direction
+
+The next security demo should make write provenance vivid: inject a poisoned memory, let an agent act on it in a later session, then walk the receipt chain back to the source session and tool call that introduced the belief.
+

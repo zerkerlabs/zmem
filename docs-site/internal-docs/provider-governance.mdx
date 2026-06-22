@@ -1,0 +1,31 @@
+---
+title: Provider Governance
+description: Internal plan for embeddings and reranking without weakening local-first trust.
+---
+
+ZMem can use external memory providers and future hosted retrieval providers, but they must be explicit, governed, and receipted. Local SQLite/FTS remains the default source of truth.
+
+## External Memory Providers
+
+Mirror external provider results into review instead of trusting recall directly:
+
+```bash
+zmem provider init
+zmem provider doctor
+zmem provider search "deploy runbook" --provider mem0 --user-id <user>
+zmem provider import "deploy runbook" --provider mem0 --scope project --type procedural
+zmem queue --scope project
+```
+
+## Retrieval Provider Rules
+
+- Local FTS remains the default retrieval mode.
+- Hosted embeddings and rerankers are never used implicitly.
+- Hosted providers require config plus a runtime opt-in flag.
+- Policy, lifecycle, scope, and authority gates prune candidates before provider ranking.
+- Receipts record provider identity, config hash, rank transitions, fallback status, and safe metadata.
+- Receipts do not store secrets, raw vectors, raw provider requests, or hidden provider responses.
+
+## Benchmark Reproducibility
+
+Provider-backed runs must include a redacted config hash. Comparisons should warn when benchmark names, dataset hashes, filtered dataset hashes, question counts, retrieval modes, or provider config hashes differ.

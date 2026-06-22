@@ -1,0 +1,41 @@
+---
+title: Agents
+description: Connect ZMem to Codex, Claude Code, Cursor, OpenClaw, Hermes, and generic MCP clients.
+---
+
+Agents should use memory through a narrow, auditable interface. ZMem provides MCP config, prompt guidance, manual packs, checklists, and smoke commands for common clients.
+
+## Generate Config
+
+```bash
+zmem agent config codex --include-policy
+zmem agent config claude-code --include-policy
+zmem agent install codex
+zmem agent install claude-code
+zmem status --summary-only
+```
+
+## Manual Pack
+
+For clients that do not accept direct config writes:
+
+```bash
+zmem agent pack --summary-only
+zmem agent checklist openclaw
+zmem agent checklist generic
+```
+
+The pack includes the exact export path, doctor command, prompt path, snippet fallback, embedded server JSON, and proof smoke.
+
+## MCP Server
+
+```bash
+zmem --db .zerker/memory.sqlite mcp
+```
+
+Use `examples/mcp_config.example.json` as the reference shape for MCP-capable clients.
+
+## Agent Rule
+
+Agents should request approved memory before acting, cite injected memory in their reasoning surface, and leave behind a receipt for memory-influenced actions. The point is not just recall; it is accountable recall.
+

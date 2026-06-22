@@ -1,0 +1,73 @@
+---
+title: Benchmarks
+description: Run proof-backed synthetic, LongMemEval-style, and LoCoMo-style benchmark evidence.
+---
+
+ZMem should compete on benchmark accuracy, latency, token efficiency, and proof-backed reproducibility. The current benchmark harness is designed for internal development and honest public evidence, not unsupported leaderboard claims.
+
+## Synthetic Matrix
+
+```bash
+zmem bench matrix synthetic \
+  --out .zerker/bench \
+  --seed 0 \
+  --run-id synthetic-local
+```
+
+Generate the engineering and public evidence surfaces:
+
+```bash
+zmem bench dashboard .zerker/bench/synthetic-local
+zmem bench public-page .zerker/bench/synthetic-local
+```
+
+## Verify Evidence
+
+```bash
+zmem bench verify .zerker/bench/synthetic-local/fts/benchmark-result.json
+zmem bench verify .zerker/bench/synthetic-local/fts-multihop/benchmark-result.json
+```
+
+## LongMemEval-Style Fixtures
+
+```bash
+zmem bench matrix longmemeval \
+  --dataset /path/to/local-longmemeval.jsonl \
+  --split dev \
+  --out .zerker/bench \
+  --seed 0 \
+  --run-id longmemeval-dev-local
+```
+
+## LoCoMo-Style Fixtures
+
+```bash
+zmem bench matrix locomo \
+  --dataset /path/to/local-locomo.jsonl \
+  --split dev \
+  --out .zerker/bench \
+  --seed 0 \
+  --run-id locomo-dev-local
+```
+
+## Public Claim Rules
+
+Allowed before official submissions:
+
+- "ZMem publishes proof-backed local benchmark evidence."
+- "This matrix is reproducible from the attached artifact hashes and receipts."
+- "This local scaffold tracks retrieval accuracy, latency, tokens, and proof verification."
+
+Do not claim official LongMemEval or LoCoMo ranking, vendor superiority, or canonical leaderboard score from local scaffold output.
+
+## What To Track
+
+- accuracy and category accuracy,
+- recall and precision evidence where ground-truth support exists,
+- p50, p95, and p99 retrieval latency,
+- total tokens and injected context tokens,
+- retrieved, injected, withheld, and budget-dropped memory counts,
+- verification status,
+- matrix hash and comparison hash,
+- optional Treeship proof URL when public proof publishing is enabled.
+

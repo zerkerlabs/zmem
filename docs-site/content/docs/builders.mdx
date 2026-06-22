@@ -1,0 +1,56 @@
+---
+title: Builders
+description: Build tools, agents, and product workflows on top of ZMem.
+---
+
+ZMem is useful as a standalone memory tool, but the deeper value comes from building agent workflows that can remember, explain, and hand off state without hiding where beliefs came from.
+
+## Builder Surfaces
+
+Use the smallest surface that fits your integration:
+
+- **CLI:** best for scripts, local workflows, demos, and CI checks.
+- **MCP server:** best for agents that need memory through a tool protocol.
+- **Local SQLite store:** best for product surfaces that need direct inspection or dashboards.
+- **Receipts and bundles:** best for audit, debugging, and sharing evidence.
+- **Handoff artifacts:** best for moving state across projects, machines, or agent sessions.
+
+## Recommended Flow
+
+```bash
+zmem init --with-policy --with-agent-prompt --with-mcp-config
+zmem status --summary-only
+zmem agent pack --summary-only
+zmem --db .zerker/memory.sqlite mcp
+```
+
+When an agent takes a memory-influenced action, keep the receipt id. That id is the bridge between the user-facing answer and the proof path.
+
+```bash
+zmem why <action-id>
+zmem verify <action-id>
+zmem bundle <action-id> --out-dir .zerker/exports
+```
+
+## Product Patterns
+
+### Agent Console
+
+Show memory status, review queues, receipt counts, and recent handoffs. Users should not need to know the storage schema to understand what an agent can currently trust.
+
+### Workflow Handoff
+
+Create handoff artifacts at the end of meaningful work so another agent can resume with approved memory and proof context instead of a pasted transcript.
+
+```bash
+zmem handoff --summary-only
+zmem --db .zerker/imported.sqlite restore --handoff-dir .zerker/handoff
+```
+
+### Proof View
+
+For any important action, expose a compact explanation: what memory was retrieved, what was injected, what was withheld, and whether the receipt verifies locally.
+
+## Design Principle
+
+Do not make users choose between convenience and trust. The best ZMem integrations make memory feel native to the agent while keeping provenance, review, and verification one click away.

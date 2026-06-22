@@ -1,0 +1,35 @@
+---
+title: Handoff
+description: Package memory, receipts, policy, and restore instructions for another project, machine, or agent.
+---
+
+Handoff lets an agent or operator move useful state without dumping an entire chat transcript. The receiving side gets memory state, proof artifacts, and restore instructions.
+
+## Create A Handoff
+
+```bash
+zmem handoff --summary-only
+```
+
+This writes a handoff directory under `.zerker/handoff`.
+
+## Restore A Handoff
+
+```bash
+zmem --db .zerker/imported.sqlite restore --handoff-dir .zerker/handoff
+```
+
+Run status after restore:
+
+```bash
+zmem --db .zerker/imported.sqlite status --summary-only
+```
+
+## What Good Handoff Includes
+
+- memory records that are safe to carry forward,
+- receipts and event history needed for verification,
+- policy and agent prompt context,
+- clear restore commands,
+- enough provenance for the receiving agent to know what it is allowed to trust.
+

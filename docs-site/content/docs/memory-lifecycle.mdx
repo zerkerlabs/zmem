@@ -1,0 +1,45 @@
+---
+title: Memory Lifecycle
+description: Review, approve, revoke, restore, and inspect the state of agent memory.
+---
+
+ZMem treats memory as governed state. Useful facts can be proposed, reviewed, promoted, revoked, restored, and explained instead of silently becoming permanent context.
+
+## Daily Commands
+
+```bash
+zmem status --summary-only
+zmem queue
+zmem promote <memory-id>
+zmem revoke <memory-id>
+```
+
+## Project Stores
+
+Most local workflows use a project store:
+
+```bash
+zmem --db .zerker/memory.sqlite ui
+```
+
+The local console should make memory status visible: proposed, approved, revoked, expired, withheld, injected, or budget-dropped.
+
+## Snapshots
+
+Export a portable memory-state snapshot:
+
+```bash
+zmem snapshot --out-dir .zerker/exports
+zmem snapshot verify .zerker/exports/<snapshot>.snapshot.json
+```
+
+Restore into a new empty store:
+
+```bash
+zmem --db .zerker/restored.sqlite restore .zerker/exports/<snapshot>.snapshot.json
+```
+
+## Product Principle
+
+Memory should be easy for agents to use and hard to smuggle into trust. Status, provenance, and revocation need to be first-class product surfaces.
+

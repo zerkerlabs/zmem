@@ -1,0 +1,57 @@
+---
+title: Launch Proof
+description: Internal public-alpha launch proof checklist.
+---
+
+The Phase 1 public alpha gate proves the live public repo and raw installer from a clean shell, captures launch assets, and hands back a return packet.
+
+## Repo-Local Preflight
+
+```bash
+bash scripts/gstack_check.sh
+python3 scripts/release_smoke.py --summary-only
+zmem release-pack --summary-only
+zmem verify-operator-packet .zerker/launch-proof/public-verify-operator-packet.tar.gz --summary-only
+```
+
+Expected state:
+
+- release pack reports launch proof and handoff are ok,
+- operator packet reports ready,
+- any remaining blockers are external public verification or launch assets.
+
+## Clean-Shell Targets
+
+- `https://github.com/zerkerlabs/zmem`
+- `https://raw.githubusercontent.com/zerkerlabs/zmem/main/install.sh`
+
+## Required Public Verify Logs
+
+The external run must return these six logs:
+
+- `operator-packet-verify.log`
+- `curl-install.log`
+- `first-run.log`
+- `release-pack.log`
+- `packaged-release-smoke.log`
+- `prelaunch.log`
+
+## Required Launch Assets
+
+- `assets/install-status.png`
+- `assets/first-run-status.png`
+- `assets/release-pack-summary.png`
+- `assets/proof-report-overview.png`
+- `assets/transcript-proof.png`
+- `assets/ui-release-pack.gif`
+- `assets/handoff-restore-terminal.png`
+- `assets/ui-handoff-restore.gif`
+
+## Finalize
+
+```bash
+.zerker/launch-proof/FINALIZE_RETURN_PACKET.sh
+zmem verify-return-packet .zerker/launch-proof/public-verify-return-packet.tar.gz --summary-only
+```
+
+Accept the handback only when the return packet verifies, all six logs are present, public verify is passing, and all eight assets are captured.
