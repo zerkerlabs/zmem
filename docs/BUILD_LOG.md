@@ -2,6 +2,68 @@
 
 This file tracks product-build slices so parallel Codex runs and hourly automations do not become invisible.
 
+## 2026-06-22 - Launch Gate Revalidated After Benchmark And Retrieval Changes
+
+Shipped:
+
+- Stayed strictly on the Phase 1 launch-oversight track and updated [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/BUILD_LOG.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/BUILD_LOG.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/LAUNCH_READINESS_NOW.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/LAUNCH_READINESS_NOW.md), and [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md).
+- Re-ran `bash scripts/gstack_check.sh`, `git status --short -uno`, `git remote -v`, `gh auth status`, the required `python3 scripts/release_smoke.py --summary-only`, `python3 -m zerker_memory status --summary-only`, `python3 -m zerker_memory verify-operator-packet .zerker/launch-proof/public-verify-operator-packet.tar.gz --summary-only`, `python3 -m zerker_memory verify-public-verify --summary-only`, `python3 -m zerker_memory verify-launch-assets --summary-only`, `python3 -m zerker_memory verify-return-packet .zerker/launch-proof/public-verify-return-packet.tar.gz --summary-only`, and `python3 -m zerker_memory prelaunch --summary-only`.
+- Reconfirmed the durable Phase 1 gate remained unchanged after the later retrieval and benchmark slices: `origin` still targets `https://github.com/zerkerlabs/zmem.git`, `gh auth status` still fails because the active `rezker1` token is invalid, operator packet stayed `Ready: yes`, public verify stayed `0/6`, launch assets stayed `0/8`, return packet stayed `Ready: no`, and strict publish stayed blocked only on `launch_assets` plus `public_verify_evidence`.
+- Kept the slice surgical: no product copy, installer, README, QUICKSTART, release smoke code, benchmark code, retrieval code, or generated `.zerker/launch-proof/` artifacts were edited by hand. The focused stale-target scan across active launch entrypoints plus supporting scripts, tests, landing, site, and `zerker_memory` surfaces found no active stale public repo, raw-installer, `rezkerlabs`, or stale GitHub repo targets.
+
+Verification:
+
+- `bash scripts/gstack_check.sh` -> `GSTACK_OK source=codex-skills path=/Users/zzo/.Codex/skills/gstack/bin command_on_path=no`
+- `git status --short -uno` -> dirty working tree still includes only the in-flight benchmark/doc surfaces: `docs/BUILD_LOG.md`, `docs/CURRENT_STATE.md`, `docs/SWARM_OPERATION_TRACKER.md`, `tests/test_bench.py`, `zerker_memory/bench.py`, and `zerker_memory/cli.py`
+- `git remote -v` -> `origin` fetch/push target is `https://github.com/zerkerlabs/zmem.git`
+- `gh auth status` -> failed; active `rezker1` token invalid
+- `python3 scripts/release_smoke.py --summary-only` -> passed; operator packet `Ready: yes`, public verify `0/6`, launch assets `0/8`, return packet pending, strict publish blocked only on `launch_assets` plus `public_verify_evidence`
+- `python3 -m zerker_memory status --summary-only` -> passed; workspace ready, memory proof ready, release packet ready, strict publish still `no`
+- `python3 -m zerker_memory verify-operator-packet .zerker/launch-proof/public-verify-operator-packet.tar.gz --summary-only` -> `Ready: yes`
+- `python3 -m zerker_memory verify-public-verify --summary-only` -> `Ready: no`; missing all `6/6` clean-shell logs and packaged-install receipt evidence
+- `python3 -m zerker_memory verify-launch-assets --summary-only` -> `Ready: no`; missing all `8/8` launch assets
+- `python3 -m zerker_memory verify-return-packet .zerker/launch-proof/public-verify-return-packet.tar.gz --summary-only` -> `Ready: no`; still pending clean-shell evidence plus launch assets
+- `python3 -m zerker_memory prelaunch --summary-only` -> blocked only on `launch_assets` and `public_verify_evidence`
+- active-surface stale-target scan across launch entrypoints plus supporting scripts/tests/site surfaces -> no non-historical stale public repo, stale raw installer, `rezkerlabs`, or stale GitHub repo targets
+
+Blockers:
+
+- Phase 1 launch proof remains externally blocked on `0/6` clean-shell public-verify logs and `0/8` launch assets.
+- This shell still cannot complete repo publish proof, clean-shell evidence capture, site deploy/DNS confirmation, or the first alpha tag because GitHub auth is invalid and the required external networked shell is out of scope here.
+
+Next:
+
+- Do not start new broad launch work locally. Hand `.zerker/launch-proof/CLEAN_SHELL_OPERATOR_PROMPT.md`, `.zerker/launch-proof/CLEAN_SHELL_PUBLIC_VERIFY.md`, and `.zerker/launch-proof/public-verify-operator-packet.tar.gz` to a networked operator with valid GitHub auth, then accept handback only after `verify-public-verify`, `verify-launch-assets`, `verify-return-packet`, and `prelaunch` all report ready.
+
+## 2026-06-22 - Matrix Comparison CLI Summary Parity Landed
+
+Shipped:
+
+- Stayed strictly on the benchmark-harness track and updated [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/bench.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/bench.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/cli.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/cli.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_bench.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_bench.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/BUILD_LOG.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/BUILD_LOG.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md), and [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md).
+- Landed one narrow benchmark slice only: matrix-comparison artifact summaries now persist per-mode question-level memory-count and efficiency deltas, and the CLI now prints that evidence on direct `bench compare-matrices --summary-only` plus reopened matrix-comparison `bench verify`, `bench report`, and `bench dashboard` summary paths.
+- Kept the benchmark truth local and honest instead of widening scope: cross-matrix CLI summaries now expose budget-dropped stable-context ids, per-question memory-use deltas, per-question latency/token deltas, and proof hops to each matrix run without changing scoring, datasets, adapter scaffolds, hosted judges, or publish surfaces.
+- Kept the slice surgical: no benchmark scoring logic, dataset downloads, launch-proof flow, installer, release-pack flow, public site copy, or generated `.zerker/launch-proof/` artifacts changed by hand.
+
+Verification:
+
+- `python3 -m unittest tests.test_bench.BenchmarkHarnessTest.test_cli_compare_matrices_summary_only_surfaces_budget_context_and_delta_details -q` -> passed (`Ran 1 test in 2.133s`)
+- `python3 -m unittest tests.test_bench.BenchmarkHarnessTest.test_cli_matrix_comparison_verify_report_and_dashboard_summary_only_surface_delta_details -q` -> passed (`Ran 1 test in 3.110s`)
+- `python3 -m unittest tests.test_bench -q` -> passed (`Ran 132 tests in 111.274s`)
+- `python3 -m unittest tests.test_store -q` -> passed (`Ran 157 tests in 2.402s`)
+- `python3 -m zerker_memory eval` -> passed (`failed: 0`, `passed: 11`)
+- `python3 scripts/release_smoke.py --summary-only` -> passed; operator packet still `Ready: yes`, public verify still `0/6`, launch assets still `0/8`, return packet still pending, strict publish still blocked only on `launch_assets` plus `public_verify_evidence`
+- `python3 -m zerker_memory status --summary-only` -> passed; workspace ready, memory proof ready, release packet ready, strict publish still `no`
+- focused stale-target scan on `zerker_memory/bench.py`, `zerker_memory/cli.py`, and `tests/test_bench.py` -> no active `zerkerlabs/zerker-memory`, stale raw-installer, `rezkerlabs`, or stale GitHub repo targets
+
+Blockers:
+
+- Matrix-comparison summary parity is now locked, but a fresh `bench matrix --summary-only` run still does not surface the same question-level memory-use and efficiency evidence from its embedded comparison, so first-pass multi-mode inspection still nudges operators toward report/dashboard surfaces.
+- Phase 1 launch proof remains externally blocked on `0/6` clean-shell public-verify logs and `0/8` launch assets.
+
+Next:
+
+- Lift the same question-level memory-count deltas, efficiency deltas, budget-context ids, and proof hops onto `bench matrix --summary-only` so fresh local multi-mode runs are inspectable from the CLI before opening markdown or HTML artifacts.
+
 ## 2026-06-22 - Temporal Injection Parity Restored
 
 Shipped:
