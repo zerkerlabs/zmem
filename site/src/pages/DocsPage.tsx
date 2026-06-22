@@ -1,7 +1,7 @@
 import Card from '@/components/Card';
 import CodeBlock from '@/components/CodeBlock';
 
-const docsRun = `cd docs-site
+const docsRun = `cd docs
 npm install
 npm run dev
 
@@ -32,7 +32,7 @@ export default function DocsPage() {
           </h1>
           <p className="mt-6 max-w-[680px] text-[17px] leading-relaxed text-zmuted">
             This Vite page stays as the product bridge. The full guide tree is a separate
-            Next/Fumadocs app in <span className="font-mono text-zink">docs-site/</span>.
+            Next/Fumadocs app in <span className="font-mono text-zink">docs/</span>.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
             <a
@@ -59,8 +59,8 @@ export default function DocsPage() {
               Run the docs app beside the product site.
             </h2>
             <p className="mt-4 text-sm leading-relaxed text-zmuted">
-              Deploy <span className="font-mono text-zink">docs-site/</span> as the docs
-              project when we are ready to put it behind zmem.sh/docs or docs.zmem.sh.
+              Deploy <span className="font-mono text-zink">docs/</span> as the docs
+              project behind docs.zmem.sh.
             </p>
           </Card>
           <CodeBlock code={docsRun} title="fumadocs" />

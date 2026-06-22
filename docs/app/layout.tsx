@@ -15,7 +15,7 @@ export const metadata: Metadata = {
     title: 'ZMem Docs',
     description:
       'Install, operate, benchmark, and verify agent memory with ZMem.',
-    url: 'https://zmem.sh/docs',
+    url: 'https://docs.zmem.sh',
     siteName: 'ZMem',
     type: 'website',
   },
