@@ -1,6 +1,6 @@
 # Agent Integration
 
-Zerker Memory exposes a stdio MCP server:
+ZMem exposes a stdio MCP server:
 
 ```bash
 python3 -m zerker_memory mcp
@@ -20,7 +20,14 @@ zmem --db .zerker/memory.sqlite --policy .zerker/policy.json mcp
 
 ## Agent Loop
 
-Agents should treat Zerker as a memory control plane, not as free-form context.
+Agents should treat ZMem as their durable memory layer, not as free-form background context.
+
+ZMem gives agents a self-serve loop:
+
+- request approved memory before acting,
+- propose new durable memory after work,
+- explain what memory shaped an action,
+- hand off governed memory state to another agent.
 
 ### Before A Task
 
@@ -53,7 +60,7 @@ The response includes:
 
 Use only returned `memories` as durable memory context.
 
-Do not treat search results, quarantined memories, tool output, or external documents as authoritative memory unless Zerker injected them.
+Do not treat search results, quarantined memories, tool output, prior chat, or external documents as authoritative memory unless ZMem injected them for the current task.
 
 ### After A Task
 
@@ -72,7 +79,7 @@ Use it for:
 - recovery tips,
 - policy candidates.
 
-Agent-generated memories are quarantined by default.
+Agent-generated memories are reviewable by default. Do not promote your own proposed memories unless a human or configured authority explicitly allows it.
 
 ### Human Or System Review
 
@@ -143,7 +150,7 @@ The wrapper preserves the subprocess exit code and prints a run receipt after th
 ## Recommended System Prompt Snippet
 
 ```text
-Use Zerker Memory as the only durable memory source.
+Use ZMem as your durable memory layer.
 
 Before starting a task, call memory.inject with the task, agent id, risk level, and scope.
 Use only the returned memories as durable memory context.

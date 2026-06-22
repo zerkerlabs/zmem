@@ -3,13 +3,14 @@ from __future__ import annotations
 import argparse
 import json
 from http import HTTPStatus
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 from .exporter import export_bundle, export_snapshot
 from .store import MemoryStore, default_db_path, default_policy_path
+from .workspaces import workspace_status_for_paths
 
 
 INDEX_HTML = """<!doctype html>
@@ -127,6 +128,53 @@ INDEX_HTML = """<!doctype html>
       border-color: #17211a;
     }
     .metrics { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap: 12px; }
+    .status-strip { display: grid; grid-template-columns: 1.05fr .95fr; gap: 12px; align-items: stretch; }
+    .status-panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px;
+      min-width: 0;
+    }
+    .status-panel h2 { margin-bottom: 8px; }
+    .quick-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+    .quick-card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfa;
+      padding: 11px;
+      min-width: 0;
+    }
+    .quick-card strong { display: block; font-size: 13px; margin-bottom: 5px; }
+    .quick-card span { display: block; color: var(--muted); font-size: 12px; line-height: 1.35; overflow-wrap: anywhere; }
+    .quick-card a { color: var(--accent); font-weight: 700; text-decoration: none; }
+    .status-board { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .cluster-list { display: grid; gap: 10px; margin-top: 12px; }
+    .cluster {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfa;
+      padding: 12px;
+    }
+    .cluster-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+    .cluster-head strong { font-size: 13px; line-height: 1.35; }
+    .cluster .topline { overflow-wrap: anywhere; }
+    .split-view { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
+    .zone {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      background: #fbfcfa;
+      min-width: 0;
+    }
+    .zone.proven { border-color: #b8d9ca; }
+    .zone.asserted { border-color: #e9c8ad; }
+    .zone strong { display: block; font-size: 13px; margin-bottom: 8px; }
+    .zone ul { margin: 0; padding-left: 18px; color: var(--muted); font-size: 12px; line-height: 1.45; }
+    .benchmark-table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 13px; }
+    .benchmark-table th, .benchmark-table td { border-bottom: 1px solid var(--line); padding: 8px; text-align: left; vertical-align: top; }
+    .benchmark-table th { color: var(--muted); font-size: 11px; text-transform: uppercase; }
+    .num { text-align: right; white-space: nowrap; }
     .metric, section {
       background: var(--panel);
       border: 1px solid var(--line);
@@ -289,6 +337,10 @@ INDEX_HTML = """<!doctype html>
     @media (max-width: 900px) {
       .grid { grid-template-columns: 1fr; }
       .metrics { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
+      .status-strip { grid-template-columns: 1fr; }
+      .status-board { grid-template-columns: 1fr; }
+      .quick-grid { grid-template-columns: 1fr; }
+      .split-view { grid-template-columns: 1fr; }
       .proof-grid { grid-template-columns: 1fr; }
       .story-grid { grid-template-columns: 1fr; }
       .workflow { grid-template-columns: 1fr; }
@@ -311,6 +363,40 @@ INDEX_HTML = """<!doctype html>
   </header>
   <main>
     <div class="metrics" id="metrics"></div>
+    <section class="status-panel">
+      <h2>Workspace Profile</h2>
+      <p class="helper">Switching projects and agents starts here: the console shows whether this DB is registered, current, or pointed at a different workspace.</p>
+      <div id="workspaceProfile" class="empty">Loading workspace profile...</div>
+    </section>
+    <section class="status-strip">
+      <div class="status-panel">
+        <h2>Memory In Use</h2>
+        <p class="helper">This console is connected to the local ZMem store. These are the dogfood memories and proof artifacts agents should be able to retrieve.</p>
+        <div id="memorySpotlight" class="empty">Loading dogfood memories...</div>
+      </div>
+      <div class="status-panel">
+        <h2>Agent MCP And Benchmarks</h2>
+        <p class="helper">Agents use the same memory DB through MCP configs. Benchmark artifacts are generated separately but linked here.</p>
+        <div id="agentBenchmarkSpotlight" class="empty">Loading agent and benchmark status...</div>
+      </div>
+    </section>
+    <section class="status-board">
+      <div class="status-panel">
+        <h2>Memory Status</h2>
+        <p class="helper">A cleaner health view for humans and agents: active memories, review queues, stale/revoked memory, and duplicate clusters.</p>
+        <div id="memoryStatusPanel" class="empty">Loading memory status...</div>
+      </div>
+      <div class="status-panel">
+        <h2>Benchmark Panel</h2>
+        <p class="helper">The latest local matrix is proof-backed engineering evidence, not an official leaderboard claim.</p>
+        <div id="benchmarkPanel" class="empty">Loading benchmark evidence...</div>
+      </div>
+    </section>
+    <section>
+      <h2>Memory Clusters</h2>
+      <p class="helper">Duplicate and near-duplicate memories are grouped so old smoke runs do not drown out the current facts agents should use.</p>
+      <div id="memoryClusters" class="empty">Loading memory clusters...</div>
+    </section>
     <section id="onboarding" class="hero" hidden></section>
     <section>
       <h2>Use ZMem</h2>
@@ -393,6 +479,7 @@ INDEX_HTML = """<!doctype html>
     </section>
     <section>
       <h2>Proof Inspector</h2>
+      <p class="helper">Treeship boundary framing: hashes, roots, signatures, policy digests, and ordered-log anchors belong in the proven zone. Outcome counts and injected/withheld ids are asserted provider details unless independently committed by a proof.</p>
       <div id="proofSummary" class="empty">Run an injection preview, inspect a receipt, export a bundle, or export a snapshot.</div>
       <pre id="rawOutput">{}</pre>
     </section>
@@ -466,6 +553,125 @@ INDEX_HTML = """<!doctype html>
       return `<div class="proof-cell"><span>${escapeHtml(label)}</span><strong title="${escapeHtml(value)}">${escapeHtml(value)}</strong></div>`;
     }
 
+    function normalizeMemoryContent(content) {
+      return String(content || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+    }
+
+    function groupMemories(memories) {
+      const groups = new Map();
+      for (const memory of memories || []) {
+        const key = memory.content_hash || normalizeMemoryContent(memory.content);
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(memory);
+      }
+      return Array.from(groups.values()).sort((a, b) => b.length - a.length);
+    }
+
+    function renderMemoryStatusPanel(state) {
+      const stats = state.stats || {};
+      const status = stats.memory_status || {};
+      const memories = state.memories || [];
+      const duplicateGroups = groupMemories(memories).filter((group) => group.length > 1);
+      const staleCount = (status.deprecated || 0) + (status.revoked || 0) + (status.forgotten || 0);
+      $('memoryStatusPanel').innerHTML = `
+        <div class="proof-status">
+          ${pill(`active ${status.active || 0}`)}
+          ${pill(`review ${(status.quarantined || 0) + (status.proposed || 0)}`)}
+          ${pill(`stale ${staleCount}`)}
+          ${pill(`clusters ${duplicateGroups.length}`)}
+        </div>
+        <div class="proof-grid">
+          ${proofCell('Memory root', shortHash(stats.memory_merkle_root))}
+          ${proofCell('Event root', shortHash(stats.merkle_root))}
+          ${proofCell('Receipts', String(stats.receipt_count || 0))}
+          ${proofCell('Duplicate groups', String(duplicateGroups.length))}
+        </div>`;
+    }
+
+    function renderMemoryClusters(state) {
+      const groups = groupMemories(state.memories || []).filter((group) => group.length > 1).slice(0, 8);
+      if (!groups.length) {
+        $('memoryClusters').innerHTML = '<div class="empty">No duplicate clusters in the loaded memory window.</div>';
+        return;
+      }
+      $('memoryClusters').innerHTML = `<div class="cluster-list">${groups.map((group) => {
+        const active = group.filter((memory) => memory.status === 'active').length;
+        const review = group.filter((memory) => memory.status === 'quarantined' || memory.status === 'proposed').length;
+        const latest = group[0];
+        const ids = group.map((memory) => memory.id).join(', ');
+        return `<div class="cluster">
+          <div class="cluster-head">
+            <strong>${escapeHtml(latest.content)}</strong>
+            ${pill(`${group.length} copies`)}
+          </div>
+          <div class="meta">${pill(`active ${active}`)}${pill(`review ${review}`)}${pill(latest.type || 'memory')}</div>
+          <div class="topline">${escapeHtml(ids)}</div>
+        </div>`;
+      }).join('')}</div>`;
+    }
+
+    function renderBenchmarkPanel(state) {
+      const benchmark = state.benchmark || {};
+      if (!benchmark.ok) {
+        $('benchmarkPanel').innerHTML = `<div class="empty">${escapeHtml(benchmark.message || 'No benchmark matrix found yet.')}</div>`;
+        return;
+      }
+      const rows = (benchmark.modes || []).map((mode) => `<tr>
+        <td><strong>${escapeHtml(mode.retrieval_mode || mode.run_id)}</strong></td>
+        <td class="num">${Number(mode.accuracy || 0).toFixed(3)}</td>
+        <td class="num">${escapeHtml(mode.pass || '')}</td>
+        <td class="num">${escapeHtml(String(mode.p95_retrieval_latency_ms || 0))}</td>
+        <td class="num">${escapeHtml(String(mode.total_tokens || 0))}</td>
+      </tr>`).join('');
+      $('benchmarkPanel').innerHTML = `
+        <div class="proof-status">
+          ${pill(benchmark.claim_status || 'local evidence')}
+          ${pill(benchmark.verification_status || 'unknown')}
+          ${pill(`best ${benchmark.best_mode || 'n/a'}`)}
+        </div>
+        <div class="proof-grid">
+          ${proofCell('Run', benchmark.run_id || 'unknown')}
+          ${proofCell('Matrix hash', shortHash(benchmark.matrix_hash))}
+          ${proofCell('Comparison hash', shortHash(benchmark.comparison_hash))}
+          ${proofCell('Dashboard', benchmark.dashboard_path || 'not generated')}
+        </div>
+        <table class="benchmark-table">
+          <thead><tr><th>Mode</th><th class="num">Accuracy</th><th class="num">Pass</th><th class="num">P95 ms</th><th class="num">Tokens</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+        <p class="helper"><a href="${escapeHtml(benchmark.public_url || 'http://127.0.0.1:8766/benchmarks.html')}" target="_blank" rel="noreferrer">Open public evidence</a></p>`;
+    }
+
+    function renderWorkspaceProfile(state) {
+      const profile = state.workspace_profile || {};
+      const current = profile.current || {};
+      const matched = profile.matched || {};
+      const match = profile.match_state || 'unknown';
+      const tone = match === 'matched-current' ? 'current' : match === 'matched-other' ? 'registered elsewhere' : 'needs registration';
+      $('workspaceProfile').innerHTML = `
+        <div class="proof-status">
+          ${pill(tone)}
+          ${pill(current.name || 'no active profile')}
+          ${pill(profile.registry_exists ? 'registry found' : 'registry missing')}
+        </div>
+        <div class="proof-grid">
+          ${proofCell('Current workspace', current.name || 'none')}
+          ${proofCell('Current id', profile.current_id || 'none')}
+          ${proofCell('Matched workspace', matched.name || 'none')}
+          ${proofCell('Registry', profile.registry_path || 'unknown')}
+        </div>
+        <div class="topline">DB ${escapeHtml(profile.db_path || state.stats.db_path || 'unknown')}</div>`;
+    }
+
+    function renderBoundaryZones(provenItems, assertedItems) {
+      const proven = (provenItems || []).map((item) => `<li>${escapeHtml(item)}</li>`).join('');
+      const asserted = (assertedItems || []).map((item) => `<li>${escapeHtml(item)}</li>`).join('');
+      return `<div class="split-view">
+        <div class="zone proven"><strong>Proven Zone</strong><ul>${proven || '<li>No committed proof fields exposed for this object.</li>'}</ul></div>
+        <div class="zone asserted"><strong>Asserted Zone</strong><ul>${asserted || '<li>No provider outcome fields exposed for this object.</li>'}</ul></div>
+      </div>`;
+    }
+
     function renderLaunchAssetStoryboard(assets, missingPaths) {
       if (!assets || !assets.length) return `<div class="empty">Launch asset storyboard unavailable.</div>`;
       const missing = new Set((missingPaths || []).map((path) => String(path)));
@@ -526,6 +732,59 @@ INDEX_HTML = """<!doctype html>
         </div>
         <p class="helper">Continue elsewhere:</p>
         <pre>${commands}</pre>`;
+    }
+
+    function renderMemorySpotlight(state) {
+      const memories = state.memories || [];
+      const focused = memories.filter((memory) => {
+        const labels = memory.labels || [];
+        return labels.includes('dogfood') || labels.includes('benchmark') || labels.includes('agent-integration') || labels.includes('public-evidence');
+      }).slice(0, 5);
+      if (!focused.length) {
+        $('memorySpotlight').innerHTML = '<div class="empty">No dogfood or benchmark memories are active yet. Use Add Memory or run the agent smoke checks.</div>';
+        return;
+      }
+      $('memorySpotlight').innerHTML = `<div class="quick-grid">${focused.map((memory) => `<div class="quick-card">
+        <strong>${escapeHtml(memory.id)}</strong>
+        <span>${escapeHtml(memory.content)}</span>
+        <span>${(memory.labels || []).map((label) => '#' + escapeHtml(label)).join(' ')}</span>
+      </div>`).join('')}</div>`;
+    }
+
+    function renderAgentBenchmarkSpotlight(state) {
+      const continuity = state.agent_continuity || {};
+      const agents = continuity.agents || [];
+      const readyAgents = agents.filter((agent) => agent.ready).map((agent) => agent.label);
+      const release = state.release_readiness || {};
+      const benchmarkPath = 'http://127.0.0.1:8766/benchmarks.html';
+      const internalDashboard = '.zerker/bench/internal-synthetic-20260606/benchmark-dashboard.html';
+      $('agentBenchmarkSpotlight').innerHTML = `<div class="quick-grid">
+        <div class="quick-card">
+          <strong>Agents Ready</strong>
+          <span>${escapeHtml(readyAgents.join(', ') || 'No agent configs found')}</span>
+        </div>
+        <div class="quick-card">
+          <strong>Benchmark Page</strong>
+          <span><a href="${benchmarkPath}" target="_blank" rel="noreferrer">Open public evidence</a></span>
+          <span>${escapeHtml(benchmarkPath)}</span>
+        </div>
+        <div class="quick-card">
+          <strong>Internal Dashboard</strong>
+          <span>${escapeHtml(internalDashboard)}</span>
+        </div>
+        <div class="quick-card">
+          <strong>Launch Gate</strong>
+          <span>${escapeHtml(release.strict_publish_ready ? 'Strict publish ready' : 'Strict publish still blocked on external proof/assets')}</span>
+        </div>
+        <div class="quick-card">
+          <strong>Use Memory</strong>
+          <span>Try: What is the ZMem agent integration status for Codex and Claude Code?</span>
+        </div>
+        <div class="quick-card">
+          <strong>Verify Proof</strong>
+          <span>Recent receipts appear below. Click Why or Bundle to inspect what memory influenced an action.</span>
+        </div>
+      </div>`;
     }
 
     function renderOutput(payload) {
@@ -796,6 +1055,18 @@ INDEX_HTML = """<!doctype html>
     function renderReceiptSummary(receipt) {
       const injected = receipt.injected_memory_ids || [];
       const withheld = receipt.withheld || receipt.withheld_memory_ids || [];
+      const proven = [
+        `action_id: ${receipt.action_id || 'none'}`,
+        `merkle_root: ${receipt.merkle_root || 'none'}`,
+        `created_at: ${receipt.created_at || 'unknown'}`,
+        `agent_id: ${receipt.agent_id || 'unknown'}`,
+      ];
+      const asserted = [
+        `task: ${receipt.task || 'No task text'}`,
+        `risk: ${receipt.risk || 'unknown'}`,
+        `injected_memory_ids: ${injected.length}`,
+        `withheld_memory_ids: ${withheld.length}`,
+      ];
       return `<div class="proof-status">
           ${pill('receipt')}${pill(receipt.risk || 'risk unknown')}${pill(receipt.agent_id || 'agent unknown')}
         </div>
@@ -804,12 +1075,25 @@ INDEX_HTML = """<!doctype html>
           ${proofCell('Merkle root', shortHash(receipt.merkle_root))}
           ${proofCell('Injected / withheld', `${injected.length} / ${withheld.length}`)}
         </div>
-        <div class="content">${escapeHtml(receipt.task || 'No task text')}</div>`;
+        <div class="content">${escapeHtml(receipt.task || 'No task text')}</div>
+        ${renderBoundaryZones(proven, asserted)}`;
     }
 
     function renderBundleSummary(result) {
       const bundle = result.payload;
       const proof = bundle.proof || {};
+      const proven = [
+        `bundle_hash: ${bundle.bundle_hash || 'none'}`,
+        `receipt_merkle_root: ${proof.receipt_merkle_root || 'none'}`,
+        `computed_merkle_root: ${proof.computed_merkle_root || 'none'}`,
+        `verified: ${String(Boolean(proof.verified))}`,
+      ];
+      const asserted = [
+        `action_id: ${bundle.action_id || 'none'}`,
+        `supporting_memory_ids: ${(bundle.supporting_memory_ids || []).length}`,
+        `format: ${result.format || 'unknown'}`,
+        `path: ${result.path || 'not written'}`,
+      ];
       return `<div class="proof-status">
           ${pill('bundle')}${pill(proof.verified ? 'verified' : 'unverified')}${pill(result.format)}
         </div>
@@ -820,7 +1104,8 @@ INDEX_HTML = """<!doctype html>
           ${proofCell('Receipt root', shortHash(proof.receipt_merkle_root))}
           ${proofCell('Computed root', shortHash(proof.computed_merkle_root))}
           ${proofCell('Events / memories', `${proof.event_count || 0} / ${(bundle.supporting_memory_ids || []).length}`)}
-        </div>`;
+        </div>
+        ${renderBoundaryZones(proven, asserted)}`;
     }
 
     function renderSnapshotSummary(result) {
@@ -963,6 +1248,12 @@ INDEX_HTML = """<!doctype html>
       renderOnboarding(state);
       renderReleaseStatus(state);
       renderContinuity(state);
+      renderMemorySpotlight(state);
+      renderAgentBenchmarkSpotlight(state);
+      renderWorkspaceProfile(state);
+      renderMemoryStatusPanel(state);
+      renderMemoryClusters(state);
+      renderBenchmarkPanel(state);
       $('metrics').innerHTML = [
         ['Memories', state.stats.memory_count],
         ['Queued', (state.stats.memory_status.quarantined || 0) + (state.stats.memory_status.proposed || 0)],
@@ -1110,10 +1401,14 @@ INDEX_HTML = """<!doctype html>
 """
 
 
-class DashboardServer(HTTPServer):
+class DashboardServer(ThreadingHTTPServer):
     def __init__(self, server_address: tuple[str, int], store: MemoryStore):
+        self.db_path = store.db_path
+        self.policy_path = store.policy_path
         super().__init__(server_address, DashboardHandler)
-        self.store = store
+
+    def new_store(self) -> MemoryStore:
+        return MemoryStore(self.db_path, policy_path=self.policy_path)
 
 
 class DashboardHandler(BaseHTTPRequestHandler):
@@ -1122,19 +1417,25 @@ class DashboardHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
         try:
+            store = self.server.new_store()
             if parsed.path == "/":
                 self._send_html(INDEX_HTML)
                 return
             if parsed.path == "/api/state":
                 self._send_json(
                     {
-                        "stats": self.server.store.stats(),
-                        "onboarding": build_onboarding_state(self.server.store),
-                        "agent_continuity": build_agent_continuity_state(self.server.store),
-                        "release_readiness": build_release_readiness_state(self.server.store),
-                        "queue": [memory.to_dict() for memory in self.server.store.queue()],
-                        "memories": [memory.to_dict() for memory in self.server.store.list_memories(limit=100)],
-                        "receipts": self.server.store.list_receipts(limit=25),
+                        "stats": store.stats(),
+                        "workspace_profile": workspace_status_for_paths(
+                            db_path=store.db_path,
+                            policy_path=store.policy_path,
+                        ),
+                        "onboarding": build_onboarding_state(store),
+                        "agent_continuity": build_agent_continuity_state(store),
+                        "benchmark": build_benchmark_state(),
+                        "release_readiness": build_release_readiness_state(store),
+                        "queue": [memory.to_dict() for memory in store.queue()],
+                        "memories": [memory.to_dict() for memory in store.list_memories(limit=100)],
+                        "receipts": store.list_receipts(limit=25),
                     }
                 )
                 return
@@ -1143,11 +1444,11 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 query = first(params, "q")
                 status = first(params, "status")
                 if query:
-                    memories = self.server.store.search(query, include_quarantined=True)
+                    memories = store.search(query, include_quarantined=True)
                     if status:
                         memories = [memory for memory in memories if memory.status == status]
                 else:
-                    memories = self.server.store.list_memories(status=status or None, limit=100)
+                    memories = store.list_memories(status=status or None, limit=100)
                 self._send_json({"memories": [memory.to_dict() for memory in memories]})
                 return
             if parsed.path.startswith("/api/receipts/"):
@@ -1155,7 +1456,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     self._send_error(HTTPStatus.METHOD_NOT_ALLOWED, "use POST for receipt actions")
                     return
                 action_id = parsed.path.rsplit("/", 1)[-1]
-                self._send_json(self.server.store.why(action_id))
+                self._send_json(store.why(action_id))
                 return
             self._send_error(HTTPStatus.NOT_FOUND, "not found")
         except Exception as exc:
@@ -1164,13 +1465,14 @@ class DashboardHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
         try:
+            store = self.server.new_store()
             payload = self._read_json()
             if parsed.path == "/api/memories":
                 content = required_str(payload, "content").strip()
                 if not content:
                     raise ValueError("memory content is required")
                 self._send_json(
-                    self.server.store.remember(
+                    store.remember(
                         content,
                         memory_type=payload.get("memory_type", "semantic"),
                         scope=payload.get("scope") or "project",
@@ -1181,7 +1483,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 return
             if parsed.path == "/api/inject":
                 self._send_json(
-                    self.server.store.inject(
+                    store.inject(
                         required_str(payload, "task"),
                         agent_id=required_str(payload, "agent"),
                         risk=payload.get("risk", "medium"),
@@ -1191,44 +1493,44 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 return
             if parsed.path == "/api/snapshot":
                 out_dir = Path(payload["out_dir"]) if payload.get("out_dir") else None
-                self._send_json(export_snapshot(self.server.store.snapshot(), out_dir=out_dir))
+                self._send_json(export_snapshot(store.snapshot(), out_dir=out_dir))
                 return
             if parsed.path == "/api/release/launch-proof":
-                self._send_json(create_dashboard_launch_proof(self.server.store))
+                self._send_json(create_dashboard_launch_proof(store))
                 return
             if parsed.path == "/api/release/release-pack":
-                self._send_json(create_dashboard_release_pack(self.server.store))
+                self._send_json(create_dashboard_release_pack(store))
                 return
             if parsed.path == "/api/release/handoff":
-                self._send_json(create_dashboard_handoff(self.server.store))
+                self._send_json(create_dashboard_handoff(store))
                 return
             if parsed.path == "/api/release/restore-handoff":
-                self._send_json(create_dashboard_handoff_restore(self.server.store))
+                self._send_json(create_dashboard_handoff_restore(store))
                 return
             if parsed.path == "/api/release/verify-launch-assets":
-                self._send_json(create_dashboard_launch_assets_verify(self.server.store))
+                self._send_json(create_dashboard_launch_assets_verify(store))
                 return
             if parsed.path == "/api/release/verify-return-packet":
-                self._send_json(create_dashboard_return_packet_verify(self.server.store))
+                self._send_json(create_dashboard_return_packet_verify(store))
                 return
             receipt_match = re_receipt_action(parsed.path)
             if receipt_match:
                 action_id, action = receipt_match
                 if action == "bundle":
                     out_dir = Path(payload["out_dir"]) if payload.get("out_dir") else None
-                    self._send_json(export_bundle(self.server.store.receipt_bundle(action_id), out_dir=out_dir))
+                    self._send_json(export_bundle(store.receipt_bundle(action_id), out_dir=out_dir))
                     return
             match = re_memory_action(parsed.path)
             if match:
                 memory_id, action = match
                 if action == "promote":
-                    self._send_json(self.server.store.promote(memory_id).to_dict())
+                    self._send_json(store.promote(memory_id).to_dict())
                     return
                 if action == "reject":
-                    self._send_json(self.server.store.reject(memory_id, reason=payload.get("reason")).to_dict())
+                    self._send_json(store.reject(memory_id, reason=payload.get("reason")).to_dict())
                     return
                 if action == "revoke":
-                    self._send_json(self.server.store.revoke(memory_id, reason=payload.get("reason")))
+                    self._send_json(store.revoke(memory_id, reason=payload.get("reason")))
                     return
             self._send_error(HTTPStatus.NOT_FOUND, "not found")
         except Exception as exc:
@@ -1401,6 +1703,76 @@ def build_agent_continuity_state(store: MemoryStore) -> dict[str, Any]:
             "zmem handoff --summary-only",
             "zmem --db .zerker/imported.sqlite restore --handoff-dir .zerker/handoff",
         ],
+    }
+
+
+def build_benchmark_state(root: Path | None = None) -> dict[str, Any]:
+    root = root or Path.cwd()
+    bench_root = root / ".zerker" / "bench"
+    preferred = bench_root / "standard-synthetic-20260606-readiness" / "benchmark-matrix.json"
+    candidates = []
+    if preferred.exists():
+        candidates.append(preferred)
+    if bench_root.exists():
+        candidates.extend(sorted(bench_root.glob("*/benchmark-matrix.json"), key=lambda path: path.stat().st_mtime, reverse=True))
+    seen = set()
+    matrix_paths = []
+    for path in candidates:
+        if path in seen:
+            continue
+        seen.add(path)
+        matrix_paths.append(path)
+    if not matrix_paths:
+        return {
+            "ok": False,
+            "message": "No benchmark matrix found. Run zmem bench matrix synthetic --out .zerker/bench --seed 0 --run-id standard-synthetic-20260606-readiness.",
+        }
+
+    matrix_path = matrix_paths[0]
+    try:
+        matrix = json.loads(matrix_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return {"ok": False, "message": f"Benchmark matrix could not be read: {exc}"}
+
+    mode_runs = matrix.get("mode_runs") or []
+    modes = []
+    best_mode = None
+    best_accuracy = -1.0
+    for run in mode_runs:
+        summary = run.get("summary") or {}
+        accuracy = float(summary.get("accuracy") or 0)
+        if accuracy > best_accuracy:
+            best_accuracy = accuracy
+            best_mode = run.get("retrieval_mode") or run.get("run_id")
+        modes.append(
+            {
+                "run_id": run.get("run_id"),
+                "retrieval_mode": run.get("retrieval_mode"),
+                "accuracy": accuracy,
+                "pass": f"{summary.get('passed', 0)}/{summary.get('question_count', 0)}",
+                "p95_retrieval_latency_ms": summary.get("p95_retrieval_latency_ms", 0),
+                "total_tokens": summary.get("total_tokens", 0),
+                "verification_status": summary.get("proof_verification_status") or "unknown",
+            }
+        )
+
+    dashboard_path = matrix_path.parent / "benchmark-dashboard.html"
+    return {
+        "ok": True,
+        "claim_status": "local synthetic proof" if matrix.get("benchmark") == "synthetic" else "local scaffold proof",
+        "benchmark": matrix.get("benchmark"),
+        "dataset": matrix.get("dataset"),
+        "run_id": matrix.get("run_id"),
+        "matrix_path": str(matrix_path),
+        "dashboard_path": str(dashboard_path),
+        "dashboard_ready": dashboard_path.exists(),
+        "public_url": "http://127.0.0.1:8766/benchmarks.html",
+        "matrix_hash": matrix.get("matrix_hash"),
+        "comparison_hash": matrix.get("comparison_hash"),
+        "verification_status": ((matrix.get("proof") or {}).get("verification_status") or "unknown"),
+        "best_mode": best_mode,
+        "best_accuracy": best_accuracy if best_accuracy >= 0 else 0,
+        "modes": modes,
     }
 
 

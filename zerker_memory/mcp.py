@@ -25,6 +25,11 @@ TOOL_SCHEMAS: list[JSON] = [
                 "scope": {"type": "string", "default": "global"},
                 "source": {"type": "string", "enum": ["human", "system", "tool", "document", "agent", "import"], "default": "human"},
                 "labels": {"type": "array", "items": {"type": "string"}, "default": []},
+                "source_uri": {"type": "string"},
+                "actor_uri": {"type": "string"},
+                "session_id": {"type": "string"},
+                "parent_action_id": {"type": "string"},
+                "environment_hash": {"type": "string"},
             },
             "required": ["content"],
         },
@@ -40,6 +45,11 @@ TOOL_SCHEMAS: list[JSON] = [
                 "scope": {"type": "string", "default": "global"},
                 "source": {"type": "string", "enum": ["human", "system", "tool", "document", "agent", "import"], "default": "agent"},
                 "labels": {"type": "array", "items": {"type": "string"}, "default": []},
+                "source_uri": {"type": "string"},
+                "actor_uri": {"type": "string"},
+                "session_id": {"type": "string"},
+                "parent_action_id": {"type": "string"},
+                "environment_hash": {"type": "string"},
             },
             "required": ["content"],
         },
@@ -284,6 +294,11 @@ class McpServer:
             source_kind=args.get("source", "human"),
             labels=args.get("labels", []),
             status="active" if args.get("source", "human") in {"human", "system"} else None,
+            source_uri=args.get("source_uri"),
+            actor_uri=args.get("actor_uri"),
+            session_id=args.get("session_id"),
+            parent_action_id=args.get("parent_action_id"),
+            environment_hash=args.get("environment_hash"),
         )
         return record.to_dict()
 
@@ -294,6 +309,11 @@ class McpServer:
             scope=args.get("scope", "global"),
             source_kind=args.get("source", "agent"),
             labels=args.get("labels", []),
+            source_uri=args.get("source_uri"),
+            actor_uri=args.get("actor_uri"),
+            session_id=args.get("session_id"),
+            parent_action_id=args.get("parent_action_id"),
+            environment_hash=args.get("environment_hash"),
         )
         return record.to_dict()
 

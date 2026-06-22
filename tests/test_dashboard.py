@@ -4,7 +4,9 @@ import unittest
 from pathlib import Path
 
 from zerker_memory.dashboard import (
+    DashboardServer,
     INDEX_HTML,
+    build_benchmark_state,
     build_onboarding_state,
     build_release_readiness_state,
     create_dashboard_handoff,
@@ -22,6 +24,24 @@ from zerker_memory.store import MemoryStore
 class DashboardTest(unittest.TestCase):
     def test_console_has_proof_inspector(self):
         self.assertIn("Proof Inspector", INDEX_HTML)
+        self.assertIn("Memory In Use", INDEX_HTML)
+        self.assertIn("Workspace Profile", INDEX_HTML)
+        self.assertIn("Memory Status", INDEX_HTML)
+        self.assertIn("Memory Clusters", INDEX_HTML)
+        self.assertIn("Benchmark Panel", INDEX_HTML)
+        self.assertIn("Proven Zone", INDEX_HTML)
+        self.assertIn("Asserted Zone", INDEX_HTML)
+        self.assertIn("Treeship boundary framing", INDEX_HTML)
+        self.assertIn("Agent MCP And Benchmarks", INDEX_HTML)
+        self.assertIn("renderMemorySpotlight", INDEX_HTML)
+        self.assertIn("renderMemoryStatusPanel", INDEX_HTML)
+        self.assertIn("renderMemoryClusters", INDEX_HTML)
+        self.assertIn("renderBenchmarkPanel", INDEX_HTML)
+        self.assertIn("renderWorkspaceProfile", INDEX_HTML)
+        self.assertIn("renderBoundaryZones", INDEX_HTML)
+        self.assertIn("renderAgentBenchmarkSpotlight", INDEX_HTML)
+        self.assertIn("http://127.0.0.1:8766/benchmarks.html", INDEX_HTML)
+        self.assertIn("What is the ZMem agent integration status for Codex and Claude Code?", INDEX_HTML)
         self.assertIn("renderBundleSummary", INDEX_HTML)
         self.assertIn("renderSnapshotSummary", INDEX_HTML)
         self.assertIn("renderLaunchProofSummary", INDEX_HTML)
@@ -46,6 +66,66 @@ class DashboardTest(unittest.TestCase):
         self.assertIn("public verify pending", INDEX_HTML)
         self.assertIn("launch assets pending", INDEX_HTML)
         self.assertIn("return packet pending", INDEX_HTML)
+
+    def test_dashboard_server_is_threaded(self):
+        self.assertIn("Threading", DashboardServer.__mro__[1].__name__)
+
+    def test_dashboard_server_creates_request_local_stores(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / ".zerker"
+            store = MemoryStore(root / "memory.sqlite", policy_path=root / "policy.json")
+            server = DashboardServer.__new__(DashboardServer)
+            server.db_path = store.db_path
+            server.policy_path = store.policy_path
+            first = server.new_store()
+            second = server.new_store()
+
+        self.assertIsNot(first, second)
+        self.assertEqual(first.db_path, store.db_path)
+        self.assertEqual(second.db_path, store.db_path)
+        self.assertEqual(first.policy_path, store.policy_path)
+        self.assertEqual(second.policy_path, store.policy_path)
+
+    def test_build_benchmark_state_reads_latest_matrix(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            matrix_dir = root / ".zerker" / "bench" / "standard-synthetic-20260606-readiness"
+            matrix_dir.mkdir(parents=True)
+            (matrix_dir / "benchmark-dashboard.html").write_text("<html></html>", encoding="utf-8")
+            (matrix_dir / "benchmark-matrix.json").write_text(
+                """
+                {
+                  "benchmark": "synthetic",
+                  "dataset": "synthetic",
+                  "run_id": "standard-synthetic-20260606-readiness",
+                  "matrix_hash": "matrix-hash",
+                  "comparison_hash": "comparison-hash",
+                  "proof": {"verification_status": "ok"},
+                  "mode_runs": [
+                    {
+                      "run_id": "fts",
+                      "retrieval_mode": "fts",
+                      "summary": {"accuracy": 0.75, "passed": 3, "question_count": 4, "p95_retrieval_latency_ms": 3.64, "total_tokens": 53, "proof_verification_status": "ok"}
+                    },
+                    {
+                      "run_id": "fts-multihop",
+                      "retrieval_mode": "fts-multihop",
+                      "summary": {"accuracy": 1.0, "passed": 4, "question_count": 4, "p95_retrieval_latency_ms": 5.23, "total_tokens": 56, "proof_verification_status": "ok"}
+                    }
+                  ]
+                }
+                """,
+                encoding="utf-8",
+            )
+
+            state = build_benchmark_state(root)
+
+        self.assertTrue(state["ok"])
+        self.assertEqual(state["claim_status"], "local synthetic proof")
+        self.assertEqual(state["best_mode"], "fts-multihop")
+        self.assertEqual(state["matrix_hash"], "matrix-hash")
+        self.assertTrue(state["dashboard_ready"])
+        self.assertEqual(state["modes"][1]["pass"], "4/4")
 
     def test_build_onboarding_state_shows_first_run_commands(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -154,11 +234,11 @@ class DashboardTest(unittest.TestCase):
                 os.chdir(cwd)
 
         self.assertTrue(state["repo_surface_present"])
-        self.assertEqual(state["public_verify_expected_count"], 5)
+        self.assertEqual(state["public_verify_expected_count"], 6)
         self.assertEqual(state["public_verify_present_count"], 0)
         self.assertEqual(state["launch_assets_expected_count"], 8)
         self.assertEqual(state["launch_assets_present_count"], 0)
-        self.assertEqual(len(state["public_verify_missing_paths"]), 5)
+        self.assertEqual(len(state["public_verify_missing_paths"]), 6)
         self.assertEqual(len(state["launch_assets_missing_paths"]), 8)
         self.assertEqual(len(state["expected_launch_assets"]), 8)
         self.assertEqual(state["expected_launch_assets"][-1]["id"], "ui-handoff-restore")
@@ -295,7 +375,7 @@ class DashboardTest(unittest.TestCase):
         self.assertEqual(result["schema"], "zerker.return_packet_verify.v1")
         self.assertFalse(result["ok"])
         self.assertTrue(str(result["archive_path"]).endswith("public-verify-return-packet.tar.gz"))
-        self.assertEqual(result["public_verify_expected_count"], 5)
+        self.assertEqual(result["public_verify_expected_count"], 6)
         self.assertEqual(result["launch_assets_expected_count"], 6)
 
     def test_dashboard_launch_assets_verify_uses_launch_proof_assets_dir(self):

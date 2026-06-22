@@ -157,7 +157,20 @@ class TreeshipAdapterTest(unittest.TestCase):
 
         self.assertFalse(status["ok"])
         self.assertEqual(status["command_template"], DEFAULT_TREESHIP_COMMAND_TEMPLATE)
-        self.assertEqual(status["command_preview"], ["treeship", "/tmp/zerker-memory.statement.json"])
+        self.assertEqual(
+            status["command_preview"],
+            [
+                "treeship",
+                "attest",
+                "receipt",
+                "--system",
+                "system://zmem",
+                "--kind",
+                "memory.proof",
+                "--payload-file",
+                "/tmp/zerker-memory.statement.json",
+            ],
+        )
 
     def test_publish_treeship_statement_supports_dry_run(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -193,10 +206,72 @@ class TreeshipAdapterTest(unittest.TestCase):
         self.assertEqual(result["exit_code"], 0)
         self.assertEqual(result["stdout"], "published")
         run.assert_called_once_with(
-            ["treeship", str(statement_path)],
+            [
+                "treeship",
+                "attest",
+                "receipt",
+                "--system",
+                "system://zmem",
+                "--kind",
+                "memory.proof",
+                "--payload-file",
+                str(statement_path),
+            ],
             capture_output=True,
             text=True,
             check=False,
+        )
+
+    def test_publish_treeship_statement_falls_back_for_published_cli_without_payload_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            statement_path = Path(tmp) / "proof.json"
+            statement_path.write_text('{"ok":true}', encoding="utf-8")
+
+            with patch("zerker_memory.treeship.shutil.which", return_value="/usr/local/bin/treeship"):
+                with patch("zerker_memory.treeship.subprocess.run") as run:
+                    first = run.return_value
+                    first.returncode = 2
+                    first.stdout = ""
+                    first.stderr = "error: unexpected argument '--payload-file' found"
+                    second = type(first)()
+                    second.returncode = 0
+                    second.stdout = "published"
+                    second.stderr = ""
+                    run.side_effect = [first, second]
+
+                    result = publish_treeship_statement(statement_path)
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["stdout"], "published")
+        self.assertEqual(result["fallback"]["reason"], "treeship_cli_missing_payload_file")
+        self.assertEqual(
+            result["fallback"]["command"],
+            [
+                "treeship",
+                "attest",
+                "receipt",
+                "--system",
+                "system://zmem",
+                "--kind",
+                "memory.proof",
+                "--payload",
+                "<inline-json-redacted>",
+            ],
+        )
+        self.assertEqual(run.call_count, 2)
+        self.assertEqual(
+            run.call_args_list[1].args[0],
+            [
+                "treeship",
+                "attest",
+                "receipt",
+                "--system",
+                "system://zmem",
+                "--kind",
+                "memory.proof",
+                "--payload",
+                '{"ok":true}',
+            ],
         )
 
 

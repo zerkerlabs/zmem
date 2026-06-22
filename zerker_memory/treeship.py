@@ -13,7 +13,7 @@ from zerker_memory.store import BUNDLE_SCHEMA, HASH_ALG, MERKLE_ALG, merkle_root
 TREESHIP_STATEMENT_SCHEMA = "com.zerker.memory.treeship.statement"
 TREESHIP_STATEMENT_SCHEMA_VERSION = "0.1.0"
 TREESHIP_STATEMENT_KIND = "zerker.memory.action_receipt"
-DEFAULT_TREESHIP_COMMAND_TEMPLATE = "treeship {statement}"
+DEFAULT_TREESHIP_COMMAND_TEMPLATE = "treeship attest receipt --system system://zmem --kind memory.proof --payload-file {statement}"
 
 
 _FIELD_ALIASES = {
@@ -163,6 +163,13 @@ def publish_treeship_statement(
         return result
 
     completed = subprocess.run(argv, capture_output=True, text=True, check=False)
+    fallback_argv: list[str] | None = None
+    fallback_completed = None
+    if _needs_payload_inline_fallback(completed.stderr):
+        fallback_argv = _inline_payload_fallback_command(argv, statement_path)
+        if fallback_argv is not None:
+            fallback_completed = subprocess.run(fallback_argv, capture_output=True, text=True, check=False)
+            completed = fallback_completed
     result.update(
         {
             "ok": completed.returncode == 0,
@@ -171,7 +178,39 @@ def publish_treeship_statement(
             "stderr": completed.stderr,
         }
     )
+    if fallback_argv is not None:
+        result["fallback"] = {
+            "reason": "treeship_cli_missing_payload_file",
+            "command": _redact_inline_payload(fallback_argv),
+            "exit_code": fallback_completed.returncode if fallback_completed is not None else None,
+        }
     return result
+
+
+def _needs_payload_inline_fallback(stderr: str) -> bool:
+    return "unexpected argument '--payload-file'" in stderr
+
+
+def _inline_payload_fallback_command(argv: list[str], statement_path: Path) -> list[str] | None:
+    try:
+        idx = argv.index("--payload-file")
+    except ValueError:
+        return None
+    if idx + 1 >= len(argv) or argv[idx + 1] != str(statement_path):
+        return None
+    payload = statement_path.read_text(encoding="utf-8")
+    return [*argv[:idx], "--payload", payload, *argv[idx + 2 :]]
+
+
+def _redact_inline_payload(argv: list[str]) -> list[str]:
+    redacted = list(argv)
+    try:
+        idx = redacted.index("--payload")
+    except ValueError:
+        return redacted
+    if idx + 1 < len(redacted):
+        redacted[idx + 1] = "<inline-json-redacted>"
+    return redacted
 
 
 def _is_bundle(value: Mapping[str, Any]) -> bool:
