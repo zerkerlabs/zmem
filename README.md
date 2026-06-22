@@ -1,13 +1,13 @@
 # ZMem
 
-Local-first verifiable memory for AI agents. Give every memory provenance, policy, receipts, and a trust gate before it influences action.
+Agent-native local memory for AI agents. Request approved memory, propose new memory, explain what was used, and hand off governed state with proof.
 
 Most memory systems help agents remember. ZMem helps agents remember responsibly: what an agent remembers, where it came from, whether it is allowed to influence an action, and how to prove what was used.
 
 `zmem` stores agent memory locally, lets agents connect through MCP, packages handoffs across machines, and emits Merkle-backed receipts for what influenced each action.
 
 Public site: `https://zmem.sh`
-Repo target: `https://github.com/zerkerlabs/zerker-memory`
+Repo target: `https://github.com/zerkerlabs/zmem`
 
 Short version:
 
@@ -70,7 +70,7 @@ The compatibility command `zerker` is still available, but launch docs use `zerk
 
 ## Who It Is For
 
-| User | Problem | Zerker gives them |
+| User | Problem | ZMem gives them |
 | --- | --- | --- |
 | Builders | Agents forget project memory and cannot explain memory use | Local governed memory, MCP, `zmem run`, `why` |
 | Startups | Memory is needed, but infra sprawl is expensive | A governance layer above native or existing memory providers |
@@ -80,7 +80,7 @@ See [docs/ADOPTION_STRATEGY.md](docs/ADOPTION_STRATEGY.md).
 
 ## Future-Proof Wedge
 
-Zerker is designed to stay useful as agents evolve from plain LLM loops into neuro-symbolic gateways, multi-agent systems, and eventually quantum-assisted runtimes.
+ZMem is designed to stay useful as agents evolve from plain LLM loops into neuro-symbolic gateways, multi-agent systems, and eventually quantum-assisted runtimes.
 
 The durable claim is not "better vector memory." It is:
 
@@ -107,7 +107,7 @@ See [docs/FRONTIER_ALIGNMENT.md](docs/FRONTIER_ALIGNMENT.md) for the architectur
 
 ## Works With Existing Memory Providers
 
-Zerker can run native local memory, but it is also designed as a governance overlay for existing memory systems.
+ZMem can run native local memory, but it is also designed as a governance overlay for existing memory systems.
 
 ```text
 Mem0 / Zep / Graphiti / Letta / LangMem / Cognee
@@ -136,7 +136,7 @@ It also runs both `zmem agent smoke` and `zmem agent mcp-smoke` against the sele
 Once the repo is public, the same script is curl-pipe ready:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/zerkerlabs/zerker-memory/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/zerkerlabs/zmem/main/install.sh | bash
 cd "${ZERKER_MEMORY_HOME:-$HOME/.zerker-memory}/repo"
 ```
 
@@ -189,7 +189,7 @@ zmem verify-operator-packet .zerker/launch-proof/public-verify-operator-packet.t
 zmem verify-launch-assets --summary-only
 ```
 
-The strict publish gate is intentionally not green until the clean-shell public-verify logs and final launch assets exist. If another chat or operator is taking the remaining Phase-1 work, start with [docs/PHASE1_EXTERNAL_OPERATOR_BRIEF.md](docs/PHASE1_EXTERNAL_OPERATOR_BRIEF.md). For the full operator runbook, see [docs/CLEAN_SHELL_PUBLIC_VERIFY.md](docs/CLEAN_SHELL_PUBLIC_VERIFY.md). For a copy-ready clean-shell brief, see [docs/CLEAN_SHELL_OPERATOR_PROMPT.md](docs/CLEAN_SHELL_OPERATOR_PROMPT.md). For the durable screenshot/GIF fallback brief, see [docs/LAUNCH_ASSET_OPERATOR_PROMPT.md](docs/LAUNCH_ASSET_OPERATOR_PROMPT.md). For the durable capture-ready board, see [docs/LAUNCH_ASSET_BOARD.html](docs/LAUNCH_ASSET_BOARD.html).
+The strict publish gate is intentionally not green until the clean-shell public-verify logs and final launch assets exist. If another chat or operator is taking the remaining Phase-1 work, start with [docs/CLEAN_SHELL_VERIFICATION_CHECKLIST.md](docs/CLEAN_SHELL_VERIFICATION_CHECKLIST.md) for the shortest durable path, then use [docs/PHASE1_EXTERNAL_OPERATOR_BRIEF.md](docs/PHASE1_EXTERNAL_OPERATOR_BRIEF.md) for the full send-run-receive brief. For the full operator runbook, see [docs/CLEAN_SHELL_PUBLIC_VERIFY.md](docs/CLEAN_SHELL_PUBLIC_VERIFY.md). For a copy-ready clean-shell brief, see [docs/CLEAN_SHELL_OPERATOR_PROMPT.md](docs/CLEAN_SHELL_OPERATOR_PROMPT.md). For the durable screenshot/GIF fallback brief, see [docs/LAUNCH_ASSET_OPERATOR_PROMPT.md](docs/LAUNCH_ASSET_OPERATOR_PROMPT.md). For the durable capture-ready board, see [docs/LAUNCH_ASSET_BOARD.html](docs/LAUNCH_ASSET_BOARD.html).
 
 If you want the repo's fully verified day-1 flow instead of entering commands by hand:
 
@@ -454,7 +454,7 @@ Export and verify a portable memory-state snapshot:
 ```bash
 zmem export <action-id> --format treeship --out-dir .zerker/exports
 zmem treeship doctor
-zmem treeship publish <action-id> --dry-run --command-template "treeship prove {statement} --action {action_id}"
+zmem treeship publish <action-id> --dry-run
 zmem bundle <action-id> --out-dir .zerker/exports
 zmem bundle verify .zerker/exports/<bundle>.bundle.json
 zmem snapshot --out-dir .zerker/exports
@@ -464,7 +464,7 @@ zmem handoff --summary-only
 
 `zmem export --format treeship` emits a Treeship statement backed by the local receipt bundle proof, including the bundle hash and verification status.
 
-`zmem treeship doctor` checks whether a local Treeship CLI is reachable. `zmem treeship publish` exports a verified statement first, then hands the statement path to a configurable Treeship command template such as `treeship prove {statement} --action {action_id}`.
+`zmem treeship doctor` checks whether a local Treeship CLI is reachable. `zmem treeship publish` exports a verified statement first, then signs it as a Treeship receipt with `system://zmem` and `kind=memory.proof`. Pass `--command-template` only when you need to override that default.
 
 The command receives `ZERKER_MEMORY_CONTEXT`, `ZERKER_ACTION_ID`, `ZERKER_MEMORY_DB`, and `ZERKER_MEMORY_MERKLE_ROOT`.
 

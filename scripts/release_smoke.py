@@ -77,9 +77,9 @@ def ensure_release_pack_summary(output: str, *, source: str) -> None:
         raise SystemExit(f"{source} missing operator-packet readiness")
     if "Operator prompt:" not in output:
         raise SystemExit(f"{source} missing operator prompt path")
-    if "Expected public repo: https://github.com/zerkerlabs/zerker-memory" not in output:
+    if "Expected public repo: https://github.com/zerkerlabs/zmem" not in output:
         raise SystemExit(f"{source} missing expected public repo")
-    if "Expected raw install URL: https://raw.githubusercontent.com/zerkerlabs/zerker-memory/main/install.sh" not in output:
+    if "Expected raw install URL: https://raw.githubusercontent.com/zerkerlabs/zmem/main/install.sh" not in output:
         raise SystemExit(f"{source} missing expected raw install URL")
     if "Open first:" not in output:
         raise SystemExit(f"{source} missing open-first runbook path")
@@ -97,7 +97,7 @@ def ensure_release_pack_summary(output: str, *, source: str) -> None:
         raise SystemExit(f"{source} missing command log map")
     if '- `python3 -m zerker_memory verify-operator-packet ".zerker/launch-proof/public-verify-operator-packet.tar.gz" --summary-only` -> `public-verify-logs/operator-packet-verify.log`' not in output:
         raise SystemExit(f"{source} missing operator-packet preflight log contract")
-    if "- `curl -fsSL https://raw.githubusercontent.com/zerkerlabs/zerker-memory/main/install.sh | bash` -> `public-verify-logs/curl-install.log`" not in output:
+    if "- `curl -fsSL https://raw.githubusercontent.com/zerkerlabs/zmem/main/install.sh | bash` -> `public-verify-logs/curl-install.log`" not in output:
         raise SystemExit(f"{source} missing curl install command log contract")
     if "Launch asset board:" not in output:
         raise SystemExit(f"{source} missing launch asset board path")
@@ -169,7 +169,7 @@ def ensure_operator_packet_summary(output: str, *, source: str) -> None:
         raise SystemExit(f"{source} missing command log map")
     if '- `python3 -m zerker_memory verify-operator-packet ".zerker/launch-proof/public-verify-operator-packet.tar.gz" --summary-only` -> `public-verify-logs/operator-packet-verify.log`' not in output:
         raise SystemExit(f"{source} missing operator-packet preflight log contract")
-    if "- `curl -fsSL https://raw.githubusercontent.com/zerkerlabs/zerker-memory/main/install.sh | bash` -> `public-verify-logs/curl-install.log`" not in output:
+    if "- `curl -fsSL https://raw.githubusercontent.com/zerkerlabs/zmem/main/install.sh | bash` -> `public-verify-logs/curl-install.log`" not in output:
         raise SystemExit(f"{source} missing curl install command log contract")
     if "- `python3 scripts/release_smoke.py --require-install-mode packaged` -> `public-verify-logs/packaged-release-smoke.log`" not in output:
         raise SystemExit(f"{source} missing packaged release-smoke command log contract")
@@ -238,7 +238,7 @@ def ensure_public_verify_summary(output: str, *, source: str) -> None:
         raise SystemExit(f"{source} missing command log map")
     if '- `python3 -m zerker_memory verify-operator-packet ".zerker/launch-proof/public-verify-operator-packet.tar.gz" --summary-only` -> `public-verify-logs/operator-packet-verify.log`' not in output:
         raise SystemExit(f"{source} missing operator-packet preflight log contract")
-    if "- `curl -fsSL https://raw.githubusercontent.com/zerkerlabs/zerker-memory/main/install.sh | bash` -> `public-verify-logs/curl-install.log`" not in output:
+    if "- `curl -fsSL https://raw.githubusercontent.com/zerkerlabs/zmem/main/install.sh | bash` -> `public-verify-logs/curl-install.log`" not in output:
         raise SystemExit(f"{source} missing curl install command log contract")
     if "- `zmem prelaunch` -> `public-verify-logs/prelaunch.log`" not in output:
         raise SystemExit(f"{source} missing prelaunch command log contract")
@@ -273,7 +273,7 @@ def ensure_public_verify_result_summary_artifact(output: str, *, source: str) ->
         raise SystemExit(f"{source} missing command log map heading")
     if '1. `python3 -m zerker_memory verify-operator-packet ".zerker/launch-proof/public-verify-operator-packet.tar.gz" --summary-only` -> `public-verify-logs/operator-packet-verify.log`' not in output:
         raise SystemExit(f"{source} missing operator-packet preflight log contract")
-    if "2. `curl -fsSL https://raw.githubusercontent.com/zerkerlabs/zerker-memory/main/install.sh | bash` -> `public-verify-logs/curl-install.log`" not in output:
+    if "2. `curl -fsSL https://raw.githubusercontent.com/zerkerlabs/zmem/main/install.sh | bash` -> `public-verify-logs/curl-install.log`" not in output:
         raise SystemExit(f"{source} missing curl install log contract")
     if "3. `bash examples/first_run.sh` -> `public-verify-logs/first-run.log`" not in output:
         raise SystemExit(f"{source} missing first-run log contract")
@@ -485,8 +485,8 @@ def ensure_launch_plan_contract(repo: Path) -> None:
         "python3 scripts/release_smoke.py --summary-only",
         "zmem release-pack --summary-only",
         "zmem verify-operator-packet .zerker/launch-proof/public-verify-operator-packet.tar.gz --summary-only",
-        "https://github.com/zerkerlabs/zerker-memory",
-        "https://raw.githubusercontent.com/zerkerlabs/zerker-memory/main/install.sh",
+        "https://github.com/zerkerlabs/zmem",
+        "https://raw.githubusercontent.com/zerkerlabs/zmem/main/install.sh",
         "zmem verify-public-verify --summary-only",
         "assets/install-status.png",
         "assets/first-run-status.png",

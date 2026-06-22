@@ -18,15 +18,15 @@ This is an aggregated brief from:
 - Actual project folder: `/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted`
 - Package name: `zerker-memory`
 - Python package: `zerker_memory`
-- Intended public repo: `https://github.com/zerkerlabs/zerker-memory`
-- Intended raw installer: `https://raw.githubusercontent.com/zerkerlabs/zerker-memory/main/install.sh`
+- Intended public repo: `https://github.com/zerkerlabs/zmem`
+- Intended raw installer: `https://raw.githubusercontent.com/zerkerlabs/zmem/main/install.sh`
 
 Important repo caveat:
 
 - This project folder is not currently its own `.git` repo.
 - `git rev-parse --show-toplevel` resolves to `/Users/zzo`.
 - `/Users/zzo` currently has unrelated remotes, including `https://github.com/rezker1/nextjs-with-supabase.git`.
-- Before publishing, make this project folder its own clean repo for `zerkerlabs/zerker-memory`.
+- Before publishing, make this project folder its own clean repo for `zerkerlabs/zmem`.
 
 ## Product Identity
 
@@ -64,7 +64,7 @@ Do not start broad Phase 2+ work while Phase 1 remains open unless blocked by ex
 
 Every autonomous build run should:
 
-- start with the gstack check
+- start with `bash scripts/gstack_check.sh`
 - read `docs/CURRENT_STATE.md`, `docs/BUILD_LOG.md`, `docs/PRODUCT_STATUS.md`, `README.md`, `QUICKSTART.md`, `docs/DAY1_AGENT_SETUP.md`, automation memory, and current tests/status
 - pick exactly one highest-leverage next slice
 - prefer finishing Phase 1 over starting new features
@@ -82,7 +82,7 @@ Every autonomous build run should:
 
 Phase 1 - Public Alpha Launch Gate:
 
-- create/publish `github.com/zerkerlabs/zerker-memory`
+- create/publish `github.com/zerkerlabs/zmem`
 - verify live raw install command from a clean networked shell
 - rerun `python3 scripts/release_smoke.py` in packaged-install mode without local-wrapper fallback
 - run `zmem release-pack --summary-only`
@@ -455,8 +455,8 @@ Expected current state:
 
 Public verify evidence:
 
-- prove `https://github.com/zerkerlabs/zerker-memory`
-- prove `https://raw.githubusercontent.com/zerkerlabs/zerker-memory/main/install.sh`
+- prove `https://github.com/zerkerlabs/zmem`
+- prove `https://raw.githubusercontent.com/zerkerlabs/zmem/main/install.sh`
 - run the clean-shell public verify script
 - capture logs under `.zerker/launch-proof/public-verify-logs/`
 - update `.zerker/launch-proof/public-verify-result.json`
@@ -536,5 +536,5 @@ First run the repo gstack check. Then read docs/PERMANENT_CHAT_BRIEF.md, docs/CU
 
 The current phase is Phase 1 - Public Alpha Launch Gate. Prioritize finishing external public proof and launch-asset capture over starting new features. Treat docs/CURRENT_STATE.md as the orchestration dashboard and docs/BUILD_LOG.md as the append-only shipped log. Keep changes scoped, run focused tests, run python3 -m zerker_memory eval after behavior changes, and update docs/BUILD_LOG.md, docs/CURRENT_STATE.md, and automation memory after each build run.
 
-Important repo caveat: the project folder is not currently its own .git repo. The intended public repo is https://github.com/zerkerlabs/zerker-memory.
+Important repo caveat: the project folder is not currently its own .git repo. The intended public repo is https://github.com/zerkerlabs/zmem.
 ```

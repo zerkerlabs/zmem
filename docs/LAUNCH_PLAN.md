@@ -2,13 +2,13 @@
 
 ## Launch Thesis
 
-Zerker Memory is not another memory provider.
+ZMem is not another memory provider.
 
 It is a governance layer for agent memory:
 
 ```text
-Recall providers find candidate context.
-Zerker decides what may influence action.
+Recall providers find candidate memory.
+ZMem decides what may influence action.
 Treeship proves what happened.
 ```
 
@@ -18,7 +18,7 @@ Public line:
 
 Longer line:
 
-> Zerker gives AI agents local-first memory with authority checks, quarantine, lineage, revocation, Merkle receipts, and MCP integration.
+> ZMem gives AI agents local-first memory with authority checks, quarantine, lineage, revocation, Merkle receipts, and MCP integration.
 
 ## Repo Readiness
 
@@ -42,13 +42,13 @@ Already present:
 Before publishing:
 
 - Create a clean GitHub repo.
-- Use `zerkerlabs/zerker-memory` as the final public repo URL.
+- Use `zerkerlabs/zmem` as the final public repo URL.
 - Verify the raw installer URL works from a clean shell.
 - Run `python3 scripts/release_smoke.py --summary-only`, `zmem release-pack --summary-only`, and `zmem verify-operator-packet .zerker/launch-proof/public-verify-operator-packet.tar.gz --summary-only` before handing work to another shell.
 - Remove local generated `.zerker/` files from the working tree.
 - Confirm `.gitignore` excludes local DBs and exports.
 - Capture the Phase 1 launch-proof return set from the generated packet, not an ad hoc demo path.
-- Require the clean-shell operator to prove `https://github.com/zerkerlabs/zerker-memory` and `https://raw.githubusercontent.com/zerkerlabs/zerker-memory/main/install.sh`.
+- Require the clean-shell operator to prove `https://github.com/zerkerlabs/zmem` and `https://raw.githubusercontent.com/zerkerlabs/zmem/main/install.sh`.
 - Require `zmem verify-public-verify --summary-only` to pass before the screenshot/GIF pass starts.
 - Capture and return the exact eight launch assets now required by the verifier:
   - `assets/install-status.png`
@@ -147,7 +147,7 @@ For live provider demos and release smoke, set `ZERKER_PROVIDER_LIVE_PROVIDERS` 
 
 7. Install
    - `bash install.sh`
-   - `curl -fsSL https://raw.githubusercontent.com/zerkerlabs/zerker-memory/main/install.sh | bash`
+   - `curl -fsSL https://raw.githubusercontent.com/zerkerlabs/zmem/main/install.sh | bash`
    - `zmem status --summary-only`
 
 ## Visual Direction

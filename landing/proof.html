@@ -1,0 +1,656 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ZMem Proof Matrix</title>
+    <meta name="description" content="A factual product, feature, proof, and release-readiness matrix for ZMem." />
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #10110f;
+        --panel: #171916;
+        --ink: #f3f1e8;
+        --muted: #b8b8aa;
+        --line: #33372e;
+        --green: #92d66f;
+        --amber: #f0b35a;
+        --red: #e06f62;
+        --blue: #8db7c7;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+        background: var(--bg);
+        color: var(--ink);
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        letter-spacing: 0;
+      }
+
+      body {
+        overflow-x: hidden;
+      }
+
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      .page {
+        width: min(1120px, calc(100% - 40px));
+        margin: 0 auto;
+      }
+
+      .nav {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 20px;
+        padding: 24px 0;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .brand,
+      .nav-links {
+        display: flex;
+        align-items: center;
+      }
+
+      .brand {
+        gap: 10px;
+        color: var(--ink);
+        font-weight: 800;
+      }
+
+      .mark {
+        width: 18px;
+        height: 18px;
+        border: 2px solid var(--green);
+        transform: rotate(45deg);
+      }
+
+      .nav-links {
+        gap: 20px;
+      }
+
+      .nav-links strong {
+        color: var(--ink);
+      }
+
+      .hero {
+        padding: 68px 0 42px;
+        border-top: 1px solid var(--line);
+      }
+
+      .eyebrow {
+        color: var(--green);
+        font-size: 13px;
+        font-weight: 800;
+        text-transform: uppercase;
+        margin-bottom: 18px;
+      }
+
+      h1 {
+        max-width: 860px;
+        margin: 0;
+        font-size: clamp(42px, 7vw, 94px);
+        line-height: 0.94;
+        font-weight: 780;
+      }
+
+      .hero p,
+      .section-copy {
+        max-width: 820px;
+        color: var(--muted);
+        font-size: 19px;
+        line-height: 1.55;
+        overflow-wrap: anywhere;
+      }
+
+      .hero p {
+        margin: 24px 0 0;
+      }
+
+      section {
+        padding: 54px 0;
+        border-top: 1px solid var(--line);
+      }
+
+      h2 {
+        margin: 0 0 16px;
+        font-size: clamp(30px, 4vw, 52px);
+        line-height: 1;
+      }
+
+      .status-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+        margin-top: 28px;
+      }
+
+      .status-card,
+      .matrix,
+      .plan-card,
+      .command-card {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        min-width: 0;
+      }
+
+      .status-card {
+        padding: 18px;
+        min-height: 140px;
+      }
+
+      .label {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 800;
+        text-transform: uppercase;
+      }
+
+      .value {
+        display: block;
+        margin-top: 10px;
+        font-size: 23px;
+        font-weight: 800;
+        line-height: 1.1;
+      }
+
+      .green {
+        color: var(--green);
+      }
+
+      .amber {
+        color: var(--amber);
+      }
+
+      .red {
+        color: var(--red);
+      }
+
+      .blue {
+        color: var(--blue);
+      }
+
+      .status-card p {
+        margin: 12px 0 0;
+        color: var(--muted);
+        line-height: 1.45;
+      }
+
+      .matrix {
+        margin-top: 28px;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+        border: 0;
+        background: transparent;
+      }
+
+      .matrix-row {
+        position: relative;
+        display: grid;
+        grid-template-columns: 1fr;
+        align-content: start;
+        gap: 14px;
+        min-height: 258px;
+        padding: 18px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+      }
+
+      .matrix-head {
+        display: none;
+      }
+
+      .matrix-cell {
+        min-width: 0;
+        line-height: 1.45;
+      }
+
+      .matrix-cell strong,
+      .matrix-cell span {
+        display: block;
+      }
+
+      .matrix-cell span {
+        margin-top: 7px;
+        color: var(--muted);
+      }
+
+      .matrix-cell:nth-child(2)::before,
+      .matrix-cell:nth-child(3)::before {
+        display: block;
+        margin-bottom: 7px;
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 850;
+        text-transform: uppercase;
+      }
+
+      .matrix-cell:nth-child(2)::before {
+        content: "Problem";
+      }
+
+      .matrix-cell:nth-child(3)::before {
+        content: "Surface";
+      }
+
+      .matrix-cell:nth-child(4) {
+        position: absolute;
+        top: 18px;
+        right: 18px;
+      }
+
+      code,
+      pre {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      }
+
+      code {
+        color: #d9e3d0;
+        overflow-wrap: anywhere;
+      }
+
+      pre {
+        margin: 0;
+        padding: 18px;
+        overflow-x: auto;
+        color: #d9e3d0;
+        line-height: 1.55;
+        font-size: 13px;
+        max-width: 100%;
+      }
+
+      .tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        min-height: 24px;
+        padding: 0;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+        color: var(--ink);
+        font-size: 12px;
+        font-weight: 800;
+        text-transform: uppercase;
+      }
+
+      .matrix-cell .tag {
+        display: inline-flex;
+      }
+
+      .tag.green {
+        color: var(--green);
+      }
+
+      .tag.amber {
+        color: var(--amber);
+      }
+
+      .tag.red {
+        color: var(--red);
+      }
+
+      .note-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+        margin-top: 28px;
+      }
+
+      .note-card {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        padding: 18px;
+      }
+
+      .note-card strong {
+        display: block;
+        margin-bottom: 10px;
+        font-size: 19px;
+      }
+
+      .note-card p {
+        margin: 0;
+        color: var(--muted);
+        line-height: 1.5;
+      }
+
+      .tag::before {
+        content: "";
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: currentColor;
+        flex: 0 0 auto;
+      }
+
+      .plan-grid,
+      .command-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+        margin-top: 28px;
+        min-width: 0;
+      }
+
+      .plan-card,
+      .command-card {
+        padding: 18px;
+        overflow: hidden;
+      }
+
+      .plan-card strong,
+      .command-card strong {
+        display: block;
+        margin-bottom: 10px;
+        font-size: 20px;
+      }
+
+      .plan-card p {
+        margin: 0;
+        color: var(--muted);
+        line-height: 1.5;
+      }
+
+      .footer {
+        border-top: 1px solid var(--line);
+        color: var(--muted);
+        padding: 28px 0 44px;
+        display: flex;
+        justify-content: space-between;
+        gap: 20px;
+      }
+
+      @media (max-width: 920px) {
+        .nav {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+
+        .nav-links {
+          flex-wrap: wrap;
+        }
+
+        .status-grid,
+        .plan-grid,
+        .command-grid,
+        .note-grid,
+        .matrix {
+          grid-template-columns: 1fr;
+        }
+
+        .footer {
+          flex-direction: column;
+        }
+      }
+
+      @media (max-width: 560px) {
+        .hero {
+          padding-top: 48px;
+        }
+
+        h1 {
+          font-size: clamp(40px, 13vw, 58px);
+        }
+
+        .hero p,
+        .section-copy {
+          font-size: 17px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <nav class="nav">
+        <a class="brand" href="index.html"><span class="mark"></span>ZMem</a>
+        <div class="nav-links">
+          <a href="index.html">Landing</a>
+          <strong>Proof matrix</strong>
+          <a href="llms.txt">llms.txt</a>
+          <a href="https://github.com/zerkerlabs/zmem">GitHub</a>
+        </div>
+      </nav>
+
+      <header class="hero">
+        <div class="eyebrow">Living product evidence</div>
+        <h1>What is built, how it works, and what still has to be proven.</h1>
+        <p>
+          This page is the public-facing source of truth for ZMem launch readiness. It maps each
+          product capability to the user problem, the shipped surface, the proof command, and the
+          current release status.
+        </p>
+      </header>
+
+      <section>
+        <h2>Current State</h2>
+        <p class="section-copy">
+          Last local check: `scripts/release_smoke.py --summary-only` passed. Strict publish is
+          still blocked intentionally until the external clean-shell logs and launch assets exist.
+        </p>
+        <div class="status-grid">
+          <article class="status-card">
+            <span class="label">Workspace</span>
+            <strong class="value green">ready</strong>
+            <p>DB, policy, prompt, MCP config, and provider config are present.</p>
+          </article>
+          <article class="status-card">
+            <span class="label">Memory proof</span>
+            <strong class="value green">ready</strong>
+            <p>Local receipts, event roots, and memory Merkle root verify locally.</p>
+          </article>
+          <article class="status-card">
+            <span class="label">Operator packet</span>
+            <strong class="value green">ready</strong>
+            <p>Outbound clean-shell archive verifies: 16/16 files packed.</p>
+          </article>
+          <article class="status-card">
+            <span class="label">Strict publish</span>
+            <strong class="value red">blocked</strong>
+            <p>Waiting on 6/6 clean-shell logs and 8/8 launch assets.</p>
+          </article>
+        </div>
+      </section>
+
+      <section>
+        <h2>Product Matrix</h2>
+        <p class="section-copy">
+          ZMem is agent-native local memory: agents can ask, learn, act, explain, and hand off
+          without turning memory into an opaque context blob.
+        </p>
+        <div class="matrix">
+          <div class="matrix-row">
+            <div class="matrix-cell"><strong>Local memory core</strong><span>Typed memory that stays local and inspectable.</span></div>
+            <div class="matrix-cell">Gives agents durable memory without shipping state to a hosted memory service.</div>
+            <div class="matrix-cell"><code>SQLite</code>, FTS search, typed records, lifecycle states, source, scope, trust, authority.</div>
+            <div class="matrix-cell"><span class="tag green">built</span></div>
+          </div>
+          <div class="matrix-row">
+            <div class="matrix-cell"><strong>Agent memory request</strong><span>Agents ask what they can safely reuse before acting.</span></div>
+            <div class="matrix-cell">Stops agents from relying on stale chat memory or raw search hits.</div>
+            <div class="matrix-cell"><code>memory.inject</code>, <code>zmem inject</code>, action receipt, memory root.</div>
+            <div class="matrix-cell"><span class="tag green">built</span></div>
+          </div>
+          <div class="matrix-row">
+            <div class="matrix-cell"><strong>Review-safe learning</strong><span>Agents can write candidates without self-promoting them.</span></div>
+            <div class="matrix-cell">Keeps self-generated memory from becoming authority by default.</div>
+            <div class="matrix-cell"><code>memory.propose</code>, queue, promote, reject, revoke, lineage.</div>
+            <div class="matrix-cell"><span class="tag green">built</span></div>
+          </div>
+          <div class="matrix-row">
+            <div class="matrix-cell"><strong>Local dashboard</strong><span>Humans can inspect the same store agents use.</span></div>
+            <div class="matrix-cell">Makes memory visible: source, scope, trust, lifecycle, receipts.</div>
+            <div class="matrix-cell"><code>zmem ui</code>, review console, proof-review surface.</div>
+            <div class="matrix-cell"><span class="tag green">built</span></div>
+          </div>
+          <div class="matrix-row">
+            <div class="matrix-cell"><strong>Agent onboarding</strong><span>Codex, Claude Code, Cursor, OpenClaw, Hermes, generic MCP.</span></div>
+            <div class="matrix-cell">Lets agents self-serve through MCP with a shared prompt contract.</div>
+            <div class="matrix-cell"><code>zmem agent install</code>, <code>zmem agent pack</code>, <code>.zerker/AGENT_PROMPT.md</code>.</div>
+            <div class="matrix-cell"><span class="tag green">built</span></div>
+          </div>
+          <div class="matrix-row">
+            <div class="matrix-cell"><strong>Handoff and restore</strong><span>Move governed memory state across agents or machines.</span></div>
+            <div class="matrix-cell">Prevents context loss during agent-to-agent continuation.</div>
+            <div class="matrix-cell"><code>zmem handoff --summary-only</code>, <code>zmem restore --handoff-dir</code>.</div>
+            <div class="matrix-cell"><span class="tag green">built</span></div>
+          </div>
+          <div class="matrix-row">
+            <div class="matrix-cell"><strong>Chat-to-chat bridge</strong><span>Combine separate agent chats without trusting raw transcript memory.</span></div>
+            <div class="matrix-cell">Lets a pasted chat checkpoint enter review, or lets another workspace restore verified state.</div>
+            <div class="matrix-cell"><code>zmem propose --label cross-chat-checkpoint</code>, <code>zmem queue</code>, <code>zmem promote</code>, handoff restore.</div>
+            <div class="matrix-cell"><span class="tag green">built</span></div>
+          </div>
+          <div class="matrix-row">
+            <div class="matrix-cell"><strong>Proof receipts</strong><span>Show what memory shaped an action.</span></div>
+            <div class="matrix-cell">Turns memory into auditable evidence instead of post-hoc narrative.</div>
+            <div class="matrix-cell"><code>memory.why</code>, <code>memory.verify</code>, Merkle roots, Treeship-ready export/publish handoff.</div>
+            <div class="matrix-cell"><span class="tag green">built</span></div>
+          </div>
+          <div class="matrix-row">
+            <div class="matrix-cell"><strong>Bundles and snapshots</strong><span>Export and verify memory proof artifacts.</span></div>
+            <div class="matrix-cell">Lets another operator verify receipts or restore a full local memory state.</div>
+            <div class="matrix-cell"><code>zmem bundle</code>, <code>bundle verify</code>, <code>zmem snapshot</code>, <code>snapshot verify</code>, <code>restore</code>.</div>
+            <div class="matrix-cell"><span class="tag green">built</span></div>
+          </div>
+          <div class="matrix-row">
+            <div class="matrix-cell"><strong>Provider governance</strong><span>External memory providers import into review, not blind trust.</span></div>
+            <div class="matrix-cell">Lets Mem0/Zep-style sources be useful without becoming authoritative by default.</div>
+            <div class="matrix-cell"><code>zmem provider</code>, <code>external-search</code>, <code>external-import</code>, provider doctor.</div>
+            <div class="matrix-cell"><span class="tag amber">alpha</span></div>
+          </div>
+          <div class="matrix-row">
+            <div class="matrix-cell"><strong>Recovery-memory traces</strong><span>Behavior-tree traces become inspectable memory evidence.</span></div>
+            <div class="matrix-cell">Connects memory proof to deterministic recovery and incident explanation workflows.</div>
+            <div class="matrix-cell"><code>zmem bt ingest</code>, <code>bt explain</code>, <code>bt export</code>, XML plus proof manifest.</div>
+            <div class="matrix-cell"><span class="tag green">built</span></div>
+          </div>
+          <div class="matrix-row">
+            <div class="matrix-cell"><strong>Benchmark harness</strong><span>Measure quality and latency with proof-bearing runs.</span></div>
+            <div class="matrix-cell">Keeps trust from being a substitute for retrieval performance.</div>
+            <div class="matrix-cell"><code>zmem bench list</code>, <code>run</code>, <code>matrix</code>, <code>report</code>, <code>verify</code>, <code>compare</code>.</div>
+            <div class="matrix-cell"><span class="tag amber">alpha</span></div>
+          </div>
+          <div class="matrix-row">
+            <div class="matrix-cell"><strong>Clean-shell launch proof</strong><span>Independent install and release evidence.</span></div>
+            <div class="matrix-cell">Proves the public repo, raw installer, packaged smoke, assets, and return packet.</div>
+            <div class="matrix-cell"><code>zmem release-pack --summary-only</code>, operator packet, public verify logs, launch assets.</div>
+            <div class="matrix-cell"><span class="tag red">pending evidence</span></div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Kept Honest</h2>
+        <p class="section-copy">
+          The launch page should be strong without pretending the future is already shipped.
+        </p>
+        <div class="note-grid">
+          <article class="note-card">
+            <strong>Standalone first</strong>
+            <p>ZMem works locally without Treeship. Treeship is the optional proof-publication layer when a public receipt is useful.</p>
+          </article>
+          <article class="note-card">
+            <strong>Alpha boundary</strong>
+            <p>The local memory loop is functional. Hosted team review, enterprise control plane features, and public package release are not claimed as done.</p>
+          </article>
+          <article class="note-card">
+            <strong>Launch gate</strong>
+            <p>Strict publish remains blocked until the clean-shell proof logs and launch screenshots/GIFs exist.</p>
+          </article>
+        </div>
+      </section>
+
+      <section>
+        <h2>Verified Commands</h2>
+        <p class="section-copy">
+          These examples match the current CLI help surface and release-smoke contract.
+        </p>
+        <div class="command-grid">
+          <article class="command-card">
+            <strong>Start local</strong>
+            <pre>curl -fsSL https://raw.githubusercontent.com/zerkerlabs/zmem/main/install.sh | bash
+zmem status --summary-only
+zmem ui</pre>
+          </article>
+          <article class="command-card">
+            <strong>Connect agents</strong>
+            <pre>zmem agent install codex
+zmem agent install claude-code
+zmem agent install cursor --summary-only
+zmem agent pack --summary-only
+zmem agent mcp-smoke --agent codex</pre>
+          </article>
+          <article class="command-card">
+            <strong>Handoff and proof</strong>
+            <pre>zmem handoff --summary-only
+zmem --db .zerker/imported.sqlite restore --handoff-dir .zerker/handoff
+zmem verify &lt;action-id&gt;
+zmem treeship publish &lt;action-id&gt;</pre>
+          </article>
+          <article class="command-card">
+            <strong>Bridge chats</strong>
+            <pre>zmem propose "Cross-chat checkpoint: ..." --type episodic --scope project --source agent --label cross-chat-checkpoint
+zmem queue --scope project --status quarantined
+zmem promote &lt;memory-id&gt;
+zmem inject "continue the task" --agent codex --scope project --risk medium</pre>
+          </article>
+          <article class="command-card">
+            <strong>Benchmarks and release</strong>
+            <pre>zmem bench list
+zmem bench matrix synthetic --out .zerker/bench/synthetic-matrix
+zmem release-pack --summary-only
+zmem prelaunch --summary-only</pre>
+          </article>
+        </div>
+      </section>
+
+      <section>
+        <h2>Release Plan</h2>
+        <p class="section-copy">
+          The launch plan is intentionally small: publish only after the proof artifacts say the
+          public install path and final assets are real.
+        </p>
+        <div class="plan-grid">
+          <article class="plan-card">
+            <strong>1. Keep local alpha green</strong>
+            <p>Run release smoke, keep status ready, keep operator packet ready, and keep examples aligned with CLI help.</p>
+          </article>
+          <article class="plan-card">
+            <strong>2. Prove public install</strong>
+            <p>Use the clean-shell operator packet to capture 6 logs, including raw curl install and packaged release smoke.</p>
+          </article>
+          <article class="plan-card">
+            <strong>3. Capture launch assets</strong>
+            <p>Save 8 screenshots/GIFs under <code>.zerker/launch-proof/assets/</code>, then run <code>zmem verify-launch-assets --summary-only</code>.</p>
+          </article>
+          <article class="plan-card">
+            <strong>4. Accept return packet</strong>
+            <p>Finalize the return packet and accept it only when <code>zmem verify-return-packet ... --summary-only</code> reports ready.</p>
+          </article>
+        </div>
+      </section>
+
+      <footer class="footer">
+        <span>ZMem proof matrix</span>
+        <span>Keep this page factual: every new claim should map to a shipped surface, command, or pending release gate.</span>
+      </footer>
+    </div>
+  </body>
+</html>

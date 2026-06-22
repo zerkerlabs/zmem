@@ -6,6 +6,8 @@ Current phase: `Phase 1 - Public Alpha Launch Gate`.
 Top remaining blocker: external proof of the live public repo/raw installer from a clean networked shell, plus the final launch assets that must come back with that proof.
 Why this checklist exists: the generated operator packet is the source of truth for a specific run, but another chat or operator still needs one durable repo doc that explains the outbound packet, the clean-shell commands, and the receive-side acceptance rules before the pack is refreshed.
 
+If you need the shortest durable path first, use [`docs/CLEAN_SHELL_VERIFICATION_CHECKLIST.md`](CLEAN_SHELL_VERIFICATION_CHECKLIST.md) before this longer runbook.
+
 ## When To Use It
 
 - Use this after `zmem release-pack --summary-only` refreshes `.zerker/launch-proof/` and `.zerker/handoff/`.
@@ -17,6 +19,7 @@ Why this checklist exists: the generated operator packet is the source of truth 
 Run these from the repo before handing work to another shell or operator:
 
 ```bash
+bash scripts/gstack_check.sh
 python3 scripts/release_smoke.py --summary-only
 zmem release-pack --summary-only
 zmem verify-operator-packet .zerker/launch-proof/public-verify-operator-packet.tar.gz --summary-only
@@ -24,6 +27,7 @@ zmem verify-operator-packet .zerker/launch-proof/public-verify-operator-packet.t
 
 Expected result:
 
+- `bash scripts/gstack_check.sh` reports `GSTACK_OK` or `GSTACK_MISSING` for this repo shell without changing the launch-gate contract.
 - `release-pack` reports `Launch proof: ok` and `Handoff: ok`.
 - `verify-operator-packet` reports `Ready: yes`.
 - The remaining blockers are only `public_verify_evidence` and `launch_assets`.
@@ -60,16 +64,16 @@ That archive should contain:
 
 The clean-shell proof must validate these exact public endpoints:
 
-- GitHub repo: `https://github.com/zerkerlabs/zerker-memory`
-- Raw installer: `https://raw.githubusercontent.com/zerkerlabs/zerker-memory/main/install.sh`
+- GitHub repo: `https://github.com/zerkerlabs/zmem`
+- Raw installer: `https://raw.githubusercontent.com/zerkerlabs/zmem/main/install.sh`
 
 ## Clean-Shell Operator Steps
 
-1. Start from a clean networked shell against the public repo and confirm the repo URL is `https://github.com/zerkerlabs/zerker-memory`.
+1. Start from a clean networked shell against the public repo and confirm the repo URL is `https://github.com/zerkerlabs/zmem`.
 2. Run the raw installer once to bootstrap the clean repo path:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/zerkerlabs/zerker-memory/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/zerkerlabs/zmem/main/install.sh | bash
 cd "${ZERKER_MEMORY_HOME:-$HOME/.zerker-memory}/repo"
 ```
 
@@ -120,7 +124,7 @@ Use this map to avoid ambiguous handback logs. Each command below should save to
 
 1. `python3 -m zerker_memory verify-operator-packet ".zerker/launch-proof/public-verify-operator-packet.tar.gz" --summary-only` -> `public-verify-logs/operator-packet-verify.log`
    Confirm: reports `Ready: yes` before the live public proof steps start.
-2. `curl -fsSL https://raw.githubusercontent.com/zerkerlabs/zerker-memory/main/install.sh | bash` -> `public-verify-logs/curl-install.log`
+2. `curl -fsSL https://raw.githubusercontent.com/zerkerlabs/zmem/main/install.sh | bash` -> `public-verify-logs/curl-install.log`
    Confirm: ends on `Zerker Memory status`.
 3. `bash examples/first_run.sh` -> `public-verify-logs/first-run.log`
    Confirm: ends on `Manual pack ready: yes`.
@@ -148,8 +152,8 @@ The return packet must also contain these eight deliverables:
 
 Stop the clean-shell pass and hand the failure state back instead of improvising a local fix if any of these happen:
 
-- the public repo URL is not `https://github.com/zerkerlabs/zerker-memory`
-- the raw installer URL is not `https://raw.githubusercontent.com/zerkerlabs/zerker-memory/main/install.sh`
+- the public repo URL is not `https://github.com/zerkerlabs/zmem`
+- the raw installer URL is not `https://raw.githubusercontent.com/zerkerlabs/zmem/main/install.sh`
 - `python3 scripts/release_smoke.py --require-install-mode packaged` falls back to local wrappers or records any install mode other than `packaged`
 - `zmem verify-public-verify --summary-only` does not report `Ready: yes` after the generated script finishes
 - `zmem verify-launch-assets --summary-only` does not report `8/8 captured`

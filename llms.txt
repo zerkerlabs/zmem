@@ -1,0 +1,137 @@
+# ZMem
+
+ZMem is agent-native local memory for AI agents.
+
+It lets agents request approved memory, propose new memory, explain what memory shaped an action, and hand off governed memory state to another agent.
+
+## Product Positioning
+
+ZMem is not just a vector store or recall provider. It is a local-first memory layer for agents that need continuity, inspection, control, and proof.
+
+Core loop:
+
+- Ask: an agent calls `memory.inject` before a task.
+- Learn: an agent calls `memory.propose` after a task.
+- Review: a human or configured authority promotes, rejects, quarantines, or revokes proposed memory.
+- Act: the agent uses only approved injected memory.
+- Explain: the agent calls `memory.why` to show which memory influenced an action.
+- Handoff: ZMem exports snapshots, restore guides, prompts, and receipt bundles so another agent can continue.
+
+## What Agents Get
+
+- Durable local memory across sessions and tools.
+- Approved memory context scoped to the current task.
+- A review-safe way to write new memory.
+- Receipts for memory-backed actions.
+- Handoff artifacts for Codex, Claude Code, Cursor, OpenClaw, Hermes, and generic MCP clients.
+- Chat-to-chat continuity through shared local stores, proposed checkpoints, and verified handoff/restore packages.
+
+## What Humans Get
+
+- Local SQLite storage.
+- Typed, searchable memories.
+- Source, scope, trust, authority, labels, lifecycle, lineage, and revocation.
+- Dashboard inspection.
+- Review queue for proposed or risky memories.
+- Merkle roots, action receipts, why reports, snapshots, and return packets.
+
+## Agent Usage
+
+Before a task:
+
+```text
+memory.inject
+```
+
+Use the returned `memories` as durable context. Treat returned `withheld` memories as unavailable and non-authoritative.
+
+After a task:
+
+```text
+memory.propose
+```
+
+Use this for durable facts, procedures, preferences, failed attempts, recovery notes, and policy candidates.
+
+When memory shaped an action:
+
+```text
+memory.why
+```
+
+Use the returned action id to explain what was injected, what was withheld, and which policy or memory root applied.
+
+## MCP Tools
+
+```text
+memory.remember
+memory.propose
+memory.search
+memory.inject
+memory.inspect
+memory.queue
+memory.promote
+memory.reject
+memory.lineage
+memory.revoke
+memory.forget
+memory.why
+memory.verify
+memory.external_search
+memory.external_import
+memory.snapshot
+memory.restore
+```
+
+## CLI
+
+```bash
+zmem status --summary-only
+zmem ui
+zmem agent install codex
+zmem agent install claude-code
+zmem agent install cursor --summary-only
+zmem agent pack --summary-only
+zmem handoff --summary-only
+zmem verify <action-id>
+```
+
+## Chat-To-Chat Continuity
+
+Same workspace:
+
+```bash
+zmem inject "continue the task" --agent codex --scope project --risk medium
+```
+
+Pasted summary from another chat:
+
+```bash
+zmem propose "Cross-chat checkpoint: ..." --type episodic --scope project --source agent --label cross-chat-checkpoint
+zmem queue --scope project --status quarantined
+zmem promote <memory-id>
+```
+
+Different workspace or machine:
+
+```bash
+zmem handoff --summary-only
+zmem --db .zerker/imported.sqlite restore --handoff-dir .zerker/handoff
+```
+
+## Rules For Agents
+
+- Do not treat prior chat memory as durable unless ZMem injects it.
+- Do not promote your own proposed memories.
+- Do not use withheld, revoked, quarantined, or low-authority memory as context.
+- Keep the `action_id` when memory influenced an action.
+- Use `memory.why` when asked why memory mattered.
+- Use handoff artifacts before transferring work to another agent.
+- Treat pasted chat summaries as proposed memory until reviewed.
+
+## Links
+
+- Site: https://zmem.sh
+- Repository: https://github.com/zerkerlabs/zmem
+- Feature guide: https://github.com/zerkerlabs/zmem/blob/main/docs/ZMEM_FEATURE_GUIDE.md
+- Agent integration: https://github.com/zerkerlabs/zmem/blob/main/AGENT_INTEGRATION.md

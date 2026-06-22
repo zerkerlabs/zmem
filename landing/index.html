@@ -4,9 +4,9 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>ZMem</title>
-    <meta name="description" content="Local-first verifiable memory for AI agents. Give every memory provenance, policy, receipts, and a trust gate before it influences action." />
+    <meta name="description" content="Open-source local memory for AI agents. ZMem serves approved memories, records what was withheld, and hands verified state to the next agent." />
     <meta property="og:title" content="ZMem" />
-    <meta property="og:description" content="Local-first verifiable memory for AI agents. Give every memory provenance, policy, receipts, and a trust gate before it influences action." />
+    <meta property="og:description" content="Open-source local memory for AI agents. ZMem serves approved memories, records what was withheld, and hands verified state to the next agent." />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
     <style>
@@ -52,7 +52,6 @@
         min-height: 92vh;
         display: grid;
         align-items: center;
-        border-bottom: 1px solid var(--line);
         overflow: hidden;
       }
 
@@ -108,12 +107,28 @@
         gap: 22px;
       }
 
+      .nav-cta {
+        color: var(--ink);
+        font-weight: 700;
+      }
+
       .hero-inner {
         position: relative;
         z-index: 1;
         width: min(1120px, calc(100% - 40px));
         margin: 0 auto;
         padding-top: 72px;
+      }
+
+      .hero-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.03fr) minmax(320px, 0.72fr);
+        gap: clamp(28px, 5vw, 72px);
+        align-items: center;
+      }
+
+      .hero-main {
+        min-width: 0;
       }
 
       .eyebrow {
@@ -153,6 +168,143 @@
         color: var(--ink);
       }
 
+      .hero-panel {
+        min-width: 0;
+        border: 1px solid rgba(184, 184, 170, 0.24);
+        border-radius: 8px;
+        background: rgba(16, 17, 15, 0.76);
+        box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
+        overflow: hidden;
+        backdrop-filter: blur(8px);
+      }
+
+      .panel-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 14px 16px;
+        border-bottom: 1px solid rgba(184, 184, 170, 0.18);
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .status-pill {
+        display: inline-flex;
+        align-items: center;
+        min-height: 26px;
+        padding: 0 10px;
+        border-radius: 999px;
+        background: rgba(146, 214, 111, 0.13);
+        color: var(--green);
+        font-size: 12px;
+        font-weight: 800;
+        text-transform: uppercase;
+      }
+
+      .panel-body {
+        padding: 18px;
+        display: grid;
+        gap: 12px;
+      }
+
+      .request-card {
+        border: 1px solid rgba(184, 184, 170, 0.14);
+        border-radius: 8px;
+        background: rgba(23, 25, 22, 0.74);
+        padding: 14px;
+      }
+
+      .request-card span {
+        display: block;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 800;
+        text-transform: uppercase;
+        margin-bottom: 8px;
+      }
+
+      .request-card strong {
+        display: block;
+        font-size: 18px;
+        line-height: 1.25;
+      }
+
+      .memory-row {
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        gap: 12px;
+        align-items: center;
+        padding: 12px;
+        border: 1px solid rgba(184, 184, 170, 0.14);
+        border-radius: 8px;
+        background: rgba(23, 25, 22, 0.74);
+      }
+
+      .memory-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: var(--green);
+      }
+
+      .memory-dot.amber {
+        background: var(--amber);
+      }
+
+      .memory-dot.red {
+        background: var(--red);
+      }
+
+      .memory-row strong,
+      .memory-row span {
+        display: block;
+      }
+
+      .memory-row strong {
+        font-size: 14px;
+      }
+
+      .memory-row span {
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.35;
+      }
+
+      .memory-tag {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 800;
+        text-transform: uppercase;
+      }
+
+      .memory-tag.green {
+        color: var(--green);
+      }
+
+      .memory-tag.amber {
+        color: var(--amber);
+      }
+
+      .memory-tag.red {
+        color: var(--red);
+      }
+
+      .mini-terminal {
+        margin-top: 2px;
+        border: 1px solid rgba(184, 184, 170, 0.14);
+        border-radius: 8px;
+        background: #0b0c0a;
+        overflow: hidden;
+      }
+
+      .mini-terminal pre {
+        padding: 14px;
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
       .actions {
         display: flex;
         flex-wrap: wrap;
@@ -180,13 +332,13 @@
 
       .proof {
         width: min(1120px, calc(100% - 40px));
-        margin: -58px auto 0;
+        margin: -24px auto 0;
         position: relative;
         z-index: 3;
         border: 1px solid var(--line);
-        background: rgba(23, 25, 22, 0.96);
+        background: rgba(18, 20, 16, 0.96);
         border-radius: 8px;
-        overflow: hidden;
+        padding: 14px;
       }
 
       .code-panel {
@@ -295,16 +447,49 @@
       .proof-top {
         display: grid;
         grid-template-columns: repeat(3, 1fr);
-        border-bottom: 1px solid var(--line);
+        gap: 12px;
       }
 
       .proof-item {
-        padding: 18px;
-        border-right: 1px solid var(--line);
+        padding: 16px;
+        border: 1px solid rgba(184, 184, 170, 0.16);
+        border-radius: 8px;
+        background: rgba(16, 17, 15, 0.72);
       }
 
-      .proof-item:last-child {
-        border-right: 0;
+      .receipt-mini {
+        margin-top: 12px;
+        display: grid;
+        grid-template-columns: 0.82fr 1.18fr;
+        gap: 12px;
+      }
+
+      .receipt-side {
+        padding: 20px;
+        border: 1px solid rgba(184, 184, 170, 0.16);
+        border-radius: 8px;
+        background: rgba(16, 17, 15, 0.72);
+        display: grid;
+        align-content: center;
+        gap: 12px;
+      }
+
+      .receipt-side strong {
+        display: block;
+        font-size: 24px;
+        line-height: 1.1;
+      }
+
+      .receipt-side span {
+        display: block;
+        color: var(--muted);
+        line-height: 1.5;
+      }
+
+      .receipt-mini pre {
+        border: 1px solid rgba(184, 184, 170, 0.16);
+        border-radius: 8px;
+        background: #0b0c0a;
       }
 
       .label {
@@ -368,6 +553,123 @@
         display: grid;
         grid-template-columns: repeat(3, 1fr);
         gap: 14px;
+      }
+
+      .product-map {
+        margin-top: 32px;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      .map-row {
+        display: grid;
+        grid-template-rows: auto auto 1fr;
+        gap: 14px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        padding: 18px;
+        min-width: 0;
+        min-height: 246px;
+      }
+
+      .map-cell {
+        min-width: 0;
+      }
+
+      .map-cell strong,
+      .map-cell span {
+        display: block;
+      }
+
+      .map-cell strong {
+        font-size: 18px;
+      }
+
+      .map-cell span {
+        margin-top: 8px;
+        color: var(--muted);
+        line-height: 1.42;
+      }
+
+      .map-code {
+        padding: 12px;
+        border: 1px solid rgba(184, 184, 170, 0.14);
+        border-radius: 8px;
+        background: #10110f;
+        color: #d9e3d0;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+        font-size: 12px;
+        line-height: 1.45;
+        white-space: normal;
+      }
+
+      .pill-list {
+        display: flex;
+        flex-wrap: wrap;
+        align-content: end;
+        gap: 8px;
+      }
+
+      .pill-list span {
+        margin: 0;
+        display: inline-flex;
+        align-items: center;
+        min-height: 28px;
+        padding: 0 10px;
+        border: 1px solid rgba(184, 184, 170, 0.16);
+        border-radius: 6px;
+        background: #10110f;
+        color: var(--ink);
+        font-size: 12px;
+        font-weight: 750;
+      }
+
+      .console-showcase {
+        margin-top: 36px;
+        display: grid;
+        grid-template-columns: 0.9fr 1.1fr;
+        gap: 16px;
+        align-items: stretch;
+      }
+
+      .console-card {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #141612;
+        padding: 22px;
+      }
+
+      .console-card h3 {
+        margin: 0 0 14px;
+        font-size: 24px;
+      }
+
+      .console-card p {
+        color: var(--muted);
+        margin: 0;
+        line-height: 1.55;
+      }
+
+      .console-list {
+        display: grid;
+        gap: 10px;
+        margin-top: 18px;
+      }
+
+      .console-list div {
+        display: flex;
+        justify-content: space-between;
+        gap: 14px;
+        border: 1px solid rgba(184, 184, 170, 0.13);
+        border-radius: 8px;
+        padding: 12px;
+        color: var(--muted);
+      }
+
+      .console-list strong {
+        color: var(--ink);
       }
 
       .card {
@@ -533,10 +835,39 @@
           display: none;
         }
 
+        .hero {
+          min-height: auto;
+        }
+
+        .hero-inner {
+          padding: 112px 0 78px;
+        }
+
+        .hero-grid {
+          grid-template-columns: 1fr;
+          gap: 26px;
+        }
+
+        .hero-panel {
+          order: 2;
+        }
+
+        .actions {
+          gap: 10px;
+        }
+
+        .button {
+          flex: 1 1 150px;
+          justify-content: center;
+        }
+
         .proof-top,
+        .receipt-mini,
+        .product-map,
         .grid,
         .flow,
         .proof-path,
+        .console-showcase,
         .persona-grid,
         .status-grid,
         .quickstart-grid,
@@ -544,18 +875,28 @@
           grid-template-columns: 1fr;
         }
 
-        .proof-item {
-          border-right: 0;
-          border-bottom: 1px solid var(--line);
-        }
-
-        .proof-item:last-child {
-          border-bottom: 0;
-        }
-
         .footer {
           flex-direction: column;
         }
+      }
+
+      @media (max-width: 560px) {
+        .nav {
+          padding: 18px 20px;
+        }
+
+        h1 {
+          font-size: clamp(42px, 14vw, 62px);
+        }
+
+        .hero-copy {
+          font-size: 17px;
+        }
+
+        .hero-note {
+          font-size: 13px;
+        }
+
       }
     </style>
   </head>
@@ -570,23 +911,72 @@
             <a href="#proof-path">Proof</a>
             <a href="#how">How</a>
             <a href="#install">Install</a>
+            <a href="proof.html">Matrix</a>
+            <a href="benchmarks.html">Benchmarks</a>
+            <a class="nav-cta" href="https://github.com/zerkerlabs/zmem">GitHub</a>
           </div>
         </nav>
         <div class="hero-inner">
-          <div class="eyebrow">Open-source verifiable memory for AI agents</div>
-          <h1>Memory your agents can trust, inspect, and prove.</h1>
-          <p class="hero-copy">
-            ZMem gives every memory provenance, policy, receipts, and a trust gate before it
-            influences action. Keep durable agent memory local and usable without turning it into
-            another opaque vector store.
-          </p>
-        <div class="actions">
-          <a class="button primary" href="#install">Start locally</a>
-          <a class="button" href="#dashboard">See dashboard</a>
-          <a class="button" href="#ships">What ships</a>
-          <a class="button" href="https://github.com/zerkerlabs/zerker-memory/blob/main/docs/ZMEM_FEATURE_GUIDE.md">Feature guide</a>
-        </div>
-        <p class="hero-note">Launching at <strong>zmem.sh</strong> from Zerker Labs, with portable proof designed to pair cleanly with <a href="https://treeship.dev">treeship.dev</a>.</p>
+          <div class="hero-grid">
+            <div class="hero-main">
+              <div class="eyebrow">Open-source local memory for agents</div>
+              <h1>Memory that survives the chat.</h1>
+              <p class="hero-copy">
+                ZMem gives agents a local memory API: request approved memories before a task,
+                propose new ones after, and hand verified state to the next agent.
+              </p>
+              <p class="hero-note">
+                Every memory-backed action can show what was used, what was withheld, and the Merkle
+                root that verifies the memory set. Treeship can publish that receipt when you need a public proof URL.
+              </p>
+              <div class="actions">
+                <a class="button primary" href="#install">Start local</a>
+                <a class="button" href="#dashboard">Dashboard</a>
+                <a class="button" href="proof.html">Proof matrix</a>
+              </div>
+            </div>
+            <aside class="hero-panel" aria-label="ZMem local dashboard preview">
+              <div class="panel-bar">
+                <span>memory request</span>
+                <span class="status-pill">local-first</span>
+              </div>
+              <div class="panel-body">
+                <div class="request-card">
+                  <span>Agent asks</span>
+                  <strong>What memory is allowed for this task?</strong>
+                </div>
+                <div class="memory-row">
+                  <span class="memory-dot"></span>
+                  <div>
+                    <strong>Inject approved memory</strong>
+                    <span>scoped, active, trusted enough</span>
+                  </div>
+                  <span class="memory-tag green">inject</span>
+                </div>
+                <div class="memory-row">
+                  <span class="memory-dot amber"></span>
+                  <div>
+                    <strong>Queue new memory</strong>
+                    <span>agent proposals wait for review</span>
+                  </div>
+                  <span class="memory-tag amber">queue</span>
+                </div>
+                <div class="memory-row">
+                  <span class="memory-dot red"></span>
+                  <div>
+                    <strong>Receipt and handoff</strong>
+                    <span>used, withheld, root, restore</span>
+                  </div>
+                  <span class="memory-tag red">why</span>
+                </div>
+                <div class="mini-terminal">
+                  <pre>memory.inject → 3 approved / 2 withheld
+memory.propose → review queue
+memory.why → verified receipt</pre>
+                </div>
+              </div>
+            </aside>
+          </div>
         </div>
       </header>
 
@@ -594,103 +984,65 @@
         <div class="proof-top">
           <div class="proof-item">
             <div class="label">Store</div>
-            <div class="value green">local agent memory</div>
+            <div class="value green">local SQLite memory</div>
           </div>
           <div class="proof-item">
             <div class="label">Select</div>
-            <div class="value red">policy-gated memory</div>
+            <div class="value red">approved injection</div>
           </div>
           <div class="proof-item">
             <div class="label">Verify</div>
-            <div class="value amber">memory receipt</div>
+            <div class="value amber">Merkle receipt</div>
           </div>
         </div>
-        <pre>{
-  "agent": "cursor",
-  "task": "continue the release plan",
-  "memory": "ZMem is local-first proof-backed memory",
-  "source": "human",
-  "decision": "inject",
-  "why": "active, project-scoped, trusted",
-  "memory_root": "df1ff27342037bd...",
-  "receipt": "verified"
-}</pre>
+        <div class="receipt-mini">
+          <div class="receipt-side">
+            <strong>Not a context dump.</strong>
+            <span>Agents get scoped memory for the task. Humans can inspect the source, lifecycle, withheld set, and proof.</span>
+          </div>
+          <pre>agent: cursor
+task: continue release
+approved: 3 memories
+withheld: 2 memories
+why: scoped, active, reviewed
+receipt: verified</pre>
+        </div>
       </div>
 
       <section id="why">
-        <h2>Agents need memory they can trust, not just retrieve.</h2>
+        <h2>Built for agents, governed for humans.</h2>
         <p class="section-copy">
-          The real pain is continuity with control. Agents lose memory between sessions, vector
-          stores hide what was remembered, and summaries drift away from evidence. ZMem keeps
-          memory local, queryable, reviewable, and attached to proof-backed receipts.
+          Agents get a simple memory API. Humans get local control, review queues, lineage, and proof.
         </p>
-        <div class="grid">
-          <article class="card">
-            <h3>Know what it knows</h3>
-            <p>Structured local memory with SQLite, FTS search, typed records, scopes, labels, source, trust, and authority.</p>
-          </article>
-          <article class="card">
-            <h3>Control what it uses</h3>
-            <p>Agents can propose memory without making it authoritative. Humans or policies can promote, reject, quarantine, or revoke.</p>
-          </article>
-          <article class="card">
-            <h3>Verify the memory</h3>
-            <p>Action receipts show what was injected, what was withheld, and which memory root backed the agent's decision.</p>
-          </article>
-        </div>
-      </section>
-
-      <section>
-        <h2>Provenance and policy for the memory layer you already have.</h2>
-        <p class="section-copy">
-          Storage is not the hard part anymore. The hard part is knowing whether a stored memory
-          should be allowed to shape a future action. ZMem records where memory came from, keeps
-          risky memory reviewable, and gates retrieval through policy before an agent can use it.
-        </p>
-        <div class="grid">
-          <article class="card">
-            <h3>Know the source</h3>
-            <p>Track source kind, scope, labels, trust, authority, lineage, and lifecycle on every memory record.</p>
-          </article>
-          <article class="card">
-            <h3>Refuse unsafe recall</h3>
-            <p>Similarity search finds candidates; policy decides what can influence a task, tool call, or handoff.</p>
-          </article>
-          <article class="card">
-            <h3>Answer incidents</h3>
-            <p>When an agent acts, <code>why</code> and receipts show what it knew, where that memory came from, and why it was allowed.</p>
-          </article>
-        </div>
-      </section>
-
-      <section id="ships">
-        <h2>One interface for memory, agents, and proof.</h2>
-        <p class="section-copy">
-          ZMem starts as a lightweight local tool and grows into a governed memory gateway. The
-          open-source build ships the core loop: save, inspect, review, continue, verify, and hand off.
-        </p>
-        <div class="grid">
-          <article class="card">
-            <h3>Memory core</h3>
-            <p>SQLite store, FTS search, typed memories, quarantine, review queue, revocation, lineage, and restore.</p>
-          </article>
-          <article class="card">
-            <h3>Agent continuity</h3>
-            <p>MCP server, local dashboard, Codex and Claude Code wiring, plus Cursor, OpenClaw, Hermes, and generic MCP packs.</p>
-          </article>
-          <article class="card">
-            <h3>Proof layer</h3>
-            <p>Event Merkle roots, selected-memory Merkle trees, action receipts, <code>why</code>, bundles, snapshots, handoff, and proof reports.</p>
-          </article>
+        <div class="product-map">
+          <div class="map-row">
+            <div class="map-cell"><strong>Ask</strong><span>Agents call <code>memory.inject</code> before a task to get approved context.</span></div>
+            <div class="map-cell map-code">task → risk → scope → approved memory</div>
+            <div class="map-cell pill-list"><span>SQLite</span><span>FTS</span><span>typed</span></div>
+          </div>
+          <div class="map-row">
+            <div class="map-cell"><strong>Learn</strong><span>Agents call <code>memory.propose</code>; new memories wait for promotion.</span></div>
+            <div class="map-cell map-code">new fact → review queue → promote / quarantine / revoke</div>
+            <div class="map-cell pill-list"><span>source</span><span>trust</span><span>lifecycle</span></div>
+          </div>
+          <div class="map-row">
+            <div class="map-cell"><strong>Act</strong><span>Agents use only injected memory, not stale summaries or raw search hits.</span></div>
+            <div class="map-cell map-code">candidate memory → allow / hold / deny → agent context</div>
+            <div class="map-cell pill-list"><span>policy</span><span>why</span><span>MCP</span></div>
+          </div>
+          <div class="map-row">
+            <div class="map-cell"><strong>Explain</strong><span>Agents call <code>memory.why</code> to show what memory shaped an action.</span></div>
+            <div class="map-cell map-code">selected-memory Merkle tree → action receipt → proof report</div>
+            <div class="map-cell pill-list"><span>Merkle</span><span>receipt</span><span>handoff</span></div>
+          </div>
         </div>
       </section>
 
       <section id="proof-path">
-        <h2>Continue an agent without losing the audit trail.</h2>
+        <h2>Let the next agent continue with the same memory.</h2>
         <p class="section-copy">
-          Start on one agent, package the relevant memory state, restore it somewhere else, and prove
-          what the next agent was allowed to use. The dashboard shows connected agent artifacts and
-          the handoff path in one place.
+          Start in Codex, move to Claude Code or Cursor, and keep the governed memory state intact.
+          ZMem packages the snapshot, restore guide, receipt bundle, and prompt an agent needs.
         </p>
         <div class="proof-path">
           <article class="story-panel">
@@ -700,21 +1052,21 @@
                 <span class="story-chip">Step 1</span>
                 <div>
                   <strong>Remember locally</strong>
-                  <p>Store durable project, user, policy, or workflow memories in a local SQLite database.</p>
+                  <p>Store durable project, user, policy, or workflow memories in a local database agents can query.</p>
                 </div>
               </div>
               <div class="story-step">
                 <span class="story-chip">Step 2</span>
                 <div>
-                  <strong>Inject through policy</strong>
-                  <p>Preview what an agent can use. Quarantined, revoked, or low-authority memory is withheld and recorded.</p>
+                  <strong>Serve approved context</strong>
+                  <p>Agents call <code>memory.inject</code>. Quarantined, revoked, or low-authority memory is withheld and recorded.</p>
                 </div>
               </div>
               <div class="story-step">
                 <span class="story-chip">Step 3</span>
                 <div>
-                  <strong>Handoff with receipts</strong>
-                  <p>Export a snapshot, receipt bundle, restore guide, and handoff manifest so another agent can continue from the same governed state.</p>
+                  <strong>Handoff with proof</strong>
+                  <p>Restore the same memory state somewhere else, then verify what the next agent was allowed to use.</p>
                 </div>
               </div>
             </div>
@@ -731,24 +1083,35 @@ zmem ui</pre>
       </section>
 
       <section id="dashboard">
-        <h2>A local dashboard for memory you can actually use.</h2>
+        <h2>A local dashboard agents and humans can both use.</h2>
         <p class="section-copy">
-          Add memories, ask what ZMem knows, inspect receipts, preview injection decisions, and
-          see which agent setup artifacts are ready. The console is local, browser-based, and backed
-          by the same SQLite store your agents use.
+          Humans inspect and review. Agents self-serve approved context through MCP. Both are backed
+          by the same local store.
         </p>
-        <div class="grid">
-          <article class="card">
-            <h3>Topic inspector</h3>
-            <p>Ask what the local store knows about a person, project, task, or decision before an agent uses it.</p>
+        <div class="console-showcase">
+          <article class="console-card">
+            <h3>Ask the store first.</h3>
+            <p>Before an agent uses memory, inspect the local record: source, scope, status, trust, lineage, and receipt state.</p>
+            <div class="console-list">
+              <div><strong>Topic</strong><span>launch plan</span></div>
+              <div><strong>Trusted</strong><span>12 memories</span></div>
+              <div><strong>Needs review</strong><span>3 memories</span></div>
+            </div>
           </article>
-          <article class="card">
-            <h3>Proof inspector</h3>
-            <p>Open receipts, memory roots, bundles, snapshots, and why reports without reading raw JSON first.</p>
-          </article>
-          <article class="card">
-            <h3>Agent handoff</h3>
-            <p>See MCP setup state, manual-agent packs, snapshots, restore paths, and cross-agent continuity commands.</p>
+          <article class="terminal-panel">
+            <p class="mini-title">Dashboard surface</p>
+            <pre>Memory
+  release checklist        trusted   project
+  old repo target          revoked   project
+  unsourced benchmark      review    research
+
+Injection preview
+  allowed: release checklist
+  withheld: old repo target, unsourced benchmark
+
+Proof
+  memory_root: df1ff273...
+  receipt: verified</pre>
           </article>
         </div>
       </section>
@@ -757,22 +1120,22 @@ zmem ui</pre>
       <section>
         <h2>Built for real agent memory pain.</h2>
         <p class="section-copy">
-          Agent builders are converging on the same problems: agents forget, vector stores hide
-          state, session handoffs fail, and summarized memory is useful but hard to prove. ZMem
-          makes those problems explicit.
+          Agent builders are converging on the same problems: agents forget, memory stores hide
+          state, session handoffs fail, and summarized memory is useful but hard to audit. ZMem
+          makes memory a tool agents can call and a record humans can inspect.
         </p>
         <div class="persona-grid">
           <div class="persona">
             <strong>Continuity</strong>
-            <span>Agents can pick up project memory after restarts, new sessions, and handoffs.</span>
+            <span>Agents can pick up project memory after restarts, new sessions, and tool changes.</span>
           </div>
           <div class="persona">
             <strong>Inspection</strong>
-            <span>Memory is human-readable, searchable, scoped, typed, and visible in the local dashboard.</span>
+            <span>Agents get approved context; humans see source, scope, trust, lifecycle, and lineage.</span>
           </div>
           <div class="persona">
             <strong>Accountability</strong>
-            <span>Receipts preserve what was remembered, injected, withheld, revoked, and restored.</span>
+            <span>Receipts preserve what was remembered, injected, withheld, revoked, explained, and restored.</span>
           </div>
         </div>
       </section>
@@ -844,11 +1207,11 @@ zmem ui</pre>
           <div>
             <div class="mini-title">Start local</div>
             <div class="code-panel">
-              <pre>bash install.sh
+              <pre>curl -fsSL https://raw.githubusercontent.com/zerkerlabs/zmem/main/install.sh | bash
 zmem status --summary-only
 zmem ui</pre>
             </div>
-            <p class="section-copy">For the verified first-run walkthrough, use <code>bash examples/first_run.sh</code>.</p>
+            <p class="section-copy">Prefer a cloned repo? Run <code>bash install.sh</code>, then use <code>bash examples/first_run.sh</code> for the verified walkthrough.</p>
           </div>
           <div>
             <div class="mini-title">Connect agents</div>

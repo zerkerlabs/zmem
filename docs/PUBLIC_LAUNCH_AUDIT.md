@@ -12,7 +12,7 @@ For the stable screenshot/GIF fallback brief, see [LAUNCH_ASSET_OPERATOR_PROMPT.
 - Raw installer URL works from a clean shell:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/zerkerlabs/zerker-memory/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/zerkerlabs/zmem/main/install.sh | bash
 cd "${ZERKER_MEMORY_HOME:-$HOME/.zerker-memory}/repo"
 python3 scripts/release_smoke.py --require-install-mode packaged
 ```

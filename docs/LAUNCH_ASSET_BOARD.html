@@ -41,8 +41,12 @@
 <body>
 <main>
   <h1>Durable Launch Asset Board</h1>
-  <p class="lede">Use this repo-level board when another chat needs the eight-shot Phase-1 launch storyboard before a fresh proof pack exists. It mirrors the shipped launch asset contract, keeps the save paths on one screen, and points at the durable docs first.</p>
+  <p class="lede">Use this repo-level board when another chat needs the eight-shot Phase-1 launch storyboard before a fresh proof pack exists. It mirrors the shipped launch asset contract, keeps the save paths on one screen, points at the durable docs first, and keeps the proof gate plus handback contract visible during the asset pass.</p>
   <section class="callouts">
+    <div class="callout"><strong>Proof gate</strong><br><code>zmem verify-public-verify --summary-only</code> must report <code>Ready: yes</code> before the asset pass is complete.</div>
+    <div class="callout"><strong>Asset verify</strong><br><code>zmem verify-launch-assets --summary-only</code> must report <code>8/8 captured</code> before handback.</div>
+    <div class="callout"><strong>Finalize</strong><br>Rerun <code>.zerker/launch-proof/FINALIZE_RETURN_PACKET.sh</code> after the clean-shell proof and asset pass both succeed.</div>
+    <div class="callout"><strong>Receive-side accept</strong><br><code>zmem verify-return-packet .zerker/launch-proof/public-verify-return-packet.tar.gz --summary-only</code> must report <code>Ready: yes</code> before Phase 1 is marked complete.</div>
     <div class="callout"><strong>Start here</strong><br><a href="PHASE1_EXTERNAL_OPERATOR_BRIEF.md">PHASE1_EXTERNAL_OPERATOR_BRIEF.md</a></div>
     <div class="callout"><strong>Asset brief</strong><br><a href="LAUNCH_ASSET_OPERATOR_PROMPT.md">LAUNCH_ASSET_OPERATOR_PROMPT.md</a></div>
     <div class="callout"><strong>Launch audit</strong><br><a href="PUBLIC_LAUNCH_AUDIT.md">PUBLIC_LAUNCH_AUDIT.md</a></div>

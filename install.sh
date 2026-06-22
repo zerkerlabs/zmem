@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO_URL="${ZERKER_MEMORY_REPO_URL:-https://github.com/zerkerlabs/zerker-memory.git}"
+REPO_URL="${ZERKER_MEMORY_REPO_URL:-https://github.com/zerkerlabs/zmem.git}"
 INSTALL_DIR="${ZERKER_MEMORY_HOME:-$HOME/.zerker-memory}"
 AGENT="${ZERKER_MEMORY_AGENT:-manual-pack}"
 SMOKE_AGENT="openclaw"

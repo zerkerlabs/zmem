@@ -6,6 +6,8 @@ Current phase: `Phase 1 - Public Alpha Launch Gate`.
 Top remaining blocker: external proof of the live public repo and raw installer from a clean networked shell, plus the missing six clean-shell proof logs and eight launch assets.
 Why this brief exists: the generated packet, verifier summaries, runbook, operator prompt, and asset checklist are already aligned locally, but orchestration across separate chats still benefits from one pinned repo doc that spans send, run, capture, and accept.
 
+If you need the short version instead of this full brief, start with [`docs/CLEAN_SHELL_VERIFICATION_CHECKLIST.md`](CLEAN_SHELL_VERIFICATION_CHECKLIST.md).
+
 ## Use This Brief When
 
 - the current shell cannot verify the live public GitHub repo or raw installer directly
@@ -17,6 +19,7 @@ Why this brief exists: the generated packet, verifier summaries, runbook, operat
 Run these before handing work to another shell:
 
 ```bash
+bash scripts/gstack_check.sh
 python3 scripts/release_smoke.py --summary-only
 zmem release-pack --summary-only
 zmem verify-operator-packet .zerker/launch-proof/public-verify-operator-packet.tar.gz --summary-only
@@ -24,6 +27,7 @@ zmem verify-operator-packet .zerker/launch-proof/public-verify-operator-packet.t
 
 Expected state:
 
+- `bash scripts/gstack_check.sh` reports `GSTACK_OK` or `GSTACK_MISSING` for this repo shell without changing the launch-gate contract.
 - `release-pack` reports `Launch proof: ok` and `Handoff: ok`
 - `verify-operator-packet` reports `Ready: yes`
 - the only remaining blockers are `public_verify_evidence` and `launch_assets`
@@ -44,28 +48,29 @@ If generated packet state is stale, refresh it first with `zmem release-pack --s
 
 The clean-shell proof must validate these exact public endpoints:
 
-- `https://github.com/zerkerlabs/zerker-memory`
-- `https://raw.githubusercontent.com/zerkerlabs/zerker-memory/main/install.sh`
+- `https://github.com/zerkerlabs/zmem`
+- `https://raw.githubusercontent.com/zerkerlabs/zmem/main/install.sh`
 
 ## Clean-Shell Run
 
 1. Run the raw installer once to create the clean repo path:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/zerkerlabs/zerker-memory/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/zerkerlabs/zmem/main/install.sh | bash
 cd "${ZERKER_MEMORY_HOME:-$HOME/.zerker-memory}/repo"
 ```
 
-2. Restore the outbound packet into that repo:
+2. Copy the forwarded operator packet archive into that repo at `.zerker/launch-proof/public-verify-operator-packet.tar.gz`.
+3. Restore the outbound packet into that repo:
 
 ```bash
 mkdir -p .zerker/launch-proof
 tar -xzf .zerker/launch-proof/public-verify-operator-packet.tar.gz -C .zerker/launch-proof
 ```
 
-3. Open `.zerker/launch-proof/CLEAN_SHELL_PUBLIC_VERIFY.md`.
-4. Run `.zerker/launch-proof/PUBLIC_VERIFY_COMMANDS.sh`.
-5. Run `zmem verify-public-verify --summary-only`.
+4. Open `.zerker/launch-proof/CLEAN_SHELL_PUBLIC_VERIFY.md`.
+5. Run `.zerker/launch-proof/PUBLIC_VERIFY_COMMANDS.sh`.
+6. Run `zmem verify-public-verify --summary-only`.
 
 Important:
 
@@ -88,7 +93,7 @@ Command-to-log map:
 
 1. `python3 -m zerker_memory verify-operator-packet ".zerker/launch-proof/public-verify-operator-packet.tar.gz" --summary-only` -> `public-verify-logs/operator-packet-verify.log`
    Confirm: reports `Ready: yes` before the live public proof steps start.
-2. `curl -fsSL https://raw.githubusercontent.com/zerkerlabs/zerker-memory/main/install.sh | bash` -> `public-verify-logs/curl-install.log`
+2. `curl -fsSL https://raw.githubusercontent.com/zerkerlabs/zmem/main/install.sh | bash` -> `public-verify-logs/curl-install.log`
    Confirm: ends on `Zerker Memory status`.
 3. `bash examples/first_run.sh` -> `public-verify-logs/first-run.log`
    Confirm: ends on `Manual pack ready: yes`.
@@ -148,8 +153,8 @@ If any item is missing or failed, reject the packet and send it back for another
 
 Stop and hand back the failure state instead of improvising local fixes if:
 
-- the public repo is not `https://github.com/zerkerlabs/zerker-memory`
-- the raw installer is not `https://raw.githubusercontent.com/zerkerlabs/zerker-memory/main/install.sh`
+- the public repo is not `https://github.com/zerkerlabs/zmem`
+- the raw installer is not `https://raw.githubusercontent.com/zerkerlabs/zmem/main/install.sh`
 - the packaged clean-shell proof falls back to `local-wrappers` or any non-`packaged` install mode
 - `zmem verify-public-verify --summary-only` does not report `Ready: yes`
 - `zmem verify-launch-assets --summary-only` does not report `8/8 captured`

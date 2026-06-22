@@ -22,6 +22,7 @@ from zerker_memory.cli import (
     build_agent_config_preset,
     build_agent_server_snippet,
     build_parser,
+    build_retrieval_provider_readiness_report,
     build_status_report,
     build_status_next_steps,
     build_mcp_config,
@@ -51,6 +52,7 @@ from zerker_memory.cli import (
     render_return_packet_summary,
     render_release_pack_summary,
     render_prelaunch_summary,
+    render_retrieval_provider_readiness_summary,
     render_restore_summary,
     render_status_summary,
     prelaunch_next_steps,
@@ -73,6 +75,7 @@ from zerker_memory.cli import (
     write_provider_config_template,
     write_return_packet_archive,
 )
+from zerker_memory.retrieval_providers import retrieval_provider_config_template
 from zerker_memory.store import MemoryStore
 
 
@@ -383,6 +386,20 @@ class CliOnboardingTest(unittest.TestCase):
         self.assertTrue(args.summary_only)
         self.assertFalse(args.summary)
 
+    def test_workspace_parser_accepts_register_and_alias(self):
+        register = build_parser().parse_args(
+            ["workspace", "register", "--name", "Zerker Memory", "--root", "/tmp/zmem", "--no-current"]
+        )
+        status = build_parser().parse_args(["ws", "status"])
+
+        self.assertEqual(register.command, "workspace")
+        self.assertEqual(register.workspace_command, "register")
+        self.assertEqual(register.name, "Zerker Memory")
+        self.assertEqual(str(register.root), "/tmp/zmem")
+        self.assertTrue(register.no_current)
+        self.assertEqual(status.command, "ws")
+        self.assertEqual(status.workspace_command, "status")
+
     def test_launch_proof_parser(self):
         args = build_parser().parse_args(["launch-proof", "--out-dir", "/tmp/launch-proof", "--agent", "openclaw", "--summary-only"])
 
@@ -522,7 +539,7 @@ class CliOnboardingTest(unittest.TestCase):
                 write_json_file(root / ".zerker" / "mcp.json", {"mcpServers": {}}, force=False)
                 write_provider_config_template(root / ".zerker" / "providers.json", force=False)
                 run_agent_smoke(store, agent_id="codex", scope="project", task="prove governed memory")
-                self._write_prelaunch_fixture(root, readme="https://github.com/zerker-memory/zerker-memory")
+                self._write_prelaunch_fixture(root, readme="https://github.com/zerkerlabs/zmem")
 
                 result = run_release_pack(
                     store,
@@ -749,7 +766,7 @@ class CliOnboardingTest(unittest.TestCase):
     def test_run_prelaunch_check_flags_public_url_placeholders(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            self._write_prelaunch_fixture(root, readme="https://github.com/zerkerlabs/zerker-memory")
+            self._write_prelaunch_fixture(root, readme="https://github.com/zerker-memory/zerker-memory")
             install_path = root / "install.sh"
             install_path.write_text(
                 install_path.read_text(encoding="utf-8").replace(
@@ -775,7 +792,7 @@ class CliOnboardingTest(unittest.TestCase):
     def test_run_prelaunch_check_allows_local_alpha_placeholders(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            self._write_prelaunch_fixture(root, readme="https://github.com/zerkerlabs/zerker-memory")
+            self._write_prelaunch_fixture(root, readme="https://github.com/zerker-memory/zerker-memory")
             install_path = root / "install.sh"
             install_path.write_text(
                 install_path.read_text(encoding="utf-8").replace(
@@ -1393,7 +1410,7 @@ class CliOnboardingTest(unittest.TestCase):
             previous_cwd = Path.cwd()
             os.chdir(root)
             try:
-                self._write_prelaunch_fixture(root, readme="https://github.com/zerkerlabs/zerker-memory")
+                self._write_prelaunch_fixture(root, readme="https://github.com/zerkerlabs/zmem")
                 result = run_launch_proof(
                     policy_path=root / ".zerker" / "policy.json",
                     providers_path=root / ".zerker" / "providers.json",
@@ -1427,10 +1444,10 @@ class CliOnboardingTest(unittest.TestCase):
             self.assertEqual(manifest["receive_verify_handoff_path"], "RECEIVE_VERIFY_HANDOFF.md")
             self.assertEqual(manifest["public_verify_script_path"], "PUBLIC_VERIFY_COMMANDS.sh")
             self.assertEqual(manifest["public_verify"]["install_mode_requirement"], "packaged")
-            self.assertEqual(manifest["public_verify"]["repo_url"], "https://github.com/zerkerlabs/zerker-memory")
+            self.assertEqual(manifest["public_verify"]["repo_url"], "https://github.com/zerkerlabs/zmem")
             self.assertEqual(
                 manifest["public_verify"]["raw_install_url"],
-                "https://raw.githubusercontent.com/zerkerlabs/zerker-memory/main/install.sh",
+                "https://raw.githubusercontent.com/zerkerlabs/zmem/main/install.sh",
             )
             self.assertEqual(manifest["public_verify"]["commands"], PUBLIC_VERIFY_COMMAND_SEQUENCE)
             self.assertEqual(manifest["public_verify"]["expected_log_files"], PUBLIC_VERIFY_LOG_FILENAMES)
@@ -1496,8 +1513,8 @@ class CliOnboardingTest(unittest.TestCase):
             self.assertIn("zmem verify-public-verify --summary-only", public_verify_handoff)
             self.assertIn("public-verify-operator-packet.tar.gz", public_verify_handoff)
             self.assertIn("public-verify-return-packet.tar.gz", public_verify_handoff)
-            self.assertIn("https://github.com/zerkerlabs/zerker-memory", public_verify_handoff)
-            self.assertIn("https://raw.githubusercontent.com/zerkerlabs/zerker-memory/main/install.sh", public_verify_handoff)
+            self.assertIn("https://github.com/zerkerlabs/zmem", public_verify_handoff)
+            self.assertIn("https://raw.githubusercontent.com/zerkerlabs/zmem/main/install.sh", public_verify_handoff)
             self.assertIn("## Current Gate Snapshot", public_verify_handoff)
             self.assertIn("- Local alpha gate:", public_verify_handoff)
             self.assertIn("- Strict publish gate:", public_verify_handoff)
@@ -1553,7 +1570,7 @@ class CliOnboardingTest(unittest.TestCase):
             self.assertIn("docs/LAUNCH_ASSET_BOARD.html", capture_checklist)
             self.assertIn("docs/LAUNCH_ASSET_OPERATOR_PROMPT.md", capture_checklist)
             self.assertIn("## Clean-Shell Proof Log Map", capture_checklist)
-            self.assertIn("`curl -fsSL https://raw.githubusercontent.com/zerkerlabs/zerker-memory/main/install.sh | bash` -> `public-verify-logs/curl-install.log`", capture_checklist)
+            self.assertIn("`curl -fsSL https://raw.githubusercontent.com/zerkerlabs/zmem/main/install.sh | bash` -> `public-verify-logs/curl-install.log`", capture_checklist)
             self.assertIn("`python3 scripts/release_smoke.py --require-install-mode packaged` -> `public-verify-logs/packaged-release-smoke.log`", capture_checklist)
             self.assertIn("FINALIZE_RETURN_PACKET.sh", capture_checklist)
             self.assertIn("zmem verify-return-packet .zerker/launch-proof/public-verify-return-packet.tar.gz --summary-only", capture_checklist)
@@ -1573,8 +1590,8 @@ class CliOnboardingTest(unittest.TestCase):
             self.assertIn("public-verify-logs", public_verify_checklist)
             self.assertIn("public-verify-result.json", public_verify_checklist)
             self.assertIn("public-verify-operator-packet.tar.gz", public_verify_checklist)
-            self.assertIn("https://github.com/zerkerlabs/zerker-memory", public_verify_runbook)
-            self.assertIn("https://raw.githubusercontent.com/zerkerlabs/zerker-memory/main/install.sh", public_verify_runbook)
+            self.assertIn("https://github.com/zerkerlabs/zmem", public_verify_runbook)
+            self.assertIn("https://raw.githubusercontent.com/zerkerlabs/zmem/main/install.sh", public_verify_runbook)
             self.assertIn("bootstrap the clean repo path", public_verify_runbook)
             self.assertIn("reruns the raw installer itself", public_verify_runbook)
             self.assertIn("## Command Log Map", public_verify_runbook)
@@ -1656,9 +1673,9 @@ class CliOnboardingTest(unittest.TestCase):
             self.assertEqual(public_verify_result["status"], "pending")
             self.assertEqual(public_verify_result["install_mode_requirement"], "packaged")
             self.assertIn("clean networked shell", public_verify_result["next_step"])
-            self.assertIn("Expected public repo: `https://github.com/zerkerlabs/zerker-memory`", public_verify_summary)
+            self.assertIn("Expected public repo: `https://github.com/zerkerlabs/zmem`", public_verify_summary)
             self.assertIn(
-                "Expected raw install URL: `https://raw.githubusercontent.com/zerkerlabs/zerker-memory/main/install.sh`",
+                "Expected raw install URL: `https://raw.githubusercontent.com/zerkerlabs/zmem/main/install.sh`",
                 public_verify_summary,
             )
             with tarfile.open(result["return_packet_archive_path"], "r:gz") as archive:
@@ -1750,13 +1767,19 @@ class CliOnboardingTest(unittest.TestCase):
                 capture_checklist = Path(result["capture_checklist_path"]).read_text(encoding="utf-8")
                 launch_asset_handoff = Path(result["launch_asset_handoff_path"]).read_text(encoding="utf-8")
                 public_verify_handoff = Path(result["public_verify_handoff_path"]).read_text(encoding="utf-8")
+                launch_asset_board = Path(result["launch_asset_board_path"]).read_text(encoding="utf-8")
             finally:
                 os.chdir(previous_cwd)
 
         self.assertIn("Required capture set: `8` assets total; `zmem verify-launch-assets --summary-only` must report `8/8 captured`.", capture_checklist)
         self.assertIn("handoff-restore-terminal", capture_checklist)
         self.assertIn("ui-handoff-restore", capture_checklist)
+        self.assertIn("verify-public-verify --summary-only", launch_asset_board)
+        self.assertIn("FINALIZE_RETURN_PACKET.sh", launch_asset_board)
+        self.assertIn("verify-return-packet .zerker/launch-proof/public-verify-return-packet.tar.gz --summary-only", launch_asset_board)
+        self.assertIn("`zmem verify-public-verify --summary-only` reports `Ready: yes` before the asset pass is considered complete.", launch_asset_handoff)
         self.assertIn("`zmem verify-launch-assets --summary-only` reports `8/8 captured` before handback.", launch_asset_handoff)
+        self.assertIn("`zmem verify-return-packet .zerker/launch-proof/public-verify-return-packet.tar.gz --summary-only` reports `Ready: yes` before Phase 1 is marked complete.", launch_asset_handoff)
         self.assertIn("`ui-handoff-restore.gif` from `ui-handoff-restore`", launch_asset_handoff)
         self.assertIn("`zmem verify-launch-assets --summary-only` reports `8/8 captured` before `.zerker/launch-proof/FINALIZE_RETURN_PACKET.sh` is accepted.", public_verify_handoff)
 
@@ -1766,7 +1789,7 @@ class CliOnboardingTest(unittest.TestCase):
             previous_cwd = Path.cwd()
             os.chdir(root)
             try:
-                self._write_prelaunch_fixture(root, readme="https://github.com/zerkerlabs/zerker-memory")
+                self._write_prelaunch_fixture(root, readme="https://github.com/zerkerlabs/zmem")
                 launch_proof = run_launch_proof(
                     policy_path=root / ".zerker" / "policy.json",
                     providers_path=root / ".zerker" / "providers.json",
@@ -1818,8 +1841,8 @@ class CliOnboardingTest(unittest.TestCase):
             self.assertIn("Public verify: ok", summary)
             self.assertIn("Launch assets: ok", summary)
             self.assertIn("Required install mode: packaged", summary)
-            self.assertIn("Expected public repo: https://github.com/zerkerlabs/zerker-memory", summary)
-            self.assertIn("Expected raw install URL: https://raw.githubusercontent.com/zerkerlabs/zerker-memory/main/install.sh", summary)
+            self.assertIn("Expected public repo: https://github.com/zerkerlabs/zmem", summary)
+            self.assertIn("Expected raw install URL: https://raw.githubusercontent.com/zerkerlabs/zmem/main/install.sh", summary)
             self.assertIn("Return packet finalize: FINALIZE_RETURN_PACKET.sh", summary)
 
     def test_verify_return_packet_archive_reports_missing_logs(self):
@@ -1929,7 +1952,7 @@ class CliOnboardingTest(unittest.TestCase):
                 write_json_file(root / ".zerker" / "mcp.json", {"mcpServers": {}}, force=False)
                 write_provider_config_template(root / ".zerker" / "providers.json", force=False)
                 run_agent_smoke(store, agent_id="codex", scope="project", task="prove governed memory")
-                self._write_prelaunch_fixture(root, readme="https://github.com/zerkerlabs/zerker-memory")
+                self._write_prelaunch_fixture(root, readme="https://github.com/zerkerlabs/zmem")
                 release_pack = run_release_pack(
                     store,
                     policy_path=root / ".zerker" / "policy.json",
@@ -1953,9 +1976,9 @@ class CliOnboardingTest(unittest.TestCase):
             self.assertIn("Required install mode: packaged", summary)
             self.assertIn("Public verify script: PUBLIC_VERIFY_COMMANDS.sh", summary)
             self.assertIn("Expected logs dir: public-verify-logs", summary)
-            self.assertIn("Expected public repo: https://github.com/zerkerlabs/zerker-memory", summary)
+            self.assertIn("Expected public repo: https://github.com/zerkerlabs/zmem", summary)
             self.assertIn(
-                "Expected raw install URL: https://raw.githubusercontent.com/zerkerlabs/zerker-memory/main/install.sh",
+                "Expected raw install URL: https://raw.githubusercontent.com/zerkerlabs/zmem/main/install.sh",
                 summary,
             )
             self.assertIn("- packaged-release-smoke.log", summary)
@@ -2036,9 +2059,9 @@ class CliOnboardingTest(unittest.TestCase):
         self.assertIn("public-verify-operator-packet.tar.gz -C ", summary)
         self.assertIn("Required install mode: packaged", summary)
         self.assertIn("Observed install mode: editable", summary)
-        self.assertIn("Expected public repo: https://github.com/zerkerlabs/zerker-memory", summary)
+        self.assertIn("Expected public repo: https://github.com/zerkerlabs/zmem", summary)
         self.assertIn(
-            "Expected raw install URL: https://raw.githubusercontent.com/zerkerlabs/zerker-memory/main/install.sh",
+            "Expected raw install URL: https://raw.githubusercontent.com/zerkerlabs/zmem/main/install.sh",
             summary,
         )
         self.assertIn("Phase-1 operator brief: docs/PHASE1_EXTERNAL_OPERATOR_BRIEF.md", summary)
@@ -2878,6 +2901,39 @@ class CliOnboardingTest(unittest.TestCase):
         self.assertEqual(args.mem0_query, "mem0 smoke")
         self.assertEqual(args.zep_base_url, "http://zep.local")
         self.assertEqual(args.zep_user_id, "zep-user")
+
+    def test_retrieval_provider_doctor_parser(self):
+        args = build_parser().parse_args(
+            [
+                "retrieval-providers",
+                "doctor",
+                "--config",
+                "/tmp/retrieval-providers.json",
+                "--summary-only",
+            ]
+        )
+
+        self.assertEqual(args.command, "retrieval-providers")
+        self.assertEqual(args.retrieval_providers_command, "doctor")
+        self.assertEqual(str(args.config), "/tmp/retrieval-providers.json")
+        self.assertTrue(args.summary_only)
+
+    def test_retrieval_provider_readiness_does_not_print_secret_values(self):
+        sentinel = "sk-zmem-secret-sentinel-do-not-print"
+        with tempfile.TemporaryDirectory() as tmp:
+            config_path = Path(tmp) / "retrieval-providers.json"
+            config_path.write_text(json.dumps(retrieval_provider_config_template()), encoding="utf-8")
+            result = build_retrieval_provider_readiness_report(
+                config_path=config_path,
+                env={"OPENAI_API_KEY": sentinel},
+            )
+            summary = render_retrieval_provider_readiness_summary(result)
+            payload = json.dumps(result, sort_keys=True)
+
+        self.assertIn("OPENAI_API_KEY", summary)
+        self.assertIn("api_key_ready=yes", summary)
+        self.assertNotIn(sentinel, summary)
+        self.assertNotIn(sentinel, payload)
 
     def test_provider_search_parser_supports_zep(self):
         args = build_parser().parse_args(["provider", "search", "latest notes", "--provider", "zep", "--zep-base-url", "http://zep.local"])
