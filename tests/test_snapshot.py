@@ -39,6 +39,29 @@ class SnapshotTest(unittest.TestCase):
         without_hash.pop("snapshot_hash")
         self.assertEqual(snapshot_hash, sha256_text(stable_json(without_hash)))
 
+    def test_snapshot_captures_promote_event_lineage(self):
+        memory = self.store.remember(
+            "Production deploys require approval",
+            memory_type="policy",
+            scope="project",
+            source_kind="agent",
+        )
+
+        promoted = self.store.promote(memory.id, actor_id="reviewer")
+        snapshot = self.store.snapshot()
+
+        self.assertEqual(promoted.status, "active")
+        self.assertEqual(snapshot["event_count"], 2)
+        self.assertEqual([event["event_type"] for event in snapshot["events"]], ["PROPOSED", "PROMOTED"])
+        proposed_event, promoted_event = snapshot["events"]
+        promoted_payload = json.loads(promoted_event["payload_json"])
+        self.assertEqual(promoted_event["memory_id"], memory.id)
+        self.assertEqual(promoted_event["actor_id"], "reviewer")
+        self.assertEqual(promoted_event["prev_event_hash"], proposed_event["event_hash"])
+        self.assertEqual(promoted_event["merkle_root"], snapshot["merkle_root"])
+        self.assertEqual(promoted_payload["id"], memory.id)
+        self.assertEqual(promoted_payload["authority"], "policy")
+
     def test_export_snapshot_writes_hashed_artifact(self):
         self.store.remember(
             "Use SQLite for local memory",

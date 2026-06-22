@@ -1,0 +1,283 @@
+# ZMem Continuous Build Orchestrator
+
+This is the canonical operating file for Codex agents building ZMem past launch readiness. It replaces phase/week planning with parallel lanes, narrow mergeable slices, and durable logs.
+
+## Mission
+
+Make ZMem the best local-first memory system for AI agents by closing the frontier gaps without losing the core wedge: memory state that is local, portable, inspectable, and receipt-ready.
+
+Use this language precisely:
+
+- Say "verifiable memory state" or "proof-backed memory lineage".
+- Do not say a memory is "provably true" just because it has a receipt.
+- Treeship proves provenance, mutation history, and integrity of evidence. It does not prove semantic correctness by itself.
+
+## Current Product Truth
+
+As of 2026-06-22, the product already has meaningful working surface:
+
+- Local-first SQLite memory store and CLI.
+- Typed memory categories already in the product surface.
+- FTS/retrieval baseline, temporal/update-history handling, and multi-hop retrieval work in progress.
+- Memory event/Merkle lineage and Treeship memory proof integration paths.
+- Release pack, launch proof, public verify handoffs, clean-shell operator packet, return packet, and launch asset verification.
+- Benchmark harness work for LongMemEval/LoCoMo-style runs, metrics, isolated DBs, reports, receipts, and provider metadata.
+- Agent setup and handoff docs for Codex, Claude Code, Cursor, OpenClaw, Hermes, and generic MCP.
+- Public landing/site work under `site/`.
+
+The open frontier gaps are not "start from scratch". They are targeted upgrades to make the existing product top-tier.
+
+## Non-Negotiables
+
+- Keep slices small enough to review and merge independently.
+- Every worker must read this file before editing.
+- Every worker must append a dated entry to its lane log under `docs/CONTINUOUS_BUILD/`.
+- Every worker must update `docs/BUILD_LOG.md` and `docs/CURRENT_STATE.md` only with factual, bounded notes.
+- Avoid editing generated `.zerker/launch-proof/` artifacts unless the task is explicitly release-pack or proof-pack work.
+- Preserve user and automation changes. Do not reset, checkout, or delete unrelated work.
+- No broad rewrites of `zerker_memory/store.py` or `zerker_memory/cli.py` without a focused failing test first.
+- New memory behavior needs tests. Docs-only slices must say they are docs-only.
+- Every claim about benchmark quality must be backed by a reproducible command and an artifact hash or receipt path.
+- If the working tree contains uncommitted changes outside the lane, do not edit those files. Record the overlap and choose a smaller slice or stop with a status-only update.
+- Automation lanes should stop themselves from widening scope. The coordinator pauses or deletes automations only after the acceptance gates below are met.
+
+## Current Diff Review
+
+Recommended next commit scope:
+
+- Keep: this orchestrator, `docs/CONTINUOUS_BUILD/`, the trust-ledger snapshot test, the temporal current-vs-history identity test, the consolidation fixture module/tests/docs, and the workspace source-lineage CLI/tests.
+- Keep if intentionally batching benchmark work: `zerker_memory/bench.py` plus any matching `scripts/bench/` converters and benchmark tests. Otherwise split these into a separate benchmark PR because they are L6, not orchestration/L0/L1/L4/L5.
+- Exclude from this commit unless explicitly reviewed: `.treeship/`, `data/`, `docs-site/`, generated `.zerker/launch-proof/` artifacts, and any launch addendum that came from the older launch automation rather than this pass.
+- Preserve pre-existing dirty docs. Do not normalize historical launch-status contradictions in the same commit as feature tests.
+
+Coordinator decision for this pass:
+
+- The clean PR shape is `continuous-build-orchestrator-plus-first-frontier-contracts`.
+- It should not include large downloaded benchmark datasets or generated docs-site build output.
+- If benchmark trace/answerer work is kept, it should be reviewed as a separate `benchmark-adapters-and-trace` slice.
+
+## Live Session Protocol
+
+Use this when the user is present and actively working with Codex. Do not wait hours for the next cron if a lane is ready to continue.
+
+1. Start with `git status --short`, the relevant lane log, and this orchestrator.
+2. If a cron swarm just dropped changes, inspect that lane first and decide: keep, split, or exclude.
+3. If the working tree is dirty, do not launch overlapping workers on the same files. Either checkpoint the reviewed slice or choose a disjoint lane.
+4. Manual swarm work is allowed while the user is here, but each worker needs a narrow lane and write set.
+5. Before the next scheduled automation window, leave a handoff entry in the relevant lane log with:
+   - current files touched
+   - tests already run
+   - what is safe to continue
+   - what must not be touched
+   - whether the current diff should be committed first
+6. If a lane cron starts while the user is actively coordinating, let it finish only if it respects the lane protocol. Otherwise pause that automation after the current run and resume after checkpointing.
+7. Prefer one clean checkpoint over more parallel work once three or more lanes are dirty.
+
+Current live-session stance:
+
+- Continue manually from swarm drops instead of waiting for cron.
+- Retrieval just dropped a context-packing support-chain slice; inspect and verify it before new retrieval work.
+- The next coordinator action should be checkpointing or splitting the reviewed diff before spawning more overlapping workers.
+
+## Final Acceptance Gates
+
+These gates define when the recurring build automations can be paused or deleted. Until then, the automations should keep producing small, mergeable slices.
+
+### Global Gates
+
+- `python3 -m unittest discover -s tests` passes locally.
+- `python3 -m zerker_memory eval` passes `11/11` or the current documented successor suite.
+- `python3 -m zerker_memory status --summary-only` reports workspace, doctor, memory proof, release packet, and agent handoff ready.
+- The launch gate is either complete or explicitly deferred with a current handoff: public verify logs, launch assets, return packet, zmem.sh deployment, and alpha tag status are not ambiguous.
+- README, QUICKSTART, product feature guide, public site, and orchestrator agree on what is built vs planned.
+- No active public docs claim benchmark superiority without reproducible artifacts and proof hashes.
+- All lane logs have a latest entry with: scope, files touched, behavior changed, tests, blockers, and next safe slice.
+
+### Lane Acceptance
+
+| Lane | Acceptance criteria | Pause/delete condition |
+| --- | --- | --- |
+| L0 trust-ledger | Durable mutations have receipt-visible lineage for add, promote, reject, revoke, quarantine, supersede, checkpoint/snapshot/export; trusted means verified provenance, not semantic truth | Pause after mutation receipt tests and export/verify docs pass |
+| L1 temporal-kg | Current/history/superseded behavior is explicit; `query_at(timestamp)` exists or is consciously deferred; identity disambiguation fixture passes | Pause after point-in-time query and identity tests pass |
+| L2 lifecycle-compaction | Session lifecycle commands/APIs exist or are documented as deferred; checkpoint/snapshot roots are receipt-visible; context packing records injected/withheld/budget-dropped | Pause after lifecycle tests and agent handoff docs agree |
+| L3 hybrid-retrieval | FTS/BM25, local provider config, graph/temporal candidates, RRF/fusion, and context-budget receipts have reproducible tests/benchmarks | Pause after benchmark matrix compares local modes with receipt hashes |
+| L4 consolidation | Consolidation levels, lineage fixture, durable job model, and reversible source-child-to-summary records exist without hosted LLM dependency | Pause after job model and recall planner tests pass |
+| L5 identity-workspaces | CLI/dashboard can show connected agents, chat/session ids, workspace ids, source URI, trust status, and proof lineage; conflict fixture exists | Pause after source report plus first conflict-resolution test pass |
+| L6 benchmarks | LongMemEval/LoCoMo adapters, isolated DBs, metrics, receipt bundles, and public-readable reports are reproducible | Pause after local matrix report can be regenerated from documented commands |
+| L7 DX-dashboard-site | Setup, MCP, dashboard, landing, feature matrix, and proof page are public-ready and mobile/desktop checked | Pause after launch QA checklist is complete |
+| L8 hdc-research | Research note exists with go/no-go and no production coupling | Keep paused unless explicitly restarted |
+
+### Automation Sunset Protocol
+
+1. When a lane meets its acceptance criteria, append a final lane-log entry titled `Acceptance met`.
+2. The coordinator verifies the lane with the listed tests and updates this file.
+3. The coordinator pauses the matching automation first, not deletes it.
+4. After one clean release or one week without needing the lane, delete or archive the automation.
+5. Any newly discovered gap goes into the lane log as `Post-acceptance backlog` and can reactivate the automation.
+
+## Lane Registry
+
+| Lane | Focus | Current intent | Primary files |
+| --- | --- | --- | --- |
+| L0 trust-ledger | Treeship-ready memory receipts, Merkle roots, rollback evidence | Make every durable memory mutation receipt-ready and independently verifiable | `zerker_memory/treeship.py`, `zerker_memory/store.py`, `tests/test_treeship.py`, `tests/test_store.py`, `docs/TREESHIP_MEMORY_PROOF_REQUIREMENTS.md` |
+| L1 temporal-kg | Bi-temporal graph layer, relation history, point-in-time queries | Upgrade existing temporal/update-history logic into explicit graph primitives | `zerker_memory/store.py`, new `zerker_memory/temporal_graph.py` if needed, `tests/test_store.py`, `tests/test_runner.py` |
+| L2 lifecycle-compaction | Working/Episodic/Semantic/Procedural gates, sessions, checkpoints, snapshots | Make agent continuity explicit across context boundaries | `zerker_memory/cli.py`, `zerker_memory/store.py`, `zerker_memory/runner.py`, MCP surfaces, tests |
+| L3 hybrid-retrieval | BM25/FTS + dense + graph + RRF + packing budget | Make retrieval quality top-tier while keeping local-first defaults | `zerker_memory/store.py`, `zerker_memory/retrieval_providers.py`, `zerker_memory/bench.py`, retrieval tests |
+| L4 consolidation | Hierarchical memory tree and scheduled summarization | Keep long-running memory useful instead of endlessly accumulating episodes | new consolidation module, `zerker_memory/bench.py`, tests, docs |
+| L5 identity-workspaces | Agent identity, workspace identity, cross-session entity resolution | Make multi-agent memory traceable by source agent, workspace, and proof lineage | workspace registry files, `zerker_memory/store.py`, dashboard/docs/tests |
+| L6 benchmarks | LongMemEval/LoCoMo adapters, metrics, receipts, reproducible results | Make quality claims benchmarkable and proof-backed | `zerker_memory/bench.py`, `tests/test_bench.py`, benchmark docs |
+| L7 DX-dashboard-site | MCP setup, agent instructions, dashboard, landing, product docs | Make the product self-serve for agents and humans | `site/`, docs, MCP setup, dashboard surfaces |
+| L8 hdc-research | Hyperdimensional retrieval research spike | Explore only after core lanes are stable; no product coupling yet | docs/research only until approved |
+
+## First Wave Tasks
+
+### L0 Trust Ledger
+
+Goal: make memory mutations auditable without turning Treeship into a dependency users have to understand.
+
+Tasks:
+
+1. Inventory all durable mutation paths: add/promote/reject/revoke/quarantine/supersede/checkpoint/snapshot/export.
+2. Define the minimal `MemoryReceipt` envelope actually present in ZMem: memory id, action id, content hash, actor/agent id, model/prompt hashes when available, prior root, new root, timestamp, optional Treeship artifact id.
+3. Add or strengthen tests that prove receipts are emitted for state transitions, not just final memories.
+4. Keep `trusted_only` semantics honest: valid lineage means trusted provenance, not guaranteed truth.
+5. Ensure export bundles contain enough data to verify a memory chain outside the repo.
+
+### L1 Temporal KG
+
+Goal: turn the current temporal retrieval behavior into explicit, queryable bi-temporal memory.
+
+Tasks:
+
+1. Map existing temporal metadata and tests before adding schema.
+2. Add explicit fields or tables for `valid_from`, `valid_to`, `learned_at`, `superseded_at`, and `unlearned_at` where they do not already exist.
+3. Add `query_at(timestamp)` behavior for the current local store before introducing any external graph engine.
+4. Preserve superseded facts and prove the current-vs-history distinction in receipt metadata.
+5. Add a tiny identity-disambiguation fixture such as `Alice` vs `Alice Chen` across sessions.
+
+### L2 Lifecycle Compaction
+
+Goal: make long agent sessions survive context boundaries.
+
+Tasks:
+
+1. Inventory existing session, handoff, restore, and inject/propose behavior.
+2. Add or harden `start_session`, `checkpoint_session`, `snapshot_session`, and `end_session` commands/APIs.
+3. Make checkpoints emit memory events and roots.
+4. Add token-budget-aware context packing receipts that show injected, withheld, and budget-dropped memory.
+5. Keep the four memory classes separate enough that procedural rules do not pollute episodic recall.
+
+### L3 Hybrid Retrieval
+
+Goal: reach frontier retrieval quality while keeping the default local/offline path useful.
+
+Tasks:
+
+1. Strengthen the existing FTS/BM25 path before adding network providers.
+2. Keep local pseudo-embedding/provider config paths testable with no network.
+3. Add RRF fusion across keyword, dense, and temporal/graph candidates.
+4. Ensure every retrieval result can explain why a memory was retrieved, injected, withheld, or dropped.
+5. Benchmark each mode with isolated DBs and reproducible artifacts.
+
+### L4 Consolidation
+
+Goal: prevent memory stores from becoming noisy piles.
+
+Tasks:
+
+1. Start with a docs-plus-test fixture defining levels: turn, session, day, week, profile/project.
+2. Add a consolidation job model that is non-blocking and local-first.
+3. Record source child ids and output summary ids so consolidation is reversible and auditable.
+4. Add recall-planner tests before adding LLM summarization.
+5. Do not add hosted summarization as a hard dependency.
+
+### L5 Identity Workspaces
+
+Goal: make the console and APIs clear about which agents, chats, workspaces, and memory sources are connected.
+
+Tasks:
+
+1. Add a source model for agent id, chat/session id, workspace id, tool, repo, and optional Treeship key/artifact.
+2. Make multi-agent memory sharing show source and trust status.
+3. Add merge/conflict rules for two agents writing different claims about the same entity.
+4. Tie identity anchors to Treeship where available, but keep ZMem usable without remote Hub access.
+5. Surface this in the dashboard/console as connected agents and memory lineage.
+
+### L6 Benchmarks
+
+Goal: make the "top-tier memory" claim reproducible.
+
+Tasks:
+
+1. Keep LongMemEval and LoCoMo adapters deterministic and isolated.
+2. Track accuracy, F1, recall@k, latency, token use, abstention, memory counts, and context budget behavior.
+3. Store benchmark receipts and hashes.
+4. Add matrix comparisons for retrieval modes.
+5. Make public benchmark reports understandable without raw logs.
+
+### L7 DX Dashboard Site
+
+Goal: make ZMem delightful for both agents and humans.
+
+Tasks:
+
+1. Keep setup instructions concrete for Codex, Claude Code, Cursor, and MCP clients.
+2. Make dashboard show connected agents, active memory stores, memory source lineage, and proof status.
+3. Keep landing copy agent-native, short, and factual.
+4. Keep the feature/proof matrix current with built vs planned.
+5. Mobile and desktop QA must run before public deploy.
+
+## Automation Registry
+
+Existing automations to keep, but point them at this file:
+
+- `zerker-memory-overnight-build-loop`: launch/readiness oversight.
+- `zmem-retrieval-baseline-swarm`: L3 retrieval quality and context packing.
+- `zmem-benchmark-harness-swarm`: L6 benchmark harness.
+
+New continuous lanes to add:
+
+- `zmem-trust-ledger-swarm`: L0, every 4 hours.
+- `zmem-temporal-kg-swarm`: L1, every 4 hours.
+- `zmem-lifecycle-compaction-swarm`: L2, every 6 hours.
+- `zmem-consolidation-swarm`: L4, every 8 hours.
+- `zmem-identity-workspaces-swarm`: L5, every 8 hours.
+
+Each automation must write to its lane log and include the exact tests it ran. If it cannot run tests, it must say why.
+
+## Worker Write Protocol
+
+Every worker entry must use this shape:
+
+```md
+## 2026-06-22T00:00:00Z - <lane> - <agent or automation id>
+
+- Scope:
+- Files touched:
+- Behavior changed:
+- Tests:
+- Artifacts/receipts:
+- Blockers:
+- Next safe slice:
+```
+
+Do not paste long transcripts. Store raw output only when the command itself produced an artifact intended for review.
+
+## Merge Protocol
+
+1. Prefer one lane per branch or one narrow slice per commit.
+2. Before merging, run the smallest relevant test first, then a broader suite if shared surfaces changed.
+3. If two lanes touch `store.py` or `cli.py`, merge the narrower tested slice first and rebase the other lane.
+4. The coordinator reconciles lane logs into this orchestrator. Workers should append, not reorder.
+5. The product status page must only mark a feature "built" after code, tests, and user-facing docs agree.
+
+## Latest Coordinator Entries
+
+## 2026-06-22 - coordinator - continuous build launch
+
+- Scope: converted the frontier gap report into lane-based continuous build operations.
+- Files touched: this orchestrator plus `docs/CONTINUOUS_BUILD/` lane logs.
+- Behavior changed: none yet.
+- Tests: not applicable for docs scaffolding.
+- Blockers: existing dirty docs from active automation need preservation during future merges.
+- Next safe slice: update automation prompts and launch first-wave Codex workers for L0/L1/L2/L4/L5.

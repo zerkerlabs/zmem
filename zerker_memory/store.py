@@ -2246,6 +2246,16 @@ def _packing_reservation(authorized_entries: list[dict[str, Any]], retrieval: di
     temporal = dict(retrieval.get("temporal", {}))
     selection_strategy = temporal.get("selection_strategy")
     selection_reason = temporal.get("selection_reason")
+    support_id_set = {
+        str(memory_id)
+        for key in (
+            "selected_target_support_ids",
+            "selected_relation_support_ids",
+            "selected_current_support_ids",
+        )
+        for memory_id in temporal.get(key, [])
+        if str(memory_id)
+    }
     reservation_strategy = None
     reservation_reason = None
     explicit_change_ids = [
@@ -2270,6 +2280,9 @@ def _packing_reservation(authorized_entries: list[dict[str, Any]], retrieval: di
     elif selection_strategy == "chronological_timeline_v1" and explicit_change_ids:
         reservation_strategy = "chronology_mutation_anchor_set_v1"
         reservation_reason = "chronology-keep-explicit-change-events"
+    elif selection_strategy == "chronological_timeline_v1" and support_id_set:
+        reservation_strategy = "chronology_relation_support_chain_v1"
+        reservation_reason = "chronology-keep-selected-stale-current-support-chain"
     if reservation_strategy is None:
         return {
             "strategy": None,
@@ -2297,9 +2310,33 @@ def _packing_reservation(authorized_entries: list[dict[str, Any]], retrieval: di
     requested_ids: list[str] = []
     if selected_ids:
         requested_ids.append(selected_ids[0])
-    latest_current_id = next((memory_id for memory_id in reversed(selected_ids) if memory_id in current_ids), None)
-    if latest_current_id and latest_current_id not in requested_ids:
-        requested_ids.append(latest_current_id)
+    current_anchor_id = str(temporal.get("selected_current_anchor_id") or "")
+    if current_anchor_id not in current_ids:
+        current_anchor_id = next((memory_id for memory_id in reversed(selected_ids) if memory_id in current_ids), "")
+    if current_anchor_id and current_anchor_id not in requested_ids:
+        requested_ids.append(current_anchor_id)
+    ordered_support_ids: list[str] = []
+    preferred_support_order = [
+        str(memory_id)
+        for memory_id in temporal.get("injection_preferred_ids", [])
+        if str(memory_id)
+    ]
+    for memory_id in preferred_support_order + selected_ids:
+        if (
+            memory_id in support_id_set
+            and memory_id in authorized_ids
+            and memory_id not in requested_ids
+            and memory_id not in ordered_support_ids
+        ):
+            ordered_support_ids.append(memory_id)
+    if ordered_support_ids:
+        requested_ids.extend(ordered_support_ids)
+        if reservation_strategy == "earliest_history_anchor_pair_v1":
+            reservation_reason = "earliest-history-keep-earliest-current-support-chain"
+        elif reservation_strategy == "history_anchor_pair_v1":
+            reservation_reason = "history-keep-selected-stale-current-support-chain"
+        elif reservation_strategy == "update_history_anchor_pair_v1":
+            reservation_reason = "update-history-keep-selected-stale-current-support-chain"
     return {
         "strategy": reservation_strategy,
         "reason": reservation_reason,

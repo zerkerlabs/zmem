@@ -790,6 +790,7 @@ INDEX_HTML = """<!doctype html>
     function renderOutput(payload) {
       $('rawOutput').textContent = JSON.stringify(payload, null, 2);
       $('proofSummary').innerHTML = renderSummary(payload);
+      $('proofSummary').scrollIntoView({behavior: 'smooth', block: 'start'});
     }
 
     function renderReleaseStatus(state) {
@@ -944,10 +945,25 @@ INDEX_HTML = """<!doctype html>
       if (payload.schema === 'zerker.restore_handoff.v1') return renderRestoreSummary(payload);
       if (payload.schema === 'zerker.launch_assets_verify.v1') return renderLaunchAssetsSummary(payload);
       if (payload.schema === 'zerker.return_packet_verify.v1') return renderReturnPacketSummary(payload);
+      if (payload.revoked_ids && payload.memory_id) return renderRevokeSummary(payload);
       if (payload.id && payload.content && payload.status) return renderMemorySummary(payload);
       if (payload.receipt_schema || payload.action_id) return renderReceiptSummary(payload);
       if (payload.ok === false) return `<div class="proof-status">${pill('error')}</div><div class="content">${escapeHtml(payload.error || 'Action failed')}</div>`;
       return renderEmptyProofState();
+    }
+
+    function renderRevokeSummary(result) {
+      const ids = result.revoked_ids || [];
+      const descendants = result.descendant_count || 0;
+      return `<div class="proof-status">
+          ${pill('revoked')}${pill(ids.length + ' affected')}${pill('descendants ' + descendants)}
+        </div>
+        <div class="proof-grid">
+          ${proofCell('Memory', result.memory_id || 'none')}
+          ${proofCell('Revoked count', String(ids.length))}
+          ${proofCell('Reason', result.reason || 'none')}
+        </div>
+        <div class="content">Revoked ${escapeHtml(result.memory_id || '')} and ${descendants} descendant(s). This action is recorded in the receipt chain.</div>`;
     }
 
     function renderMemorySummary(memory) {
@@ -1094,7 +1110,10 @@ INDEX_HTML = """<!doctype html>
         `format: ${result.format || 'unknown'}`,
         `path: ${result.path || 'not written'}`,
       ];
-      return `<div class="proof-status">
+      const pathBanner = result.path
+        ? `<div class="content" style="margin-bottom:10px">Bundle written to <code style="user-select:all">${escapeHtml(result.path)}</code></div>`
+        : '';
+      return `${pathBanner}<div class="proof-status">
           ${pill('bundle')}${pill(proof.verified ? 'verified' : 'unverified')}${pill(result.format)}
         </div>
         <div class="proof-grid">
@@ -1324,12 +1343,18 @@ INDEX_HTML = """<!doctype html>
       if (!button) return;
       const action = button.dataset.action;
       const id = button.dataset.id;
+      const originalText = button.textContent;
+      button.disabled = true;
+      button.textContent = '…';
       try {
         if (action === 'why') renderOutput(await api(`/api/receipts/${id}`));
         else if (action === 'bundle') renderOutput(await api(`/api/receipts/${id}/bundle`, {method: 'POST', body: '{}'}));
         else await act(action, id);
       } catch (error) {
         renderOutput({ok:false, error:error.message});
+      } finally {
+        button.disabled = false;
+        button.textContent = originalText;
       }
     });
 

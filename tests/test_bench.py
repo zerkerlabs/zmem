@@ -6988,6 +6988,45 @@ class BenchmarkHarnessTest(unittest.TestCase):
                 (matrix_dir / "summary-only-matrix" / "benchmark-matrix.json").read_text(encoding="utf-8")
             )
             first_mode = matrix["mode_runs"][0]
+            question = next(
+                question
+                for question in matrix["comparison"]["questions"]
+                if question["question_id"] == "synthetic-multihop-kestrel-locker"
+            )
+            expected_memory_count_deltas = [
+                {
+                    "question_id": question["question_id"],
+                    "retrieval_mode": delta["retrieval_mode"],
+                    "retrieved_memory_count_delta": delta.get("retrieved_memory_count_delta"),
+                    "injected_memory_count_delta": delta.get("injected_memory_count_delta"),
+                    "withheld_memory_count_delta": delta.get("withheld_memory_count_delta"),
+                }
+                for delta in question.get("deltas", [])
+                if any(
+                    delta.get(key) not in (None, 0)
+                    for key in (
+                        "retrieved_memory_count_delta",
+                        "injected_memory_count_delta",
+                        "withheld_memory_count_delta",
+                    )
+                )
+            ]
+            expected_efficiency_deltas = [
+                {
+                    "question_id": question["question_id"],
+                    "retrieval_mode": delta["retrieval_mode"],
+                    "retrieval_latency_ms_delta": delta.get("retrieval_latency_ms_delta"),
+                    "total_tokens_delta": delta.get("total_tokens_delta"),
+                }
+                for delta in question.get("deltas", [])
+                if any(
+                    delta.get(key) not in (None, 0)
+                    for key in (
+                        "retrieval_latency_ms_delta",
+                        "total_tokens_delta",
+                    )
+                )
+            ]
 
             self.assertIn("Benchmark matrix", output)
             self.assertIn("Verification: ok", output)
@@ -7003,6 +7042,27 @@ class BenchmarkHarnessTest(unittest.TestCase):
                 f"aggregate_merkle_root={first_mode['aggregate_merkle_root']}",
                 output,
             )
+            for delta in expected_memory_count_deltas:
+                self.assertIn(
+                    "Memory count delta "
+                    f"{delta['question_id']} ({delta['retrieval_mode']}): "
+                    f"retrieved={delta['retrieved_memory_count_delta']:+d} "
+                    f"injected={delta['injected_memory_count_delta']:+d} "
+                    f"withheld={delta['withheld_memory_count_delta']:+d}",
+                    output,
+                )
+            for delta in expected_efficiency_deltas:
+                latency_delta = delta["retrieval_latency_ms_delta"]
+                token_delta = delta["total_tokens_delta"]
+                latency_display = f"{latency_delta:+.3f}" if isinstance(latency_delta, float) else f"{latency_delta:+d}"
+                token_display = f"{token_delta:+.3f}" if isinstance(token_delta, float) else f"{token_delta:+d}"
+                self.assertIn(
+                    "Efficiency delta "
+                    f"{delta['question_id']} ({delta['retrieval_mode']}): "
+                    f"retrieval_latency_ms={latency_display} "
+                    f"total_tokens={token_display}",
+                    output,
+                )
             self.assertIn(
                 f"Matrix JSON: {tmp_path / 'bench-cli' / 'summary-only-matrix' / 'benchmark-matrix.json'}",
                 output,

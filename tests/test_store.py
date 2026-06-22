@@ -3143,6 +3143,188 @@ class MemoryStoreTest(unittest.TestCase):
         self.assertEqual(packing["budget_dropped"][0]["memory_id"], first.id)
         self.assertFalse(packing["budget_dropped"][0]["reserved_by_strategy"])
 
+    def test_recent_history_relation_budget_packing_keeps_selected_support_chain_when_it_fits(self):
+        first = self.store.remember(
+            "API gateway points to canary.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.3,
+            authority="low",
+        )
+        second = self.store.remember(
+            "API gateway points to staging.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.95,
+            authority="high",
+            parents=[first.id],
+        )
+        current = self.store.remember(
+            "API gateway points to production.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.8,
+            authority="medium",
+            parents=[second.id],
+        )
+        generic_anchor = self.store.remember(
+            "API gateway points changed after migration.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.99,
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z", first.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-02-01T00:00:00Z", "2024-02-01T00:00:00Z", second.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-03-01T00:00:00Z", "2024-03-01T00:00:00Z", current.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-04-01T00:00:00Z", "2024-04-01T00:00:00Z", generic_anchor.id),
+        )
+        self.store.conn.commit()
+
+        budget = (
+            approx_memory_tokens(second)
+            + approx_memory_tokens(current)
+            + approx_memory_tokens(generic_anchor)
+        )
+        receipt = self.store.inject(
+            "what did the api gateway point at before",
+            agent_id="codex",
+            risk="low",
+            scope="project",
+            context_budget_tokens=budget,
+        )
+        packing = receipt["retrieval"]["packing"]
+        temporal = receipt["retrieval"]["temporal"]
+        candidate_priorities = {item["memory_id"]: item for item in packing["candidate_priorities"]}
+
+        self.assertEqual(temporal["selection_strategy"], "historical_preferred_v1")
+        self.assertEqual(temporal["injection_strategy"], "history_relation_current_anchor_first_v1")
+        self.assertEqual(temporal["selected_relation_support_ids"], [generic_anchor.id])
+        self.assertEqual(temporal["selected_current_support_ids"], [generic_anchor.id])
+        self.assertEqual(temporal["selected_ids"], [second.id, first.id, current.id, generic_anchor.id])
+        self.assertEqual(receipt["injected_memory_ids"], [second.id, current.id, generic_anchor.id])
+        self.assertEqual(packing["reservation"]["strategy"], "history_anchor_pair_v1")
+        self.assertTrue(packing["reservation"]["applied"])
+        self.assertEqual(
+            packing["reservation"]["requested_ids"],
+            [second.id, current.id, generic_anchor.id],
+        )
+        self.assertEqual(
+            packing["reservation"]["applied_ids"],
+            [second.id, current.id, generic_anchor.id],
+        )
+        self.assertTrue(candidate_priorities[second.id]["reserved_by_strategy"])
+        self.assertFalse(candidate_priorities[first.id]["reserved_by_strategy"])
+        self.assertTrue(candidate_priorities[current.id]["reserved_by_strategy"])
+        self.assertTrue(candidate_priorities[generic_anchor.id]["reserved_by_strategy"])
+        self.assertEqual(packing["budget_dropped"][0]["memory_id"], first.id)
+        self.assertFalse(packing["budget_dropped"][0]["reserved_by_strategy"])
+
+    def test_chronology_relation_budget_packing_keeps_selected_support_chain_when_it_fits(self):
+        first = self.store.remember(
+            "API gateway points to canary.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.3,
+            authority="low",
+        )
+        second = self.store.remember(
+            "API gateway points to staging.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.95,
+            authority="high",
+            parents=[first.id],
+        )
+        current = self.store.remember(
+            "API gateway points to production.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.8,
+            authority="medium",
+            parents=[second.id],
+        )
+        generic_anchor = self.store.remember(
+            "API gateway points changed after migration.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.99,
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z", first.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-02-01T00:00:00Z", "2024-02-01T00:00:00Z", second.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-03-01T00:00:00Z", "2024-03-01T00:00:00Z", current.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-04-01T00:00:00Z", "2024-04-01T00:00:00Z", generic_anchor.id),
+        )
+        self.store.conn.commit()
+
+        budget = (
+            approx_memory_tokens(second)
+            + approx_memory_tokens(current)
+            + approx_memory_tokens(generic_anchor)
+        )
+        receipt = self.store.inject(
+            "when did the api gateway point at change then",
+            agent_id="codex",
+            risk="low",
+            scope="project",
+            context_budget_tokens=budget,
+        )
+        packing = receipt["retrieval"]["packing"]
+        temporal = receipt["retrieval"]["temporal"]
+        candidate_priorities = {item["memory_id"]: item for item in packing["candidate_priorities"]}
+
+        self.assertEqual(temporal["selection_strategy"], "chronological_timeline_v1")
+        self.assertEqual(temporal["injection_strategy"], "chronology_relation_current_anchor_first_v1")
+        self.assertEqual(temporal["selected_relation_support_ids"], [generic_anchor.id])
+        self.assertEqual(temporal["selected_current_support_ids"], [generic_anchor.id])
+        self.assertEqual(temporal["selected_ids"], [first.id, second.id, current.id, generic_anchor.id])
+        self.assertEqual(receipt["injected_memory_ids"], [first.id, current.id, generic_anchor.id])
+        self.assertEqual(packing["reservation"]["strategy"], "chronology_relation_support_chain_v1")
+        self.assertTrue(packing["reservation"]["applied"])
+        self.assertEqual(
+            packing["reservation"]["requested_ids"],
+            [first.id, current.id, generic_anchor.id],
+        )
+        self.assertEqual(
+            packing["reservation"]["applied_ids"],
+            [first.id, current.id, generic_anchor.id],
+        )
+        self.assertTrue(candidate_priorities[first.id]["reserved_by_strategy"])
+        self.assertFalse(candidate_priorities[second.id]["reserved_by_strategy"])
+        self.assertTrue(candidate_priorities[current.id]["reserved_by_strategy"])
+        self.assertTrue(candidate_priorities[generic_anchor.id]["reserved_by_strategy"])
+        self.assertEqual(packing["budget_dropped"][0]["memory_id"], second.id)
+        self.assertFalse(packing["budget_dropped"][0]["reserved_by_strategy"])
+
     def test_recent_history_query_prefers_latest_superseded_state_over_higher_rank_older_state(self):
         first = self.store.remember(
             "Deploy target is Heroku.",
@@ -6578,6 +6760,54 @@ class MemoryStoreTest(unittest.TestCase):
         self.assertEqual(conflict["update_current_value"], "production")
         self.assertEqual(conflict["observation_seq_by_id"][second.id], 2)
         self.assertFalse(temporal["abstention"]["applied"])
+
+    def test_temporal_contract_current_vs_history_keeps_identity_disambiguation(self):
+        unrelated = self.store.remember(
+            "Alice owns the billing exporter.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        stale = self.store.remember(
+            "Status page owner is Alice.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        current = self.store.remember(
+            "Status page owner is Alice Chen.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            parents=[stale.id],
+        )
+
+        current_receipt = self.store.inject("current status page owner", agent_id="codex", risk="low", scope="project")
+        current_temporal = current_receipt["retrieval"]["temporal"]
+
+        self.assertEqual(current_receipt["injected_memory_ids"], [current.id])
+        self.assertNotIn(unrelated.id, current_receipt["retrieved_memory_ids"])
+        self.assertEqual(current_temporal["selection_strategy"], "current_only_v1")
+        self.assertEqual(current_temporal["selection_reason"], "current-query-terms")
+        self.assertEqual(current_temporal["selected_ids"], [current.id])
+        self.assertEqual(current_temporal["selected_current_ids"], [current.id])
+
+        history_receipt = self.store.inject("previous status page owner", agent_id="codex", risk="low", scope="project")
+        history_temporal = history_receipt["retrieval"]["temporal"]
+        history_candidates = {
+            candidate["memory_id"]: candidate
+            for candidate in history_receipt["retrieval"]["candidates"]
+        }
+
+        self.assertEqual(history_receipt["injected_memory_ids"], [stale.id, current.id])
+        self.assertNotIn(unrelated.id, history_receipt["retrieved_memory_ids"])
+        self.assertEqual(history_temporal["selection_strategy"], "historical_preferred_v1")
+        self.assertEqual(history_temporal["selection_reason"], "history-query-terms")
+        self.assertEqual(history_temporal["selected_ids"], [stale.id, current.id])
+        self.assertEqual(history_temporal["selected_superseded_ids"], [stale.id])
+        self.assertEqual(history_temporal["selected_current_ids"], [current.id])
+        self.assertEqual(history_candidates[stale.id]["temporal_state"], "superseded")
+        self.assertEqual(history_candidates[stale.id]["superseded_by_candidate"], current.id)
 
     def test_runner_context_contains_only_current_injected_memories(self):
         parent = self.store.remember(

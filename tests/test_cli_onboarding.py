@@ -391,6 +391,7 @@ class CliOnboardingTest(unittest.TestCase):
             ["workspace", "register", "--name", "Zerker Memory", "--root", "/tmp/zmem", "--no-current"]
         )
         status = build_parser().parse_args(["ws", "status"])
+        sources = build_parser().parse_args(["ws", "sources", "--limit", "7"])
 
         self.assertEqual(register.command, "workspace")
         self.assertEqual(register.workspace_command, "register")
@@ -399,6 +400,9 @@ class CliOnboardingTest(unittest.TestCase):
         self.assertTrue(register.no_current)
         self.assertEqual(status.command, "ws")
         self.assertEqual(status.workspace_command, "status")
+        self.assertEqual(sources.command, "ws")
+        self.assertEqual(sources.workspace_command, "sources")
+        self.assertEqual(sources.limit, 7)
 
     def test_launch_proof_parser(self):
         args = build_parser().parse_args(["launch-proof", "--out-dir", "/tmp/launch-proof", "--agent", "openclaw", "--summary-only"])

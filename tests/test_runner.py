@@ -3557,6 +3557,84 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(temporal["selected_relation_support_ids"], [generic_anchor.id])
         self.assertEqual(temporal["selected_current_support_ids"], [generic_anchor.id])
 
+    def test_recent_history_relation_context_budget_keeps_selected_support_chain_when_it_fits(self):
+        first = self.store.remember(
+            "API gateway points to canary.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.3,
+            authority="low",
+        )
+        second = self.store.remember(
+            "API gateway points to staging.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.95,
+            authority="high",
+            parents=[first.id],
+        )
+        current = self.store.remember(
+            "API gateway points to production.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.8,
+            authority="medium",
+            parents=[second.id],
+        )
+        generic_anchor = self.store.remember(
+            "API gateway points changed after migration.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.99,
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z", first.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-02-01T00:00:00Z", "2024-02-01T00:00:00Z", second.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-03-01T00:00:00Z", "2024-03-01T00:00:00Z", current.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-04-01T00:00:00Z", "2024-04-01T00:00:00Z", generic_anchor.id),
+        )
+        self.store.conn.commit()
+        receipt = self.store.inject(
+            "what did the api gateway point at before",
+            agent_id="codex",
+            risk="low",
+            scope="project",
+            context_budget_tokens=(
+                approx_memory_tokens(second)
+                + approx_memory_tokens(current)
+                + approx_memory_tokens(generic_anchor)
+            ),
+        )
+        context = build_context(receipt)
+
+        self.assertEqual(
+            [memory["id"] for memory in context["memories"]],
+            [second.id, current.id, generic_anchor.id],
+        )
+        retrieval = receipt["retrieval"]
+        temporal = retrieval["temporal"]
+        self.assertEqual(temporal["injection_strategy"], "history_relation_current_anchor_first_v1")
+        self.assertEqual(temporal["selected_relation_support_ids"], [generic_anchor.id])
+        self.assertEqual(
+            retrieval["packing"]["reservation"]["requested_ids"],
+            [second.id, current.id, generic_anchor.id],
+        )
+        self.assertEqual(retrieval["packing"]["budget_dropped"][0]["memory_id"], first.id)
+
     def test_recent_history_question_context_orders_latest_superseded_before_older_stale_states(self):
         first = self.store.remember(
             "Deploy target is Heroku.",

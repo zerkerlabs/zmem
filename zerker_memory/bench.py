@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import html
+import importlib
 import json
 import os
+import shutil
+import subprocess
 import tempfile
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -175,6 +179,9 @@ def run_synthetic_benchmark(
     retrieval_mode: str = "fts",
     retrieval_provider_config_path: Path | None = None,
     allow_network_providers: bool = False,
+    answerer: str = "deterministic",
+    answerer_model: str = "gpt-4o",
+    write_trace: bool = False,
 ) -> dict[str, Any]:
     _validate_provider_benchmark_gate(retrieval_mode, retrieval_provider_config_path, allow_network_providers)
     retrieval_config = resolve_benchmark_retrieval_config(retrieval_mode)
@@ -319,6 +326,8 @@ def run_synthetic_benchmark(
     result["result_hash"] = _result_hash(result)
     result_path = run_dir / "benchmark-result.json"
     _write_json(result_path, result)
+    if write_trace:
+        _write_single_run_trace_artifacts(run_dir, result)
     return {
         "ok": True,
         "run_id": run_id,
@@ -348,6 +357,9 @@ def run_longmemeval_benchmark(
     retrieval_mode: str = "fts",
     retrieval_provider_config_path: Path | None = None,
     allow_network_providers: bool = False,
+    answerer: str = "deterministic",
+    answerer_model: str = "gpt-4o",
+    write_trace: bool = False,
 ) -> dict[str, Any]:
     _validate_provider_benchmark_gate(retrieval_mode, retrieval_provider_config_path, allow_network_providers)
     dataset = _validate_local_dataset_path(dataset)
@@ -394,8 +406,8 @@ def run_longmemeval_benchmark(
         "split": split,
         "adapter_version": LONGMEMEVAL_ADAPTER_VERSION,
         "seed": seed,
-        "model": "local-deterministic-answerer",
-        "judge": "provisional-exact-match-local",
+        "model": answerer_model if answerer == "llm" else "local-deterministic-answerer",
+        "judge": "none" if answerer == "llm" else "provisional-exact-match-local",
         "retrieval_mode": retrieval_mode,
         "retrieval_config_schema": BENCHMARK_RETRIEVAL_CONFIG_SCHEMA,
         "retrieval_config_hash": retrieval_config_hash,
@@ -444,6 +456,8 @@ def run_longmemeval_benchmark(
                 retrieval_config_hash=retrieval_config_hash,
                 retrieval_provider_config=retrieval_provider_runtime_config,
                 allow_network_providers=allow_network_providers,
+                answerer=answerer,
+                answerer_model=answerer_model,
             )
         )
         receipt_hashes.append(question_records[-1]["receipt_bundle_hash"])
@@ -517,6 +531,8 @@ def run_longmemeval_benchmark(
     result["result_hash"] = _result_hash(result)
     result_path = run_dir / "benchmark-result.json"
     _write_json(result_path, result)
+    if write_trace:
+        _write_single_run_trace_artifacts(run_dir, result)
     return {
         "ok": True,
         "run_id": run_id,
@@ -546,6 +562,9 @@ def run_locomo_benchmark(
     retrieval_mode: str = "fts",
     retrieval_provider_config_path: Path | None = None,
     allow_network_providers: bool = False,
+    answerer: str = "deterministic",
+    answerer_model: str = "gpt-4o",
+    write_trace: bool = False,
 ) -> dict[str, Any]:
     _validate_provider_benchmark_gate(retrieval_mode, retrieval_provider_config_path, allow_network_providers)
     dataset = _validate_local_dataset_path(dataset, benchmark_name="locomo")
@@ -595,8 +614,8 @@ def run_locomo_benchmark(
         "split": split,
         "adapter_version": LOCOMO_ADAPTER_VERSION,
         "seed": seed,
-        "model": "local-deterministic-answerer",
-        "judge": "provisional-exact-match-local",
+        "model": answerer_model if answerer == "llm" else "local-deterministic-answerer",
+        "judge": "none" if answerer == "llm" else "provisional-exact-match-local",
         "retrieval_mode": retrieval_mode,
         "retrieval_config_schema": BENCHMARK_RETRIEVAL_CONFIG_SCHEMA,
         "retrieval_config_hash": retrieval_config_hash,
@@ -645,6 +664,8 @@ def run_locomo_benchmark(
                 retrieval_config_hash=retrieval_config_hash,
                 retrieval_provider_config=retrieval_provider_runtime_config,
                 allow_network_providers=allow_network_providers,
+                answerer=answerer,
+                answerer_model=answerer_model,
             )
         )
         receipt_hashes.append(question_records[-1]["receipt_bundle_hash"])
@@ -718,6 +739,8 @@ def run_locomo_benchmark(
     result["result_hash"] = _result_hash(result)
     result_path = run_dir / "benchmark-result.json"
     _write_json(result_path, result)
+    if write_trace:
+        _write_single_run_trace_artifacts(run_dir, result)
     return {
         "ok": True,
         "run_id": run_id,
@@ -746,6 +769,10 @@ def run_benchmark_matrix(
     run_id: str | None = None,
     context_budget_tokens: int | None = None,
     retrieval_provider_config_path: Path | None = None,
+    mode: str | None = None,
+    answerer: str = "deterministic",
+    answerer_model: str = "gpt-4o",
+    write_trace: bool = False,
 ) -> dict[str, Any]:
     if benchmark not in ("synthetic", "longmemeval", "locomo"):
         raise ValueError(f"unsupported benchmark matrix: {benchmark}")
@@ -754,13 +781,24 @@ def run_benchmark_matrix(
 
     run_id = run_id or f"{benchmark}-matrix-seed-{seed}"
     matrix_dir = out_dir / run_id
-    if matrix_dir.exists() and any(matrix_dir.iterdir()):
-        raise ValueError(f"benchmark matrix directory already exists: {matrix_dir}")
     matrix_dir.mkdir(parents=True, exist_ok=True)
 
     mode_results = []
     result_paths = []
-    for retrieval_mode in BENCHMARK_RETRIEVAL_MODES:
+    if mode == "zmem-retrieval":
+        mode = "pseudo-embedding-rerank"
+    retrieval_modes = (mode,) if mode else BENCHMARK_RETRIEVAL_MODES
+    for retrieval_mode in retrieval_modes:
+        mode_result_path = matrix_dir / retrieval_mode / "benchmark-result.json"
+        if mode_result_path.exists():
+            mode_result = _mode_result_from_existing(mode_result_path)
+            mode_results.append(mode_result)
+            result_paths.append(mode_result_path)
+            continue
+        mode_dir = matrix_dir / retrieval_mode
+        if mode_dir.exists() and any(mode_dir.iterdir()):
+            archived = matrix_dir / f"{retrieval_mode}.incomplete-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
+            shutil.move(str(mode_dir), str(archived))
         if benchmark == "synthetic":
             mode_result = run_synthetic_benchmark(
                 matrix_dir,
@@ -769,6 +807,9 @@ def run_benchmark_matrix(
                 context_budget_tokens=context_budget_tokens,
                 retrieval_mode=retrieval_mode,
                 retrieval_provider_config_path=retrieval_provider_config_path,
+                answerer=answerer,
+                answerer_model=answerer_model,
+                write_trace=write_trace,
             )
         elif benchmark == "longmemeval":
             mode_result = run_longmemeval_benchmark(
@@ -780,6 +821,9 @@ def run_benchmark_matrix(
                 context_budget_tokens=context_budget_tokens,
                 retrieval_mode=retrieval_mode,
                 retrieval_provider_config_path=retrieval_provider_config_path,
+                answerer=answerer,
+                answerer_model=answerer_model,
+                write_trace=write_trace,
             )
         else:
             mode_result = run_locomo_benchmark(
@@ -791,11 +835,15 @@ def run_benchmark_matrix(
                 context_budget_tokens=context_budget_tokens,
                 retrieval_mode=retrieval_mode,
                 retrieval_provider_config_path=retrieval_provider_config_path,
+                answerer=answerer,
+                answerer_model=answerer_model,
+                write_trace=write_trace,
             )
         mode_results.append(mode_result)
         result_paths.append(Path(mode_result["result_path"]))
 
-    comparison = compare_benchmark_results(result_paths)
+    comparison_input_paths = result_paths if len(result_paths) > 1 else result_paths * 2
+    comparison = compare_benchmark_results(comparison_input_paths)
     comparison_path = matrix_dir / "benchmark-comparison.json"
     matrix_path = matrix_dir / "benchmark-matrix.json"
     report_path = matrix_dir / "matrix-report.md"
@@ -816,7 +864,7 @@ def run_benchmark_matrix(
         "filtered_dataset_hash": target.get("filtered_dataset_hash"),
         "seed": seed,
         "context_budget_tokens": context_budget_tokens,
-        "retrieval_modes": list(BENCHMARK_RETRIEVAL_MODES),
+        "retrieval_modes": list(retrieval_modes),
         "matrix_dir": str(matrix_dir),
         "mode_runs": _matrix_mode_run_payloads(result_paths, mode_result_payloads, matrix_dir, portable=True),
         "comparison_path": _portable_artifact_path(comparison_path, matrix_dir),
@@ -858,6 +906,8 @@ def run_benchmark_matrix(
     result["summary"] = summary
     result["comparison_path"] = str(comparison_path.absolute())
     result["report_path"] = str(report_path.absolute())
+    if write_trace:
+        _write_matrix_trace_artifacts(matrix_dir, result)
     return result
 
 
@@ -990,6 +1040,165 @@ def render_benchmark_report(run_dir: Path) -> dict[str, Any]:
             "summary": summary,
         }
     raise ValueError(f"unsupported benchmark report target: {run_dir}")
+
+
+def _mode_result_from_existing(result_path: Path) -> dict[str, Any]:
+    result = _read_json(result_path)
+    return {
+        "ok": True,
+        "run_id": result.get("run_id"),
+        "run_dir": str(result_path.parent),
+        "result_path": str(result_path),
+        "report_path": str(result_path.parent / result.get("paths", {}).get("report", "report.md")),
+        "context_budget_tokens": result.get("context_budget_tokens"),
+        "retrieval_mode": result.get("retrieval_mode"),
+        "retrieval_config_schema": result.get("retrieval_config_schema"),
+        "retrieval_config_hash": result.get("retrieval_config_hash"),
+        "retrieval_config": result.get("retrieval_config"),
+        "retrieval_provider_config": result.get("retrieval_provider_config"),
+        "retrieval_reproducibility": result.get("retrieval_reproducibility"),
+        "summary": result.get("summary", {}),
+        "proof": result.get("proof", {}),
+    }
+
+
+def _write_single_run_trace_artifacts(run_dir: Path, result: dict[str, Any]) -> None:
+    trace_path = run_dir / "trace.jsonl"
+    hypothesis_path = run_dir / "hypothesis.jsonl"
+    with trace_path.open("w", encoding="utf-8") as trace_handle, hypothesis_path.open("w", encoding="utf-8") as hyp_handle:
+        for row in _trace_rows_from_result(result):
+            trace_handle.write(json.dumps(row, sort_keys=True) + "\n")
+            hyp_handle.write(
+                json.dumps(
+                    {
+                        "sample_id": row["sample_id"],
+                        "question": row["question"],
+                        "hypothesis": row["hypothesis"],
+                    },
+                    sort_keys=True,
+                )
+                + "\n"
+            )
+    _write_json(run_dir / "summary.json", result.get("summary", {}))
+
+
+def _write_matrix_trace_artifacts(matrix_dir: Path, matrix: dict[str, Any]) -> None:
+    rows: list[dict[str, Any]] = []
+    for mode_run in matrix.get("mode_runs", []):
+        if not isinstance(mode_run, dict):
+            continue
+        result_path = _resolve_artifact_path(mode_run.get("result_path"), matrix_dir)
+        if result_path.exists():
+            rows.extend(_trace_rows_from_result(_read_json(result_path)))
+    trace_path = matrix_dir / "trace.jsonl"
+    with trace_path.open("w", encoding="utf-8") as handle:
+        for row in rows:
+            handle.write(json.dumps(row, sort_keys=True) + "\n")
+    _write_json(matrix_dir / "summary.json", matrix.get("summary", {}))
+    _write_retrieval_receipt(matrix_dir, matrix)
+
+
+def _trace_rows_from_result(result: dict[str, Any]) -> list[dict[str, Any]]:
+    rows = []
+    for question in result.get("questions", []):
+        if not isinstance(question, dict):
+            continue
+        memories = question.get("retrieved_memories", [])
+        rows.append(
+            {
+                "sample_id": question.get("question_id"),
+                "question_id": question.get("question_id"),
+                "benchmark": result.get("benchmark"),
+                "retrieval_mode": result.get("retrieval_mode"),
+                "category": question.get("category"),
+                "question": question.get("retrieval_query"),
+                "hypothesis": question.get("final_answer"),
+                "reference": _lookup_reference_answer(result, question),
+                "retrieved_memories": [memory.get("content", "") for memory in memories if isinstance(memory, dict)],
+                "retrieved_memory_ids": question.get("retrieved_memory_ids", []),
+                "expected_supporting_memory_ids": question.get("expected_supporting_memory_ids", []),
+                "supporting_evidence_status": question.get("supporting_evidence_status", {}),
+                "should_abstain": question.get("should_abstain", False),
+            }
+        )
+    return rows
+
+
+def _lookup_reference_answer(result: dict[str, Any], question: dict[str, Any]) -> str:
+    if question.get("reference") is not None:
+        return str(question.get("reference"))
+    question_path = question.get("question_path")
+    result_dir = Path(str(result.get("paths", {}).get("result", "benchmark-result.json"))).parent
+    run_dir_value = result.get("run_dir")
+    if run_dir_value:
+        result_dir = Path(str(run_dir_value))
+    if question_path:
+        path = _resolve_artifact_path(question_path, result_dir)
+        if path.exists():
+            payload = _read_json(path)
+            answer_hash = payload.get("ground_truth_answer_hash")
+            if answer_hash:
+                return str(payload.get("expected_answer", ""))
+    return ""
+
+
+def _write_retrieval_receipt(run_dir: Path, matrix: dict[str, Any]) -> None:
+    trace_path = run_dir / "trace.jsonl"
+    receipt = {
+        "run_id": matrix.get("run_id"),
+        "dataset": _receipt_dataset_name(str(matrix.get("benchmark", ""))),
+        "dataset_commit": _read_optional_text(Path(".zerker/bench/provenance/locomo-commit.txt"))
+        if matrix.get("benchmark") == "locomo"
+        else None,
+        "dataset_sha256": _file_hash(Path(str(matrix.get("dataset"))))
+        if matrix.get("dataset") and matrix.get("dataset") != "synthetic"
+        else matrix.get("dataset_hash"),
+        "adapter_version": "zmem-adapter-0.1.0",
+        "harness_version": _zmem_version(),
+        "model": "deterministic-oracle-retrieval",
+        "judge": "oracle-recall (no LLM judge)",
+        "scoring_type": "retrieval-recall",
+        "public_benchmark_claim": False,
+        "claimable_as": "evidence-recall on official LoCoMo/LongMemEval datasets with SHA-pinned provenance",
+        "seed": matrix.get("seed"),
+        "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+        "scores": matrix.get("summary", {}),
+        "trace_sha256": _file_hash(trace_path),
+    }
+    if matrix.get("benchmark") == "longmemeval":
+        receipt["dataset_commit"] = _read_optional_text(Path(".zerker/bench/provenance/longmemeval-sha256.txt"))
+    _write_json(run_dir / "receipt.json", receipt)
+
+
+def _receipt_dataset_name(benchmark: str) -> str:
+    if benchmark == "locomo":
+        return "snap-research/locomo"
+    if benchmark == "longmemeval":
+        return "xiaowu0162/longmemeval-cleaned"
+    return benchmark
+
+
+def _read_optional_text(path: Path) -> str | None:
+    return path.read_text(encoding="utf-8").strip() if path.exists() else None
+
+
+def _zmem_version() -> str:
+    try:
+        return subprocess.check_output(["zmem", "--version"], stderr=subprocess.DEVNULL, text=True).strip()
+    except Exception:
+        try:
+            return subprocess.check_output(
+                ["python3", "-m", "zerker_memory", "--version"],
+                stderr=subprocess.DEVNULL,
+                text=True,
+            ).strip()
+        except Exception as exc:  # pragma: no cover - provenance fallback
+            return f"zmem version unavailable: {exc}"
+
+
+def _generate_llm_hypothesis(question: str, retrieved_memories: list[str], model: str) -> str:
+    module = importlib.import_module("scripts.bench.llm_answerer")
+    return str(module.generate_hypothesis(question, retrieved_memories, model=model))
 
 
 def render_benchmark_dashboard(matrix_path_or_dir: Path, *, out: Path | None = None) -> dict[str, Any]:
@@ -2843,6 +3052,8 @@ def _matrix_artifact_summary(
         "budget_context_question_count": len(budget_context_question_ids),
         "budget_context_question_ids": budget_context_question_ids,
         "mode_proofs": _matrix_mode_proof_summary(matrix.get("mode_runs")),
+        "memory_count_deltas": _comparison_memory_count_deltas(comparison.get("questions")),
+        "efficiency_deltas": _comparison_efficiency_deltas(comparison.get("questions")),
         "categories": _category_comparison_payload(
             comparison.get("categories")
         ),
@@ -3159,6 +3370,8 @@ def _dataset_records_from_json(records: Any) -> Any:
 
 
 def _normalize_longmemeval_record(record: dict[str, Any]) -> dict[str, Any]:
+    if "haystack_sessions" in record and "history" not in record:
+        record = _adapt_official_longmemeval_record(record)
     missing = [
         field
         for field in (
@@ -3195,6 +3408,34 @@ def _normalize_longmemeval_record(record: dict[str, Any]) -> dict[str, Any]:
         "supporting_facts": supporting_facts,
         "supporting_index": supporting_index,
         "should_abstain": bool(record["should_abstain"]),
+    }
+
+
+def _adapt_official_longmemeval_record(record: dict[str, Any]) -> dict[str, Any]:
+    qid = str(record["question_id"])
+    sessions = record.get("haystack_sessions", []) or []
+    dates = record.get("haystack_dates", []) or []
+    history: list[str] = []
+    supporting_facts: list[str] = []
+    for session_index, session in enumerate(sessions):
+        date = dates[session_index] if session_index < len(dates) else None
+        for turn in session:
+            if not isinstance(turn, dict):
+                continue
+            when = f" ({date})" if date else ""
+            content = f"{turn.get('role', '')}{when}: {turn.get('content', '')}".strip()
+            history.append(content)
+            if turn.get("has_answer"):
+                supporting_facts.append(content)
+    return {
+        "question_id": qid,
+        "split": "default",
+        "category": str(record.get("question_type", "unknown")),
+        "history": history,
+        "question": str(record.get("question", "")),
+        "answer": str(record.get("answer", "")),
+        "supporting_facts": supporting_facts,
+        "should_abstain": qid.endswith("_abs"),
     }
 
 
@@ -3538,6 +3779,7 @@ def _run_question(
         "category": question["category"],
         "input_history_hash": sha256_text(stable_json(question["setup_memories"])),
         "ground_truth_answer_hash": sha256_text(question["expected_answer"]),
+        "expected_answer": question["expected_answer"],
         "retrieval_query": question["query"],
         "query_variants": [question["query"]],
         "candidate_memory_ids": retrieved_ids,
@@ -3549,6 +3791,7 @@ def _run_question(
         "supporting_evidence_status": support_status,
         "outcome_reason": outcome_reason,
         "final_answer": answer,
+        "reference": question["expected_answer"],
         "judge": {"name": "exact-match-local", "score": 1.0 if correct else 0.0, "correct": correct},
         "metrics": {
             "retrieval_latency_ms": latency_ms,
@@ -3631,6 +3874,8 @@ def _run_longmemeval_question(
     retrieval_config_hash: str,
     retrieval_provider_config: dict[str, Any] | None = None,
     allow_network_providers: bool = False,
+    answerer: str = "deterministic",
+    answerer_model: str = "gpt-4o",
 ) -> dict[str, Any]:
     scope = f"bench:longmemeval:{question['question_id']}"
     created_memories = [
@@ -3663,7 +3908,13 @@ def _run_longmemeval_question(
     injected_ids = receipt["injected_memory_ids"]
     retrieved_ids = receipt["retrieved_memory_ids"]
     has_required_support = all(memory_id in injected_ids for memory_id in expected_supporting_ids)
-    if question["should_abstain"]:
+    answer_latency_ms = 0.0
+    if answerer == "llm":
+        answer_started = time.perf_counter()
+        answer = _generate_llm_hypothesis(question["query"], [memory["content"] for memory in receipt["memories"]], answerer_model)
+        answer_latency_ms = round((time.perf_counter() - answer_started) * 1000, 3)
+        correct = False
+    elif question["should_abstain"]:
         answer = LOCAL_ABSTAIN_ANSWER
         correct = answer == question["expected_answer"]
     elif expected_supporting_ids and has_required_support:
@@ -3706,6 +3957,8 @@ def _run_longmemeval_question(
         "should_abstain": question["should_abstain"],
         "input_history_hash": sha256_text(stable_json(question["history_memories"])),
         "ground_truth_answer_hash": sha256_text(question["expected_answer"]),
+        "expected_answer": question["expected_answer"],
+        "expected_answer": question["expected_answer"],
         "supporting_facts_hash": sha256_text(stable_json(question["supporting_facts"])),
         "retrieval_query": question["query"],
         "query_variants": [question["query"]],
@@ -3718,6 +3971,8 @@ def _run_longmemeval_question(
         "supporting_evidence_status": support_status,
         "outcome_reason": outcome_reason,
         "final_answer": answer,
+        "reference": question["expected_answer"],
+        "reference": question["expected_answer"],
         "judge": {
             "name": "provisional-exact-match-local",
             "score": 1.0 if correct else 0.0,
@@ -3727,8 +3982,8 @@ def _run_longmemeval_question(
         },
         "metrics": {
             "retrieval_latency_ms": latency_ms,
-            "answer_latency_ms": 0.0,
-            "end_to_end_latency_ms": latency_ms,
+            "answer_latency_ms": answer_latency_ms,
+            "end_to_end_latency_ms": latency_ms + answer_latency_ms,
             "retrieved_context_tokens": _token_count(" ".join(memory["content"] for memory in receipt["memories"])),
             "generated_answer_tokens": _token_count(answer),
             "total_tokens": _token_count(" ".join(memory["content"] for memory in receipt["memories"])) + _token_count(answer),
@@ -3807,6 +4062,8 @@ def _run_locomo_question(
     retrieval_config_hash: str,
     retrieval_provider_config: dict[str, Any] | None = None,
     allow_network_providers: bool = False,
+    answerer: str = "deterministic",
+    answerer_model: str = "gpt-4o",
 ) -> dict[str, Any]:
     scope = f"bench:locomo:{question['question_id']}"
     created_memories = [
@@ -3839,7 +4096,13 @@ def _run_locomo_question(
     injected_ids = receipt["injected_memory_ids"]
     retrieved_ids = receipt["retrieved_memory_ids"]
     has_required_support = all(memory_id in injected_ids for memory_id in expected_supporting_ids)
-    if question["should_abstain"]:
+    answer_latency_ms = 0.0
+    if answerer == "llm":
+        answer_started = time.perf_counter()
+        answer = _generate_llm_hypothesis(question["query"], [memory["content"] for memory in receipt["memories"]], answerer_model)
+        answer_latency_ms = round((time.perf_counter() - answer_started) * 1000, 3)
+        correct = False
+    elif question["should_abstain"]:
         answer = LOCAL_ABSTAIN_ANSWER
         correct = answer == question["expected_answer"]
     elif expected_supporting_ids and has_required_support:
@@ -3883,6 +4146,7 @@ def _run_locomo_question(
         "should_abstain": question["should_abstain"],
         "input_history_hash": sha256_text(stable_json(question["history_memories"])),
         "ground_truth_answer_hash": sha256_text(question["expected_answer"]),
+        "expected_answer": question["expected_answer"],
         "supporting_facts_hash": sha256_text(stable_json(question["supporting_facts"])),
         "retrieval_query": question["query"],
         "query_variants": [question["query"]],
@@ -3895,6 +4159,7 @@ def _run_locomo_question(
         "supporting_evidence_status": support_status,
         "outcome_reason": outcome_reason,
         "final_answer": answer,
+        "reference": question["expected_answer"],
         "judge": {
             "name": "provisional-exact-match-local",
             "score": 1.0 if correct else 0.0,
@@ -3905,8 +4170,8 @@ def _run_locomo_question(
         },
         "metrics": {
             "retrieval_latency_ms": latency_ms,
-            "answer_latency_ms": 0.0,
-            "end_to_end_latency_ms": latency_ms,
+            "answer_latency_ms": answer_latency_ms,
+            "end_to_end_latency_ms": latency_ms + answer_latency_ms,
             "retrieved_context_tokens": _token_count(" ".join(memory["content"] for memory in receipt["memories"])),
             "generated_answer_tokens": _token_count(answer),
             "total_tokens": _token_count(" ".join(memory["content"] for memory in receipt["memories"])) + _token_count(answer),
@@ -3946,6 +4211,7 @@ def _run_locomo_question(
         "correct": correct,
         "score": 1.0 if correct else 0.0,
         "final_answer": answer,
+        "reference": question["expected_answer"],
         "retrieval_query": question["query"],
         "action_id": receipt["action_id"],
         "question_path": f"questions/{question_path.name}",

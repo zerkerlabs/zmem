@@ -203,3 +203,114 @@ def workspace_status_for_paths(
         "db_path": normalized_db,
         "policy_path": normalized_policy,
     }
+
+
+def _agent_id_from_actor_uri(actor_uri: str) -> str:
+    if actor_uri.startswith("agent://"):
+        agent_id = actor_uri.removeprefix("agent://").split("/", 1)[0]
+        return agent_id or actor_uri
+    return actor_uri
+
+
+def workspace_source_report(
+    store: Any,
+    *,
+    db_path: Path,
+    policy_path: Path | None,
+    registry_path: Path | None = None,
+    limit: int = 50,
+) -> dict[str, Any]:
+    store.init()
+    workspace_profile = workspace_status_for_paths(
+        db_path=db_path,
+        policy_path=policy_path,
+        registry_path=registry_path,
+    )
+    workspace = workspace_profile.get("matched") or workspace_profile.get("current")
+    workspace_id = workspace.get("id") if isinstance(workspace, dict) else None
+    rows = store.conn.execute(
+        """
+        SELECT
+          w.receipt_id,
+          w.memory_id,
+          w.actor_uri,
+          w.session_id,
+          w.parent_action_id,
+          w.source_uri,
+          w.event_hash,
+          w.merkle_root,
+          w.receipt_hash,
+          w.treeship_statement_json,
+          w.created_at,
+          m.type AS memory_type,
+          m.scope AS memory_scope,
+          m.source_kind,
+          m.status AS memory_status
+        FROM memory_write_receipts w
+        LEFT JOIN memories m ON m.id = w.memory_id
+        ORDER BY w.created_at DESC, w.receipt_id DESC
+        LIMIT ?
+        """,
+        (limit,),
+    ).fetchall()
+    sources: list[dict[str, Any]] = []
+    agents: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        actor_uri = row["actor_uri"]
+        agent_id = _agent_id_from_actor_uri(actor_uri)
+        treeship_statement = json.loads(row["treeship_statement_json"])
+        proof_lineage = {
+            "receipt_id": row["receipt_id"],
+            "memory_id": row["memory_id"],
+            "event_hash": row["event_hash"],
+            "merkle_root": row["merkle_root"],
+            "receipt_hash": row["receipt_hash"],
+            "treeship_statement_kind": treeship_statement.get("kind"),
+        }
+        source = {
+            "agent_id": agent_id,
+            "actor_uri": actor_uri,
+            "chat_session_id": row["session_id"],
+            "workspace_id": workspace_id,
+            "memory_id": row["memory_id"],
+            "memory_type": row["memory_type"],
+            "memory_scope": row["memory_scope"],
+            "source_kind": row["source_kind"],
+            "trust_status": row["memory_status"],
+            "source_uri": row["source_uri"],
+            "parent_action_id": row["parent_action_id"],
+            "proof_lineage": proof_lineage,
+            "created_at": row["created_at"],
+        }
+        sources.append(source)
+        agent = agents.setdefault(
+            agent_id,
+            {
+                "agent_id": agent_id,
+                "actor_uri": actor_uri,
+                "workspace_id": workspace_id,
+                "memory_count": 0,
+                "chat_session_ids": [],
+                "source_uris": [],
+                "latest_proof_lineage": None,
+                "last_seen_at": None,
+            },
+        )
+        agent["memory_count"] += 1
+        if row["session_id"] not in agent["chat_session_ids"]:
+            agent["chat_session_ids"].append(row["session_id"])
+        if row["source_uri"] and row["source_uri"] not in agent["source_uris"]:
+            agent["source_uris"].append(row["source_uri"])
+        if agent["latest_proof_lineage"] is None:
+            agent["latest_proof_lineage"] = proof_lineage
+            agent["last_seen_at"] = row["created_at"]
+    return {
+        "schema": "zerker.workspace_sources.v1",
+        "workspace_profile": workspace_profile,
+        "workspace_id": workspace_id,
+        "connected_agent_count": len(agents),
+        "chat_session_count": len({source["chat_session_id"] for source in sources}),
+        "source_count": len(sources),
+        "connected_agents": sorted(agents.values(), key=lambda item: item["agent_id"]),
+        "sources": sources,
+    }

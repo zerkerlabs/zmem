@@ -12,6 +12,7 @@ import tarfile
 import tempfile
 import time
 from contextlib import contextmanager
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Callable
 
@@ -28,6 +29,7 @@ from .workspaces import (
     list_workspaces,
     register_workspace,
     use_workspace,
+    workspace_source_report,
     workspace_status_for_paths,
 )
 
@@ -125,6 +127,11 @@ def release_artifact_lock(lock_path: Path, *, timeout_seconds: float = 300.0, en
 
 def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog=prog, description="Trusted local-first memory control for AI agents")
+    try:
+        package_version = version("zerker-memory")
+    except PackageNotFoundError:
+        package_version = "0.1.0"
+    parser.add_argument("--version", action="version", version=f"%(prog)s {package_version}")
     parser.add_argument("--db", type=Path, default=default_db_path(), help="SQLite database path")
     parser.add_argument("--policy", type=Path, default=default_policy_path(), help="Policy config JSON path")
     parser.add_argument("--providers", type=Path, default=default_provider_config_path(), help="Provider config JSON path")
@@ -281,6 +288,8 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
     workspace_use = workspace_sub.add_parser("use", help="Switch the active Zerker Memory workspace")
     workspace_use.add_argument("identifier", help="Workspace id, exact name, or root path")
     workspace_sub.add_parser("status", help="Show whether this CLI DB path matches the active workspace")
+    workspace_sources = workspace_sub.add_parser("sources", help="Show connected agents and memory source lineage for this workspace")
+    workspace_sources.add_argument("--limit", type=int, default=50, help="Maximum write receipts to inspect")
 
     prelaunch = sub.add_parser("prelaunch", help="Audit local alpha release readiness before publishing")
     prelaunch.add_argument(
@@ -501,6 +510,9 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
         help="Optional context-packing token budget for benchmark injection.",
     )
     bench_run.add_argument("--retrieval-mode", choices=BENCHMARK_RETRIEVAL_RUN_MODES, default="fts")
+    bench_run.add_argument("--answerer", choices=["deterministic", "llm"], default="deterministic")
+    bench_run.add_argument("--answerer-model", default="gpt-4o")
+    bench_run.add_argument("--trace", action="store_true", help="Write trace.jsonl and summary.json artifacts.")
     bench_run.add_argument(
         "--retrieval-provider-config",
         type=Path,
@@ -518,6 +530,14 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
     bench_matrix.add_argument("--out", type=Path, required=True)
     bench_matrix.add_argument("--seed", type=int, default=0)
     bench_matrix.add_argument("--run-id")
+    bench_matrix.add_argument(
+        "--mode",
+        choices=list(BENCHMARK_RETRIEVAL_MODES) + ["zmem-retrieval"],
+        help="Run only one retrieval mode.",
+    )
+    bench_matrix.add_argument("--answerer", choices=["deterministic", "llm"], default="deterministic")
+    bench_matrix.add_argument("--answerer-model", default="gpt-4o")
+    bench_matrix.add_argument("--trace", action="store_true", help="Write trace.jsonl and summary.json artifacts.")
     bench_matrix.add_argument(
         "--context-budget-tokens",
         type=int,
@@ -990,6 +1010,16 @@ def main(argv: list[str] | None = None) -> int:
             if args.workspace_command == "status":
                 print_json(workspace_status_for_paths(db_path=args.db, policy_path=args.policy))
                 return 0
+            if args.workspace_command == "sources":
+                print_json(
+                    workspace_source_report(
+                        store,
+                        db_path=args.db,
+                        policy_path=args.policy,
+                        limit=args.limit,
+                    )
+                )
+                return 0
         if args.command == "prelaunch":
             result = run_prelaunch_check(
                 cwd=Path.cwd(),
@@ -1268,6 +1298,9 @@ def main(argv: list[str] | None = None) -> int:
                         retrieval_mode=args.retrieval_mode,
                         retrieval_provider_config_path=args.retrieval_provider_config,
                         allow_network_providers=args.allow_network_providers,
+                        answerer=args.answerer,
+                        answerer_model=args.answerer_model,
+                        write_trace=args.trace,
                     )
                 elif args.benchmark == "longmemeval":
                     if args.dataset is None:
@@ -1282,6 +1315,9 @@ def main(argv: list[str] | None = None) -> int:
                         retrieval_mode=args.retrieval_mode,
                         retrieval_provider_config_path=args.retrieval_provider_config,
                         allow_network_providers=args.allow_network_providers,
+                        answerer=args.answerer,
+                        answerer_model=args.answerer_model,
+                        write_trace=args.trace,
                     )
                 elif args.benchmark == "locomo":
                     if args.dataset is None:
@@ -1296,6 +1332,9 @@ def main(argv: list[str] | None = None) -> int:
                         retrieval_mode=args.retrieval_mode,
                         retrieval_provider_config_path=args.retrieval_provider_config,
                         allow_network_providers=args.allow_network_providers,
+                        answerer=args.answerer,
+                        answerer_model=args.answerer_model,
+                        write_trace=args.trace,
                     )
                 else:
                     raise ValueError(f"unsupported benchmark: {args.benchmark}")
@@ -1311,6 +1350,10 @@ def main(argv: list[str] | None = None) -> int:
                     run_id=args.run_id,
                     context_budget_tokens=args.context_budget_tokens,
                     retrieval_provider_config_path=args.retrieval_provider_config,
+                    mode=args.mode,
+                    answerer=args.answerer,
+                    answerer_model=args.answerer_model,
+                    write_trace=args.trace,
                 )
                 if args.summary_only:
                     print(render_benchmark_summary(result), end="")
@@ -2146,6 +2189,8 @@ def render_benchmark_summary(result: dict[str, object]) -> str:
                 },
             )
         _append_benchmark_question_summary_lines(lines, question_summary)
+        _append_benchmark_memory_count_delta_lines(lines, summary)
+        _append_benchmark_efficiency_delta_lines(lines, summary)
         _append_benchmark_budget_context_lines(lines, summary)
         _append_benchmark_mode_proof_lines(lines, summary.get("mode_proofs"))
         lines.append(f"Matrix JSON: {result.get('matrix_path', 'n/a')}")
