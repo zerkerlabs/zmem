@@ -2,6 +2,13 @@
 
 This is the short orchestration dashboard for Zerker Memory. Every autonomous build run should update this file after it updates `docs/BUILD_LOG.md`.
 
+## Benchmark Scoring Workflow
+`2026-06-22T22:59:00Z`
+
+- Added `docs/BENCHMARK_SCORING_WORKFLOW.md` as the operator guide for official LongMemEval/LoCoMo conversion, local proof-backed runs, optional LLM/scored paths, retained evidence, and public claim boundaries.
+- Linked it from `docs/BENCHMARK_GETTING_STARTED.md` and `docs/README.md`.
+- No product behavior changed in this slice.
+
 ## Benchmark Scripts
 `2026-06-22T21:48:00Z`
 

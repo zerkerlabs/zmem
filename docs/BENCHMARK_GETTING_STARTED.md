@@ -2,6 +2,8 @@
 
 Use this path to produce ZMem benchmark artifacts without making unsupported public claims.
 
+For official LongMemEval/LoCoMo conversion and optional scored runs, use `docs/BENCHMARK_SCORING_WORKFLOW.md`.
+
 ## 1. Run The Local Synthetic Matrix
 
 This is the fastest proof that the benchmark harness, retrieval modes, receipts, hashes, and dashboards work.

@@ -2,6 +2,25 @@
 
 This file tracks product-build slices so parallel Codex runs and hourly automations do not become invisible.
 
+## 2026-06-22 - Benchmark Scoring Workflow Documented
+
+Shipped:
+
+- Added [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/BENCHMARK_SCORING_WORKFLOW.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/BENCHMARK_SCORING_WORKFLOW.md) so benchmark operators have one concise workflow for converting official LongMemEval/LoCoMo files, running local evidence, opting into LLM/scored runs, retaining artifacts, and staying inside the public-claim boundary.
+- Linked the workflow from [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/BENCHMARK_GETTING_STARTED.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/BENCHMARK_GETTING_STARTED.md) and [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/README.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/README.md).
+
+Verification:
+
+- `git diff --check` -> passed
+
+Blockers:
+
+- Public benchmark claims remain blocked until dataset source, conversion command, scoring command, artifact hashes, and receipt bundles are all pinned and reproducible.
+
+Next:
+
+- Add a tiny fixture-backed command smoke for the documented `--mode zmem-retrieval` path if the benchmark swarm needs a faster guard than the full benchmark suite.
+
 ## 2026-06-22 - Launch Gate Rechecked, Still External
 
 Shipped:

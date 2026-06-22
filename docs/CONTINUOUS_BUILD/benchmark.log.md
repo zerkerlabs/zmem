@@ -1,5 +1,15 @@
 # Benchmark Lane Log
 
+## 2026-06-22T22:59:00Z - L6 benchmarks - scoring workflow documented
+
+- Scope: documented the operator workflow for converting official LongMemEval/LoCoMo files, running local proof-backed benchmark evidence, and opting into LLM/scored paths.
+- Files touched: `docs/BENCHMARK_SCORING_WORKFLOW.md`, `docs/BENCHMARK_GETTING_STARTED.md`, `docs/README.md`, `docs/CONTINUOUS_BUILD/benchmark.log.md`, `docs/BUILD_LOG.md`, `docs/CURRENT_STATE.md`.
+- Behavior changed: none; documentation only.
+- Tests: `git diff --check`.
+- Artifacts/receipts: none.
+- Blockers: public benchmark claims still require pinned dataset versions, reproducible commands, result bundles, and verified scoring.
+- Next safe slice: add a tiny fixture-backed command smoke for the documented `--mode zmem-retrieval` path if the benchmark swarm needs a faster guard than the full `tests.test_bench` suite.
+
 ## 2026-06-22T21:48:00Z - L6 benchmarks - external scoring scripts cleaned
 
 - Scope: reviewed and tested local benchmark adapter/scoring scripts without committing downloaded datasets or runtime outputs.
