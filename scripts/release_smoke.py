@@ -421,6 +421,7 @@ def ensure_launch_proof_manifest_status(payload: dict[str, Any], *, source: str)
         raise SystemExit(f"{source} manifest missing public verify finalize script path")
     expected_logs = public_verify.get("expected_log_files")
     if expected_logs != [
+        "operator-packet-verify.log",
         "curl-install.log",
         "first-run.log",
         "release-pack.log",
