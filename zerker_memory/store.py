@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 import sqlite3
 import time
@@ -11,6 +12,13 @@ from pathlib import Path
 from typing import Any
 
 from .policy import POLICY_ENGINE, authority_at_least, decide_memory, load_policy_config, max_authority
+from .retrieval_providers import (
+    embed_texts,
+    resolve_embedding_provider,
+    resolve_reranker_provider,
+    rerank_texts,
+    retrieval_provider_config_hash,
+)
 
 
 MEMORY_TYPES = {"episodic", "semantic", "procedural", "policy"}
@@ -19,10 +27,595 @@ STATUSES = {"proposed", "quarantined", "active", "deprecated", "revoked", "forgo
 HASH_ALG = "sha256"
 MERKLE_ALG = "binary-sha256-v1"
 RECEIPT_SCHEMA = "zerker.memory_action.v1"
+WRITE_RECEIPT_SCHEMA = "zerker.memory_write.v1"
 EVENT_SCHEMA = "zerker.memory_event.v1"
 SNAPSHOT_SCHEMA = "zerker.memory_snapshot.v1"
 BUNDLE_SCHEMA = "zerker.receipt_bundle.v1"
 MEMORY_TREE_SCHEMA = "zerker.memory_tree.v1"
+RETRIEVAL_SCHEMA = "zerker.retrieval.v1"
+RETRIEVAL_RANK_CONFIG_SCHEMA = "zerker.retrieval_rank_config.v1"
+CONTEXT_PACKING_SCHEMA = "zerker.context_packing.v1"
+TEMPORAL_RESOLUTION_SCHEMA = "zerker.temporal_resolution.v1"
+QUERY_LOOKUP_SCHEMA = "zerker.query_lookup.v1"
+EMBEDDING_RETRIEVAL_SCHEMA = "zerker.embedding_retrieval.v1"
+RERANKER_SCHEMA = "zerker.reranker.v1"
+MULTI_HOP_DECOMPOSITION_SCHEMA = "zerker.multi_hop_decomposition.v1"
+SEMANTIC_RESCUE_SCHEMA = "zerker.semantic_rescue.v1"
+HYBRID_RETRIEVAL_SCHEMA = "zerker.hybrid_retrieval.v1"
+CONTEXT_TOKEN_APPROXIMATION = "chars_div_4_ceil"
+DEFAULT_ENVIRONMENT_HASH_INPUT = "zmem-local-environment-v1"
+RETRIEVAL_CANDIDATE_LIMIT = 20
+FTS_CANDIDATE_WINDOW_MULTIPLIER = 4
+PSEUDO_EMBEDDING_MODEL_ID = "zmem-pseudo-embedding-v1"
+DECLARATIVE_SEMANTIC_RESCUE_PROFILE = "declarative_subject_v1"
+DECLARATIVE_CURRENT_SEMANTIC_RESCUE_PROFILE = "declarative_current_subject_v1"
+DECLARATIVE_HISTORY_SEMANTIC_RESCUE_PROFILE = "declarative_history_subject_v1"
+DECLARATIVE_EARLIEST_HISTORY_SEMANTIC_RESCUE_PROFILE = "declarative_earliest_history_subject_v1"
+DECLARATIVE_SEMANTIC_RESCUE_MIN_SCORE = 0.6
+HYBRID_SEMANTIC_BACKFILL_MIN_SCORE = 0.75
+HYBRID_SEMANTIC_BACKFILL_MIN_MARGIN = 0.05
+DETERMINISTIC_RERANKER_ID = "zmem-deterministic-rerank-v1"
+MULTI_HOP_DECOMPOSER_ID = "zmem-local-query-decomposer-v1"
+MULTI_HOP_STRATEGY = "local_query_decomposition_v1"
+MULTI_HOP_MAX_SUBQUERIES = 8
+MULTI_HOP_PER_SUBQUERY_LIMIT = 5
+AUTHORITY_RANKS = {"none": 0, "low": 1, "medium": 2, "high": 3, "policy": 4}
+TEMPORAL_HISTORY_TERMS = {
+    "before",
+    "earlier",
+    "former",
+    "formerly",
+    "initial",
+    "initially",
+    "old",
+    "older",
+    "original",
+    "previous",
+    "previously",
+    "prior",
+}
+EARLIEST_HISTORY_TERMS = {
+    "initial",
+    "initially",
+    "original",
+}
+TEMPORAL_CURRENT_TERMS = {
+    "active",
+    "current",
+    "currently",
+    "latest",
+    "new",
+    "newest",
+    "now",
+    "today",
+}
+TEMPORAL_CHRONOLOGY_TERMS = {
+    "after",
+    "first",
+    "later",
+    "next",
+    "order",
+    "ordered",
+    "sequence",
+    "then",
+    "timeline",
+    "when",
+}
+GENERIC_HISTORY_QUERY_TERMS = {
+    "former",
+    "formerly",
+    "initial",
+    "initially",
+    "old",
+    "older",
+    "original",
+    "previous",
+    "previously",
+    "prior",
+}
+CHRONOLOGY_QUERY_NOISE_TERMS = TEMPORAL_CHRONOLOGY_TERMS | TEMPORAL_CURRENT_TERMS | TEMPORAL_HISTORY_TERMS | {
+    "did",
+    "do",
+    "does",
+    "happen",
+    "happened",
+    "happens",
+    "is",
+    "are",
+    "was",
+    "were",
+}
+CHRONOLOGY_QUERY_MUTATION_TERMS = {
+    "change",
+    "changed",
+    "changes",
+    "changing",
+    "move",
+    "moved",
+    "moves",
+    "moving",
+    "shift",
+    "shifted",
+    "shifts",
+    "shifting",
+    "switch",
+    "switched",
+    "switches",
+    "switching",
+    "update",
+    "updated",
+    "updates",
+    "updating",
+}
+CHRONOLOGY_RELATION_SUPPORT_TERMS = {
+    "belongs_to": ["belong", "belongs", "belonged", "ownership", "owns", "part"],
+    "deploys_to": ["deploy", "deploys", "deployed", "deployment"],
+    "points_to": ["point", "points", "pointed", "routing"],
+    "requires": ["require", "requires", "required", "requirement", "requirements"],
+    "runs_on": ["run", "runs", "running", "runtime"],
+    "uses": ["use", "uses", "used", "usage"],
+}
+SUBJECT_LOOKUP_QUERY_WRAPPERS = {
+    "how",
+    "s",
+    "show",
+    "tell",
+    "what",
+    "when",
+    "where",
+    "which",
+    "who",
+}
+GENERIC_SUBJECT_NOISE_TERMS = SUBJECT_LOOKUP_QUERY_WRAPPERS | {
+    "a",
+    "an",
+    "are",
+    "did",
+    "do",
+    "does",
+    "is",
+    "our",
+    "the",
+    "to",
+    "was",
+    "we",
+    "were",
+}
+GENERIC_SUBJECT_HELPER_TERMS = {
+    "deploy",
+    "deployed",
+    "deploying",
+    "deploys",
+    "need",
+    "needed",
+    "needs",
+    "require",
+    "required",
+    "requires",
+    "run",
+    "running",
+    "runs",
+    "use",
+    "used",
+    "uses",
+    "using",
+}
+SEMANTIC_ALIAS_CANONICAL_BY_TOKEN = {
+    "database": "database",
+    "db": "database",
+    "datastore": "database",
+    "dest": "target",
+    "destination": "target",
+    "env": "environment",
+    "environment": "environment",
+    "k8s": "kubernetes",
+    "kubernetes": "kubernetes",
+    "app": "service",
+    "application": "service",
+    "maintainer": "owner",
+    "own": "owner",
+    "owned": "owner",
+    "owner": "owner",
+    "owns": "owner",
+    "prod": "production",
+    "production": "production",
+    "repo": "repository",
+    "repository": "repository",
+    "service": "service",
+}
+TEMPORAL_SEARCH_ALIAS_TERMS_BY_CANONICAL = {
+    "owner": ["maintainer"],
+    "target": ["destination"],
+}
+SUBJECT_CORE_PHRASE_ALIAS_VARIANTS = (
+    {
+        "required_terms": {"routing", "contact"},
+        "search_query": "escalation contact",
+    },
+    {
+        "required_terms": {"owner", "routing"},
+        "search_query": "escalation contact",
+    },
+    {
+        "required_terms": {"routing", "escalation", "contact"},
+        "search_query": "escalation contact",
+    },
+    {
+        "required_terms": {"deployment", "approval", "contact"},
+        "search_query": "deployment approver",
+    },
+    {
+        "required_terms": {"deployment", "approvals", "contact"},
+        "search_query": "deployment approver",
+    },
+    {
+        "required_terms": {"deployment", "approval", "owner"},
+        "search_query": "deployment approver",
+        "prefer_before_core": True,
+    },
+    {
+        "required_terms": {"deployment", "approvals", "owner"},
+        "search_query": "deployment approver",
+        "prefer_before_core": True,
+    },
+)
+HISTORY_OBSERVATION_SUPPORT_EARLIEST_MARKERS = EARLIEST_HISTORY_TERMS | {"first"}
+HISTORY_OBSERVATION_SUPPORT_LATER_MARKERS = {"after", "following", "later", "next"}
+HISTORY_OBSERVATION_SUPPORT_ACTION_TERMS = {
+    "cover",
+    "covered",
+    "handle",
+    "handled",
+    "lead",
+    "led",
+    "maintainer",
+    "own",
+    "owned",
+    "owner",
+    "ran",
+    "run",
+}
+HISTORY_OBSERVATION_SUPPORT_CONTEXT_TERMS = {
+    "coverage",
+    "handoff",
+    "overnight",
+    "rotation",
+    "shift",
+}
+HISTORY_OBSERVATION_SUPPORT_PERSON_LEAD_VERBS = {
+    "cover",
+    "covered",
+    "covers",
+    "handle",
+    "handled",
+    "handles",
+    "lead",
+    "leads",
+    "led",
+    "maintain",
+    "maintained",
+    "maintains",
+    "own",
+    "owned",
+    "owns",
+    "ran",
+    "run",
+    "runs",
+    "take",
+    "taken",
+    "takes",
+    "took",
+}
+HISTORY_OBSERVATION_SUPPORT_QUERY_ACTION_TERMS = {
+    "charge",
+    "handled",
+    "maintainer",
+    "owner",
+    "owns",
+    "owned",
+    "responsible",
+}
+HISTORY_QUERY_NOISE_TERMS = (
+    TEMPORAL_CHRONOLOGY_TERMS
+    | TEMPORAL_CURRENT_TERMS
+    | TEMPORAL_HISTORY_TERMS
+    | SUBJECT_LOOKUP_QUERY_WRAPPERS
+    | {"are", "be", "did", "do", "does", "is", "was", "were"}
+)
+UPDATE_QUERY_CURRENT_DIRECTION_TERMS = {"now", "to"}
+UPDATE_QUERY_HISTORY_DIRECTION_TERMS = {"from"}
+UPDATE_QUERY_NOISE_TERMS = (
+    TEMPORAL_CHRONOLOGY_TERMS
+    | TEMPORAL_CURRENT_TERMS
+    | TEMPORAL_HISTORY_TERMS
+    | SUBJECT_LOOKUP_QUERY_WRAPPERS
+    | {"are", "be", "did", "do", "does", "from", "into", "is", "was", "were"}
+)
+RELATION_SEARCH_ARTICLES = {"a", "an", "the"}
+RELATION_QUERY_PATTERNS = (
+    (
+        "role-relation-owner",
+        "is",
+        re.compile(r"^(?:who|what|which)\s+(?:owns?|owned)\s+(?P<subject>.+)$", re.IGNORECASE),
+        lambda match: f"{match.group('subject')} owner",
+    ),
+    (
+        "role-relation-owner",
+        "is",
+        re.compile(r"^(?:who|what|which)\s+is\s+(?:the\s+)?owner\s+of\s+(?P<subject>.+)$", re.IGNORECASE),
+        lambda match: f"{match.group('subject')} owner",
+    ),
+    (
+        "role-relation-on-point",
+        "is",
+        re.compile(
+            r"^(?:who|what|which)(?:\s+s|\s+is|\s+was|\s+were)?"
+            r"(?:\s+(?:the|previous|prior|former|original|initial))*"
+            r"\s+on\s+point\s+for\s+(?P<subject>.+)$",
+            re.IGNORECASE,
+        ),
+        lambda match: f"{match.group('subject')} owner",
+    ),
+    (
+        "role-relation-responsible",
+        "is",
+        re.compile(
+            r"^(?:who|what|which)(?:\s+s|\s+is|\s+was|\s+were)?"
+            r"(?:\s+(?:the|previous|prior|former|original|initial))*"
+            r"(?:\s+person)?\s+responsible\s+for\s+(?P<subject>.+)$",
+            re.IGNORECASE,
+        ),
+        lambda match: f"{match.group('subject')} owner",
+    ),
+    (
+        "role-relation-in-charge",
+        "is",
+        re.compile(
+            r"^(?:who|what|which)(?:\s+s|\s+is|\s+was|\s+were)?"
+            r"(?:\s+(?:the|previous|prior|former|original|initial))*"
+            r"(?:\s+person)?\s+in\s+charge\s+of\s+(?P<subject>.+)$",
+            re.IGNORECASE,
+        ),
+        lambda match: f"{match.group('subject')} owner",
+    ),
+    (
+        "role-relation-uses",
+        "uses",
+        re.compile(r"^(?:what|which)(?:\s+.+?)?\s+does\s+(?P<subject>.+?)\s+use$", re.IGNORECASE),
+        lambda match: f"{match.group('subject')} uses",
+    ),
+    (
+        "inverse-relation-uses-by",
+        "uses",
+        re.compile(r"^(?:what|which)\s+is\s+used\s+by\s+(?P<subject>.+)$", re.IGNORECASE),
+        lambda match: f"{match.group('subject')} uses",
+    ),
+    (
+        "role-relation-points-to",
+        "points_to",
+        re.compile(r"^(?:where|what|which)(?:\s+.+?)?\s+does\s+(?P<subject>.+?)\s+point\s+to$", re.IGNORECASE),
+        lambda match: f"{match.group('subject')} points to",
+    ),
+    (
+        "role-relation-points-at",
+        "points_to",
+        re.compile(r"^(?:where|what|which)(?:\s+.+?)?\s+does\s+(?P<subject>.+?)\s+point\s+at$", re.IGNORECASE),
+        lambda match: f"{match.group('subject')} points to",
+    ),
+    (
+        "inverse-relation-points-to-by",
+        "points_to",
+        re.compile(r"^(?:where|what|which)\s+is\s+pointed\s+to\s+by\s+(?P<subject>.+)$", re.IGNORECASE),
+        lambda match: f"{match.group('subject')} points to",
+    ),
+    (
+        "role-relation-belongs-to",
+        "belongs_to",
+        re.compile(r"^(?:what|which)(?:\s+.+?)?\s+does\s+(?P<subject>.+?)\s+belong\s+to$", re.IGNORECASE),
+        lambda match: f"{match.group('subject')} belongs to",
+    ),
+    (
+        "inverse-relation-belongs-part-of",
+        "belongs_to",
+        re.compile(r"^(?:what|which)\s+(?:is|are)\s+(?P<subject>.+?)\s+part\s+of$", re.IGNORECASE),
+        lambda match: f"{match.group('subject')} belongs to",
+    ),
+    (
+        "role-relation-deploys-to",
+        "deploys_to",
+        re.compile(r"^(?:where|what|which)(?:\s+.+?)?\s+does\s+(?P<subject>.+?)\s+deploy(?:\s+to)?$", re.IGNORECASE),
+        lambda match: f"{match.group('subject')} deploys to",
+    ),
+    (
+        "passive-relation-deployed-to",
+        "deploys_to",
+        re.compile(r"^(?:where|what|which)\s+(?:is|are)\s+(?P<subject>.+?)\s+deployed(?:\s+to)?$", re.IGNORECASE),
+        lambda match: f"{match.group('subject')} deploys to",
+    ),
+    (
+        "role-relation-runs-on",
+        "runs_on",
+        re.compile(r"^(?:where|what|which)(?:\s+.+?)?\s+does\s+(?P<subject>.+?)\s+run(?:\s+on)?$", re.IGNORECASE),
+        lambda match: f"{match.group('subject')} runs on",
+    ),
+    (
+        "passive-relation-runs-on",
+        "runs_on",
+        re.compile(r"^(?:where|what|which)\s+(?:is|are)\s+(?P<subject>.+?)\s+running(?:\s+on)?$", re.IGNORECASE),
+        lambda match: f"{match.group('subject')} runs on",
+    ),
+    (
+        "role-relation-requires",
+        "requires",
+        re.compile(r"^(?:what|which)(?:\s+.+?)?\s+does\s+(?P<subject>.+?)\s+require$", re.IGNORECASE),
+        lambda match: f"{match.group('subject')} requires",
+    ),
+    (
+        "inverse-relation-requires-by",
+        "requires",
+        re.compile(r"^(?:what|which)\s+(?:is|are)\s+required\s+by\s+(?P<subject>.+)$", re.IGNORECASE),
+        lambda match: f"{match.group('subject')} requires",
+    ),
+    (
+        "object-relation-uses",
+        "uses",
+        re.compile(r"^(?:what|which)(?:\s+.+?)?\s+uses?\s+(?P<object>.+)$", re.IGNORECASE),
+        lambda match: f"uses {match.group('object')}",
+    ),
+    (
+        "object-relation-points-to",
+        "points_to",
+        re.compile(r"^(?:what|which)(?:\s+.+?)?\s+points\s+to\s+(?P<object>.+)$", re.IGNORECASE),
+        lambda match: f"points to {match.group('object')}",
+    ),
+    (
+        "object-relation-belongs-to",
+        "belongs_to",
+        re.compile(r"^(?:what|which)(?:\s+.+?)?\s+belongs\s+to\s+(?P<object>.+)$", re.IGNORECASE),
+        lambda match: f"belongs to {match.group('object')}",
+    ),
+    (
+        "object-relation-deploys-to",
+        "deploys_to",
+        re.compile(r"^(?:what|which)(?:\s+.+?)?\s+deploys?\s+to\s+(?P<object>.+)$", re.IGNORECASE),
+        lambda match: f"deploys to {match.group('object')}",
+    ),
+    (
+        "object-relation-deploys-to",
+        "deploys_to",
+        re.compile(r"^(?:what|which)(?:\s+.+?)?\s+(?:is|are)\s+deployed\s+to\s+(?P<object>.+)$", re.IGNORECASE),
+        lambda match: f"deploys to {match.group('object')}",
+    ),
+    (
+        "object-relation-runs-on",
+        "runs_on",
+        re.compile(r"^(?:what|which)(?:\s+.+?)?\s+runs\s+on\s+(?P<object>.+)$", re.IGNORECASE),
+        lambda match: f"runs on {match.group('object')}",
+    ),
+    (
+        "object-relation-runs-on",
+        "runs_on",
+        re.compile(r"^(?:what|which)(?:\s+.+?)?\s+(?:is|are)\s+running\s+on\s+(?P<object>.+)$", re.IGNORECASE),
+        lambda match: f"runs on {match.group('object')}",
+    ),
+    (
+        "object-relation-requires",
+        "requires",
+        re.compile(r"^(?:what|which)(?:\s+.+?)?\s+requires\s+(?P<object>.+)$", re.IGNORECASE),
+        lambda match: f"requires {match.group('object')}",
+    ),
+    (
+        "canonical-relation-requires",
+        "requires",
+        re.compile(r"^(?P<subject>.+?)\s+requires\s+(?P<object>.+)$", re.IGNORECASE),
+        lambda match: f"{match.group('subject')} requires {match.group('object')}",
+    ),
+    (
+        "canonical-relation-uses",
+        "uses",
+        re.compile(r"^(?P<subject>.+?)\s+uses?\s+(?P<object>.+)$", re.IGNORECASE),
+        lambda match: f"{match.group('subject')} uses {match.group('object')}",
+    ),
+    (
+        "canonical-relation-points-to",
+        "points_to",
+        re.compile(r"^(?P<subject>.+?)\s+points\s+to\s+(?P<object>.+)$", re.IGNORECASE),
+        lambda match: f"{match.group('subject')} points to {match.group('object')}",
+    ),
+    (
+        "canonical-relation-belongs-to",
+        "belongs_to",
+        re.compile(r"^(?P<subject>.+?)\s+belongs\s+to\s+(?P<object>.+)$", re.IGNORECASE),
+        lambda match: f"{match.group('subject')} belongs to {match.group('object')}",
+    ),
+    (
+        "canonical-relation-deploys-to",
+        "deploys_to",
+        re.compile(r"^(?P<subject>.+?)\s+deploys\s+to\s+(?P<object>.+)$", re.IGNORECASE),
+        lambda match: f"{match.group('subject')} deploys to {match.group('object')}",
+    ),
+    (
+        "canonical-relation-runs-on",
+        "runs_on",
+        re.compile(r"^(?P<subject>.+?)\s+runs\s+on\s+(?P<object>.+)$", re.IGNORECASE),
+        lambda match: f"{match.group('subject')} runs on {match.group('object')}",
+    ),
+)
+LEXICAL_CONFLICT_PATTERNS = (
+    ("points_to", re.compile(r"^(?P<subject>.+?)\s+points\s+to\s+(?P<object>.+)$", re.IGNORECASE)),
+    ("belongs_to", re.compile(r"^(?P<subject>.+?)\s+belongs\s+to\s+(?P<object>.+)$", re.IGNORECASE)),
+    ("deploys_to", re.compile(r"^(?P<subject>.+?)\s+deploys\s+to\s+(?P<object>.+)$", re.IGNORECASE)),
+    ("runs_on", re.compile(r"^(?P<subject>.+?)\s+runs\s+on\s+(?P<object>.+)$", re.IGNORECASE)),
+    ("requires", re.compile(r"^(?P<subject>.+?)\s+requires\s+(?P<object>.+)$", re.IGNORECASE)),
+    ("uses", re.compile(r"^(?P<subject>.+?)\s+uses?\s+(?P<object>.+)$", re.IGNORECASE)),
+    ("is", re.compile(r"^(?P<subject>.+?)\s+(?:is|are|was|were)\s+(?P<object>.+)$", re.IGNORECASE)),
+)
+EXPLICIT_UPDATE_PATTERNS = (
+    (
+        "changed_to",
+        re.compile(
+            r"^(?P<subject>.+?)\s+(?:changed|moved|shifted|switched|updated)\s+"
+            r"(?:from\s+(?P<from>.+?)\s+)?to\s+(?P<to>.+)$",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "is_now",
+        re.compile(r"^(?P<subject>.+?)\s+(?:is|are|was|were)\s+now\s+(?P<to>.+)$", re.IGNORECASE),
+    ),
+)
+LEXICAL_CONFLICT_SELECTION_STRATEGY = "authority_trust_freshness_rank_v1"
+LEXICAL_CONFLICT_ABSTENTION_TIE_FIELDS = ["authority", "trust", "updated_at", "created_at"]
+SUBJECT_LOOKUP_RESTATEMENT_STRATEGY = "subject_lookup_freshness_observation_order_v2"
+SUBJECT_LOOKUP_CROSS_PROVENANCE_HISTORY_STRATEGY = "subject_lookup_cross_provenance_abstention_v1"
+SUBJECT_LOOKUP_HISTORY_RELATIONS = {"points_to", "belongs_to", "deploys_to", "runs_on"}
+MULTI_HOP_STOPWORDS = {
+    "about",
+    "after",
+    "also",
+    "and",
+    "before",
+    "between",
+    "can",
+    "could",
+    "does",
+    "for",
+    "from",
+    "have",
+    "how",
+    "into",
+    "not",
+    "our",
+    "should",
+    "the",
+    "then",
+    "this",
+    "was",
+    "what",
+    "when",
+    "where",
+    "which",
+    "who",
+    "why",
+    "with",
+}
+RETRIEVAL_RANK_CONFIG = {
+    "schema": RETRIEVAL_RANK_CONFIG_SCHEMA,
+    "mode": "fts_bm25_phrase_exact_lookup_fact_v4",
+    "weights": {
+        "bm25": 1.0,
+        "authority": 0.35,
+        "trust": 0.25,
+        "label_exact": 0.15,
+        "content_exact": 0.10,
+        "label_phrase": 0.20,
+        "content_phrase": 0.30,
+        "label_exact_query": 0.25,
+        "content_exact_query": 0.40,
+        "lookup_key_match": 0.35,
+        "lookup_value_compactness": 0.80,
+    },
+}
 
 
 def default_db_path() -> Path:
@@ -45,13 +638,4180 @@ def sha256_text(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
+def digest_uri(value: str) -> str:
+    return f"{HASH_ALG}:{sha256_text(value)}"
+
+
+def actor_uri_for(actor_id: str) -> str:
+    if "://" in actor_id:
+        return actor_id
+    return f"actor://{actor_id}"
+
+
+def default_environment_hash() -> str:
+    return digest_uri(DEFAULT_ENVIRONMENT_HASH_INPUT)
+
+
 def query_terms(value: str) -> list[str]:
     return [term.lower() for term in re.findall(r"[A-Za-z0-9_]+", value) if len(term) > 2]
+
+
+def semantic_query_terms(value: str) -> list[str]:
+    terms = []
+    for token in _query_tokens(value):
+        canonical = SEMANTIC_ALIAS_CANONICAL_BY_TOKEN.get(token, token)
+        if len(canonical) > 2:
+            terms.append(canonical)
+    return _ordered_unique(terms)
 
 
 def fts_safe_query(value: str) -> str:
     terms = query_terms(value)
     return " ".join(f'"{term}"' for term in terms)
+
+
+def fts_safe_query_terms(terms: list[str]) -> str:
+    return " ".join(f'"{term}"' for term in terms if term)
+
+
+def approx_memory_tokens(memory_or_text: MemoryRecord | str | dict[str, Any]) -> int:
+    if isinstance(memory_or_text, MemoryRecord):
+        text = stable_json(memory_or_text.to_dict())
+    elif isinstance(memory_or_text, dict):
+        text = stable_json(memory_or_text)
+    else:
+        text = str(memory_or_text)
+    return max(1, (len(text) + 3) // 4) if text else 0
+
+
+def authority_rank(authority: str) -> int:
+    return AUTHORITY_RANKS.get(authority, 0)
+
+
+def _term_match_count(text: str, terms: list[str]) -> int:
+    lowered = text.lower()
+    return sum(1 for term in terms if term in lowered)
+
+
+def _normalized_match_text(value: str) -> str:
+    return " ".join(_query_tokens(value))
+
+
+def _phrase_match(text: str, phrase: str) -> bool:
+    if not text or not phrase:
+        return False
+    return phrase in text
+
+
+def _lookup_match_target(query_lookup: dict[str, Any]) -> tuple[str | None, str | None]:
+    relation = str((query_lookup or {}).get("lookup_relation") or "")
+    if not relation:
+        return None, None
+    lookup_basis = str((query_lookup or {}).get("lookup_basis") or "")
+    raw_lookup_key = str((query_lookup or {}).get("lookup_key") or "")
+    if lookup_basis.startswith("object-relation-"):
+        lookup_key = _normalize_relation_value_fragment(raw_lookup_key)
+    else:
+        lookup_key = _normalize_lookup_subject_fragment(raw_lookup_key)
+    if lookup_key:
+        key_kind = "subject"
+        if lookup_basis.startswith("object-relation-"):
+            key_kind = "object"
+        return key_kind, lookup_key
+
+    if not lookup_basis.startswith("object-relation-"):
+        return None, None
+    search_query = _normalize_conflict_fragment(
+        str((query_lookup or {}).get("search_query") or (query_lookup or {}).get("selected_search_query") or "")
+    )
+    relation_prefix = relation.replace("_", " ")
+    if not search_query or not relation_prefix or not search_query.startswith(f"{relation_prefix} "):
+        return None, None
+    object_key = _normalize_relation_value_fragment(search_query[len(relation_prefix) + 1 :])
+    if not object_key:
+        return None, None
+    return "object", object_key
+
+
+def _lookup_rank_features(
+    memory: MemoryRecord,
+    *,
+    query_lookup: dict[str, Any],
+) -> dict[str, Any]:
+    lookup_relation = str((query_lookup or {}).get("lookup_relation") or "")
+    target_kind, target_key = _lookup_match_target(query_lookup)
+    search_query = str((query_lookup or {}).get("search_query") or (query_lookup or {}).get("selected_search_query") or "")
+    boost_supported = (
+        bool(lookup_relation)
+        and _normalize_relation_search_fragment(search_query) == _normalize_relation_value_fragment(search_query)
+    )
+    relation_signature = _lexical_conflict_signature(memory)
+    relation_match = bool(
+        boost_supported
+        and relation_signature is not None
+        and str(relation_signature.get("relation") or "") == lookup_relation
+    )
+    if target_kind == "object":
+        candidate_key = str((relation_signature or {}).get("value_key") or "")
+    else:
+        candidate_key = str((relation_signature or {}).get("subject_key") or "")
+    key_match = bool(relation_match and target_key and candidate_key == target_key)
+    value_token_count = 0
+    if relation_signature is not None:
+        value_token_count = len(_relation_search_terms(str(relation_signature.get("value_key") or "")))
+    value_compactness = 0.0
+    if key_match and value_token_count > 0:
+        value_compactness = round(1.0 / math.sqrt(value_token_count), 6)
+    return {
+        "lookup_boost_supported": boost_supported,
+        "lookup_relation_match": relation_match,
+        "lookup_key_match": key_match,
+        "lookup_key_kind": target_kind,
+        "lookup_value_token_count": value_token_count if relation_match else None,
+        "lookup_value_compactness": value_compactness,
+    }
+
+
+def _rank_features(
+    memory: MemoryRecord,
+    *,
+    terms: list[str],
+    search_query: str,
+    bm25_score: float | None,
+    search_mode: str,
+    query_lookup: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    content_matches = _term_match_count(memory.content, terms)
+    label_matches = _term_match_count(" ".join(memory.labels), terms)
+    normalized_search_query = _normalized_match_text(search_query)
+    normalized_content = _normalized_match_text(memory.content)
+    normalized_labels = _normalized_match_text(" ".join(memory.labels))
+    content_phrase_match = _phrase_match(normalized_content, normalized_search_query)
+    label_phrase_match = _phrase_match(normalized_labels, normalized_search_query)
+    content_exact_query_match = bool(normalized_search_query and normalized_content == normalized_search_query)
+    label_exact_query_match = bool(normalized_search_query and normalized_labels == normalized_search_query)
+    matched_fields = []
+    if content_matches:
+        matched_fields.append("content")
+    if label_matches:
+        matched_fields.append("labels")
+    if bm25_score is None:
+        bm25_component = 0.0
+    else:
+        raw_bm25 = float(bm25_score)
+        bm25_component = -raw_bm25 if raw_bm25 < 0 else 1.0 / (1.0 + raw_bm25)
+    weights = RETRIEVAL_RANK_CONFIG["weights"]
+    lookup_features = _lookup_rank_features(memory, query_lookup=query_lookup or {})
+    score_components = {
+        "bm25": bm25_component * weights["bm25"],
+        "authority": authority_rank(memory.authority) * weights["authority"],
+        "trust": float(memory.trust) * weights["trust"],
+        "label_exact": label_matches * weights["label_exact"],
+        "content_exact": content_matches * weights["content_exact"],
+        "label_phrase": float(label_phrase_match) * weights["label_phrase"],
+        "content_phrase": float(content_phrase_match) * weights["content_phrase"],
+        "label_exact_query": float(label_exact_query_match) * weights["label_exact_query"],
+        "content_exact_query": float(content_exact_query_match) * weights["content_exact_query"],
+        "lookup_key_match": float(lookup_features["lookup_key_match"]) * weights["lookup_key_match"],
+        "lookup_value_compactness": float(lookup_features["lookup_value_compactness"])
+        * weights["lookup_value_compactness"],
+    }
+    return {
+        "authority": memory.authority,
+        "authority_rank": authority_rank(memory.authority),
+        "trust": memory.trust,
+        "content_term_matches": content_matches,
+        "label_term_matches": label_matches,
+        "content_phrase_match": content_phrase_match,
+        "label_phrase_match": label_phrase_match,
+        "content_exact_query_match": content_exact_query_match,
+        "label_exact_query_match": label_exact_query_match,
+        "matched_fields": matched_fields,
+        "created_at": memory.created_at,
+        "updated_at": memory.updated_at,
+        "expires_at": memory.expires_at,
+        "is_expired": bool(memory.expires_at and memory.expires_at <= now_iso()),
+        "has_parents": bool(memory.parents),
+        "temporal_state": "current",
+        "superseded_by_candidate": None,
+        "child_candidate_ids": [],
+        **lookup_features,
+        "score_components": score_components,
+        "search_mode": search_mode,
+    }
+
+
+def _rank_score(features: dict[str, Any]) -> float:
+    return round(sum(float(value) for value in features["score_components"].values()), 6)
+
+
+def pseudo_embedding(text: str, *, dims: int = 64) -> list[float]:
+    if dims <= 0:
+        raise ValueError("embedding dimensions must be positive")
+    vector = [0.0 for _ in range(dims)]
+    terms = semantic_query_terms(text)
+    if not terms and text:
+        terms = [text.lower()]
+    for term in terms:
+        digest = hashlib.sha256(term.encode("utf-8")).digest()
+        index = int.from_bytes(digest[:4], "big") % dims
+        sign = -1.0 if digest[4] & 1 else 1.0
+        weight = 1.0 + min(len(term), 12) / 12.0
+        vector[index] += sign * weight
+    return [round(value, 6) for value in vector]
+
+
+def cosine_similarity(left: list[float], right: list[float]) -> float:
+    if len(left) != len(right):
+        raise ValueError("vectors must have the same dimensions")
+    left_norm = math.sqrt(sum(value * value for value in left))
+    right_norm = math.sqrt(sum(value * value for value in right))
+    if left_norm == 0.0 or right_norm == 0.0:
+        return 0.0
+    return round(sum(lval * rval for lval, rval in zip(left, right)) / (left_norm * right_norm), 6)
+
+
+def embedding_vector_id(model_id: str, content_hash: str) -> str:
+    return "vec_" + sha256_text(f"{model_id}:{content_hash}")[:24]
+
+
+def _candidate_by_id(retrieval: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    return {
+        str(candidate["memory_id"]): candidate
+        for candidate in retrieval.get("candidates", [])
+        if "memory_id" in candidate
+    }
+
+
+def _candidate_config(config: dict[str, Any] | None, section: str) -> dict[str, Any]:
+    if not config:
+        return {}
+    section_config = config.get(section)
+    if isinstance(section_config, dict):
+        return section_config
+    return config
+
+
+def _embedding_index_hash(memories: list[MemoryRecord], model_id: str, dims: int) -> str:
+    return sha256_text(
+        stable_json(
+            {
+                "model_id": model_id,
+                "dims": dims,
+                "candidates": [
+                    {"memory_id": memory.id, "content_hash": memory.content_hash}
+                    for memory in memories
+                ],
+            }
+        )
+    )
+
+
+def embedding_vector_hash(vector: list[float]) -> str:
+    return "sha256:" + sha256_text(stable_json([round(float(value), 9) for value in vector]))
+
+
+def _record_candidate_score_component(candidate: dict[str, Any], name: str, value: float) -> None:
+    component = round(float(value), 6)
+    features = candidate.setdefault("features", {})
+    feature_components = features.setdefault("score_components", {})
+    feature_components[name] = component
+    candidate_components = candidate.setdefault("score_components", feature_components)
+    candidate_components[name] = component
+    candidate["score"] = _rank_score(features)
+
+
+def _set_candidate_rank(candidate: dict[str, Any], key: str, rank: int) -> None:
+    candidate[key] = rank
+    candidate.setdefault("features", {})[key] = rank
+
+
+def _baseline_candidate_sort_key(memory: MemoryRecord, candidate: dict[str, Any]) -> tuple[Any, ...]:
+    features = candidate.get("features", {})
+    return (
+        -float(candidate.get("score", 0.0)),
+        -int(bool(features.get("lookup_key_match"))),
+        -float(features.get("lookup_value_compactness", 0.0)),
+        -int(bool(features.get("content_exact_query_match"))),
+        -int(bool(features.get("label_exact_query_match"))),
+        -int(bool(features.get("content_phrase_match"))),
+        -int(bool(features.get("label_phrase_match"))),
+        -int(features.get("content_term_matches", 0)),
+        -int(features.get("label_term_matches", 0)),
+        -int(features.get("authority_rank", 0)),
+        -float(features.get("trust", 0.0)),
+        int(candidate.get("rank_before_boosts", candidate.get("rank", RETRIEVAL_CANDIDATE_LIMIT + 1))),
+        memory.id,
+    )
+
+
+def _apply_baseline_ranking(memories: list[MemoryRecord], retrieval: dict[str, Any]) -> list[MemoryRecord]:
+    ranked_pairs = []
+    for memory in memories:
+        candidate = next((item for item in retrieval.get("candidates", []) if item.get("memory_id") == memory.id), None)
+        if candidate is None:
+            continue
+        rank_before_boosts = int(candidate.get("rank", len(ranked_pairs) + 1))
+        candidate["rank_before_boosts"] = rank_before_boosts
+        candidate.setdefault("features", {})["rank_before_boosts"] = rank_before_boosts
+        ranked_pairs.append((memory, candidate))
+    ranked_pairs.sort(key=lambda item: _baseline_candidate_sort_key(item[0], item[1]))
+    ordered_memories = []
+    ordered_candidates = []
+    for rank, (memory, candidate) in enumerate(ranked_pairs, start=1):
+        candidate["rank"] = rank
+        ordered_memories.append(memory)
+        ordered_candidates.append(candidate)
+    retrieval["candidates"] = ordered_candidates
+    rank_before_boosts_source = "fts_authority_trust_sql_v1"
+    if any(candidate.get("fts_preselection_rank") is not None for candidate in ordered_candidates):
+        rank_before_boosts_source = "fts_window_preselection_v1"
+    retrieval["baseline_ranking"] = {
+        "applied": True,
+        "strategy": "deterministic_lookup_fact_score_desc_v4",
+        "rank_before_boosts_source": rank_before_boosts_source,
+        "lookup_fact_boosts": ["lookup_key_match", "lookup_value_compactness"],
+    }
+    return ordered_memories
+
+
+def _fts_candidate_window_limit(limit: int) -> int:
+    limit = max(0, int(limit))
+    if limit == 0:
+        return 0
+    return max(limit, limit * FTS_CANDIDATE_WINDOW_MULTIPLIER)
+
+
+def _preselect_fts_rows(
+    rows: list[sqlite3.Row],
+    *,
+    query: str,
+    search_query: str,
+    search_terms: list[str],
+    fts_query: str,
+    query_lookup: dict[str, Any],
+    limit: int,
+) -> tuple[list[sqlite3.Row], dict[str, dict[str, Any]], dict[str, Any]]:
+    selected_limit = max(0, int(limit))
+    window_candidate_count = len(rows)
+    window_candidates = []
+    for window_rank, row in enumerate(rows, start=1):
+        memory = MemoryRecord.from_row(row)
+        bm25_score = float(row["bm25_score"]) if "bm25_score" in row.keys() and row["bm25_score"] is not None else None
+        features = _rank_features(
+            memory,
+            terms=search_terms,
+            search_query=search_query,
+            bm25_score=bm25_score,
+            search_mode="fts",
+            query_lookup=query_lookup,
+        )
+        features["fts_window_rank"] = window_rank
+        candidate = {
+            "memory_id": memory.id,
+            "rank": window_rank,
+            "bm25": bm25_score,
+            "score": _rank_score(features),
+            "features": features,
+            "matched_fields": features["matched_fields"],
+        }
+        window_candidates.append((memory, row, candidate))
+
+    ranked_window = sorted(window_candidates, key=lambda item: _baseline_candidate_sort_key(item[0], item[2]))
+    selected_rank_by_id = {
+        candidate["memory_id"]: rank
+        for rank, (_, _, candidate) in enumerate(ranked_window[:selected_limit], start=1)
+    }
+    selected_rows = []
+    candidate_metadata: dict[str, dict[str, Any]] = {}
+    selected_candidate_ids = []
+    dropped_candidate_ids = []
+    for memory, row, candidate in window_candidates:
+        preselection_rank = selected_rank_by_id.get(memory.id)
+        if preselection_rank is None:
+            dropped_candidate_ids.append(memory.id)
+            continue
+        selected_rows.append(row)
+        selected_candidate_ids.append(memory.id)
+        candidate_metadata[memory.id] = {
+            "fts_window_rank": int(candidate["features"]["fts_window_rank"]),
+            "fts_preselection_rank": int(preselection_rank),
+            "observation_seq": int(row["observation_seq"]) if "observation_seq" in row.keys() else 0,
+        }
+    metadata = {
+        "applied": window_candidate_count > selected_limit,
+        "strategy": "fts_window_rescore_prune_v1",
+        "sql_window_order": "authority_trust_bm25_observation_v1",
+        "window_multiplier": FTS_CANDIDATE_WINDOW_MULTIPLIER,
+        "window_candidate_count": window_candidate_count,
+        "selected_candidate_ids": selected_candidate_ids,
+        "dropped_candidate_ids": dropped_candidate_ids,
+        "requested_limit": selected_limit,
+        "search_query": search_query,
+        "query": query,
+        "search_terms": list(search_terms),
+        "fts_query": fts_query,
+    }
+    return selected_rows, candidate_metadata, metadata
+
+
+def _ordered_unique(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    ordered = []
+    for value in values:
+        normalized = " ".join(str(value).strip().split())
+        if not normalized:
+            continue
+        key = normalized.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        ordered.append(normalized)
+    return ordered
+
+
+def _split_identifier_token(token: str) -> list[str]:
+    parts = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", token.replace("_", " ")).split()
+    return [part for part in parts if len(part) > 2]
+
+
+def decompose_multi_hop_query(query: str, *, max_subqueries: int = MULTI_HOP_MAX_SUBQUERIES) -> list[dict[str, Any]]:
+    limit = max(0, min(int(max_subqueries), MULTI_HOP_MAX_SUBQUERIES))
+    if limit == 0:
+        return []
+
+    quoted_phrases = _ordered_unique(re.findall(r'"([^"]+)"', query))
+    raw_tokens = re.findall(r"[A-Za-z][A-Za-z0-9_]*", query)
+    title_entities = []
+    title_buffer: list[str] = []
+    for token in raw_tokens:
+        if token[:1].isupper() and len(token) > 2 and token.lower() not in MULTI_HOP_STOPWORDS:
+            title_buffer.append(token)
+            continue
+        if title_buffer:
+            title_entities.append(" ".join(title_buffer))
+            title_buffer = []
+    if title_buffer:
+        title_entities.append(" ".join(title_buffer))
+
+    identifier_terms = []
+    for token in raw_tokens:
+        parts = _split_identifier_token(token)
+        if "_" in token or len(parts) > 1:
+            identifier_terms.append(" ".join(parts))
+            identifier_terms.extend(parts)
+
+    safe_terms = [term for term in query_terms(query) if term not in MULTI_HOP_STOPWORDS]
+    intent_terms = [term for term in safe_terms if term not in {entity.lower() for entity in title_entities}]
+    pairwise_terms = []
+    for entity in _ordered_unique(title_entities + quoted_phrases + identifier_terms):
+        entity_terms = [term for term in query_terms(entity) if term not in MULTI_HOP_STOPWORDS]
+        for intent in intent_terms[:3]:
+            if intent not in entity_terms:
+                pairwise_terms.append(f"{entity} {intent}")
+
+    planned: list[tuple[str, str]] = []
+    planned.extend(("quoted_phrase", phrase) for phrase in quoted_phrases)
+    planned.extend(("entity_or_title", entity) for entity in title_entities)
+    if len(safe_terms) >= 2:
+        planned.append(("history_safe_terms", " ".join(safe_terms)))
+    planned.extend(("identifier", term) for term in identifier_terms)
+    planned.extend(("entity_intent_pair", term) for term in pairwise_terms)
+
+    subqueries = []
+    parent_key = " ".join(query_terms(query))
+    for source, subquery in planned:
+        normalized = " ".join(subquery.split())
+        if not normalized or " ".join(query_terms(normalized)) == parent_key:
+            continue
+        if normalized.lower() in {item["query"].lower() for item in subqueries}:
+            continue
+        subquery_id = f"mhq_{len(subqueries) + 1}"
+        subqueries.append(
+            {
+                "id": subquery_id,
+                "query": normalized,
+                "query_hash": sha256_text(normalized),
+                "source": source,
+                "terms": query_terms(normalized),
+            }
+        )
+        if len(subqueries) >= limit:
+            break
+    return subqueries
+
+
+def apply_embedding_overlay(
+    query: str,
+    memories: list[MemoryRecord],
+    retrieval: dict[str, Any],
+    config: dict[str, Any] | None,
+    *,
+    retrieval_provider_config: dict[str, Any] | None = None,
+    allow_network_providers: bool = False,
+) -> tuple[list[MemoryRecord], dict[str, Any]]:
+    overlay_config = _candidate_config(config, "embedding")
+    enabled = bool(overlay_config.get("enabled", False))
+    dims = int(overlay_config.get("dims", 64))
+    model_id = str(overlay_config.get("model_id", PSEUDO_EMBEDDING_MODEL_ID))
+    provider_id = overlay_config.get("provider_id")
+    query_hash = sha256_text(query)
+    query_vector_id = embedding_vector_id(model_id, query_hash)
+    index_hash = _embedding_index_hash(memories, model_id, dims)
+    provider_config_hash = retrieval_provider_config_hash(retrieval_provider_config) if retrieval_provider_config else None
+    metadata = {
+        "schema": EMBEDDING_RETRIEVAL_SCHEMA,
+        "enabled": enabled,
+        "provider": "local-pseudo" if enabled else "none",
+        "provider_id": None,
+        "auto_enabled": bool(overlay_config.get("auto_enabled", False)),
+        "activation_reason": overlay_config.get("activation_reason"),
+        "provider_config_hash": provider_config_hash,
+        "model_id": model_id,
+        "dims": dims,
+        "query_vector_id": query_vector_id,
+        "query_vector_hash": None,
+        "index_id": "local-candidates-v1",
+        "index_hash": index_hash,
+        "network_calls_enabled": False,
+        "retrieval_reproducibility": "deterministic-local",
+        "fallback": not enabled,
+        "disabled_reason": None if enabled else "disabled-by-config",
+    }
+    candidates = _candidate_by_id(retrieval)
+    query_vector: list[float] | None = None
+    local_query_vector: list[float] | None = None
+    memory_vectors: dict[str, list[float]] = {}
+    memory_vector_hashes: dict[str, str] = {}
+    provider_result = None
+    provider_rank_by_id: dict[str, int] = {}
+    provider_excluded_reason_by_id: dict[str, str] = {}
+    provider_memories = memories
+    if enabled and memories:
+        if provider_id:
+            metadata["provider_id"] = str(provider_id)
+            metadata["provider"] = str(provider_id)
+            if retrieval_provider_config is None:
+                metadata["fallback"] = True
+                metadata["disabled_reason"] = "missing-provider-config"
+            else:
+                provider_memories, provider_excluded, provider_excluded_reason_by_id = _provider_active_candidate_scope(memories)
+                metadata["provider_candidate_ids"] = [memory.id for memory in provider_memories]
+                metadata["provider_excluded"] = provider_excluded
+                metadata["provider_scope"] = "active-only"
+                if not provider_memories:
+                    metadata["fallback"] = True
+                    metadata["disabled_reason"] = "no-active-candidates"
+                else:
+                    try:
+                        provider_entry = resolve_embedding_provider(
+                            retrieval_provider_config,
+                            str(provider_id),
+                            allow_network_providers=allow_network_providers,
+                        )
+                        provider_result = embed_texts(provider_entry, [query] + [memory.content for memory in provider_memories])
+                        query_vector = provider_result.vectors[0]
+                        memory_vectors = {
+                            memory.id: provider_result.vectors[index + 1] for index, memory in enumerate(provider_memories)
+                        }
+                        memory_vector_hashes = {
+                            memory.id: provider_result.vector_hashes[index + 1]
+                            for index, memory in enumerate(provider_memories)
+                        }
+                        model_id = provider_result.model_id
+                        dims = provider_result.dims
+                        query_vector_id = embedding_vector_id(model_id, query_hash)
+                        metadata.update(
+                            {
+                                "model_id": model_id,
+                                "dims": dims,
+                                "query_vector_id": query_vector_id,
+                                "query_vector_hash": provider_result.vector_hashes[0],
+                                "network_calls_enabled": bool(provider_result.network_call),
+                                "retrieval_reproducibility": "provider-observed"
+                                if provider_result.network_call
+                                else "deterministic-local",
+                                "fallback": False,
+                                "disabled_reason": None,
+                                "latency_ms": provider_result.latency_ms,
+                                "merge_strategy": "active_slots_preserved_v1",
+                            }
+                        )
+                    except ValueError as exc:
+                        metadata["fallback"] = True
+                        metadata["disabled_reason"] = _provider_disabled_reason(str(exc))
+        local_query_vector = pseudo_embedding(query, dims=dims)
+        if query_vector is None:
+            query_vector = local_query_vector
+            metadata["query_vector_hash"] = embedding_vector_hash(query_vector)
+        if not metadata["disabled_reason"]:
+            metadata["fallback"] = False
+    elif enabled:
+        metadata["fallback"] = True
+        metadata["disabled_reason"] = "no-candidates"
+
+    scored: list[tuple[MemoryRecord, float, int]] = []
+    for memory in memories:
+        candidate = candidates[memory.id]
+        pre_rank = int(candidate.get("rank", len(scored) + 1))
+        _set_candidate_rank(candidate, "pre_embedding_rank", pre_rank)
+        memory_vector_id = embedding_vector_id(model_id, memory.content_hash)
+        similarity = 0.0
+        if memory.id in memory_vectors and query_vector is not None:
+            similarity = cosine_similarity(query_vector, memory_vectors[memory.id])
+        elif local_query_vector is not None:
+            similarity = cosine_similarity(local_query_vector, pseudo_embedding(memory.content, dims=dims))
+        _record_candidate_score_component(candidate, "embedding", similarity if enabled else 0.0)
+        candidate["embedding"] = {
+            "model_id": model_id,
+            "provider_id": metadata.get("provider_id"),
+            "memory_vector_id": memory_vector_id,
+            "memory_vector_hash": memory_vector_hashes.get(memory.id)
+            or (embedding_vector_hash(memory_vectors[memory.id]) if memory.id in memory_vectors else None),
+            "content_hash": memory.content_hash,
+            "score": round(similarity, 6) if enabled else None,
+            "provider_eligible": bool(enabled and provider_id and memory.id not in provider_excluded_reason_by_id),
+            "provider_excluded_reason": provider_excluded_reason_by_id.get(memory.id),
+        }
+        candidate.setdefault("features", {})["embedding"] = candidate["embedding"]
+        candidate["provider_embedding_rank"] = None
+        candidate.setdefault("features", {})["provider_embedding_rank"] = None
+        scored.append((memory, similarity, pre_rank))
+
+    if provider_result is not None:
+        ranked_provider_memories = [
+            item[0]
+            for item in sorted(
+                (
+                    (memory, candidates[memory.id]["embedding"]["score"], int(candidates[memory.id].get("rank", len(memories) + 1)))
+                    for memory in provider_memories
+                ),
+                key=lambda item: (-float(item[1]), item[2], item[0].id),
+            )
+        ]
+        ordered, provider_rank_by_id = _merge_ranked_subset(memories, ranked_provider_memories)
+        metadata["provider_ranked_ids"] = [memory.id for memory in ranked_provider_memories]
+    elif enabled and memories and not metadata["fallback"]:
+        ordered = [item[0] for item in sorted(scored, key=lambda item: (-item[1], item[2], item[0].id))]
+    else:
+        ordered = memories
+
+    ordered_candidates = []
+    for rank, memory in enumerate(ordered, start=1):
+        candidate = candidates[memory.id]
+        candidate["rank"] = rank
+        _set_candidate_rank(candidate, "embedding_rank", rank)
+        if memory.id in provider_rank_by_id:
+            _set_candidate_rank(candidate, "provider_embedding_rank", provider_rank_by_id[memory.id])
+        ordered_candidates.append(candidate)
+    retrieval["candidates"] = ordered_candidates
+    retrieval["embedding"] = metadata
+    return ordered, metadata
+
+
+def _provider_active_candidate_scope(
+    memories: list[MemoryRecord],
+) -> tuple[list[MemoryRecord], list[dict[str, str]], dict[str, str]]:
+    eligible = []
+    excluded = []
+    excluded_by_id = {}
+    for memory in memories:
+        if memory.status == "active":
+            eligible.append(memory)
+            continue
+        reason = f"status={memory.status}"
+        excluded.append({"memory_id": memory.id, "reason": reason})
+        excluded_by_id[memory.id] = reason
+    return eligible, excluded, excluded_by_id
+
+
+def _provider_disabled_reason(error: str) -> str:
+    if "network provider not allowed" in error:
+        return "network-not-allowed"
+    if "disabled" in error:
+        return "provider-disabled"
+    if "missing API key" in error:
+        return "missing-api-key"
+    if "missing-provider-config" in error:
+        return "missing-provider-config"
+    return "provider-error"
+
+
+def _provider_reranker_candidate_scope(
+    memories: list[MemoryRecord],
+) -> tuple[list[MemoryRecord], list[dict[str, str]], dict[str, str]]:
+    return _provider_active_candidate_scope(memories)
+
+
+def _merge_ranked_subset(
+    memories: list[MemoryRecord],
+    ranked_subset: list[MemoryRecord],
+) -> tuple[list[MemoryRecord], dict[str, int]]:
+    reranked_ids = {memory.id for memory in ranked_subset}
+    subset_iter = iter(ranked_subset)
+    merged = []
+    subset_rank_by_id = {
+        memory.id: rank
+        for rank, memory in enumerate(ranked_subset, start=1)
+    }
+    for memory in memories:
+        if memory.id in reranked_ids:
+            merged.append(next(subset_iter))
+        else:
+            merged.append(memory)
+    return merged, subset_rank_by_id
+
+
+def apply_reranker(
+    query: str,
+    memories: list[MemoryRecord],
+    retrieval: dict[str, Any],
+    config: dict[str, Any] | None,
+    *,
+    retrieval_provider_config: dict[str, Any] | None = None,
+    allow_network_providers: bool = False,
+) -> tuple[list[MemoryRecord], dict[str, Any]]:
+    reranker_config = _candidate_config(config, "reranker")
+    enabled = bool(reranker_config.get("enabled", False))
+    provider_id = reranker_config.get("provider_id")
+    requested_reranker_id = str(reranker_config.get("reranker_id", reranker_config.get("model_id", "none")))
+    if enabled and requested_reranker_id == "none":
+        requested_reranker_id = DETERMINISTIC_RERANKER_ID
+    reranker_id = DETERMINISTIC_RERANKER_ID if enabled and provider_id else requested_reranker_id
+    provider_config_hash = retrieval_provider_config_hash(retrieval_provider_config) if retrieval_provider_config else None
+    metadata = {
+        "schema": RERANKER_SCHEMA,
+        "enabled": enabled,
+        "model_id": reranker_id,
+        "reranker_id": reranker_id,
+        "requested_reranker_id": requested_reranker_id if enabled else None,
+        "provider": str(provider_id) if provider_id else ("local:deterministic" if enabled else "none"),
+        "provider_id": str(provider_id) if provider_id else None,
+        "auto_enabled": bool(reranker_config.get("auto_enabled", False)),
+        "activation_reason": reranker_config.get("activation_reason"),
+        "provider_config_hash": provider_config_hash,
+        "network_calls_enabled": False,
+        "retrieval_reproducibility": "deterministic-local",
+        "config_hash": sha256_text(stable_json(reranker_config)),
+        "fallback": not enabled,
+        "disabled_reason": None if enabled else "disabled-by-config",
+    }
+    candidates = _candidate_by_id(retrieval)
+    terms = query_terms(query)
+    provider_result = None
+    provider_scores: dict[str, float] = {}
+    provider_score_hashes: dict[str, str] = {}
+    provider_rank_by_id: dict[str, int] = {}
+    provider_excluded_reason_by_id: dict[str, str] = {}
+    provider_memories = memories
+    if enabled and provider_id and len(memories) >= 2:
+        provider_memories, provider_excluded, provider_excluded_reason_by_id = _provider_reranker_candidate_scope(memories)
+        metadata["provider_candidate_ids"] = [memory.id for memory in provider_memories]
+        metadata["provider_excluded"] = provider_excluded
+        metadata["provider_scope"] = "active-only"
+        if retrieval_provider_config is None:
+            metadata["fallback"] = True
+            metadata["disabled_reason"] = "missing-provider-config"
+        elif len(provider_memories) < 2:
+            metadata["fallback"] = True
+            metadata["disabled_reason"] = "not-enough-active-candidates"
+        else:
+            try:
+                provider_entry = resolve_reranker_provider(
+                    retrieval_provider_config,
+                    str(provider_id),
+                    allow_network_providers=allow_network_providers,
+                )
+                provider_result = rerank_texts(
+                    provider_entry,
+                    query,
+                    [f"{memory.content} {' '.join(memory.labels)}".strip() for memory in provider_memories],
+                )
+                provider_scores = {
+                    memory.id: provider_result.scores[index]
+                    for index, memory in enumerate(provider_memories)
+                }
+                provider_score_hashes = {
+                    memory.id: provider_result.score_hashes[index]
+                    for index, memory in enumerate(provider_memories)
+                }
+                metadata.update(
+                    {
+                        "model_id": provider_result.model_id,
+                        "reranker_id": provider_result.reranker_id,
+                        "network_calls_enabled": bool(provider_result.network_call),
+                        "retrieval_reproducibility": "provider-observed"
+                        if provider_result.network_call
+                        else "deterministic-local",
+                        "fallback": False,
+                        "disabled_reason": None,
+                        "latency_ms": provider_result.latency_ms,
+                        "merge_strategy": "active_slots_preserved_v1",
+                    }
+                )
+            except ValueError as exc:
+                metadata["fallback"] = True
+                metadata["disabled_reason"] = _provider_disabled_reason(str(exc))
+
+    scored: list[tuple[MemoryRecord, float, int]] = []
+    for memory in memories:
+        candidate = candidates[memory.id]
+        pre_rank = int(candidate.get("rank", len(scored) + 1))
+        _set_candidate_rank(candidate, "pre_rerank_rank", pre_rank)
+        haystack = f"{memory.content} {' '.join(memory.labels)}"
+        lexical_score = 0.0
+        if enabled and terms:
+            lexical_score = _term_match_count(haystack, terms) / len(terms)
+        reranker_score = provider_scores.get(memory.id, lexical_score) if enabled else 0.0
+        _record_candidate_score_component(candidate, "reranker", reranker_score if enabled else 0.0)
+        candidate["reranker_score"] = round(reranker_score, 6) if enabled else None
+        candidate.setdefault("features", {})["reranker_score"] = candidate["reranker_score"]
+        candidate["reranker"] = {
+            "provider_id": metadata.get("provider_id"),
+            "model_id": metadata["model_id"],
+            "reranker_id": metadata["reranker_id"],
+            "score": candidate["reranker_score"],
+            "score_hash": provider_score_hashes.get(memory.id),
+            "local_score": round(lexical_score, 6) if enabled else None,
+            "provider_eligible": bool(enabled and provider_id and memory.id not in provider_excluded_reason_by_id),
+            "provider_excluded_reason": provider_excluded_reason_by_id.get(memory.id),
+        }
+        candidate.setdefault("features", {})["reranker"] = candidate["reranker"]
+        candidate["provider_rerank_rank"] = None
+        candidate.setdefault("features", {})["provider_rerank_rank"] = None
+        scored.append((memory, reranker_score, pre_rank))
+
+    if enabled and len(memories) < 2:
+        metadata["fallback"] = True
+        metadata["disabled_reason"] = "not-enough-candidates"
+        ordered = memories
+    elif provider_result is not None:
+        reranked_provider_memories = [
+            item[0]
+            for item in sorted(
+                (
+                    (memory, provider_scores[memory.id], int(candidates[memory.id].get("rank", len(memories) + 1)))
+                    for memory in provider_memories
+                ),
+                key=lambda item: (-item[1], item[2], item[0].id),
+            )
+        ]
+        ordered, provider_rank_by_id = _merge_ranked_subset(memories, reranked_provider_memories)
+        metadata["provider_ranked_ids"] = [memory.id for memory in reranked_provider_memories]
+    elif enabled:
+        if not provider_id or provider_result is not None:
+            metadata["fallback"] = False
+        ordered = [item[0] for item in sorted(scored, key=lambda item: (-item[1], item[2], item[0].id))]
+    else:
+        ordered = memories
+
+    ordered_candidates = []
+    for rank, memory in enumerate(ordered, start=1):
+        candidate = candidates[memory.id]
+        candidate["rank"] = rank
+        _set_candidate_rank(candidate, "post_rerank_rank", rank)
+        if memory.id in provider_rank_by_id:
+            _set_candidate_rank(candidate, "provider_rerank_rank", provider_rank_by_id[memory.id])
+        ordered_candidates.append(candidate)
+    retrieval["candidates"] = ordered_candidates
+    retrieval["reranker"] = metadata
+    return ordered, metadata
+
+
+def _effective_retrieval_config(
+    config: dict[str, Any] | None,
+    *,
+    semantic_rescue_applied: bool,
+    hybrid_backfill_applied: bool,
+    candidate_count: int,
+) -> dict[str, Any] | None:
+    resolved = dict(config or {})
+    auto_fusion_reason = None
+    if semantic_rescue_applied:
+        auto_fusion_reason = "semantic-rescue"
+    elif hybrid_backfill_applied:
+        auto_fusion_reason = "hybrid-semantic-backfill"
+    if auto_fusion_reason is None:
+        return resolved or None
+    if "embedding" not in resolved:
+        resolved["embedding"] = {
+            "enabled": True,
+            "model_id": PSEUDO_EMBEDDING_MODEL_ID,
+            "auto_enabled": True,
+            "activation_reason": auto_fusion_reason,
+        }
+    if candidate_count > 1 and "reranker" not in resolved:
+        resolved["reranker"] = {
+            "enabled": True,
+            "reranker_id": DETERMINISTIC_RERANKER_ID,
+            "auto_enabled": True,
+            "activation_reason": auto_fusion_reason,
+        }
+    return resolved or None
+
+
+def _ranking_payload(
+    memories: list[MemoryRecord],
+    *,
+    query: str,
+    query_terms: list[str],
+    search_query: str,
+    search_terms: list[str],
+    fts_query: str,
+    search_mode: str,
+    bm25_scores: dict[str, float | None],
+    query_lookup: dict[str, Any],
+    candidate_metadata: dict[str, dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    candidates = []
+    candidate_metadata = candidate_metadata or {}
+    for rank, memory in enumerate(memories, start=1):
+        bm25_score = bm25_scores.get(memory.id)
+        features = _rank_features(
+            memory,
+            terms=search_terms,
+            search_query=search_query,
+            bm25_score=bm25_score,
+            search_mode=search_mode,
+            query_lookup=query_lookup,
+        )
+        metadata = candidate_metadata.get(memory.id, {})
+        candidate = {
+            "memory_id": memory.id,
+            "rank": rank,
+            "search_mode": search_mode,
+            "mode": search_mode,
+            "bm25": bm25_score,
+            "score": _rank_score(features),
+            "score_components": features["score_components"],
+            "matched_fields": features["matched_fields"],
+            "features": features,
+        }
+        for key in (
+            "fts_window_rank",
+            "fts_preselection_rank",
+            "pre_hybrid_rank",
+            "hybrid_candidate_source",
+            "structured_fact_candidate",
+            "semantic_backfill_score",
+            "semantic_backfill_term_overlap",
+            "pre_multi_hop_rank",
+            "multi_hop_rank",
+            "introduced_by_subquery_id",
+            "multi_hop_subquery_ids",
+            "multi_hop_duplicate_count",
+            "observation_seq",
+            "temporal_support_candidate",
+            "temporal_support_kind",
+        ):
+            candidate[key] = metadata.get(key)
+            features[key] = metadata.get(key)
+        candidates.append(candidate)
+    return {
+        "schema": RETRIEVAL_SCHEMA,
+        "query": query,
+        "query_terms": query_terms,
+        "search_query": search_query,
+        "search_terms": search_terms,
+        "fts_query": fts_query,
+        "search_mode": search_mode,
+        "mode": search_mode,
+        "candidate_limit": RETRIEVAL_CANDIDATE_LIMIT,
+        "limit": RETRIEVAL_CANDIDATE_LIMIT,
+        "rank_config": RETRIEVAL_RANK_CONFIG,
+        "query_lookup": query_lookup,
+        "candidates": candidates,
+    }
+
+
+def _rank_lookup(retrieval: dict[str, Any]) -> dict[str, int]:
+    return {
+        str(candidate["memory_id"]): int(candidate["rank"])
+        for candidate in retrieval.get("candidates", [])
+        if "memory_id" in candidate and "rank" in candidate
+    }
+
+
+def _packing_priority(
+    memory: MemoryRecord,
+    *,
+    candidate: dict[str, Any] | None,
+    candidate_count: int,
+) -> int:
+    candidate = candidate or {}
+    features = candidate.get("features", {})
+    temporal_selection_rank = candidate.get("temporal_selection_rank", features.get("temporal_selection_rank"))
+    if (
+        candidate.get("selected_by_temporal_strategy", features.get("selected_by_temporal_strategy", False))
+        and isinstance(temporal_selection_rank, int)
+        and temporal_selection_rank > 0
+    ):
+        rank = temporal_selection_rank
+    else:
+        rank = int(candidate.get("rank", candidate_count + 1))
+    score = int(round(float(candidate.get("score", 0.0)) * 100))
+    authority = int(features.get("authority_rank", authority_rank(memory.authority)))
+    trust = int(round(float(features.get("trust", memory.trust)) * 100))
+    matched_fields = len(candidate.get("matched_fields", features.get("matched_fields", [])))
+    temporal_state = str(candidate.get("temporal_state", features.get("temporal_state", "current")))
+    return (
+        max(candidate_count - rank + 1, 0) * 10_000
+        + score * 10
+        + authority * 250
+        + trust * 2
+        + matched_fields * 100
+        + (500 if temporal_state == "current" else 0)
+        + (750 if memory.type == "policy" else 0)
+    )
+
+
+def _packing_state_is_better(
+    candidate_state: tuple[int, int, int, tuple[int, ...]],
+    existing_state: tuple[int, int, int, tuple[int, ...]] | None,
+) -> bool:
+    if existing_state is None:
+        return True
+    candidate_key = (
+        candidate_state[0],
+        candidate_state[1],
+        -candidate_state[2],
+        tuple(-rank for rank in candidate_state[3]),
+    )
+    existing_key = (
+        existing_state[0],
+        existing_state[1],
+        -existing_state[2],
+        tuple(-rank for rank in existing_state[3]),
+    )
+    return candidate_key > existing_key
+
+
+def _chronology_sort_key(memory: MemoryRecord, *, temporal_rank: int) -> tuple[str, str, int, str]:
+    return (
+        memory.created_at,
+        memory.updated_at,
+        temporal_rank,
+        memory.id,
+    )
+
+
+def _chronology_ordered_ids(
+    memory_ids: list[str],
+    *,
+    candidate_by_id: dict[str, MemoryRecord],
+    rank_by_id: dict[str, int],
+    reverse: bool = False,
+) -> list[str]:
+    return [
+        memory.id
+        for memory in sorted(
+            (candidate_by_id[memory_id] for memory_id in memory_ids if memory_id in candidate_by_id),
+            key=lambda memory: _chronology_sort_key(memory, temporal_rank=rank_by_id.get(memory.id, len(rank_by_id) + 1)),
+            reverse=reverse,
+        )
+    ]
+
+
+def _target_history_support_ordered_ids(
+    *,
+    query_lookup: dict[str, Any],
+    current_ids: list[str],
+    candidate_by_id: dict[str, MemoryRecord],
+    rank_by_id: dict[str, int],
+) -> list[str]:
+    target_history = dict((query_lookup or {}).get("target_history", {}))
+    if not target_history.get("applied") or len(current_ids) != 2:
+        return []
+    target_terms = [str(term) for term in query_terms(str(target_history.get("target_query") or "")) if str(term)]
+    if not target_terms:
+        return []
+    target_current_ids: list[str] = []
+    support_ids: list[str] = []
+    for memory_id in current_ids:
+        memory = candidate_by_id.get(memory_id)
+        if memory is None:
+            continue
+        haystack_terms = set(_query_tokens(f"{memory.content} {' '.join(memory.labels)}"))
+        if all(term in haystack_terms for term in target_terms):
+            target_current_ids.append(memory_id)
+        else:
+            support_ids.append(memory_id)
+    if len(target_current_ids) != 1 or len(support_ids) != 1:
+        return []
+    ordered_support_ids = _chronology_ordered_ids(
+        support_ids,
+        candidate_by_id=candidate_by_id,
+        rank_by_id=rank_by_id,
+    )
+    ordered_target_ids = _chronology_ordered_ids(
+        target_current_ids,
+        candidate_by_id=candidate_by_id,
+        rank_by_id=rank_by_id,
+    )
+    if not ordered_support_ids or not ordered_target_ids:
+        return []
+    return ordered_support_ids + ordered_target_ids
+
+
+def _current_update_preferred_ids(
+    *,
+    query_lookup: dict[str, Any],
+    current_ids: list[str],
+    candidate_by_id: dict[str, MemoryRecord],
+) -> list[str]:
+    current_lookup = dict((query_lookup or {}).get("current", {}))
+    matched_current_terms = [str(term) for term in current_lookup.get("matched_terms", []) if str(term)]
+    anchor_terms = [str(term) for term in current_lookup.get("update_anchor_terms", []) if str(term)]
+    if not matched_current_terms or len(current_ids) < 2 or not anchor_terms:
+        return []
+
+    anchor_term_set = set(anchor_terms)
+    update_candidate_ids: list[str] = []
+    sibling_ids: list[str] = []
+    for memory_id in current_ids:
+        memory = candidate_by_id.get(memory_id)
+        if memory is None:
+            continue
+        update_signature = _lexical_update_signature(memory)
+        if update_signature is None:
+            sibling_ids.append(memory_id)
+            continue
+        subject_terms = {
+            str(term)
+            for term in query_terms(str(update_signature.get("subject_key") or ""))
+            if str(term)
+        }
+        if len(anchor_term_set.intersection(subject_terms)) < 2:
+            sibling_ids.append(memory_id)
+            continue
+        update_candidate_ids.append(memory_id)
+
+    if len(update_candidate_ids) != 1 or not sibling_ids:
+        return []
+    return update_candidate_ids
+
+
+def _chronology_mutation_injection_preference(
+    *,
+    selection: dict[str, Any],
+    candidate_by_id: dict[str, MemoryRecord],
+    temporal_state_by_id: dict[str, str],
+) -> dict[str, Any]:
+    selected_ids = [str(memory_id) for memory_id in selection.get("selected_ids", []) if str(memory_id)]
+    default_preference = {
+        "applied": False,
+        "strategy": None,
+        "reason": None,
+        "order": selection.get("selection_order"),
+        "preferred_ids": selected_ids,
+        "selected_mutation_anchor_id": None,
+        "selected_mutation_anchor_ids": [],
+    }
+    if selection.get("selection_reason") != "chronology-query-terms" or len(selected_ids) < 2:
+        return default_preference
+
+    selected_temporal_ids = [
+        memory_id
+        for memory_id in selected_ids
+        if temporal_state_by_id.get(memory_id) in {"current", "superseded"}
+    ]
+    if len(selected_temporal_ids) < 2:
+        return default_preference
+
+    explicit_update_ids = [
+        memory_id
+        for memory_id in selected_ids
+        if memory_id in candidate_by_id and _lexical_update_signature(candidate_by_id[memory_id]) is not None
+    ]
+    if not explicit_update_ids:
+        return default_preference
+
+    ordered_explicit_update_ids = list(reversed(explicit_update_ids))
+    mutation_anchor_id = ordered_explicit_update_ids[0]
+    return {
+        "applied": True,
+        "strategy": "chronology_mutation_anchor_first_v1",
+        "reason": "chronology-explicit-update-anchor",
+        "order": (
+            "explicit_updates_then_timeline_support"
+            if len(ordered_explicit_update_ids) > 1
+            else "explicit_update_then_timeline_support"
+        ),
+        "preferred_ids": ordered_explicit_update_ids + [
+            memory_id for memory_id in selected_ids if memory_id not in ordered_explicit_update_ids
+        ],
+        "selected_mutation_anchor_id": mutation_anchor_id,
+        "selected_mutation_anchor_ids": ordered_explicit_update_ids,
+    }
+
+
+def _chronology_relation_current_anchor_injection_preference(
+    *,
+    selection: dict[str, Any],
+    query_lookup: dict[str, Any],
+    candidate_by_id: dict[str, MemoryRecord],
+    temporal_state_by_id: dict[str, str],
+) -> dict[str, Any]:
+    selected_ids = [str(memory_id) for memory_id in selection.get("selected_ids", []) if str(memory_id)]
+    default_preference = {
+        "applied": False,
+        "strategy": None,
+        "reason": None,
+        "order": selection.get("selection_order"),
+        "preferred_ids": selected_ids,
+        "selected_mutation_anchor_id": None,
+        "selected_mutation_anchor_ids": [],
+        "selected_target_current_id": None,
+        "selected_target_support_ids": [],
+        "selected_relation_current_id": None,
+        "selected_relation_support_ids": [],
+        "selected_update_current_id": None,
+        "selected_current_support_ids": [],
+        "current_anchor_id": None,
+    }
+    if str(selection.get("selection_reason") or "") != "chronology-query-terms":
+        return default_preference
+
+    selected_search_terms = [
+        str(term)
+        for term in (query_lookup or {}).get("selected_search_terms", [])
+        if str(term)
+    ]
+    selected_search_basis = str((query_lookup or {}).get("selected_search_basis") or "")
+    lookup_relation = str((query_lookup or {}).get("lookup_relation") or "")
+    basis_supports_relation_anchor = selected_search_basis.startswith("chronology-subject-core")
+    if len(selected_search_terms) < 2 or (not basis_supports_relation_anchor and not lookup_relation):
+        return default_preference
+
+    selected_superseded_ids = [
+        memory_id
+        for memory_id in selected_ids
+        if temporal_state_by_id.get(memory_id) == "superseded"
+    ]
+    selected_current_ids = [
+        memory_id
+        for memory_id in selected_ids
+        if temporal_state_by_id.get(memory_id) == "current"
+    ]
+    if not selected_superseded_ids or len(selected_current_ids) < 2:
+        return default_preference
+
+    search_term_set = set(selected_search_terms)
+    relation_current_ids: list[str] = []
+    support_current_ids: list[str] = []
+    for memory_id in selected_current_ids:
+        memory = candidate_by_id.get(memory_id)
+        if memory is None:
+            continue
+        relation_signature = _lexical_conflict_signature(memory)
+        if relation_signature is None:
+            support_current_ids.append(memory_id)
+            continue
+        if lookup_relation and str(relation_signature.get("relation") or "") != lookup_relation:
+            support_current_ids.append(memory_id)
+            continue
+        subject_terms = {
+            str(term)
+            for term in query_terms(str(relation_signature.get("subject_key") or ""))
+            if str(term)
+        }
+        if len(search_term_set.intersection(subject_terms)) >= min(2, len(subject_terms)):
+            relation_current_ids.append(memory_id)
+        else:
+            support_current_ids.append(memory_id)
+    if len(relation_current_ids) != 1 or not support_current_ids:
+        return default_preference
+
+    relation_current_id = relation_current_ids[0]
+    prioritized_ids = selected_superseded_ids + [relation_current_id] + support_current_ids
+    return {
+        "applied": True,
+        "strategy": "chronology_relation_current_anchor_first_v1",
+        "reason": "chronology-keep-explicit-current-relation",
+        "order": "selected_stale_then_relation_current_then_current_support",
+        "preferred_ids": prioritized_ids + [
+            memory_id
+            for memory_id in selected_ids
+            if memory_id not in set(prioritized_ids)
+        ],
+        "selected_mutation_anchor_id": None,
+        "selected_mutation_anchor_ids": [],
+        "selected_target_current_id": None,
+        "selected_target_support_ids": [],
+        "selected_relation_current_id": relation_current_id,
+        "selected_relation_support_ids": support_current_ids,
+        "selected_update_current_id": None,
+        "selected_current_support_ids": support_current_ids,
+        "current_anchor_id": relation_current_id,
+    }
+
+
+def _history_target_current_anchor_injection_preference(
+    *,
+    selection: dict[str, Any],
+    query_lookup: dict[str, Any],
+    candidate_by_id: dict[str, MemoryRecord],
+    temporal_state_by_id: dict[str, str],
+) -> dict[str, Any]:
+    selected_ids = [str(memory_id) for memory_id in selection.get("selected_ids", []) if str(memory_id)]
+    default_preference = {
+        "applied": False,
+        "strategy": None,
+        "reason": None,
+        "order": selection.get("selection_order"),
+        "preferred_ids": selected_ids,
+        "selected_mutation_anchor_id": None,
+        "selected_mutation_anchor_ids": [],
+        "selected_target_current_id": None,
+        "selected_target_support_ids": [],
+        "selected_update_current_id": None,
+        "selected_current_support_ids": [],
+        "current_anchor_id": None,
+    }
+    target_history = dict((query_lookup or {}).get("target_history", {}))
+    if not target_history.get("applied"):
+        return default_preference
+
+    target_terms = [str(term) for term in query_terms(str(target_history.get("target_query") or "")) if str(term)]
+    if not target_terms:
+        return default_preference
+
+    selected_superseded_ids = [
+        memory_id
+        for memory_id in selected_ids
+        if temporal_state_by_id.get(memory_id) == "superseded"
+    ]
+    selected_current_ids = [
+        memory_id
+        for memory_id in selected_ids
+        if temporal_state_by_id.get(memory_id) == "current"
+    ]
+    if not selected_superseded_ids or len(selected_current_ids) < 2:
+        return default_preference
+
+    target_current_ids: list[str] = []
+    support_current_ids: list[str] = []
+    for memory_id in selected_current_ids:
+        memory = candidate_by_id.get(memory_id)
+        if memory is None:
+            continue
+        haystack_terms = set(_query_tokens(f"{memory.content} {' '.join(memory.labels)}"))
+        if all(term in haystack_terms for term in target_terms):
+            target_current_ids.append(memory_id)
+        else:
+            support_current_ids.append(memory_id)
+    if len(target_current_ids) != 1 or not support_current_ids:
+        return default_preference
+
+    target_current_id = target_current_ids[0]
+    prioritized_ids = selected_superseded_ids + [target_current_id] + support_current_ids
+    return {
+        "applied": True,
+        "strategy": "history_target_current_anchor_first_v1",
+        "reason": "history-target-keep-explicit-current-anchor",
+        "order": "selected_stale_then_target_current_then_current_support",
+        "preferred_ids": prioritized_ids + [
+            memory_id
+            for memory_id in selected_ids
+            if memory_id not in set(prioritized_ids)
+        ],
+        "selected_mutation_anchor_id": None,
+        "selected_mutation_anchor_ids": [],
+        "selected_target_current_id": target_current_id,
+        "selected_target_support_ids": support_current_ids,
+        "selected_update_current_id": None,
+        "selected_current_support_ids": [],
+        "current_anchor_id": target_current_id,
+    }
+
+
+def _history_current_anchor_injection_preference(
+    *,
+    selection: dict[str, Any],
+    candidate_by_id: dict[str, MemoryRecord],
+    temporal_state_by_id: dict[str, str],
+) -> dict[str, Any]:
+    selected_ids = [str(memory_id) for memory_id in selection.get("selected_ids", []) if str(memory_id)]
+    default_preference = {
+        "applied": False,
+        "strategy": None,
+        "reason": None,
+        "order": selection.get("selection_order"),
+        "preferred_ids": selected_ids,
+        "selected_mutation_anchor_id": None,
+        "selected_mutation_anchor_ids": [],
+        "selected_target_current_id": None,
+        "selected_target_support_ids": [],
+        "selected_relation_current_id": None,
+        "selected_relation_support_ids": [],
+        "selected_update_current_id": None,
+        "selected_current_support_ids": [],
+        "current_anchor_id": None,
+    }
+    selection_reason = str(selection.get("selection_reason") or "")
+    if selection_reason not in {
+        "history-query-terms",
+        "update-history-query-terms",
+        "earliest-history-query-terms",
+    }:
+        return default_preference
+
+    selected_superseded_ids = [
+        memory_id
+        for memory_id in selected_ids
+        if temporal_state_by_id.get(memory_id) == "superseded"
+    ]
+    selected_current_ids = [
+        memory_id
+        for memory_id in selected_ids
+        if temporal_state_by_id.get(memory_id) == "current"
+    ]
+    if not selected_superseded_ids or len(selected_current_ids) < 2:
+        return default_preference
+
+    update_current_ids: list[str] = []
+    support_current_ids: list[str] = []
+    for memory_id in selected_current_ids:
+        memory = candidate_by_id.get(memory_id)
+        if memory is None:
+            continue
+        if _lexical_update_signature(memory) is not None:
+            update_current_ids.append(memory_id)
+        else:
+            support_current_ids.append(memory_id)
+    if len(update_current_ids) != 1 or not support_current_ids:
+        return default_preference
+
+    update_current_id = update_current_ids[0]
+    prioritized_ids = selected_superseded_ids + [update_current_id] + support_current_ids
+    is_earliest_history = selection_reason == "earliest-history-query-terms"
+    is_update_history = selection_reason == "update-history-query-terms"
+    return {
+        "applied": True,
+        "strategy": (
+            "earliest_history_current_anchor_first_v1"
+            if is_earliest_history
+            else "update_history_current_anchor_first_v1"
+            if is_update_history
+            else "history_current_anchor_first_v1"
+        ),
+        "reason": (
+            "earliest-history-keep-explicit-current-anchor"
+            if is_earliest_history
+            else "update-history-keep-explicit-current-anchor"
+            if is_update_history
+            else "history-keep-explicit-current-anchor"
+        ),
+        "order": "selected_stale_then_update_current_then_current_support",
+        "preferred_ids": prioritized_ids + [
+            memory_id
+            for memory_id in selected_ids
+            if memory_id not in set(prioritized_ids)
+        ],
+        "selected_mutation_anchor_id": None,
+        "selected_mutation_anchor_ids": [],
+        "selected_target_current_id": None,
+        "selected_target_support_ids": [],
+        "selected_relation_current_id": None,
+        "selected_relation_support_ids": [],
+        "selected_update_current_id": update_current_id,
+        "selected_current_support_ids": support_current_ids,
+        "current_anchor_id": update_current_id,
+    }
+
+
+def _history_relation_current_anchor_injection_preference(
+    *,
+    selection: dict[str, Any],
+    query_lookup: dict[str, Any],
+    candidate_by_id: dict[str, MemoryRecord],
+    temporal_state_by_id: dict[str, str],
+) -> dict[str, Any]:
+    selected_ids = [str(memory_id) for memory_id in selection.get("selected_ids", []) if str(memory_id)]
+    default_preference = {
+        "applied": False,
+        "strategy": None,
+        "reason": None,
+        "order": selection.get("selection_order"),
+        "preferred_ids": selected_ids,
+        "selected_mutation_anchor_id": None,
+        "selected_mutation_anchor_ids": [],
+        "selected_target_current_id": None,
+        "selected_target_support_ids": [],
+        "selected_relation_current_id": None,
+        "selected_relation_support_ids": [],
+        "selected_update_current_id": None,
+        "selected_current_support_ids": [],
+        "current_anchor_id": None,
+    }
+    selection_reason = str(selection.get("selection_reason") or "")
+    if selection_reason not in {
+        "history-query-terms",
+        "update-history-query-terms",
+        "earliest-history-query-terms",
+    }:
+        return default_preference
+
+    selected_search_terms = [
+        str(term)
+        for term in (query_lookup or {}).get("selected_search_terms", [])
+        if str(term)
+    ]
+    selected_search_basis = str((query_lookup or {}).get("selected_search_basis") or "")
+    lookup_relation = str((query_lookup or {}).get("lookup_relation") or "")
+    basis_supports_relation_anchor = selected_search_basis.startswith("history-subject-core") or selected_search_basis.startswith(
+        "update-history-subject-core"
+    )
+    if len(selected_search_terms) < 2 or (not basis_supports_relation_anchor and not lookup_relation):
+        return default_preference
+
+    selected_superseded_ids = [
+        memory_id
+        for memory_id in selected_ids
+        if temporal_state_by_id.get(memory_id) == "superseded"
+    ]
+    selected_current_ids = [
+        memory_id
+        for memory_id in selected_ids
+        if temporal_state_by_id.get(memory_id) == "current"
+    ]
+    if not selected_superseded_ids or len(selected_current_ids) < 2:
+        return default_preference
+
+    search_term_set = set(selected_search_terms)
+    relation_current_ids: list[str] = []
+    support_current_ids: list[str] = []
+    for memory_id in selected_current_ids:
+        memory = candidate_by_id.get(memory_id)
+        if memory is None:
+            continue
+        relation_signature = _lexical_conflict_signature(memory)
+        if relation_signature is None:
+            support_current_ids.append(memory_id)
+            continue
+        if lookup_relation and str(relation_signature.get("relation") or "") != lookup_relation:
+            support_current_ids.append(memory_id)
+            continue
+        subject_terms = {
+            str(term)
+            for term in query_terms(str(relation_signature.get("subject_key") or ""))
+            if str(term)
+        }
+        if len(search_term_set.intersection(subject_terms)) >= min(2, len(subject_terms)):
+            relation_current_ids.append(memory_id)
+        else:
+            support_current_ids.append(memory_id)
+    if len(relation_current_ids) != 1 or not support_current_ids:
+        return default_preference
+
+    relation_current_id = relation_current_ids[0]
+    prioritized_ids = selected_superseded_ids + [relation_current_id] + support_current_ids
+    is_earliest_history = selection_reason == "earliest-history-query-terms"
+    is_update_history = selection_reason == "update-history-query-terms"
+    return {
+        "applied": True,
+        "strategy": (
+            "earliest_history_relation_current_anchor_first_v1"
+            if is_earliest_history
+            else "update_history_relation_current_anchor_first_v1"
+            if is_update_history
+            else "history_relation_current_anchor_first_v1"
+        ),
+        "reason": (
+            "earliest-history-keep-explicit-current-relation"
+            if is_earliest_history
+            else "update-history-keep-explicit-current-relation"
+            if is_update_history
+            else "history-keep-explicit-current-relation"
+        ),
+        "order": "selected_stale_then_relation_current_then_current_support",
+        "preferred_ids": prioritized_ids + [
+            memory_id
+            for memory_id in selected_ids
+            if memory_id not in set(prioritized_ids)
+        ],
+        "selected_mutation_anchor_id": None,
+        "selected_mutation_anchor_ids": [],
+        "selected_target_current_id": None,
+        "selected_target_support_ids": [],
+        "selected_relation_current_id": relation_current_id,
+        "selected_relation_support_ids": support_current_ids,
+        "selected_update_current_id": None,
+        "selected_current_support_ids": support_current_ids,
+        "current_anchor_id": relation_current_id,
+    }
+
+
+def _packing_reservation(authorized_entries: list[dict[str, Any]], retrieval: dict[str, Any]) -> dict[str, Any]:
+    temporal = dict(retrieval.get("temporal", {}))
+    selection_strategy = temporal.get("selection_strategy")
+    selection_reason = temporal.get("selection_reason")
+    reservation_strategy = None
+    reservation_reason = None
+    explicit_change_ids = [
+        str(memory_id)
+        for memory_id in temporal.get("selected_mutation_anchor_ids", [])
+        if str(memory_id)
+    ]
+    if selection_strategy == "earliest_history_preferred_v1":
+        reservation_strategy = "earliest_history_anchor_pair_v1"
+        reservation_reason = "earliest-history-keep-earliest-and-latest-current"
+    elif selection_strategy == "historical_preferred_v1":
+        reservation_strategy = (
+            "update_history_anchor_pair_v1"
+            if selection_reason == "update-history-query-terms"
+            else "history_anchor_pair_v1"
+        )
+        reservation_reason = (
+            "update-history-keep-selected-stale-and-latest-current"
+            if selection_reason == "update-history-query-terms"
+            else "history-keep-selected-stale-and-latest-current"
+        )
+    elif selection_strategy == "chronological_timeline_v1" and explicit_change_ids:
+        reservation_strategy = "chronology_mutation_anchor_set_v1"
+        reservation_reason = "chronology-keep-explicit-change-events"
+    if reservation_strategy is None:
+        return {
+            "strategy": None,
+            "reason": None,
+            "requested_ids": [],
+            "applied_ids": [],
+            "applied": False,
+            "blocked_reason": None,
+        }
+
+    authorized_ids = {entry["memory"].id for entry in authorized_entries}
+    if selection_strategy == "chronological_timeline_v1" and explicit_change_ids:
+        requested_ids = [memory_id for memory_id in explicit_change_ids if memory_id in authorized_ids]
+        return {
+            "strategy": reservation_strategy,
+            "reason": reservation_reason,
+            "requested_ids": requested_ids,
+            "applied_ids": [],
+            "applied": False,
+            "blocked_reason": None,
+        }
+
+    selected_ids = [str(memory_id) for memory_id in temporal.get("selected_ids", []) if str(memory_id) in authorized_ids]
+    current_ids = {str(memory_id) for memory_id in temporal.get("current_ids", []) if str(memory_id) in authorized_ids}
+    requested_ids: list[str] = []
+    if selected_ids:
+        requested_ids.append(selected_ids[0])
+    latest_current_id = next((memory_id for memory_id in reversed(selected_ids) if memory_id in current_ids), None)
+    if latest_current_id and latest_current_id not in requested_ids:
+        requested_ids.append(latest_current_id)
+    return {
+        "strategy": reservation_strategy,
+        "reason": reservation_reason,
+        "requested_ids": requested_ids,
+        "applied_ids": [],
+        "applied": False,
+        "blocked_reason": None,
+    }
+
+
+def _normalize_conflict_fragment(value: str) -> str:
+    terms = [term for term in query_terms(value) if term not in {"a", "an", "the"}]
+    return " ".join(terms)
+
+
+def _normalize_lookup_subject_fragment(value: str) -> str:
+    tokens = [
+        token
+        for token in _query_tokens(value)
+        if token not in RELATION_SEARCH_ARTICLES and token not in GENERIC_SUBJECT_NOISE_TERMS
+    ]
+    return " ".join(tokens)
+
+
+def _normalize_relation_value_fragment(value: str) -> str:
+    tokens = [token for token in _query_tokens(value) if token not in RELATION_SEARCH_ARTICLES]
+    return " ".join(tokens)
+
+
+def _normalize_relation_search_fragment(value: str) -> str:
+    tokens = [
+        token
+        for token in _query_tokens(value)
+        if token not in RELATION_SEARCH_ARTICLES
+    ]
+    return " ".join(tokens)
+
+
+def _relation_search_terms(value: str) -> list[str]:
+    return [
+        token
+        for token in _query_tokens(value)
+        if token not in RELATION_SEARCH_ARTICLES
+    ]
+
+
+def _query_tokens(value: str) -> list[str]:
+    return [term.lower() for term in re.findall(r"[A-Za-z0-9_]+", value)]
+
+
+def _canonical_subject_core_terms(
+    terms: list[str],
+    *,
+    excluded_terms: set[str],
+) -> dict[str, Any]:
+    matched_aliases = []
+    raw_core_terms = []
+    core_terms = []
+    seen_aliases: set[tuple[str, str]] = set()
+    for term in terms:
+        if term in excluded_terms or term in RELATION_SEARCH_ARTICLES:
+            continue
+        raw_core_terms.append(term)
+        canonical = SEMANTIC_ALIAS_CANONICAL_BY_TOKEN.get(term, term)
+        if canonical != term and (term, canonical) not in seen_aliases:
+            seen_aliases.add((term, canonical))
+            matched_aliases.append({"token": term, "canonical": canonical})
+        core_terms.append(canonical)
+    raw_core_terms = _ordered_unique(raw_core_terms)
+    core_terms = _ordered_unique(core_terms)
+    return {
+        "raw_core_terms": raw_core_terms,
+        "core_terms": core_terms,
+        "matched_aliases": matched_aliases,
+        "alias_expanded": core_terms != raw_core_terms,
+    }
+
+
+def _subject_core_search_variants(
+    core_terms: list[str],
+    *,
+    basis: str,
+    include_phrase_aliases: bool = True,
+) -> dict[str, Any]:
+    variants = []
+    search_alias_variants = []
+    preferred_variants = []
+    if len(core_terms) < 2:
+        return {
+            "variants": variants,
+            "search_alias_variants": search_alias_variants,
+            "search_alias_expanded": False,
+        }
+    variants.append(
+        {
+            "query": " ".join(core_terms),
+            "terms": list(core_terms),
+            "basis": basis,
+        }
+    )
+    seen_term_sets = {tuple(core_terms)}
+    for index, term in enumerate(core_terms):
+        for alias_term in TEMPORAL_SEARCH_ALIAS_TERMS_BY_CANONICAL.get(term, []):
+            alias_terms = list(core_terms)
+            alias_terms[index] = alias_term
+            alias_key = tuple(alias_terms)
+            if alias_key in seen_term_sets:
+                continue
+            seen_term_sets.add(alias_key)
+            alias_query = " ".join(alias_terms)
+            variants.append(
+                {
+                    "query": alias_query,
+                    "terms": alias_terms,
+                    "basis": f"{basis}-alias",
+                }
+            )
+            search_alias_variants.append(
+                {
+                    "canonical": term,
+                    "search_term": alias_term,
+                    "query": alias_query,
+                }
+            )
+    if include_phrase_aliases:
+        normalized_core_query = _normalize_conflict_fragment(" ".join(core_terms))
+        core_term_set = {str(term) for term in core_terms if str(term)}
+        for alias_variant in SUBJECT_CORE_PHRASE_ALIAS_VARIANTS:
+            if not set(alias_variant["required_terms"]).issubset(core_term_set):
+                continue
+            alias_query = str(alias_variant["search_query"])
+            alias_terms = query_terms(alias_query)
+            alias_key = tuple(alias_terms)
+            if not alias_terms or alias_key in seen_term_sets:
+                continue
+            seen_term_sets.add(alias_key)
+            alias_variant_entry = {
+                "query": alias_query,
+                "terms": alias_terms,
+                "basis": f"{basis}-phrase-alias",
+            }
+            if alias_variant.get("prefer_before_core"):
+                preferred_variants.append(alias_variant_entry)
+            else:
+                variants.append(alias_variant_entry)
+            search_alias_variants.append(
+                {
+                    "canonical_query": normalized_core_query,
+                    "search_term": alias_query,
+                    "query": alias_query,
+                    "match_strategy": "phrase",
+                }
+            )
+    if preferred_variants:
+        variants = preferred_variants + variants
+    return {
+        "variants": variants,
+        "search_alias_variants": search_alias_variants,
+        "search_alias_expanded": bool(search_alias_variants),
+    }
+
+
+def _implicit_owner_core_terms_for_person_query(
+    raw_tokens: list[str],
+    raw_core_terms: list[str],
+    core_terms: list[str],
+) -> dict[str, Any] | None:
+    if not raw_tokens or raw_tokens[0] != "who":
+        return None
+    core_term_set = {str(term) for term in core_terms if str(term)}
+    if core_term_set.intersection({"approver", "contact", "maintainer", "owner"}):
+        return None
+    raw_core_term_set = {str(term) for term in raw_core_terms if str(term)}
+    if "deployment" not in raw_core_term_set or not raw_core_term_set.intersection({"approval", "approvals"}):
+        return None
+    return {
+        "role": "owner",
+        "reason": "who-wrapper-person-role",
+        "core_terms": _ordered_unique([*core_terms, "owner"]),
+    }
+
+
+def _temporal_wrapped_relation_candidate_queries(stripped_query: str, stripped_tokens: list[str]) -> list[str]:
+    if not stripped_query:
+        return []
+
+    candidates: list[str] = []
+    relation_rewrites = (
+        (
+            re.compile(r"^(?P<subject>.+?)\s+point(?:\s+(?P<particle>at|to))?$", re.IGNORECASE),
+            lambda match: [
+                f"where does {match.group('subject')} point {match.group('particle') or 'to'}",
+                f"what does {match.group('subject')} point {match.group('particle') or 'to'}",
+            ],
+        ),
+        (
+            re.compile(r"^(?P<subject>.+?)\s+deploy(?:\s+to)?$", re.IGNORECASE),
+            lambda match: [
+                f"where does {match.group('subject')} deploy to",
+                f"what does {match.group('subject')} deploy to",
+            ],
+        ),
+        (
+            re.compile(r"^(?P<subject>.+?)\s+run(?:\s+on)?$", re.IGNORECASE),
+            lambda match: [
+                f"what does {match.group('subject')} run on",
+                f"where does {match.group('subject')} run on",
+            ],
+        ),
+        (
+            re.compile(r"^(?P<subject>.+?)\s+belong(?:\s+to)?$", re.IGNORECASE),
+            lambda match: [
+                f"what does {match.group('subject')} belong to",
+                f"which does {match.group('subject')} belong to",
+            ],
+        ),
+    )
+    for pattern, builder in relation_rewrites:
+        match = pattern.match(stripped_query)
+        if match:
+            candidates.extend(builder(match))
+    if stripped_tokens and stripped_tokens[0] not in SUBJECT_LOOKUP_QUERY_WRAPPERS:
+        candidates.extend(
+            [
+                f"who is {stripped_query}",
+                f"what is {stripped_query}",
+                f"which is {stripped_query}",
+                stripped_query,
+            ]
+        )
+    else:
+        candidates.append(stripped_query)
+    return _ordered_unique(candidates)
+
+
+def _temporal_wrapped_relation_query_plan(
+    query: str,
+    raw_tokens: list[str],
+    *,
+    excluded_terms: set[str],
+) -> dict[str, Any] | None:
+    has_wrapper_terms = any(token in excluded_terms for token in raw_tokens)
+    if not has_wrapper_terms:
+        relation_plan = _relation_query_plan(query)
+        if relation_plan is not None:
+            return relation_plan
+    stripped_tokens = [token for token in raw_tokens if token not in excluded_terms]
+    if not stripped_tokens:
+        return None
+    stripped_query = _normalize_relation_search_fragment(" ".join(stripped_tokens))
+    if not stripped_query:
+        return None
+    if any(
+        token in TEMPORAL_CHRONOLOGY_TERMS
+        or token in TEMPORAL_CURRENT_TERMS
+        or token in TEMPORAL_HISTORY_TERMS
+        or token in CHRONOLOGY_QUERY_MUTATION_TERMS
+        or token in UPDATE_QUERY_CURRENT_DIRECTION_TERMS
+        or token in UPDATE_QUERY_HISTORY_DIRECTION_TERMS
+        for token in raw_tokens
+    ):
+        direct_short_relation_rewrites = (
+            ("role-relation-uses", "uses", re.compile(r"^(?P<subject>.+?)\s+use$", re.IGNORECASE)),
+            ("role-relation-requires", "requires", re.compile(r"^(?P<subject>.+?)\s+require$", re.IGNORECASE)),
+        )
+        for lookup_basis, lookup_relation, pattern in direct_short_relation_rewrites:
+            match = pattern.match(stripped_query)
+            if not match:
+                continue
+            lookup_key = _normalize_lookup_subject_fragment(match.group("subject"))
+            if not lookup_key:
+                continue
+            search_query = f"{lookup_key} {lookup_relation}"
+            return {
+                "lookup_key": lookup_key,
+                "lookup_basis": lookup_basis,
+                "lookup_relation": lookup_relation,
+                "search_query": search_query,
+                "search_terms": _relation_search_terms(search_query),
+                "temporal_wrapper_query": stripped_query,
+                "temporal_wrapper_applied": True,
+            }
+    candidate_queries = _temporal_wrapped_relation_candidate_queries(stripped_query, stripped_tokens)
+    for candidate_query in candidate_queries:
+        relation_plan = _relation_query_plan(candidate_query)
+        if relation_plan is None:
+            continue
+        wrapped_plan = dict(relation_plan)
+        wrapped_plan["temporal_wrapper_query"] = stripped_query
+        wrapped_plan["temporal_wrapper_applied"] = candidate_query != stripped_query
+        return wrapped_plan
+    return None
+
+
+def _chronology_query_variants(query: str, raw_tokens: list[str], raw_terms: list[str]) -> dict[str, Any] | None:
+    matched_terms = [term for term in raw_terms if term in TEMPORAL_CHRONOLOGY_TERMS]
+    if not matched_terms:
+        return None
+    relation_plan = _temporal_wrapped_relation_query_plan(
+        query,
+        raw_tokens,
+        excluded_terms=(
+            SUBJECT_LOOKUP_QUERY_WRAPPERS
+            | CHRONOLOGY_QUERY_NOISE_TERMS
+            | CHRONOLOGY_QUERY_MUTATION_TERMS
+        ),
+    )
+    core_info = _canonical_subject_core_terms(
+        raw_terms,
+        excluded_terms=(
+            SUBJECT_LOOKUP_QUERY_WRAPPERS
+            | CHRONOLOGY_QUERY_NOISE_TERMS
+            | CHRONOLOGY_QUERY_MUTATION_TERMS
+        ),
+    )
+    relation_terms = [str(term) for term in (relation_plan or {}).get("search_terms", []) if str(term)]
+    core_terms = relation_terms or core_info["core_terms"]
+    variant_info = _subject_core_search_variants(core_terms, basis="chronology-subject-core")
+    return {
+        "matched_terms": sorted(set(matched_terms)),
+        "raw_core_terms": core_info["raw_core_terms"],
+        "core_terms": core_terms,
+        "matched_aliases": core_info["matched_aliases"],
+        "alias_expanded": core_info["alias_expanded"],
+        "search_alias_variants": variant_info["search_alias_variants"],
+        "search_alias_expanded": variant_info["search_alias_expanded"],
+        "variants": variant_info["variants"],
+    }
+
+
+def _history_query_variants(query: str, raw_terms: list[str]) -> dict[str, Any] | None:
+    raw_tokens = _query_tokens(query)
+    history_before_update = "before" in raw_terms and "update" in raw_terms
+    history_excluded_terms = HISTORY_QUERY_NOISE_TERMS | ({"update"} if history_before_update else set())
+    relation_plan = _temporal_wrapped_relation_query_plan(
+        query,
+        _query_tokens(query),
+        excluded_terms=history_excluded_terms,
+    )
+    relation_basis = str((relation_plan or {}).get("lookup_basis") or "")
+    passive_history_wrapper = relation_basis.startswith("inverse-relation-") or relation_basis.startswith(
+        "passive-relation-"
+    )
+    matched_terms = _ordered_unique([term for term in raw_terms if term in GENERIC_HISTORY_QUERY_TERMS])
+    if history_before_update or ("before" in raw_terms and passive_history_wrapper):
+        matched_terms = _ordered_unique(matched_terms + ["before"])
+    if not matched_terms:
+        return None
+    core_info = _canonical_subject_core_terms(
+        raw_terms,
+        excluded_terms=history_excluded_terms,
+    )
+    relation_terms = [str(term) for term in (relation_plan or {}).get("search_terms", []) if str(term)]
+    core_terms = relation_terms or core_info["core_terms"]
+    inferred_role = None
+    if not relation_terms:
+        inferred_role = _implicit_owner_core_terms_for_person_query(
+            raw_tokens,
+            core_info["raw_core_terms"],
+            core_terms,
+        )
+        if inferred_role is not None:
+            core_terms = [str(term) for term in inferred_role["core_terms"] if str(term)]
+    variant_info = _subject_core_search_variants(core_terms, basis="history-subject-core")
+    return {
+        "matched_terms": matched_terms,
+        "raw_core_terms": core_info["raw_core_terms"],
+        "core_terms": core_terms,
+        "matched_aliases": core_info["matched_aliases"],
+        "alias_expanded": core_terms != core_info["raw_core_terms"],
+        "search_alias_variants": variant_info["search_alias_variants"],
+        "search_alias_expanded": variant_info["search_alias_expanded"],
+        "role_inferred": (inferred_role or {}).get("role"),
+        "role_inference_reason": (inferred_role or {}).get("reason"),
+        "expanded": bool(variant_info["variants"]),
+        "variants": variant_info["variants"],
+    }
+
+
+def _current_query_variants(query: str, raw_terms: list[str]) -> dict[str, Any] | None:
+    matched_terms = _ordered_unique([term for term in raw_terms if term in TEMPORAL_CURRENT_TERMS])
+    if not matched_terms:
+        return None
+    current_excluded_terms = TEMPORAL_CURRENT_TERMS | SUBJECT_LOOKUP_QUERY_WRAPPERS | {"are", "be", "did", "do", "does", "is", "was", "were"}
+    relation_plan = _temporal_wrapped_relation_query_plan(
+        query,
+        _query_tokens(query),
+        excluded_terms=current_excluded_terms,
+    )
+    core_info = _canonical_subject_core_terms(
+        raw_terms,
+        excluded_terms=current_excluded_terms,
+    )
+    relation_terms = [str(term) for term in (relation_plan or {}).get("search_terms", []) if str(term)]
+    core_terms = relation_terms or core_info["core_terms"]
+    variant_info = _subject_core_search_variants(core_terms, basis="current-subject-core")
+    return {
+        "matched_terms": matched_terms,
+        "raw_core_terms": core_info["raw_core_terms"],
+        "core_terms": core_terms,
+        "matched_aliases": core_info["matched_aliases"],
+        "alias_expanded": core_terms != core_info["raw_core_terms"],
+        "search_alias_variants": variant_info["search_alias_variants"],
+        "search_alias_expanded": variant_info["search_alias_expanded"],
+        "expanded": bool(variant_info["variants"]),
+        "variants": variant_info["variants"],
+    }
+
+
+def _update_query_variants(query: str) -> dict[str, Any] | None:
+    raw_tokens = _query_tokens(query)
+    matched_terms = _ordered_unique([term for term in raw_tokens if term in CHRONOLOGY_QUERY_MUTATION_TERMS])
+    if not matched_terms:
+        return None
+    history_direction_terms = _ordered_unique(
+        [term for term in raw_tokens if term in UPDATE_QUERY_HISTORY_DIRECTION_TERMS]
+    )
+    current_direction_terms = _ordered_unique(
+        [term for term in raw_tokens if term in UPDATE_QUERY_CURRENT_DIRECTION_TERMS]
+    )
+    if history_direction_terms:
+        direction = "history"
+        direction_terms = history_direction_terms
+        search_basis = "update-history-subject-core"
+    elif current_direction_terms:
+        direction = "current"
+        direction_terms = current_direction_terms
+        search_basis = "update-subject-core"
+    else:
+        return None
+    core_info = _canonical_subject_core_terms(
+        raw_tokens,
+        excluded_terms=(
+            UPDATE_QUERY_NOISE_TERMS
+            | CHRONOLOGY_QUERY_MUTATION_TERMS
+            | UPDATE_QUERY_CURRENT_DIRECTION_TERMS
+            | UPDATE_QUERY_HISTORY_DIRECTION_TERMS
+        ),
+    )
+    relation_plan = _temporal_wrapped_relation_query_plan(
+        query,
+        raw_tokens,
+        excluded_terms=(
+            UPDATE_QUERY_NOISE_TERMS
+            | CHRONOLOGY_QUERY_MUTATION_TERMS
+            | UPDATE_QUERY_CURRENT_DIRECTION_TERMS
+            | UPDATE_QUERY_HISTORY_DIRECTION_TERMS
+        ),
+    )
+    relation_terms = [str(term) for term in (relation_plan or {}).get("search_terms", []) if str(term)]
+    core_terms = relation_terms or core_info["core_terms"]
+    inferred_role = None
+    if not relation_terms:
+        inferred_role = _implicit_owner_core_terms_for_person_query(
+            raw_tokens,
+            core_info["raw_core_terms"],
+            core_terms,
+        )
+        if inferred_role is not None:
+            core_terms = [str(term) for term in inferred_role["core_terms"] if str(term)]
+    variant_info = _subject_core_search_variants(core_terms, basis=search_basis)
+    return {
+        "matched_terms": matched_terms,
+        "raw_core_terms": core_info["raw_core_terms"],
+        "core_terms": core_terms,
+        "matched_aliases": core_info["matched_aliases"],
+        "alias_expanded": core_terms != core_info["raw_core_terms"],
+        "search_alias_variants": variant_info["search_alias_variants"],
+        "search_alias_expanded": variant_info["search_alias_expanded"],
+        "direction": direction,
+        "direction_terms": direction_terms,
+        "role_inferred": (inferred_role or {}).get("role"),
+        "role_inference_reason": (inferred_role or {}).get("reason"),
+        "expanded": bool(variant_info["variants"]),
+        "variants": variant_info["variants"],
+    }
+
+
+def _target_qualified_history_variants(query: str) -> dict[str, Any] | None:
+    normalized_query = " ".join(_query_tokens(query))
+    if not normalized_query:
+        return None
+    match = re.match(
+        r"^(?:where|what|which)\s+did\s+(?P<subject>.+?)\s+deploy(?:\s+to)?\s+before\s+it\s+"
+        r"(?P<mutation>change|changed|move|moved|shift|shifted|switch|switched|update|updated)"
+        r"(?:\s+(?:to|into))\s+(?P<target>.+)$",
+        normalized_query,
+        re.IGNORECASE,
+    )
+    if not match:
+        return None
+    subject_query = _normalize_conflict_fragment(match.group("subject"))
+    target_query = _normalize_conflict_fragment(match.group("target"))
+    if not subject_query or not target_query:
+        return None
+    return {
+        "applied": True,
+        "relation": "deploys_to",
+        "history_terms": ["before"],
+        "mutation_terms": [str(match.group("mutation")).lower()],
+        "target_query": target_query,
+        "variants": [
+            {
+                "query": subject_query,
+                "terms": query_terms(subject_query),
+                "basis": "history-target-subject-entity",
+            },
+            {
+                "query": f"{subject_query} deploy",
+                "terms": query_terms(f"{subject_query} deploy"),
+                "basis": "history-target-subject-action",
+            },
+        ],
+    }
+
+
+def _relation_query_plan(query: str) -> dict[str, Any] | None:
+    tokens = [token for token in _query_tokens(query) if token not in TEMPORAL_CURRENT_TERMS]
+    normalized_query = " ".join(tokens)
+    if not normalized_query:
+        return None
+    for basis, relation, pattern, canonical_builder in RELATION_QUERY_PATTERNS:
+        match = pattern.match(normalized_query)
+        if not match:
+            continue
+        inverse_relation_basis = basis.startswith("inverse-relation-")
+        if "object" in pattern.groupindex:
+            canonical_query = _normalize_relation_search_fragment(canonical_builder(match))
+            search_terms = _relation_search_terms(canonical_query)
+            if "subject" in pattern.groupindex:
+                lookup_key = _normalize_lookup_subject_fragment(match.group("subject"))
+            else:
+                lookup_key = _normalize_relation_value_fragment(match.group("object"))
+        else:
+            if inverse_relation_basis:
+                subject_query = (
+                    _normalize_lookup_subject_fragment(match.group("subject"))
+                    if "subject" in pattern.groupindex
+                    else ""
+                )
+                relation_phrase = _normalize_conflict_fragment(relation.replace("_", " "))
+                canonical_query = " ".join(part for part in (subject_query, relation_phrase) if part)
+                search_terms = _relation_search_terms(canonical_query)
+            else:
+                canonical_query = _normalize_conflict_fragment(canonical_builder(match))
+                search_terms = query_terms(canonical_query)
+            if relation == "is":
+                lookup_key = canonical_query
+            elif "subject" in pattern.groupindex:
+                lookup_key = _normalize_lookup_subject_fragment(match.group("subject"))
+            else:
+                relation_suffix = _normalize_conflict_fragment(relation.replace("_", " "))
+                lookup_key = canonical_query.removesuffix(f" {relation_suffix}") or canonical_query
+        if not canonical_query:
+            return None
+        return {
+            "lookup_key": lookup_key,
+            "lookup_basis": basis,
+            "lookup_relation": relation,
+            "search_query": canonical_query,
+            "search_terms": search_terms,
+        }
+    return None
+
+
+def _subject_lookup_query_plan(query: str, query_terms: list[str]) -> dict[str, Any]:
+    temporal_signal_terms = (
+        TEMPORAL_CHRONOLOGY_TERMS
+        | TEMPORAL_CURRENT_TERMS
+        | TEMPORAL_HISTORY_TERMS
+        | CHRONOLOGY_QUERY_MUTATION_TERMS
+        | UPDATE_QUERY_CURRENT_DIRECTION_TERMS
+        | UPDATE_QUERY_HISTORY_DIRECTION_TERMS
+    )
+    temporal_wrapper_terms = (
+        SUBJECT_LOOKUP_QUERY_WRAPPERS
+        | TEMPORAL_CHRONOLOGY_TERMS
+        | TEMPORAL_CURRENT_TERMS
+        | TEMPORAL_HISTORY_TERMS
+        | CHRONOLOGY_QUERY_MUTATION_TERMS
+        | UPDATE_QUERY_CURRENT_DIRECTION_TERMS
+        | UPDATE_QUERY_HISTORY_DIRECTION_TERMS
+        | {"did", "do", "does", "is", "are", "was", "were"}
+    )
+    raw_tokens = _query_tokens(query)
+    temporal_relation_plan = _temporal_wrapped_relation_query_plan(
+        query,
+        raw_tokens,
+        excluded_terms=temporal_wrapper_terms,
+    )
+    if temporal_relation_plan is not None and any(token in temporal_signal_terms for token in raw_tokens):
+        return temporal_relation_plan
+    relation_plan = _relation_query_plan(query)
+    if relation_plan is not None:
+        return relation_plan
+    if temporal_relation_plan is not None:
+        return temporal_relation_plan
+    if any(term in TEMPORAL_CURRENT_TERMS for term in query_terms):
+        return {
+            "lookup_key": _normalize_conflict_fragment(
+                " ".join(
+                    term
+                    for term in query_terms
+                    if term not in TEMPORAL_CURRENT_TERMS and term not in SUBJECT_LOOKUP_QUERY_WRAPPERS
+                )
+            ),
+            "lookup_basis": "current-term",
+            "lookup_relation": None,
+            "search_query": _normalize_conflict_fragment(query),
+        }
+    if query_terms and query_terms[0] in SUBJECT_LOOKUP_QUERY_WRAPPERS:
+        return {
+            "lookup_key": _normalize_conflict_fragment(
+                " ".join(
+                    term
+                    for term in query_terms
+                    if term not in SUBJECT_LOOKUP_QUERY_WRAPPERS
+                )
+            ),
+            "lookup_basis": "question-wrapper",
+            "lookup_relation": None,
+            "search_query": _normalize_conflict_fragment(
+                " ".join(
+                    term
+                    for term in query_terms
+                    if term not in SUBJECT_LOOKUP_QUERY_WRAPPERS
+                )
+            ),
+        }
+    normalized_query = _normalize_conflict_fragment(" ".join(query_terms))
+    return {
+        "lookup_key": normalized_query,
+        "lookup_basis": "direct-subject",
+        "lookup_relation": None,
+        "search_query": normalized_query,
+    }
+
+
+def _generic_subject_alias_variant(raw_tokens: list[str]) -> dict[str, Any] | None:
+    informative_tokens = [
+        token
+        for token in raw_tokens
+        if token not in GENERIC_SUBJECT_NOISE_TERMS
+    ]
+    if not informative_tokens:
+        return None
+    matched_aliases = []
+    core_terms = []
+    for token in informative_tokens:
+        canonical = SEMANTIC_ALIAS_CANONICAL_BY_TOKEN.get(token)
+        if canonical is not None:
+            matched_aliases.append({"token": token, "canonical": canonical})
+            core_terms.append(canonical)
+            continue
+        if len(token) > 2 and token not in GENERIC_SUBJECT_HELPER_TERMS:
+            core_terms.append(token)
+    core_terms = _ordered_unique(core_terms)
+    if not matched_aliases or not core_terms:
+        return None
+    return {
+        "lookup_basis": "semantic-alias-core",
+        "search_query": " ".join(core_terms),
+        "search_terms": core_terms,
+        "matched_aliases": matched_aliases,
+        "core_terms": core_terms,
+    }
+
+
+def _direct_deploy_target_alias_variant(raw_tokens: list[str]) -> dict[str, Any] | None:
+    core_info = _canonical_subject_core_terms(
+        raw_tokens,
+        excluded_terms=GENERIC_SUBJECT_NOISE_TERMS,
+    )
+    raw_core_terms = [str(term) for term in core_info.get("raw_core_terms", []) if str(term)]
+    core_terms = [str(term) for term in core_info.get("core_terms", []) if str(term)]
+    if "deploy" not in raw_core_terms or "target" not in core_terms:
+        return None
+    variant_info = _subject_core_search_variants(core_terms, basis="direct-deploy-target-core")
+    if not variant_info.get("variants"):
+        return None
+    first_variant = variant_info["variants"][0]
+    return {
+        "lookup_basis": "direct-deploy-target-core",
+        "search_query": str(first_variant["query"]),
+        "search_terms": [str(term) for term in first_variant.get("terms", []) if str(term)],
+        "matched_aliases": core_info.get("matched_aliases", []),
+        "raw_core_terms": raw_core_terms,
+        "core_terms": core_terms,
+        "alias_expanded": bool(core_info.get("alias_expanded")),
+        "variants": variant_info.get("variants", []),
+        "search_alias_variants": variant_info.get("search_alias_variants", []),
+        "search_alias_expanded": bool(variant_info.get("search_alias_expanded")),
+    }
+
+
+def _direct_subject_core_alias_variant(
+    query_lookup: dict[str, Any],
+    raw_tokens: list[str],
+) -> dict[str, Any] | None:
+    lookup_basis = str(query_lookup.get("lookup_basis") or "")
+    if lookup_basis not in {
+        "direct-subject",
+        "question-wrapper",
+        "role-relation-owner",
+        "role-relation-on-point",
+        "role-relation-responsible",
+        "role-relation-in-charge",
+    }:
+        return None
+    search_query = str(query_lookup.get("search_query") or "").strip()
+    search_terms = [str(term) for term in query_lookup.get("search_terms", []) if str(term)] or query_terms(search_query)
+    if "owner" not in search_terms:
+        return None
+    variant_info = _subject_core_search_variants(
+        search_terms,
+        basis=lookup_basis,
+        include_phrase_aliases=False,
+    )
+    if not variant_info.get("search_alias_variants"):
+        return None
+    matched_aliases = _canonical_subject_core_terms(
+        raw_tokens,
+        excluded_terms=GENERIC_SUBJECT_NOISE_TERMS,
+    ).get("matched_aliases", [])
+    return {
+        "lookup_basis": lookup_basis,
+        "search_query": search_query,
+        "search_terms": search_terms,
+        "matched_aliases": matched_aliases,
+        "raw_core_terms": search_terms,
+        "core_terms": search_terms,
+        "alias_expanded": bool(variant_info.get("search_alias_expanded")),
+        "variants": variant_info.get("variants", []),
+        "search_alias_variants": variant_info.get("search_alias_variants", []),
+        "search_alias_expanded": bool(variant_info.get("search_alias_expanded")),
+    }
+
+
+def _row_term_overlap(row: sqlite3.Row, terms: list[str]) -> int:
+    memory = MemoryRecord.from_row(row)
+    haystack = f"{memory.content} {' '.join(memory.labels)}".strip().lower()
+    return sum(1 for term in terms if term and term in haystack)
+
+
+def _has_full_lexical_match(rows: list[sqlite3.Row], terms: list[str]) -> bool:
+    normalized_terms = [str(term).lower() for term in terms if str(term)]
+    if not normalized_terms:
+        return False
+    return any(_row_term_overlap(row, normalized_terms) >= len(normalized_terms) for row in rows)
+
+
+def _row_has_structured_fact(row: sqlite3.Row) -> bool:
+    memory = MemoryRecord.from_row(row)
+    return _lexical_conflict_signature(memory) is not None or _lexical_update_signature(memory) is not None
+
+
+def _current_update_anchor_terms(current_lookup: dict[str, Any] | None) -> list[str]:
+    if not current_lookup or not current_lookup.get("matched_terms"):
+        return []
+    return _ordered_unique(
+        [
+            str(term)
+            for term in current_lookup.get("core_terms", [])
+            if str(term)
+            and str(term) not in GENERIC_SUBJECT_NOISE_TERMS
+            and str(term) not in GENERIC_SUBJECT_HELPER_TERMS
+            and len(str(term)) > 2
+        ]
+    )
+
+
+def _relation_support_anchor_profile(
+    *,
+    query_lookup: dict[str, Any],
+    matched_terms: list[str],
+    selected_variant: dict[str, Any],
+    basis_prefixes: tuple[str, ...],
+    support_kind: str,
+) -> dict[str, Any] | None:
+    if not matched_terms:
+        return None
+    lookup_key = _normalize_lookup_subject_fragment(str(query_lookup.get("lookup_key") or ""))
+    if not lookup_key:
+        return None
+    lookup_relation = str(query_lookup.get("lookup_relation") or "")
+    relation_terms = list(CHRONOLOGY_RELATION_SUPPORT_TERMS.get(lookup_relation, []))
+    if not relation_terms:
+        return None
+    selected_search_basis = str(selected_variant.get("basis") or "")
+    if not any(selected_search_basis.startswith(prefix) for prefix in basis_prefixes):
+        return None
+    return {
+        "applied": False,
+        "reason": "no-support-anchor-match",
+        "subject_term": lookup_key,
+        "relation": lookup_relation,
+        "relation_terms": relation_terms,
+        "mutation_terms": sorted(CHRONOLOGY_QUERY_MUTATION_TERMS),
+        "selected_search_basis": selected_search_basis,
+        "selected_candidate_ids": [],
+        "support_kind": support_kind,
+    }
+
+
+def _chronology_support_anchor_profile(
+    *,
+    query_lookup: dict[str, Any],
+    chronology: dict[str, Any] | None,
+    selected_variant: dict[str, Any],
+) -> dict[str, Any] | None:
+    return _relation_support_anchor_profile(
+        query_lookup=query_lookup,
+        matched_terms=[str(term) for term in (chronology or {}).get("matched_terms", []) if str(term)],
+        selected_variant=selected_variant,
+        basis_prefixes=("chronology-subject-core",),
+        support_kind="chronology",
+    )
+
+
+def _history_support_anchor_profile(
+    *,
+    query_lookup: dict[str, Any],
+    history_lookup: dict[str, Any] | None,
+    selected_variant: dict[str, Any],
+) -> dict[str, Any] | None:
+    return _relation_support_anchor_profile(
+        query_lookup=query_lookup,
+        matched_terms=[str(term) for term in (history_lookup or {}).get("matched_terms", []) if str(term)],
+        selected_variant=selected_variant,
+        basis_prefixes=("history-subject-core",),
+        support_kind="history",
+    )
+
+
+def _update_history_support_anchor_profile(
+    *,
+    query_lookup: dict[str, Any],
+    update_lookup: dict[str, Any] | None,
+    selected_variant: dict[str, Any],
+) -> dict[str, Any] | None:
+    if str((update_lookup or {}).get("direction") or "") != "history":
+        return None
+    matched_terms = _ordered_unique(
+        [str(term) for term in (update_lookup or {}).get("matched_terms", []) if str(term)]
+        + [str(term) for term in (update_lookup or {}).get("direction_terms", []) if str(term)]
+    )
+    return _relation_support_anchor_profile(
+        query_lookup=query_lookup,
+        matched_terms=matched_terms,
+        selected_variant=selected_variant,
+        basis_prefixes=("update-history-subject-core",),
+        support_kind="update-history",
+    )
+
+
+def _append_relation_support_rows(
+    conn: sqlite3.Connection,
+    *,
+    support: dict[str, Any],
+    rows: list[sqlite3.Row],
+    candidate_metadata: dict[str, dict[str, Any]],
+    status_sql: str,
+    scope_sql: str,
+    authority_order_sql: str,
+    scope: str | None,
+    limit: int,
+) -> None:
+    if not support or not rows or len(rows) >= limit:
+        return
+    relation_terms = [str(term) for term in support.get("relation_terms", []) if str(term)]
+    mutation_terms = [str(term) for term in support.get("mutation_terms", []) if str(term)]
+    subject_term = str(support.get("subject_term") or "")
+    if not subject_term or not relation_terms or not mutation_terms:
+        return
+    relation_sql = " OR ".join(["lower(m.content) LIKE ?" for _ in relation_terms])
+    mutation_sql = " OR ".join(["lower(m.content) LIKE ?" for _ in mutation_terms])
+    support_params: list[Any] = [f"%{subject_term}%"]
+    support_params.extend(f"%{term}%" for term in relation_terms)
+    support_params.extend(f"%{term}%" for term in mutation_terms)
+    if scope:
+        support_params.append(scope)
+    support_rows = conn.execute(
+        f"""
+        SELECT m.*,
+               COALESCE((SELECT MAX(e.seq) FROM events e WHERE e.memory_id = m.id), 0) AS observation_seq
+        FROM memories m
+        WHERE lower(m.content) LIKE ?
+          AND ({relation_sql})
+          AND ({mutation_sql})
+          AND {status_sql}
+          {scope_sql}
+        ORDER BY {authority_order_sql} DESC, m.trust DESC, m.updated_at DESC, m.id ASC
+        LIMIT {limit}
+        """,
+        support_params,
+    ).fetchall()
+    existing_ids = {row["id"] for row in rows}
+    for support_row in support_rows:
+        if support_row["id"] in existing_ids:
+            continue
+        rows.append(support_row)
+        existing_ids.add(support_row["id"])
+        support["selected_candidate_ids"].append(str(support_row["id"]))
+        candidate_metadata[str(support_row["id"])] = {
+            "pre_hybrid_rank": None,
+            "hybrid_candidate_source": f"{support['support_kind']}-support",
+            "structured_fact_candidate": _row_has_structured_fact(support_row),
+            "semantic_backfill_score": None,
+            "semantic_backfill_term_overlap": None,
+            "observation_seq": int(support_row["observation_seq"]) if "observation_seq" in support_row.keys() else 0,
+            "temporal_support_candidate": True,
+            "temporal_support_kind": support["support_kind"],
+        }
+        if len(rows) >= limit:
+            break
+    if support["selected_candidate_ids"]:
+        support["applied"] = True
+        support["reason"] = "subject_relation_mutation_anchor"
+
+
+
+
+def _current_direct_deploy_target_hybrid_override(
+    *,
+    query_lookup: dict[str, Any],
+    current_lookup: dict[str, Any] | None,
+    semantic_alias_variant: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if query_lookup.get("lookup_relation") is not None:
+        return None
+    if str(query_lookup.get("lookup_basis") or "") != "current-term":
+        return None
+    if not current_lookup or not semantic_alias_variant:
+        return None
+    if not current_lookup.get("matched_terms"):
+        return None
+    if str(semantic_alias_variant.get("lookup_basis") or "") != "direct-deploy-target-core":
+        return None
+    core_terms = [str(term) for term in current_lookup.get("core_terms", []) if str(term)]
+    if "deploy" not in core_terms or "target" not in core_terms:
+        return None
+    variants = list(current_lookup.get("variants", []))
+    if not variants:
+        return None
+    canonical_variant = next(
+        (variant for variant in variants if str(variant.get("basis") or "") == "current-subject-core"),
+        variants[0],
+    )
+    effective_query = str(canonical_variant.get("query") or "")
+    effective_query_terms = [str(term) for term in canonical_variant.get("terms", []) if str(term)]
+    if not effective_query or not effective_query_terms:
+        return None
+    return {
+        "effective_query": effective_query,
+        "effective_query_terms": effective_query_terms,
+        "required_terms": effective_query_terms,
+        "ignored_query_terms": [str(term) for term in current_lookup.get("matched_terms", []) if str(term)],
+    }
+
+
+def _history_direct_deploy_target_hybrid_override(
+    *,
+    query_lookup: dict[str, Any],
+    history_lookup: dict[str, Any] | None,
+    semantic_alias_variant: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if query_lookup.get("lookup_relation") is not None:
+        return None
+    if not history_lookup or not semantic_alias_variant:
+        return None
+    if not history_lookup.get("matched_terms"):
+        return None
+    if str(semantic_alias_variant.get("lookup_basis") or "") != "direct-deploy-target-core":
+        return None
+    core_terms = [str(term) for term in history_lookup.get("core_terms", []) if str(term)]
+    if "deploy" not in core_terms or "target" not in core_terms:
+        return None
+    variants = list(history_lookup.get("variants", []))
+    if not variants:
+        return None
+    canonical_variant = next(
+        (variant for variant in variants if str(variant.get("basis") or "") == "history-subject-core"),
+        variants[0],
+    )
+    effective_query = str(canonical_variant.get("query") or "")
+    effective_query_terms = [str(term) for term in canonical_variant.get("terms", []) if str(term)]
+    if not effective_query or not effective_query_terms:
+        return None
+    return {
+        "effective_query": effective_query,
+        "effective_query_terms": effective_query_terms,
+        "required_terms": effective_query_terms,
+        "ignored_query_terms": [str(term) for term in history_lookup.get("matched_terms", []) if str(term)],
+    }
+
+
+def _update_history_direct_deploy_target_hybrid_override(
+    *,
+    query_lookup: dict[str, Any],
+    update_lookup: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if query_lookup.get("lookup_relation") is not None:
+        return None
+    if not update_lookup:
+        return None
+    if str(update_lookup.get("direction") or "") != "history":
+        return None
+    core_terms = [str(term) for term in update_lookup.get("core_terms", []) if str(term)]
+    if "deploy" not in core_terms or "target" not in core_terms:
+        return None
+    variants = list(update_lookup.get("variants", []))
+    if not variants:
+        return None
+    canonical_variant = next(
+        (variant for variant in variants if str(variant.get("basis") or "") == "update-history-subject-core"),
+        variants[0],
+    )
+    effective_query = str(canonical_variant.get("query") or "")
+    effective_query_terms = [str(term) for term in canonical_variant.get("terms", []) if str(term)]
+    if not effective_query or not effective_query_terms:
+        return None
+    return {
+        "effective_query": effective_query,
+        "effective_query_terms": effective_query_terms,
+        "required_terms": effective_query_terms,
+        "ignored_query_terms": _ordered_unique(
+            [str(term) for term in update_lookup.get("matched_terms", []) if str(term)]
+            + [str(term) for term in update_lookup.get("direction_terms", []) if str(term)]
+        ),
+    }
+
+
+def _declarative_semantic_rescue_profile(
+    *,
+    raw_tokens: list[str],
+    raw_terms: list[str],
+    query_lookup: dict[str, Any],
+    current_lookup: dict[str, Any] | None,
+    chronology: dict[str, Any] | None,
+    history_lookup: dict[str, Any] | None,
+    update_lookup: dict[str, Any] | None,
+    rows: list[sqlite3.Row],
+    selected_terms: list[str],
+    search_mode: str,
+) -> dict[str, Any] | None:
+    if query_lookup.get("lookup_relation") is not None:
+        return None
+    if not raw_tokens or raw_tokens[0] in SUBJECT_LOOKUP_QUERY_WRAPPERS:
+        return None
+    if raw_tokens != raw_terms:
+        return None
+    if chronology and chronology.get("expanded"):
+        return None
+    if update_lookup and update_lookup.get("expanded"):
+        return None
+    if search_mode not in {"none", "fallback"}:
+        return None
+    if search_mode == "fallback" and _has_full_lexical_match(rows, selected_terms):
+        return None
+    if history_lookup and history_lookup.get("expanded"):
+        history_matched_terms = [str(term) for term in history_lookup.get("matched_terms", []) if str(term)]
+        history_semantic_terms = [str(term) for term in history_lookup.get("core_terms", []) if str(term)]
+        if history_semantic_terms:
+            profile = (
+                DECLARATIVE_EARLIEST_HISTORY_SEMANTIC_RESCUE_PROFILE
+                if any(term in EARLIEST_HISTORY_TERMS for term in history_matched_terms)
+                else DECLARATIVE_HISTORY_SEMANTIC_RESCUE_PROFILE
+            )
+            return {
+                "enabled": True,
+                "profile": profile,
+                "minimum_score": DECLARATIVE_SEMANTIC_RESCUE_MIN_SCORE,
+                "require_full_query_overlap": True,
+                "effective_query": str(history_lookup["variants"][0]["query"]),
+                "effective_query_terms": history_semantic_terms,
+                "search_basis": str(history_lookup["variants"][0]["basis"]),
+                "ignored_query_terms": history_matched_terms,
+            }
+    if current_lookup and current_lookup.get("expanded"):
+        semantic_query = str(current_lookup["variants"][0]["query"])
+        semantic_terms = [str(term) for term in current_lookup.get("core_terms", []) if str(term)]
+        if semantic_query and semantic_terms:
+            return {
+                "enabled": True,
+                "profile": DECLARATIVE_CURRENT_SEMANTIC_RESCUE_PROFILE,
+                "minimum_score": DECLARATIVE_SEMANTIC_RESCUE_MIN_SCORE,
+                "require_full_query_overlap": True,
+                "effective_query": semantic_query,
+                "effective_query_terms": semantic_terms,
+                "search_basis": str(current_lookup["variants"][0]["basis"]),
+                "ignored_query_terms": [str(term) for term in current_lookup.get("matched_terms", []) if str(term)],
+            }
+    return {
+        "enabled": True,
+        "profile": DECLARATIVE_SEMANTIC_RESCUE_PROFILE,
+        "minimum_score": DECLARATIVE_SEMANTIC_RESCUE_MIN_SCORE,
+        "require_full_query_overlap": True,
+    }
+
+
+def _normalize_temporal_subject_key(subject_key: str) -> str:
+    tokens = _query_tokens(subject_key)
+    while len(tokens) > 1 and tokens[0] in TEMPORAL_HISTORY_TERMS:
+        tokens = tokens[1:]
+    return _normalize_lookup_subject_fragment(" ".join(tokens))
+
+
+def _lexical_conflict_signature(memory: MemoryRecord) -> dict[str, str] | None:
+    content = " ".join(memory.content.split())
+    if not content:
+        return None
+    for relation, pattern in LEXICAL_CONFLICT_PATTERNS:
+        match = pattern.match(content)
+        if not match:
+            continue
+        subject_key = _normalize_temporal_subject_key(match.group("subject"))
+        value_key = _normalize_relation_value_fragment(match.group("object"))
+        if not subject_key or not value_key:
+            return None
+        return {
+            "group_key": f"{subject_key}|{relation}",
+            "subject_key": subject_key,
+            "relation": relation,
+            "value_key": value_key,
+        }
+    return None
+
+
+def _lexical_update_signature(memory: MemoryRecord) -> dict[str, str | None] | None:
+    content = " ".join(memory.content.split())
+    if not content:
+        return None
+    for pattern_name, pattern in EXPLICIT_UPDATE_PATTERNS:
+        match = pattern.match(content)
+        if not match:
+            continue
+        subject_key = _normalize_temporal_subject_key(match.group("subject"))
+        next_value_key = _normalize_relation_value_fragment(match.group("to"))
+        previous_value = match.groupdict().get("from")
+        previous_value_key = _normalize_relation_value_fragment(previous_value) if previous_value else None
+        if not subject_key or not next_value_key:
+            return None
+        return {
+            "group_key": f"{subject_key}|is",
+            "subject_key": subject_key,
+            "relation": "is",
+            "previous_value_key": previous_value_key or None,
+            "next_value_key": next_value_key,
+            "pattern": pattern_name,
+        }
+    return None
+
+
+def _current_conflict_sort_key(memory: MemoryRecord, *, rank: int) -> tuple[int, float, str, str, int, str]:
+    return (
+        authority_rank(memory.authority),
+        float(memory.trust),
+        memory.updated_at,
+        memory.created_at,
+        -rank,
+        memory.id,
+    )
+
+
+def _current_conflict_resolution_key(memory: MemoryRecord) -> tuple[int, float, str, str]:
+    return (
+        authority_rank(memory.authority),
+        float(memory.trust),
+        memory.updated_at,
+        memory.created_at,
+    )
+
+
+def _set_temporal_decision(decisions: list[dict[str, Any]], memory_id: str, payload: dict[str, Any]) -> None:
+    decisions[:] = [item for item in decisions if item.get("memory_id") != memory_id]
+    decisions.append(payload)
+
+
+def _candidate_observation_seq(candidate_meta: dict[str, dict[str, Any]], memory_id: str) -> int:
+    candidate = candidate_meta.get(memory_id, {})
+    value = candidate.get("observation_seq", candidate.get("features", {}).get("observation_seq", 0))
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _subject_lookup_restatement_order_fields(
+    memory_id: str,
+    *,
+    candidate_by_id: dict[str, MemoryRecord],
+    candidate_meta: dict[str, dict[str, Any]],
+) -> tuple[str, str, int]:
+    memory = candidate_by_id[memory_id]
+    return (
+        memory.updated_at,
+        memory.created_at,
+        _candidate_observation_seq(candidate_meta, memory_id),
+    )
+
+
+def _subject_lookup_restatement_sort_key(
+    memory_id: str,
+    *,
+    candidate_by_id: dict[str, MemoryRecord],
+    candidate_meta: dict[str, dict[str, Any]],
+) -> tuple[str, str, int, str]:
+    return (
+        *_subject_lookup_restatement_order_fields(
+            memory_id,
+            candidate_by_id=candidate_by_id,
+            candidate_meta=candidate_meta,
+        ),
+        memory_id,
+    )
+
+
+def _explicit_update_sort_key(
+    memory_id: str,
+    *,
+    candidate_by_id: dict[str, MemoryRecord],
+    candidate_meta: dict[str, dict[str, Any]],
+) -> tuple[str, str, int, str]:
+    memory = candidate_by_id[memory_id]
+    return (
+        memory.updated_at,
+        memory.created_at,
+        _candidate_observation_seq(candidate_meta, memory_id),
+        memory.id,
+    )
+
+
+def _same_provenance_key(memory: MemoryRecord) -> tuple[str, str, str]:
+    return (memory.type, memory.source_kind, memory.scope or "")
+
+
+def _apply_explicit_updates(
+    *,
+    candidate_by_id: dict[str, MemoryRecord],
+    candidate_meta: dict[str, dict[str, Any]],
+    current_ids: list[str],
+    stale_ids: list[str],
+    temporal_state_by_id: dict[str, str],
+    decisions: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    lexical_signatures = {
+        memory_id: _lexical_conflict_signature(candidate_by_id[memory_id])
+        for memory_id in current_ids
+        if memory_id in candidate_by_id
+    }
+    update_signatures = {
+        memory_id: _lexical_update_signature(candidate_by_id[memory_id])
+        for memory_id in current_ids
+        if memory_id in candidate_by_id
+    }
+    update_groups: dict[str, list[dict[str, str | None]]] = {}
+    for memory_id, signature in update_signatures.items():
+        if signature is None:
+            continue
+        update_groups.setdefault(str(signature["group_key"]), []).append({"memory_id": memory_id, **signature})
+
+    current_id_set = set(current_ids)
+    conflict_sets: list[dict[str, Any]] = []
+    for group_key in sorted(update_groups):
+        update_items = sorted(
+            update_groups[group_key],
+            key=lambda item: _explicit_update_sort_key(
+                str(item["memory_id"]),
+                candidate_by_id=candidate_by_id,
+                candidate_meta=candidate_meta,
+            ),
+            reverse=True,
+        )
+        chosen_update = update_items[0]
+        chosen_current_id = str(chosen_update["memory_id"])
+        related_current_ids = [
+            memory_id
+            for memory_id in current_ids
+            if (
+                lexical_signatures.get(memory_id) and lexical_signatures[memory_id]["group_key"] == group_key
+            )
+            or (
+                update_signatures.get(memory_id) and update_signatures[memory_id]["group_key"] == group_key
+            )
+        ]
+        stale_candidate_ids = [memory_id for memory_id in related_current_ids if memory_id != chosen_current_id]
+        if not stale_candidate_ids:
+            continue
+        if chosen_update.get("previous_value_key"):
+            matching_previous_ids = [
+                memory_id
+                for memory_id in stale_candidate_ids
+                if (
+                    lexical_signatures.get(memory_id)
+                    and lexical_signatures[memory_id]["value_key"] == chosen_update["previous_value_key"]
+                )
+                or (
+                    update_signatures.get(memory_id)
+                    and update_signatures[memory_id]["next_value_key"] == chosen_update["previous_value_key"]
+                )
+            ]
+            if matching_previous_ids:
+                stale_candidate_ids = matching_previous_ids + [
+                    memory_id for memory_id in stale_candidate_ids if memory_id not in matching_previous_ids
+                ]
+        for stale_memory_id in stale_candidate_ids:
+            current_id_set.discard(stale_memory_id)
+            if stale_memory_id not in stale_ids:
+                stale_ids.append(stale_memory_id)
+            temporal_state_by_id[stale_memory_id] = "superseded"
+            candidate = candidate_meta.get(stale_memory_id)
+            if candidate is not None:
+                features = candidate.setdefault("features", {})
+                candidate["temporal_state"] = "superseded"
+                candidate["superseded_by_candidate"] = chosen_current_id
+                features["temporal_state"] = "superseded"
+                features["superseded_by_candidate"] = chosen_current_id
+            _set_temporal_decision(
+                decisions,
+                stale_memory_id,
+                {
+                    "memory_id": stale_memory_id,
+                    "decision": "stale",
+                    "reason": "explicit-update-candidate",
+                    "superseded_by_candidate": chosen_current_id,
+                    "update_pattern": chosen_update["pattern"],
+                },
+            )
+        temporal_state_by_id[chosen_current_id] = "current"
+        conflict_sets.append(
+            {
+                "reason": "explicit-update-candidate",
+                "involved_candidate_ids": [chosen_current_id] + stale_candidate_ids,
+                "current_ids": [chosen_current_id],
+                "stale_ids": stale_candidate_ids,
+                "superseded_ids": stale_candidate_ids,
+                "chosen_current_id": chosen_current_id,
+                "subject_key": chosen_update["subject_key"],
+                "relation": chosen_update["relation"],
+                "update_pattern": chosen_update["pattern"],
+                "update_previous_value": chosen_update["previous_value_key"],
+                "update_current_value": chosen_update["next_value_key"],
+                "resolution_strategy": "explicit_update_supersedes_conflict_v1",
+                "observation_seq_by_id": {
+                    memory_id: _candidate_observation_seq(candidate_meta, memory_id)
+                    for memory_id in [chosen_current_id] + stale_candidate_ids
+                },
+            }
+        )
+    current_ids[:] = [memory_id for memory_id in current_ids if memory_id in current_id_set]
+    return conflict_sets
+
+
+def _apply_subject_lookup_restatements(
+    *,
+    query_lookup: dict[str, Any],
+    candidate_by_id: dict[str, MemoryRecord],
+    candidate_meta: dict[str, dict[str, Any]],
+    current_ids: list[str],
+    stale_ids: list[str],
+    temporal_state_by_id: dict[str, str],
+    decisions: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    lookup_query_key = str(query_lookup.get("lookup_key") or "")
+    lookup_query_basis = str(query_lookup.get("lookup_basis") or "direct-subject")
+    lookup_query_relation = query_lookup.get("lookup_relation")
+    if not lookup_query_key:
+        return []
+
+    lexical_signatures = {
+        memory_id: _lexical_conflict_signature(candidate_by_id[memory_id])
+        for memory_id in current_ids
+        if memory_id in candidate_by_id
+    }
+    groups: dict[str, list[str]] = {}
+    for memory_id, signature in lexical_signatures.items():
+        if signature is None or signature["subject_key"] != lookup_query_key:
+            continue
+        if lookup_query_relation and signature["relation"] != lookup_query_relation:
+            continue
+        groups.setdefault(signature["group_key"], []).append(memory_id)
+
+    current_id_set = set(current_ids)
+    conflict_sets: list[dict[str, Any]] = []
+    for group_key in sorted(groups):
+        group_ids = groups[group_key]
+        if len(group_ids) < 2:
+            continue
+        if len({_same_provenance_key(candidate_by_id[memory_id]) for memory_id in group_ids}) != 1:
+            continue
+        distinct_values = {
+            lexical_signatures[memory_id]["value_key"]
+            for memory_id in group_ids
+            if lexical_signatures.get(memory_id) is not None
+        }
+        if len(distinct_values) < 2:
+            continue
+        ordered = sorted(
+            group_ids,
+            key=lambda memory_id: _subject_lookup_restatement_sort_key(
+                memory_id,
+                candidate_by_id=candidate_by_id,
+                candidate_meta=candidate_meta,
+            ),
+            reverse=True,
+        )
+        chosen_current_id = ordered[0]
+        chosen_order_fields = _subject_lookup_restatement_order_fields(
+            chosen_current_id,
+            candidate_by_id=candidate_by_id,
+            candidate_meta=candidate_meta,
+        )
+        next_order_fields = _subject_lookup_restatement_order_fields(
+            ordered[1],
+            candidate_by_id=candidate_by_id,
+            candidate_meta=candidate_meta,
+        )
+        if chosen_order_fields == next_order_fields:
+            continue
+
+        stale_candidate_ids = [memory_id for memory_id in group_ids if memory_id != chosen_current_id]
+        for stale_memory_id in stale_candidate_ids:
+            current_id_set.discard(stale_memory_id)
+            if stale_memory_id not in stale_ids:
+                stale_ids.append(stale_memory_id)
+            temporal_state_by_id[stale_memory_id] = "superseded"
+            candidate = candidate_meta.get(stale_memory_id)
+            if candidate is not None:
+                features = candidate.setdefault("features", {})
+                candidate["temporal_state"] = "superseded"
+                candidate["superseded_by_candidate"] = chosen_current_id
+                features["temporal_state"] = "superseded"
+                features["superseded_by_candidate"] = chosen_current_id
+            _set_temporal_decision(
+                decisions,
+                stale_memory_id,
+                {
+                    "memory_id": stale_memory_id,
+                    "decision": "stale",
+                    "reason": "subject-lookup-restatement",
+                    "superseded_by_candidate": chosen_current_id,
+                    "query_lookup_key": lookup_query_key,
+                    "query_lookup_basis": lookup_query_basis,
+                    "query_lookup_relation": lookup_query_relation,
+                },
+            )
+        temporal_state_by_id[chosen_current_id] = "current"
+        provenance = candidate_by_id[chosen_current_id]
+        conflict_sets.append(
+            {
+                "reason": "subject-lookup-restatement",
+                "involved_candidate_ids": ordered,
+                "current_ids": [chosen_current_id],
+                "stale_ids": stale_candidate_ids,
+                "superseded_ids": stale_candidate_ids,
+                "chosen_current_id": chosen_current_id,
+                "subject_key": lexical_signatures[chosen_current_id]["subject_key"],
+                "relation": lexical_signatures[chosen_current_id]["relation"],
+                "value_by_id": {
+                    memory_id: lexical_signatures[memory_id]["value_key"]
+                    for memory_id in ordered
+                    if lexical_signatures.get(memory_id) is not None
+                },
+                "query_lookup_key": lookup_query_key,
+                "query_lookup_basis": lookup_query_basis,
+                "query_lookup_relation": lookup_query_relation,
+                "resolution_strategy": SUBJECT_LOOKUP_RESTATEMENT_STRATEGY,
+                "same_provenance": {
+                    "memory_type": provenance.type,
+                    "source_kind": provenance.source_kind,
+                    "scope": provenance.scope,
+                },
+                "resolution_fields": ["updated_at", "created_at", "observation_seq"],
+                "observation_seq_by_id": {
+                    memory_id: _candidate_observation_seq(candidate_meta, memory_id) for memory_id in ordered
+                },
+                "updated_at_by_id": {
+                    memory_id: candidate_by_id[memory_id].updated_at for memory_id in ordered
+                },
+                "created_at_by_id": {
+                    memory_id: candidate_by_id[memory_id].created_at for memory_id in ordered
+                },
+            }
+        )
+    current_ids[:] = [memory_id for memory_id in current_ids if memory_id in current_id_set]
+    return conflict_sets
+
+
+def _collect_subject_lookup_cross_provenance_conflicts(
+    *,
+    query_lookup: dict[str, Any],
+    candidate_by_id: dict[str, MemoryRecord],
+    candidate_meta: dict[str, dict[str, Any]],
+    current_ids: list[str],
+) -> list[dict[str, Any]]:
+    lookup_query_key = str(query_lookup.get("lookup_key") or "")
+    lookup_query_basis = str(query_lookup.get("lookup_basis") or "direct-subject")
+    lookup_query_relation = str(query_lookup.get("lookup_relation") or "")
+    if not lookup_query_key or lookup_query_relation not in SUBJECT_LOOKUP_HISTORY_RELATIONS:
+        return []
+
+    lexical_signatures = {
+        memory_id: _lexical_conflict_signature(candidate_by_id[memory_id])
+        for memory_id in current_ids
+        if memory_id in candidate_by_id
+    }
+    groups: dict[str, list[str]] = {}
+    for memory_id, signature in lexical_signatures.items():
+        if signature is None or signature["subject_key"] != lookup_query_key:
+            continue
+        if signature["relation"] != lookup_query_relation:
+            continue
+        groups.setdefault(signature["group_key"], []).append(memory_id)
+
+    conflict_sets: list[dict[str, Any]] = []
+    for group_key in sorted(groups):
+        group_ids = groups[group_key]
+        if len(group_ids) < 2:
+            continue
+        distinct_values = {
+            lexical_signatures[memory_id]["value_key"]
+            for memory_id in group_ids
+            if lexical_signatures.get(memory_id) is not None
+        }
+        if len(distinct_values) < 2:
+            continue
+        provenance_keys = {_same_provenance_key(candidate_by_id[memory_id]) for memory_id in group_ids}
+        if len(provenance_keys) < 2:
+            continue
+        ordered = sorted(
+            group_ids,
+            key=lambda memory_id: _subject_lookup_restatement_sort_key(
+                memory_id,
+                candidate_by_id=candidate_by_id,
+                candidate_meta=candidate_meta,
+            ),
+            reverse=True,
+        )
+        conflict_sets.append(
+            {
+                "reason": "subject-lookup-cross-provenance-conflict",
+                "involved_candidate_ids": ordered,
+                "current_ids": list(ordered),
+                "chosen_current_id": None,
+                "abstained_current_ids": list(ordered),
+                "subject_key": lexical_signatures[ordered[0]]["subject_key"],
+                "relation": lexical_signatures[ordered[0]]["relation"],
+                "value_by_id": {
+                    memory_id: lexical_signatures[memory_id]["value_key"]
+                    for memory_id in ordered
+                    if lexical_signatures.get(memory_id) is not None
+                },
+                "query_lookup_key": lookup_query_key,
+                "query_lookup_basis": lookup_query_basis,
+                "query_lookup_relation": lookup_query_relation,
+                "resolution_strategy": SUBJECT_LOOKUP_CROSS_PROVENANCE_HISTORY_STRATEGY,
+                "resolution_outcome": "abstained",
+                "provenance_by_id": {
+                    memory_id: {
+                        "memory_type": candidate_by_id[memory_id].type,
+                        "source_kind": candidate_by_id[memory_id].source_kind,
+                        "scope": candidate_by_id[memory_id].scope,
+                        "authority": candidate_by_id[memory_id].authority,
+                        "trust": candidate_by_id[memory_id].trust,
+                    }
+                    for memory_id in ordered
+                },
+                "resolution_fields": [
+                    "memory_type",
+                    "source_kind",
+                    "scope",
+                    "authority",
+                    "trust",
+                    "updated_at",
+                    "created_at",
+                    "observation_seq",
+                ],
+                "observation_seq_by_id": {
+                    memory_id: _candidate_observation_seq(candidate_meta, memory_id) for memory_id in ordered
+                },
+                "updated_at_by_id": {
+                    memory_id: candidate_by_id[memory_id].updated_at for memory_id in ordered
+                },
+                "created_at_by_id": {
+                    memory_id: candidate_by_id[memory_id].created_at for memory_id in ordered
+                },
+            }
+        )
+    return conflict_sets
+
+
+def _resolve_current_conflicts(
+    *,
+    candidate_by_id: dict[str, MemoryRecord],
+    current_ids: list[str],
+    candidate_ids_in_rank_order: list[str],
+) -> list[dict[str, Any]]:
+    rank_by_id = {
+        memory_id: rank
+        for rank, memory_id in enumerate(candidate_ids_in_rank_order, start=1)
+    }
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for memory_id in current_ids:
+        memory = candidate_by_id.get(memory_id)
+        if memory is None:
+            continue
+        signature = _lexical_conflict_signature(memory)
+        if signature is None:
+            continue
+        item = {
+            "memory": memory,
+            "rank": rank_by_id.get(memory_id, len(rank_by_id) + 1),
+            **signature,
+        }
+        groups.setdefault(signature["group_key"], []).append(item)
+
+    conflict_sets: list[dict[str, Any]] = []
+    for group_key in sorted(groups):
+        items = groups[group_key]
+        if len(items) < 2:
+            continue
+        distinct_values = {item["value_key"] for item in items}
+        if len(distinct_values) < 2:
+            continue
+        ordered = sorted(
+            items,
+            key=lambda item: _current_conflict_sort_key(item["memory"], rank=item["rank"]),
+            reverse=True,
+        )
+        winning_key = _current_conflict_resolution_key(ordered[0]["memory"])
+        tied_current_ids = [
+            item["memory"].id
+            for item in ordered
+            if _current_conflict_resolution_key(item["memory"]) == winning_key
+        ]
+        if len(tied_current_ids) > 1:
+            conflict_sets.append(
+                {
+                    "reason": "lexical-current-conflict",
+                    "involved_candidate_ids": [item["memory"].id for item in ordered],
+                    "current_ids": [item["memory"].id for item in ordered],
+                    "chosen_current_id": None,
+                    "dropped_current_ids": [],
+                    "abstained_current_ids": [item["memory"].id for item in ordered],
+                    "tied_current_ids": tied_current_ids,
+                    "subject_key": ordered[0]["subject_key"],
+                    "relation": ordered[0]["relation"],
+                    "value_by_id": {item["memory"].id: item["value_key"] for item in ordered},
+                    "resolution_strategy": LEXICAL_CONFLICT_SELECTION_STRATEGY,
+                    "resolution_outcome": "abstained",
+                    "tie_fields": LEXICAL_CONFLICT_ABSTENTION_TIE_FIELDS,
+                    "ignored_tie_breakers": ["retrieval_rank", "memory_id"],
+                }
+            )
+            continue
+        chosen_current_id = ordered[0]["memory"].id
+        conflict_sets.append(
+            {
+                "reason": "lexical-current-conflict",
+                "involved_candidate_ids": [item["memory"].id for item in ordered],
+                "current_ids": [item["memory"].id for item in ordered],
+                "chosen_current_id": chosen_current_id,
+                "dropped_current_ids": [item["memory"].id for item in ordered[1:]],
+                "abstained_current_ids": [],
+                "tied_current_ids": [chosen_current_id],
+                "subject_key": ordered[0]["subject_key"],
+                "relation": ordered[0]["relation"],
+                "value_by_id": {item["memory"].id: item["value_key"] for item in ordered},
+                "resolution_strategy": LEXICAL_CONFLICT_SELECTION_STRATEGY,
+                "resolution_outcome": "resolved",
+            }
+        )
+    return conflict_sets
+
+
+def _temporal_selection_metadata(
+    *,
+    query_terms: list[str],
+    query_lookup: dict[str, Any] | None,
+    candidate_by_id: dict[str, MemoryRecord],
+    candidate_ids_in_rank_order: list[str],
+    temporal_state_by_id: dict[str, str],
+    current_conflict_sets: list[dict[str, Any]],
+) -> dict[str, Any]:
+    matched_history_terms = sorted({term for term in query_terms if term in TEMPORAL_HISTORY_TERMS})
+    matched_earliest_history_terms = [term for term in matched_history_terms if term in EARLIEST_HISTORY_TERMS]
+    matched_recent_history_terms = [term for term in matched_history_terms if term not in EARLIEST_HISTORY_TERMS]
+    matched_current_terms = sorted({term for term in query_terms if term in TEMPORAL_CURRENT_TERMS})
+    matched_chronology_terms = sorted({term for term in query_terms if term in TEMPORAL_CHRONOLOGY_TERMS})
+    update_lookup = dict((query_lookup or {}).get("update", {}))
+    matched_update_history_terms = []
+    if update_lookup.get("direction") == "history":
+        matched_update_history_terms = [
+            str(term) for term in update_lookup.get("direction_terms", []) if str(term)
+        ]
+    superseded_ids = [
+        memory_id for memory_id in candidate_ids_in_rank_order if temporal_state_by_id.get(memory_id) == "superseded"
+    ]
+    current_ids = [memory_id for memory_id in candidate_ids_in_rank_order if temporal_state_by_id.get(memory_id) == "current"]
+    eligible_ids = [
+        memory_id
+        for memory_id in candidate_ids_in_rank_order
+        if temporal_state_by_id.get(memory_id) in {"current", "superseded"}
+    ]
+    rank_by_id = {
+        memory_id: rank
+        for rank, memory_id in enumerate(candidate_ids_in_rank_order, start=1)
+    }
+    default_abstention = {
+        "applied": False,
+        "reason": None,
+        "abstained_ids": [],
+        "conflict_reasons": [],
+    }
+    relation = str((query_lookup or {}).get("lookup_relation") or "")
+    history_conflict_sets = [
+        conflict_set
+        for conflict_set in current_conflict_sets
+        if conflict_set.get("reason") == "subject-lookup-cross-provenance-conflict"
+        and str(conflict_set.get("query_lookup_relation") or "") == relation
+    ]
+    if history_conflict_sets and relation in SUBJECT_LOOKUP_HISTORY_RELATIONS:
+        abstained_ids = [
+            memory_id
+            for memory_id in candidate_ids_in_rank_order
+            if any(memory_id in conflict_set.get("abstained_current_ids", []) for conflict_set in history_conflict_sets)
+        ]
+        history_abstention = {
+            "applied": True,
+            "reason": "unresolved-cross-provenance-history",
+            "abstained_ids": abstained_ids,
+            "conflict_reasons": ["subject-lookup-cross-provenance-conflict"],
+        }
+        if matched_chronology_terms:
+            return {
+                "selection_strategy": "history_conflict_abstained_v1",
+                "selection_reason": "chronology-cross-provenance-conflict-abstained",
+                "selected_ids": [],
+                "matched_terms": matched_chronology_terms,
+                "selection_order": "chronological_asc_abstained",
+                "abstention": history_abstention,
+            }
+        if matched_earliest_history_terms:
+            return {
+                "selection_strategy": "history_conflict_abstained_v1",
+                "selection_reason": "earliest-history-cross-provenance-conflict-abstained",
+                "selected_ids": [],
+                "matched_terms": matched_earliest_history_terms,
+                "selection_order": "chronological_asc_prefer_earliest_abstained",
+                "abstention": history_abstention,
+            }
+        history_terms = matched_recent_history_terms or matched_update_history_terms
+        if history_terms:
+            return {
+                "selection_strategy": "history_conflict_abstained_v1",
+                "selection_reason": (
+                    "history-cross-provenance-conflict-abstained"
+                    if matched_recent_history_terms
+                    else "update-history-cross-provenance-conflict-abstained"
+                ),
+                "selected_ids": [],
+                "matched_terms": history_terms,
+                "selection_order": "ranked_history_conflict_abstained",
+                "abstention": history_abstention,
+            }
+
+    if matched_chronology_terms and eligible_ids:
+        selected_ids = _chronology_ordered_ids(
+            eligible_ids,
+            candidate_by_id=candidate_by_id,
+            rank_by_id=rank_by_id,
+        )
+        return {
+            "selection_strategy": "chronological_timeline_v1",
+            "selection_reason": "chronology-query-terms",
+            "selected_ids": selected_ids,
+            "matched_terms": matched_chronology_terms,
+            "selection_order": "chronological_asc",
+            "abstention": default_abstention,
+        }
+    if matched_chronology_terms:
+        return {
+            "selection_strategy": "current_only_v1",
+            "selection_reason": "chronology-query-without-eligible-candidates",
+            "selected_ids": [],
+            "matched_terms": matched_chronology_terms,
+            "selection_order": "chronological_asc",
+            "abstention": default_abstention,
+        }
+
+    if matched_earliest_history_terms and superseded_ids:
+        selected_ids = _chronology_ordered_ids(
+            eligible_ids,
+            candidate_by_id=candidate_by_id,
+            rank_by_id=rank_by_id,
+        )
+        return {
+            "selection_strategy": "earliest_history_preferred_v1",
+            "selection_reason": "earliest-history-query-terms",
+            "selected_ids": selected_ids,
+            "matched_terms": matched_earliest_history_terms,
+            "selection_order": "chronological_asc_prefer_earliest",
+            "abstention": default_abstention,
+        }
+    if matched_earliest_history_terms:
+        return {
+            "selection_strategy": "current_only_v1",
+            "selection_reason": "earliest-history-query-without-superseded-candidates",
+            "selected_ids": current_ids,
+            "matched_terms": matched_earliest_history_terms,
+            "selection_order": "ranked",
+            "abstention": default_abstention,
+        }
+
+    history_terms = matched_recent_history_terms or matched_update_history_terms
+    history_reason = "history-query-terms" if matched_recent_history_terms else "update-history-query-terms"
+    history_no_superseded_reason = (
+        "history-query-without-superseded-candidates"
+        if matched_recent_history_terms
+        else "update-history-query-without-superseded-candidates"
+    )
+    history_lookup = dict((query_lookup or {}).get("history", {}))
+    observation_support = dict(history_lookup.get("observation_support", {}))
+
+    if history_terms and not superseded_ids:
+        target_history_selected_ids = _target_history_support_ordered_ids(
+            query_lookup=query_lookup,
+            current_ids=current_ids,
+            candidate_by_id=candidate_by_id,
+            rank_by_id=rank_by_id,
+        )
+        if target_history_selected_ids:
+            return {
+                "selection_strategy": "target_history_support_preferred_v1",
+                "selection_reason": "history-target-query-terms",
+                "selected_ids": target_history_selected_ids,
+                "matched_terms": history_terms,
+                "selection_order": "chronological_support_then_current_target",
+                "abstention": default_abstention,
+            }
+        observation_support_ids = [
+            str(memory_id)
+            for memory_id in observation_support.get("selected_support_candidate_ids", [])
+            if str(memory_id) in current_ids
+        ]
+        observation_anchor_ids = [
+            str(memory_id)
+            for memory_id in observation_support.get("anchor_candidate_ids", [])
+            if str(memory_id) in current_ids
+        ]
+        if observation_support.get("applied") and observation_support_ids and observation_anchor_ids:
+            selected_ids = observation_support_ids + [
+                memory_id
+                for memory_id in observation_anchor_ids
+                if memory_id not in observation_support_ids
+            ]
+            return {
+                "selection_strategy": "history_observation_support_v1",
+                "selection_reason": "history-observation-support-query-terms",
+                "selected_ids": selected_ids,
+                "matched_terms": history_terms,
+                "selection_order": "observation_support_then_anchor",
+                "abstention": default_abstention,
+            }
+
+    if history_terms and superseded_ids:
+        selected_superseded_ids = _chronology_ordered_ids(
+            superseded_ids,
+            candidate_by_id=candidate_by_id,
+            rank_by_id=rank_by_id,
+            reverse=True,
+        )
+        selection_order = "chronological_desc_prefer_latest_superseded"
+        if matched_update_history_terms:
+            superseded_id_set = set(selected_superseded_ids)
+            preferred_superseded_ids: list[str] = []
+            explicit_update_conflict_sets = sorted(
+                (
+                    conflict_set
+                    for conflict_set in current_conflict_sets
+                    if conflict_set.get("reason") == "explicit-update-candidate"
+                    and conflict_set.get("update_previous_value")
+                    and conflict_set.get("chosen_current_id") in candidate_by_id
+                ),
+                key=lambda conflict_set: _chronology_sort_key(
+                    candidate_by_id[str(conflict_set["chosen_current_id"])],
+                    temporal_rank=rank_by_id.get(str(conflict_set["chosen_current_id"]), len(rank_by_id) + 1),
+                ),
+                reverse=True,
+            )
+            for conflict_set in explicit_update_conflict_sets:
+                for memory_id in conflict_set.get("stale_ids", []):
+                    stale_memory_id = str(memory_id)
+                    if stale_memory_id in superseded_id_set and stale_memory_id not in preferred_superseded_ids:
+                        preferred_superseded_ids.append(stale_memory_id)
+            if preferred_superseded_ids:
+                selected_superseded_ids = preferred_superseded_ids + [
+                    memory_id
+                    for memory_id in selected_superseded_ids
+                    if memory_id not in preferred_superseded_ids
+                ]
+                selection_order = "explicit_previous_then_chronological_desc"
+        selected_ids = selected_superseded_ids + [
+            memory_id for memory_id in current_ids if memory_id not in selected_superseded_ids
+        ]
+        return {
+            "selection_strategy": "historical_preferred_v1",
+            "selection_reason": history_reason,
+            "selected_ids": selected_ids,
+            "matched_terms": history_terms,
+            "selection_order": selection_order,
+            "abstention": default_abstention,
+        }
+    if history_terms:
+        return {
+            "selection_strategy": "current_only_v1",
+            "selection_reason": history_no_superseded_reason,
+            "selected_ids": current_ids,
+            "matched_terms": history_terms,
+            "selection_order": "ranked",
+            "abstention": default_abstention,
+        }
+    current_update_selected_ids = _current_update_preferred_ids(
+        query_lookup=query_lookup or {},
+        current_ids=current_ids,
+        candidate_by_id=candidate_by_id,
+    )
+    if current_update_selected_ids:
+        return {
+            "selection_strategy": "current_update_preferred_v1",
+            "selection_reason": "current-update-query-terms",
+            "selected_ids": current_update_selected_ids,
+            "matched_terms": matched_current_terms,
+            "selection_order": "explicit_update_current_only",
+            "abstention": default_abstention,
+        }
+    conflict_dropped_ids = {
+        memory_id
+        for conflict_set in current_conflict_sets
+        if conflict_set.get("reason") == "lexical-current-conflict"
+        and conflict_set.get("resolution_outcome") != "abstained"
+        for memory_id in conflict_set.get("dropped_current_ids", [])
+    }
+    conflict_abstained_ids = {
+        memory_id
+        for conflict_set in current_conflict_sets
+        if conflict_set.get("reason") == "lexical-current-conflict"
+        and conflict_set.get("resolution_outcome") == "abstained"
+        for memory_id in conflict_set.get("abstained_current_ids", [])
+    }
+    if conflict_abstained_ids:
+        abstained_ids = [memory_id for memory_id in current_ids if memory_id in conflict_abstained_ids]
+        return {
+            "selection_strategy": "current_conflict_abstained_v1",
+            "selection_reason": "lexical-current-conflict-abstained",
+            "selected_ids": [
+                memory_id
+                for memory_id in current_ids
+                if memory_id not in conflict_dropped_ids and memory_id not in conflict_abstained_ids
+            ],
+            "matched_terms": matched_current_terms,
+            "selection_order": "ranked_conflict_abstained",
+            "abstention": {
+                "applied": True,
+                "reason": "unresolved-current-conflict",
+                "abstained_ids": abstained_ids,
+                "conflict_reasons": ["lexical-current-conflict"],
+            },
+        }
+    if conflict_dropped_ids:
+        return {
+            "selection_strategy": "current_conflict_resolved_v1",
+            "selection_reason": "lexical-current-conflict",
+            "selected_ids": [memory_id for memory_id in current_ids if memory_id not in conflict_dropped_ids],
+            "matched_terms": matched_current_terms,
+            "selection_order": "ranked_conflict_resolved",
+            "abstention": default_abstention,
+        }
+    if matched_current_terms:
+        return {
+            "selection_strategy": "current_only_v1",
+            "selection_reason": "current-query-terms",
+            "selected_ids": current_ids,
+            "matched_terms": matched_current_terms,
+            "selection_order": "ranked",
+            "abstention": default_abstention,
+        }
+    return {
+        "selection_strategy": "current_only_v1",
+        "selection_reason": "default-current-only",
+        "selected_ids": current_ids,
+        "matched_terms": [],
+        "selection_order": "ranked",
+        "abstention": default_abstention,
+    }
+
+
+def resolve_temporal_lifecycle(
+    candidates: list[MemoryRecord],
+    retrieval: dict[str, Any],
+) -> dict[str, Any]:
+    candidate_by_id = {memory.id: memory for memory in candidates}
+    candidate_ids = set(candidate_by_id)
+    candidate_meta = {
+        str(candidate.get("memory_id")): candidate
+        for candidate in retrieval.get("candidates", [])
+        if candidate.get("memory_id")
+    }
+    current_ids: list[str] = []
+    stale_ids: list[str] = []
+    decisions: list[dict[str, Any]] = []
+    superseded_by: dict[str, str] = {}
+    child_ids_by_parent: dict[str, list[str]] = {}
+    expired_ids: list[str] = []
+    revoked_ids: list[str] = []
+    temporal_state_by_id: dict[str, str] = {}
+    clock = now_iso()
+
+    for memory in candidates:
+        for parent_id in memory.parents:
+            if parent_id in candidate_ids and memory.status == "active":
+                child_ids_by_parent.setdefault(parent_id, []).append(memory.id)
+
+    for parent_id, child_ids in child_ids_by_parent.items():
+        chosen_child_id = sorted(
+            child_ids,
+            key=lambda child_id: (
+                candidate_by_id[child_id].updated_at,
+                candidate_by_id[child_id].created_at,
+                child_id,
+            ),
+            reverse=True,
+        )[0]
+        superseded_by[parent_id] = chosen_child_id
+
+    for memory in candidates:
+        is_expired = bool(memory.expires_at and memory.expires_at <= clock)
+        child_candidate_ids = sorted(child_ids_by_parent.get(memory.id, []))
+        superseding_child_id = superseded_by.get(memory.id)
+        if memory.status == "revoked":
+            temporal_state = "revoked"
+            stale_ids.append(memory.id)
+            revoked_ids.append(memory.id)
+            decisions.append({"memory_id": memory.id, "decision": "stale", "reason": "revoked"})
+        elif is_expired:
+            temporal_state = "expired"
+            stale_ids.append(memory.id)
+            expired_ids.append(memory.id)
+            decisions.append(
+                {
+                    "memory_id": memory.id,
+                    "decision": "stale",
+                    "reason": "expired",
+                    "expires_at": memory.expires_at,
+                }
+            )
+        elif superseding_child_id:
+            temporal_state = "superseded"
+            stale_ids.append(memory.id)
+            decisions.append(
+                {
+                    "memory_id": memory.id,
+                    "decision": "stale",
+                    "reason": "active-child-candidate",
+                    "superseded_by_candidate": superseding_child_id,
+                }
+            )
+        else:
+            temporal_state = "current"
+            current_ids.append(memory.id)
+            decisions.append({"memory_id": memory.id, "decision": "current", "reason": "lifecycle-current"})
+
+        temporal_state_by_id[memory.id] = temporal_state
+        candidate = candidate_meta.get(memory.id)
+        if candidate is None:
+            continue
+        features = candidate.setdefault("features", {})
+        features["temporal_state"] = temporal_state
+        features["superseded_by_candidate"] = superseding_child_id
+        features["child_candidate_ids"] = child_candidate_ids
+        features["is_expired"] = is_expired
+        features["updated_at"] = memory.updated_at
+        features["expires_at"] = memory.expires_at
+        candidate["temporal_state"] = temporal_state
+        candidate["superseded_by_candidate"] = superseding_child_id
+        candidate["child_candidate_ids"] = child_candidate_ids
+        candidate["is_expired"] = is_expired
+        candidate["updated_at"] = memory.updated_at
+        candidate["expires_at"] = memory.expires_at
+
+    current_id_set = set(current_ids)
+    stale_id_set = set(stale_ids)
+    conflict_sets: list[dict[str, Any]] = []
+    for parent_id in sorted(child_ids_by_parent):
+        child_ids = sorted(child_ids_by_parent[parent_id])
+        involved_ids = [parent_id] + child_ids
+        current_child_ids = [child_id for child_id in child_ids if child_id in current_id_set]
+        chosen_child_id = superseded_by[parent_id]
+        conflict_sets.append(
+            {
+                "reason": "active-child-candidate",
+                "involved_candidate_ids": involved_ids,
+                "parent_id": parent_id,
+                "superseding_candidate_ids": child_ids,
+                "chosen_current_id": chosen_child_id if chosen_child_id in current_id_set else None,
+                "current_ids": current_child_ids,
+                "stale_ids": [parent_id] if parent_id in stale_id_set else [],
+                "superseded_ids": [parent_id] if temporal_state_by_id.get(parent_id) == "superseded" else [],
+            }
+        )
+
+    conflict_sets.extend(
+        _apply_explicit_updates(
+            candidate_by_id=candidate_by_id,
+            candidate_meta=candidate_meta,
+            current_ids=current_ids,
+            stale_ids=stale_ids,
+            temporal_state_by_id=temporal_state_by_id,
+            decisions=decisions,
+        )
+    )
+    conflict_sets.extend(
+        _apply_subject_lookup_restatements(
+            query_lookup=dict(retrieval.get("query_lookup", {})),
+            candidate_by_id=candidate_by_id,
+            candidate_meta=candidate_meta,
+            current_ids=current_ids,
+            stale_ids=stale_ids,
+            temporal_state_by_id=temporal_state_by_id,
+            decisions=decisions,
+        )
+    )
+    conflict_sets.extend(
+        _collect_subject_lookup_cross_provenance_conflicts(
+            query_lookup=dict(retrieval.get("query_lookup", {})),
+            candidate_by_id=candidate_by_id,
+            candidate_meta=candidate_meta,
+            current_ids=current_ids,
+        )
+    )
+
+    for memory_id in expired_ids:
+        memory = candidate_by_id[memory_id]
+        related_ids = [memory_id]
+        related_ids.extend(parent_id for parent_id in memory.parents if parent_id in candidate_ids)
+        related_ids.extend(child_ids_by_parent.get(memory_id, []))
+        involved_ids = sorted(set(related_ids))
+        current_related_ids = [candidate_id for candidate_id in involved_ids if candidate_id in current_id_set]
+        conflict_sets.append(
+            {
+                "reason": "expired",
+                "involved_candidate_ids": involved_ids,
+                "chosen_current_id": current_related_ids[0] if len(current_related_ids) == 1 else None,
+                "current_ids": current_related_ids,
+                "stale_ids": [memory_id],
+                "expired_ids": [memory_id],
+                "expires_at_by_id": {memory_id: memory.expires_at},
+            }
+        )
+
+    for memory_id in revoked_ids:
+        memory = candidate_by_id[memory_id]
+        related_ids = [memory_id]
+        related_ids.extend(parent_id for parent_id in memory.parents if parent_id in candidate_ids)
+        related_ids.extend(child_ids_by_parent.get(memory_id, []))
+        involved_ids = sorted(set(related_ids))
+        current_related_ids = [candidate_id for candidate_id in involved_ids if candidate_id in current_id_set]
+        conflict_sets.append(
+            {
+                "reason": "revoked",
+                "involved_candidate_ids": involved_ids,
+                "chosen_current_id": current_related_ids[0] if len(current_related_ids) == 1 else None,
+                "current_ids": current_related_ids,
+                "stale_ids": [memory_id],
+                "revoked_ids": [memory_id],
+            }
+        )
+
+    candidate_ids_in_rank_order = [
+        str(candidate["memory_id"])
+        for candidate in retrieval.get("candidates", [])
+        if candidate.get("memory_id")
+    ]
+    conflict_sets.extend(
+        _resolve_current_conflicts(
+            candidate_by_id=candidate_by_id,
+            current_ids=current_ids,
+            candidate_ids_in_rank_order=candidate_ids_in_rank_order,
+        )
+    )
+    selection = _temporal_selection_metadata(
+        query_terms=[str(term) for term in retrieval.get("query_terms", [])],
+        query_lookup=dict(retrieval.get("query_lookup", {})),
+        candidate_by_id=candidate_by_id,
+        candidate_ids_in_rank_order=candidate_ids_in_rank_order,
+        temporal_state_by_id=temporal_state_by_id,
+        current_conflict_sets=conflict_sets,
+    )
+    selection["selected_superseded_ids"] = [
+        memory_id for memory_id in selection["selected_ids"] if temporal_state_by_id.get(memory_id) == "superseded"
+    ]
+    selection["selected_current_ids"] = [
+        memory_id for memory_id in selection["selected_ids"] if temporal_state_by_id.get(memory_id) == "current"
+    ]
+    selection["selected_stale_anchor_id"] = (
+        selection["selected_superseded_ids"][0] if selection["selected_superseded_ids"] else None
+    )
+    selection["selected_current_anchor_id"] = (
+        selection["selected_current_ids"][-1] if selection["selected_current_ids"] else None
+    )
+    injection_preference = _chronology_mutation_injection_preference(
+        selection=selection,
+        candidate_by_id=candidate_by_id,
+        temporal_state_by_id=temporal_state_by_id,
+    )
+    if not injection_preference["applied"]:
+        injection_preference = _chronology_relation_current_anchor_injection_preference(
+            selection=selection,
+            query_lookup=dict(retrieval.get("query_lookup", {})),
+            candidate_by_id=candidate_by_id,
+            temporal_state_by_id=temporal_state_by_id,
+        )
+    if not injection_preference["applied"]:
+        injection_preference = _history_target_current_anchor_injection_preference(
+            selection=selection,
+            query_lookup=dict(retrieval.get("query_lookup", {})),
+            candidate_by_id=candidate_by_id,
+            temporal_state_by_id=temporal_state_by_id,
+        )
+    if not injection_preference["applied"]:
+        injection_preference = _history_current_anchor_injection_preference(
+            selection=selection,
+            candidate_by_id=candidate_by_id,
+            temporal_state_by_id=temporal_state_by_id,
+        )
+    if not injection_preference["applied"]:
+        injection_preference = _history_relation_current_anchor_injection_preference(
+            selection=selection,
+            query_lookup=dict(retrieval.get("query_lookup", {})),
+            candidate_by_id=candidate_by_id,
+            temporal_state_by_id=temporal_state_by_id,
+        )
+    selection["injection_strategy"] = injection_preference["strategy"]
+    selection["injection_reason"] = injection_preference["reason"]
+    selection["injection_order"] = injection_preference["order"]
+    selection["injection_preferred_ids"] = injection_preference["preferred_ids"]
+    selection["selected_mutation_anchor_id"] = injection_preference["selected_mutation_anchor_id"]
+    selection["selected_mutation_anchor_ids"] = injection_preference["selected_mutation_anchor_ids"]
+    selection["selected_target_current_id"] = injection_preference.get("selected_target_current_id")
+    selection["selected_target_support_ids"] = injection_preference.get("selected_target_support_ids", [])
+    selection["selected_relation_current_id"] = injection_preference.get("selected_relation_current_id")
+    selection["selected_relation_support_ids"] = injection_preference.get("selected_relation_support_ids", [])
+    selection["selected_update_current_id"] = injection_preference.get("selected_update_current_id")
+    selection["selected_current_support_ids"] = injection_preference.get("selected_current_support_ids", [])
+    if injection_preference.get("current_anchor_id"):
+        selection["selected_current_anchor_id"] = injection_preference["current_anchor_id"]
+    selected_id_set = set(selection["selected_ids"])
+    selection_rank_by_id = {
+        memory_id: index
+        for index, memory_id in enumerate(selection["selected_ids"], start=1)
+    }
+    injection_rank_by_id = {
+        memory_id: index
+        for index, memory_id in enumerate(selection["injection_preferred_ids"], start=1)
+    } if injection_preference["applied"] else {}
+    for memory_id, candidate in candidate_meta.items():
+        selected = memory_id in selected_id_set
+        candidate["selected_by_temporal_strategy"] = selected
+        candidate["temporal_selection_rank"] = selection_rank_by_id.get(memory_id)
+        candidate["temporal_injection_rank"] = injection_rank_by_id.get(memory_id)
+        features = candidate.setdefault("features", {})
+        features["selected_by_temporal_strategy"] = selected
+        features["temporal_selection_rank"] = selection_rank_by_id.get(memory_id)
+        features["temporal_injection_rank"] = injection_rank_by_id.get(memory_id)
+
+    retrieval["temporal"] = {
+        "schema": TEMPORAL_RESOLUTION_SCHEMA,
+        "strategy": "lifecycle_fields_v1",
+        "decisions": decisions,
+        "current_ids": current_ids,
+        "stale_ids": stale_ids,
+        "conflict_sets": conflict_sets,
+        "selection_strategy": selection["selection_strategy"],
+        "selection_reason": selection["selection_reason"],
+        "selection_matched_terms": selection["matched_terms"],
+        "selection_order": selection["selection_order"],
+        "selected_ids": selection["selected_ids"],
+        "selected_superseded_ids": selection["selected_superseded_ids"],
+        "selected_current_ids": selection["selected_current_ids"],
+        "selected_stale_anchor_id": selection["selected_stale_anchor_id"],
+        "selected_current_anchor_id": selection["selected_current_anchor_id"],
+        "selected_target_current_id": selection["selected_target_current_id"],
+        "selected_target_support_ids": selection["selected_target_support_ids"],
+        "selected_relation_current_id": selection["selected_relation_current_id"],
+        "selected_relation_support_ids": selection["selected_relation_support_ids"],
+        "selected_update_current_id": selection["selected_update_current_id"],
+        "selected_current_support_ids": selection["selected_current_support_ids"],
+        "injection_strategy": selection["injection_strategy"],
+        "injection_reason": selection["injection_reason"],
+        "injection_order": selection["injection_order"],
+        "injection_preferred_ids": selection["injection_preferred_ids"],
+        "selected_mutation_anchor_id": selection["selected_mutation_anchor_id"],
+        "selected_mutation_anchor_ids": selection["selected_mutation_anchor_ids"],
+        "abstention": selection["abstention"],
+    }
+    return {
+        "memories": [memory for memory in candidates if memory.id in set(current_ids)],
+        "selected_memories": [candidate_by_id[memory_id] for memory_id in selection["selected_ids"] if memory_id in candidate_by_id],
+        "metadata": retrieval["temporal"],
+    }
+
+
+def pack_memory_context(
+    authorized: list[MemoryRecord],
+    *,
+    retrieval: dict[str, Any],
+    max_tokens: int | None = None,
+) -> dict[str, Any]:
+    ranks = _rank_lookup(retrieval)
+    candidate_by_id = _candidate_by_id(retrieval)
+    if max_tokens is not None and max_tokens < 0:
+        raise ValueError("context budget cannot be negative")
+
+    authorized_entries = []
+    candidate_count = len(retrieval.get("candidates", []))
+    for memory in authorized:
+        candidate = candidate_by_id.get(memory.id)
+        temporal_injection_rank = candidate.get("temporal_injection_rank") if candidate else None
+        temporal_selection_rank = candidate.get("temporal_selection_rank") if candidate else None
+        selected_by_temporal_strategy = bool(candidate.get("selected_by_temporal_strategy")) if candidate else False
+        if selected_by_temporal_strategy and isinstance(temporal_injection_rank, int) and temporal_injection_rank > 0:
+            packing_rank = temporal_injection_rank
+            packing_rank_basis = "temporal_injection_rank"
+        elif selected_by_temporal_strategy and isinstance(temporal_selection_rank, int) and temporal_selection_rank > 0:
+            packing_rank = temporal_selection_rank
+            packing_rank_basis = "temporal_selection_rank"
+        else:
+            packing_rank = ranks.get(memory.id, len(ranks) + 1)
+            packing_rank_basis = "retrieval_rank"
+        authorized_entries.append(
+            {
+                "memory": memory,
+                "rank": ranks.get(memory.id, len(ranks) + 1),
+                "packing_rank": packing_rank,
+                "packing_rank_basis": packing_rank_basis,
+                "approx_tokens": approx_memory_tokens(memory),
+                "selected_by_temporal_strategy": selected_by_temporal_strategy,
+                "temporal_selection_rank": temporal_selection_rank if isinstance(temporal_selection_rank, int) else None,
+                "temporal_injection_rank": temporal_injection_rank if isinstance(temporal_injection_rank, int) else None,
+                "temporal_state": candidate.get("temporal_state") if candidate else None,
+                "priority": _packing_priority(memory, candidate=candidate, candidate_count=candidate_count),
+            }
+        )
+
+    total_authorized_tokens = sum(int(entry["approx_tokens"]) for entry in authorized_entries)
+    reservation = _packing_reservation(authorized_entries, retrieval)
+    reserved_id_set = set(reservation["requested_ids"])
+    for entry in authorized_entries:
+        entry["reserved_by_strategy"] = entry["memory"].id in reserved_id_set
+    injected: list[MemoryRecord] = []
+    budget_dropped: list[dict[str, Any]] = []
+    used_tokens = 0
+
+    def ordered_entries(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return sorted(
+            entries,
+            key=lambda entry: (
+                int(entry["packing_rank"]),
+                int(entry["rank"]),
+                str(entry["memory"].id),
+            ),
+        )
+
+    if max_tokens is None or total_authorized_tokens <= max_tokens:
+        injected = [entry["memory"] for entry in ordered_entries(authorized_entries)]
+        used_tokens = total_authorized_tokens
+        reservation["applied"] = bool(reservation["requested_ids"])
+        reservation["applied_ids"] = list(reservation["requested_ids"])
+    else:
+        def choose_entry_ids(entries: list[dict[str, Any]], *, budget_tokens: int) -> tuple[set[str], int]:
+            states: dict[int, tuple[int, int, int, tuple[int, ...]]] = {
+                0: (0, 0, 0, ())
+            }
+            state_history = [states]
+            for entry in entries:
+                next_states = dict(states)
+                tokens = int(entry["approx_tokens"])
+                rank = int(entry["packing_rank"])
+                priority = int(entry["priority"])
+                for used, state in states.items():
+                    next_used = used + tokens
+                    if next_used > budget_tokens:
+                        continue
+                    candidate_state = (
+                        state[0] + priority,
+                        state[1] + 1,
+                        state[2] + rank,
+                        state[3] + (rank,),
+                    )
+                    if _packing_state_is_better(candidate_state, next_states.get(next_used)):
+                        next_states[next_used] = candidate_state
+                states = next_states
+                state_history.append(states)
+
+            best_used_tokens, _ = max(
+                states.items(),
+                key=lambda item: (
+                    item[1][0],
+                    item[1][1],
+                    -item[1][2],
+                    tuple(-rank for rank in item[1][3]),
+                    -item[0],
+                ),
+            )
+            remaining_tokens = best_used_tokens
+            selected_ids: set[str] = set()
+            for index in range(len(entries) - 1, -1, -1):
+                entry = entries[index]
+                tokens = int(entry["approx_tokens"])
+                rank = int(entry["packing_rank"])
+                priority = int(entry["priority"])
+                previous_used = remaining_tokens - tokens
+                current_states = state_history[index + 1]
+                previous_states = state_history[index]
+                if previous_used < 0 or previous_used not in previous_states:
+                    continue
+                previous_state = previous_states[previous_used]
+                expected_state = (
+                    previous_state[0] + priority,
+                    previous_state[1] + 1,
+                    previous_state[2] + rank,
+                    previous_state[3] + (rank,),
+                )
+                if current_states.get(remaining_tokens) == expected_state:
+                    selected_ids.add(entry["memory"].id)
+                    remaining_tokens = previous_used
+            return selected_ids, best_used_tokens
+
+        selected_ids: set[str]
+        if reservation["requested_ids"]:
+            reserved_entries = [entry for entry in authorized_entries if entry["memory"].id in reserved_id_set]
+            reserved_tokens = sum(int(entry["approx_tokens"]) for entry in reserved_entries)
+            if reserved_tokens <= max_tokens:
+                remaining_entries = [entry for entry in authorized_entries if entry["memory"].id not in reserved_id_set]
+                selected_ids, additional_used_tokens = choose_entry_ids(
+                    remaining_entries,
+                    budget_tokens=max_tokens - reserved_tokens,
+                )
+                selected_ids.update(reserved_id_set)
+                used_tokens = reserved_tokens + additional_used_tokens
+                reservation["applied"] = True
+                reservation["applied_ids"] = list(reservation["requested_ids"])
+            else:
+                reservation["blocked_reason"] = "reservation-exceeds-budget"
+                selected_ids, used_tokens = choose_entry_ids(authorized_entries, budget_tokens=max_tokens)
+        else:
+            selected_ids, used_tokens = choose_entry_ids(authorized_entries, budget_tokens=max_tokens)
+
+        selected_entries = []
+        for entry in authorized_entries:
+            if entry["memory"].id in selected_ids:
+                selected_entries.append(entry)
+                continue
+            budget_dropped.append(
+                {
+                    "memory_id": entry["memory"].id,
+                    "reason": "context-budget",
+                    "approx_tokens": entry["approx_tokens"],
+                    "rank": entry["rank"],
+                    "packing_rank": entry["packing_rank"],
+                    "packing_rank_basis": entry["packing_rank_basis"],
+                    "packing_priority": entry["priority"],
+                    "selected_by_temporal_strategy": entry["selected_by_temporal_strategy"],
+                    "temporal_selection_rank": entry["temporal_selection_rank"],
+                    "temporal_injection_rank": entry["temporal_injection_rank"],
+                    "temporal_state": entry["temporal_state"],
+                    "reserved_by_strategy": entry["reserved_by_strategy"],
+                }
+            )
+        injected = [entry["memory"] for entry in ordered_entries(selected_entries)]
+
+    packing = {
+        "schema": CONTEXT_PACKING_SCHEMA,
+        "strategy": "priority_knapsack_budget_v1",
+        "max_tokens": max_tokens,
+        "budget_enforced": max_tokens is not None,
+        "approximation": CONTEXT_TOKEN_APPROXIMATION,
+        "used_tokens": used_tokens,
+        "available_tokens": total_authorized_tokens,
+        "injected_ids": [memory.id for memory in injected],
+        "budget_dropped": budget_dropped,
+        "diversity_dropped": [],
+        "priority_model": "temporal_selection_rank_score_authority_current_v1",
+        "reservation": reservation,
+        "candidate_priorities": [
+            {
+                "memory_id": entry["memory"].id,
+                "rank": entry["rank"],
+                "packing_rank": entry["packing_rank"],
+                "packing_rank_basis": entry["packing_rank_basis"],
+                "approx_tokens": entry["approx_tokens"],
+                "packing_priority": entry["priority"],
+                "selected_by_temporal_strategy": entry["selected_by_temporal_strategy"],
+                "temporal_selection_rank": entry["temporal_selection_rank"],
+                "temporal_injection_rank": entry["temporal_injection_rank"],
+                "temporal_state": entry["temporal_state"],
+                "reserved_by_strategy": entry["reserved_by_strategy"],
+            }
+            for entry in authorized_entries
+        ],
+    }
+    return {"memories": injected, "metadata": packing}
 
 
 def merkle_root(hashes: list[str]) -> str:
@@ -226,6 +4986,26 @@ class MemoryStore:
               merkle_root TEXT NOT NULL,
               created_at TEXT NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS memory_write_receipts (
+              receipt_id TEXT PRIMARY KEY,
+              receipt_schema TEXT NOT NULL DEFAULT 'zerker.memory_write.v1',
+              hash_alg TEXT NOT NULL DEFAULT 'sha256',
+              merkle_alg TEXT NOT NULL DEFAULT 'binary-sha256-v1',
+              memory_id TEXT NOT NULL,
+              actor_uri TEXT NOT NULL,
+              session_id TEXT NOT NULL,
+              parent_action_id TEXT,
+              source_uri TEXT,
+              content_digest TEXT NOT NULL,
+              environment_hash TEXT NOT NULL,
+              event_hash TEXT NOT NULL,
+              merkle_root TEXT NOT NULL,
+              treeship_statement_json TEXT NOT NULL,
+              created_at TEXT NOT NULL,
+              receipt_hash TEXT NOT NULL,
+              FOREIGN KEY(memory_id) REFERENCES memories(id)
+            );
             """
         )
         self._ensure_column("receipts", "retrieval_json", "TEXT NOT NULL DEFAULT '{}'")
@@ -251,6 +5031,10 @@ class MemoryStore:
         parents: list[str] | None = None,
         labels: list[str] | None = None,
         source_uri: str | None = None,
+        actor_uri: str | None = None,
+        session_id: str | None = None,
+        parent_action_id: str | None = None,
+        environment_hash: str | None = None,
     ) -> MemoryRecord:
         self.init()
         if memory_type not in MEMORY_TYPES:
@@ -295,7 +5079,7 @@ class MemoryStore:
             "INSERT INTO memories_fts (id, content, labels) VALUES (?, ?, ?)",
             (memory_id, content, " ".join(labels)),
         )
-        self._append_event(
+        event = self._append_event(
             "PROPOSED" if status in {"proposed", "quarantined"} else "OBSERVED",
             actor_id=actor_id,
             memory_id=memory_id,
@@ -309,7 +5093,19 @@ class MemoryStore:
                 "status": status,
                 "content_hash": content_hash,
                 "source_uri": source_uri,
+                "parent_action_id": parent_action_id,
             },
+        )
+        self._append_write_receipt(
+            memory_id=memory_id,
+            actor_uri=actor_uri or actor_uri_for(actor_id),
+            session_id=session_id or f"session://{self.db_path.resolve()}",
+            parent_action_id=parent_action_id,
+            source_uri=source_uri,
+            content_digest=digest_uri(content),
+            environment_hash=environment_hash or default_environment_hash(),
+            event=event,
+            created_at=created_at,
         )
         self.conn.commit()
         return self.get(memory_id)
@@ -458,6 +5254,7 @@ class MemoryStore:
             for row in self.conn.execute("SELECT type, COUNT(*) AS count FROM memories GROUP BY type").fetchall()
         }
         receipt_count = self.conn.execute("SELECT COUNT(*) AS count FROM receipts").fetchone()["count"]
+        write_receipt_count = self.conn.execute("SELECT COUNT(*) AS count FROM memory_write_receipts").fetchone()["count"]
         event_count = self.conn.execute("SELECT COUNT(*) AS count FROM events").fetchone()["count"]
         active_memory_tree = self.memory_tree(self.list_memories(status="active", limit=10_000), scope="active")
         return {
@@ -468,6 +5265,7 @@ class MemoryStore:
             "memory_types": memory_types,
             "memory_count": sum(memory_status.values()),
             "receipt_count": receipt_count,
+            "write_receipt_count": write_receipt_count,
             "event_count": event_count,
         }
 
@@ -475,67 +5273,1370 @@ class MemoryStore:
         row = self.conn.execute("SELECT 1 FROM memories WHERE id = ? LIMIT 1", (memory_id,)).fetchone()
         return row is not None
 
+    def _has_write_receipt(self, memory_id: str) -> bool:
+        row = self.conn.execute(
+            "SELECT 1 FROM memory_write_receipts WHERE memory_id = ? LIMIT 1",
+            (memory_id,),
+        ).fetchone()
+        return row is not None
+
     def search(self, query: str, *, scope: str | None = None, include_quarantined: bool = False) -> list[MemoryRecord]:
         return self.search_with_meta(query, scope=scope, include_quarantined=include_quarantined)["memories"]
 
-    def search_with_meta(self, query: str, *, scope: str | None = None, include_quarantined: bool = False) -> dict[str, Any]:
-        self.init()
+    def _semantic_rescue_rows(
+        self,
+        query: str,
+        *,
+        scope: str | None,
+        include_quarantined: bool,
+        limit: int,
+        required_terms: list[str] | None = None,
+        activation_reason: str = "no-lexical-match",
+        confidence_profile: dict[str, Any] | None = None,
+        effective_query: str | None = None,
+        effective_query_terms: list[str] | None = None,
+    ) -> dict[str, Any]:
+        query_semantic_terms = semantic_query_terms(query)
+        semantic_terms = _ordered_unique(
+            [str(term) for term in (effective_query_terms or query_semantic_terms) if str(term)]
+        )
+        required_terms = [term for term in (required_terms or []) if term]
+        confidence_profile = dict(confidence_profile or {})
+        effective_query = str(effective_query or query)
+        metadata = {
+            "schema": SEMANTIC_RESCUE_SCHEMA,
+            "applied": False,
+            "reason": "no-query-terms",
+            "query": query,
+            "query_terms": query_semantic_terms,
+            "effective_query": effective_query,
+            "effective_query_terms": semantic_terms,
+            "required_terms": required_terms,
+            "model_id": PSEUDO_EMBEDDING_MODEL_ID,
+            "candidate_pool_size": 0,
+            "matched_candidate_count": 0,
+            "selected_candidate_ids": [],
+            "selected_candidates": [],
+            "confidence": {
+                "enabled": bool(confidence_profile.get("enabled")),
+                "profile": confidence_profile.get("profile"),
+                "minimum_score": confidence_profile.get("minimum_score"),
+                "require_full_query_overlap": bool(confidence_profile.get("require_full_query_overlap")),
+                "query_term_count": len(semantic_terms),
+                "top_score": None,
+                "top_term_overlap": 0,
+                "top_overlap_ratio": 0.0,
+                "passed": None,
+                "reason": None,
+            },
+            "abstention": {
+                "applied": False,
+                "reason": None,
+                "dropped_candidate_ids": [],
+            },
+        }
+        ignored_query_terms = [str(term) for term in confidence_profile.get("ignored_query_terms", []) if str(term)]
+        if ignored_query_terms:
+            metadata["ignored_query_terms"] = ignored_query_terms
+        if not semantic_terms or limit <= 0:
+            return {"rows": [], "metadata": metadata}
+
         status_sql = "m.status IN ('active')"
-        fts_query = fts_safe_query(query)
-        params: list[Any] = [fts_query]
+        if include_quarantined:
+            status_sql = "m.status IN ('active', 'quarantined', 'proposed')"
+        scope_sql = ""
+        params: list[Any] = []
+        if scope:
+            scope_sql = "AND (m.scope = ? OR m.scope = 'global')"
+            params.append(scope)
+        rows = self.conn.execute(
+            f"""
+            SELECT m.*,
+                   COALESCE((SELECT MAX(e.seq) FROM events e WHERE e.memory_id = m.id), 0) AS observation_seq
+            FROM memories m
+            WHERE {status_sql}
+              {scope_sql}
+            """,
+            params,
+        ).fetchall()
+        metadata["candidate_pool_size"] = len(rows)
+        query_vector = pseudo_embedding(" ".join(semantic_terms))
+        scored = []
+        for row in rows:
+            memory = MemoryRecord.from_row(row)
+            haystack = f"{memory.content} {' '.join(memory.labels)}".strip()
+            candidate_terms = semantic_query_terms(haystack)
+            if required_terms and not set(required_terms).issubset(candidate_terms):
+                continue
+            overlap = len(set(semantic_terms).intersection(candidate_terms))
+            if not overlap:
+                continue
+            similarity = cosine_similarity(query_vector, pseudo_embedding(haystack))
+            if similarity <= 0.0:
+                continue
+            scored.append((row, similarity, overlap, authority_rank(memory.authority), float(memory.trust), memory.id))
+        scored.sort(key=lambda item: (-item[2], -item[1], -item[3], -item[4], item[5]))
+        metadata["matched_candidate_count"] = len(scored)
+        selected = scored[:limit]
+        if not selected:
+            metadata["reason"] = "no-semantic-overlap"
+            metadata["confidence"]["passed"] = False if confidence_profile.get("enabled") else None
+            metadata["confidence"]["reason"] = "no-semantic-overlap" if confidence_profile.get("enabled") else None
+            return {"rows": [], "metadata": metadata}
+        top_row, top_score, top_overlap, *_ = selected[0]
+        top_overlap_ratio = round(top_overlap / len(semantic_terms), 6) if semantic_terms else 0.0
+        metadata["confidence"]["top_score"] = round(top_score, 6)
+        metadata["confidence"]["top_term_overlap"] = top_overlap
+        metadata["confidence"]["top_overlap_ratio"] = top_overlap_ratio
+        if confidence_profile.get("enabled"):
+            minimum_score = float(confidence_profile.get("minimum_score", 0.0))
+            require_full_query_overlap = bool(confidence_profile.get("require_full_query_overlap"))
+            score_passed = top_score >= minimum_score
+            overlap_passed = (top_overlap >= len(semantic_terms)) if require_full_query_overlap else top_overlap > 0
+            passed = score_passed and overlap_passed
+            metadata["confidence"]["passed"] = passed
+            if not overlap_passed:
+                metadata["confidence"]["reason"] = "query-overlap-below-threshold"
+            elif not score_passed:
+                metadata["confidence"]["reason"] = "score-below-threshold"
+            else:
+                metadata["confidence"]["reason"] = "passed"
+            if not passed:
+                metadata["reason"] = "low-confidence-declarative-match"
+                metadata["abstention"] = {
+                    "applied": True,
+                    "reason": "low-confidence-declarative-match",
+                    "dropped_candidate_ids": [row["id"] for row, *_ in selected],
+                }
+                return {"rows": [], "metadata": metadata}
+            selected = [
+                item
+                for item in selected
+                if item[1] >= minimum_score and ((item[2] >= len(semantic_terms)) if require_full_query_overlap else item[2] > 0)
+            ]
+            if not selected:
+                metadata["reason"] = "low-confidence-declarative-match"
+                metadata["confidence"]["passed"] = False
+                metadata["confidence"]["reason"] = "no-candidates-cleared-threshold"
+                metadata["abstention"] = {
+                    "applied": True,
+                    "reason": "low-confidence-declarative-match",
+                    "dropped_candidate_ids": [row["id"] for row, *_ in scored[:limit]],
+                }
+                return {"rows": [], "metadata": metadata}
+        metadata["applied"] = True
+        metadata["reason"] = activation_reason
+        metadata["selected_candidate_ids"] = [row["id"] for row, *_ in selected]
+        metadata["selected_candidates"] = [
+            {"memory_id": row["id"], "score": round(similarity, 6), "term_overlap": overlap}
+            for row, similarity, overlap, *_ in selected
+        ]
+        if confidence_profile.get("enabled"):
+            metadata["confidence"]["passed"] = True
+            metadata["confidence"]["reason"] = "passed"
+        return {"rows": [row for row, *_ in selected], "metadata": metadata}
+
+    def _history_observation_support_rows(
+        self,
+        *,
+        query: str,
+        raw_tokens: list[str],
+        raw_terms: list[str],
+        query_lookup: dict[str, Any],
+        rows: list[sqlite3.Row],
+        search_mode: str,
+        scope: str | None,
+        include_quarantined: bool,
+        limit: int,
+    ) -> tuple[list[sqlite3.Row], dict[str, Any]]:
+        metadata = {
+            "applied": False,
+            "reason": "not-needed",
+            "trigger_terms": [],
+            "anchor_candidate_ids": [],
+            "anchor_observation_seq": None,
+            "anchor_observation_seqs": [],
+            "considered_candidate_ids": [],
+            "scored_candidates": [],
+            "selected_support_candidate_ids": [],
+            "selection_strategy": None,
+            "selection_order": None,
+        }
+        if (
+            limit <= 1
+            or scope is None
+            or not rows
+            or search_mode not in {"fallback", "semantic"}
+            or not raw_tokens
+            or raw_tokens[0] != "who"
+            or "before" not in raw_terms
+            or str(query_lookup.get("lookup_basis") or "") != "question-wrapper"
+        ):
+            return rows, metadata
+
+        anchor_rows = []
+        for row in rows:
+            anchor_terms = set(query_terms(str(row["content"])))
+            trigger_terms = sorted(anchor_terms.intersection(CHRONOLOGY_QUERY_MUTATION_TERMS))
+            if trigger_terms:
+                anchor_rows.append((row, trigger_terms))
+        if not anchor_rows:
+            metadata["reason"] = "no-anchor-candidates"
+            return rows, metadata
+
+        anchor_rows_by_id = {
+            str(row["id"]): {
+                "memory_id": str(row["id"]),
+                "observation_seq": int(row["observation_seq"]) if "observation_seq" in row.keys() else 0,
+                "trigger_terms": trigger_terms,
+            }
+            for row, trigger_terms in anchor_rows
+        }
+        anchor_ids = [str(row["id"]) for row, _ in anchor_rows]
+        anchor_seq = max(item["observation_seq"] for item in anchor_rows_by_id.values())
+        if anchor_seq <= 1:
+            metadata["reason"] = "anchor-has-no-earlier-observations"
+            return rows, metadata
+
+        status_sql = "m.status IN ('active')"
+        if include_quarantined:
+            status_sql = "m.status IN ('active', 'quarantined', 'proposed')"
+        anchor_placeholders = ",".join("?" for _ in anchor_ids)
+        candidate_rows = self.conn.execute(
+            f"""
+            SELECT m.*,
+                   COALESCE((SELECT MAX(e.seq) FROM events e WHERE e.memory_id = m.id), 0) AS observation_seq
+            FROM memories m
+            WHERE {status_sql}
+              AND (m.scope = ? OR m.scope = 'global')
+              AND m.id NOT IN ({anchor_placeholders})
+              AND COALESCE((SELECT MAX(e.seq) FROM events e WHERE e.memory_id = m.id), 0) < ?
+            ORDER BY observation_seq ASC, m.id ASC
+            LIMIT {max(1, limit - len(rows) + 2)}
+            """,
+            (scope, *anchor_ids, anchor_seq),
+        ).fetchall()
+        metadata["trigger_terms"] = sorted(
+            {
+                term
+                for item in anchor_rows_by_id.values()
+                for term in item["trigger_terms"]
+            }
+        )
+        metadata["anchor_candidate_ids"] = anchor_ids
+        metadata["anchor_observation_seq"] = anchor_seq
+        metadata["anchor_observation_seqs"] = [anchor_rows_by_id[memory_id] for memory_id in anchor_ids]
+        metadata["considered_candidate_ids"] = [str(row["id"]) for row in candidate_rows]
+        if not candidate_rows:
+            metadata["reason"] = "no-earlier-observation-candidates"
+            return rows, metadata
+
+        query_action_requested = bool(
+            set(raw_terms).intersection(HISTORY_OBSERVATION_SUPPORT_QUERY_ACTION_TERMS)
+        )
+        scored_candidates: list[tuple[tuple[int, int, int, int, int], sqlite3.Row]] = []
+        for row in candidate_rows:
+            candidate_content = str(row["content"] or "")
+            candidate_terms = set(query_terms(str(row["content"])))
+            earliest_markers = len(candidate_terms.intersection(HISTORY_OBSERVATION_SUPPORT_EARLIEST_MARKERS))
+            history_markers = len(candidate_terms.intersection(TEMPORAL_HISTORY_TERMS))
+            later_markers = len(candidate_terms.intersection(HISTORY_OBSERVATION_SUPPORT_LATER_MARKERS))
+            action_overlap = int(
+                query_action_requested
+                and bool(candidate_terms.intersection(HISTORY_OBSERVATION_SUPPORT_ACTION_TERMS))
+            )
+            support_context_overlap = len(candidate_terms.intersection(HISTORY_OBSERVATION_SUPPORT_CONTEXT_TERMS))
+            person_lead_action = 0
+            lead_match = re.match(r"^\s*([A-Z][\w'-]*)\s+([a-z]+)\b", candidate_content)
+            if lead_match:
+                lead_subject = lead_match.group(1)
+                lead_verb = lead_match.group(2).lower()
+                if lead_subject.lower() not in {"a", "an", "after", "at", "before", "by", "from", "in", "on", "the"}:
+                    person_lead_action = int(lead_verb in HISTORY_OBSERVATION_SUPPORT_PERSON_LEAD_VERBS)
+            metadata["scored_candidates"].append(
+                {
+                    "memory_id": str(row["id"]),
+                    "earliest_markers": earliest_markers,
+                    "history_markers": history_markers,
+                    "later_markers": later_markers,
+                    "action_overlap": action_overlap,
+                    "support_context_overlap": support_context_overlap,
+                    "person_lead_action": person_lead_action,
+                }
+            )
+            if earliest_markers <= 0 and action_overlap <= 0 and support_context_overlap <= 0 and person_lead_action <= 0:
+                continue
+            observation_seq = int(row["observation_seq"]) if "observation_seq" in row.keys() else 0
+            score = (
+                person_lead_action,
+                support_context_overlap,
+                int(earliest_markers > 0),
+                action_overlap,
+                history_markers,
+                -later_markers,
+                -observation_seq,
+            )
+            scored_candidates.append((score, row))
+        if not scored_candidates:
+            metadata["reason"] = "no-support-candidate-cleared-history-threshold"
+            return rows, metadata
+
+        scored_candidates.sort(
+            key=lambda item: (
+                item[0][0],
+                item[0][1],
+                item[0][2],
+                item[0][3],
+                item[0][4],
+                str(item[1]["id"]),
+            ),
+            reverse=True,
+        )
+        support_row = scored_candidates[0][1]
+        updated_rows = []
+        seen_ids: set[str] = set()
+        for row in [support_row, *rows]:
+            memory_id = str(row["id"])
+            if memory_id in seen_ids:
+                continue
+            seen_ids.add(memory_id)
+            updated_rows.append(row)
+        metadata["applied"] = True
+        metadata["reason"] = "history-before-anchor-observation-support"
+        metadata["selected_support_candidate_ids"] = [str(support_row["id"])]
+        metadata["selection_strategy"] = "history_anchor_observation_support_v1"
+        metadata["selection_order"] = "temporal_marker_then_observation_seq_asc"
+        return updated_rows, metadata
+
+    def _retrieval_rows(
+        self,
+        query: str,
+        *,
+        scope: str | None,
+        include_quarantined: bool,
+        limit: int,
+    ) -> dict[str, Any]:
+        status_sql = "m.status IN ('active')"
+        raw_tokens = _query_tokens(query)
+        raw_terms = query_terms(query)
+        query_lookup = _subject_lookup_query_plan(query, raw_terms)
+        semantic_alias_variant = _direct_subject_core_alias_variant(query_lookup, raw_tokens)
+        if query_lookup.get("lookup_relation") is None:
+            semantic_alias_variant = _direct_deploy_target_alias_variant(raw_tokens) or semantic_alias_variant
+            if semantic_alias_variant is None:
+                semantic_alias_variant = _generic_subject_alias_variant(raw_tokens)
+        raw_search_query = _normalize_conflict_fragment(query) or query
+        semantic_anchor_terms = []
+        semantic_anchor_source = semantic_query_terms(str(query_lookup.get("search_query") or raw_search_query))
+        if query_lookup.get("lookup_relation") and semantic_anchor_source:
+            semantic_anchor_terms = [semantic_anchor_source[-1]]
+        elif semantic_alias_variant is not None:
+            semantic_anchor_terms = [str(term) for term in semantic_alias_variant.get("core_terms", []) if str(term)]
+        chronology = _chronology_query_variants(query, raw_tokens, raw_terms)
+        current_lookup = _current_query_variants(query, raw_terms)
+        history_lookup = _history_query_variants(query, raw_terms)
+        update_lookup = _update_query_variants(query)
+        target_history_lookup = _target_qualified_history_variants(query)
+        planned_search_terms = [str(term) for term in query_lookup.get("search_terms", []) if str(term)]
+        search_variants = []
+        planned_variant_inputs = []
+        if chronology is not None:
+            planned_variant_inputs.extend(
+                (variant["query"], variant["basis"], variant["terms"])
+                for variant in chronology.get("variants", [])
+            )
+        if history_lookup is not None:
+            planned_variant_inputs.extend(
+                (variant["query"], variant["basis"], variant["terms"])
+                for variant in history_lookup.get("variants", [])
+            )
+        if current_lookup is not None:
+            planned_variant_inputs.extend(
+                (variant["query"], variant["basis"], variant["terms"])
+                for variant in current_lookup.get("variants", [])
+            )
+        if update_lookup is not None:
+            planned_variant_inputs.extend(
+                (variant["query"], variant["basis"], variant["terms"])
+                for variant in update_lookup.get("variants", [])
+            )
+        if target_history_lookup is not None:
+            planned_variant_inputs.extend(
+                (variant["query"], variant["basis"], variant["terms"])
+                for variant in target_history_lookup.get("variants", [])
+            )
+        if semantic_alias_variant is not None:
+            alias_variants = semantic_alias_variant.get("variants")
+            if alias_variants:
+                planned_variant_inputs.extend(
+                    (
+                        str(variant["query"]),
+                        str(variant["basis"]),
+                        [str(term) for term in variant.get("terms", []) if str(term)],
+                    )
+                    for variant in alias_variants
+                )
+            else:
+                planned_variant_inputs.append(
+                    (
+                        str(semantic_alias_variant["search_query"]),
+                        str(semantic_alias_variant["lookup_basis"]),
+                        [str(term) for term in semantic_alias_variant.get("search_terms", []) if str(term)],
+                    )
+                )
+        planned_variant_inputs.extend(
+            [
+                (
+                    str(query_lookup.get("search_query") or ""),
+                    str(query_lookup.get("lookup_basis") or "direct-subject"),
+                    planned_search_terms,
+                ),
+                (raw_search_query, "raw-query", raw_terms),
+            ]
+        )
+        for search_query, basis, preferred_terms in planned_variant_inputs:
+            normalized_query = " ".join(search_query.split())
+            if not normalized_query:
+                continue
+            terms = [term for term in preferred_terms if term] or query_terms(normalized_query)
+            variant = {
+                "query": normalized_query,
+                "basis": basis,
+                "terms": terms,
+                "fts_query": fts_safe_query_terms(terms),
+            }
+            if any(existing["query"] == variant["query"] for existing in search_variants):
+                continue
+            search_variants.append(variant)
+        authority_order_sql = """
+          CASE m.authority
+            WHEN 'policy' THEN 4
+            WHEN 'high' THEN 3
+            WHEN 'medium' THEN 2
+            WHEN 'low' THEN 1
+            ELSE 0
+          END
+        """
         if include_quarantined:
             status_sql = "m.status IN ('active', 'quarantined', 'proposed')"
         scope_sql = ""
         if scope:
             scope_sql = "AND (m.scope = ? OR m.scope = 'global')"
-            params.append(scope)
+        prefer_earliest_observation = history_lookup is not None or target_history_lookup is not None
+        observation_tie_break_sql = (
+            "observation_seq ASC, m.id ASC" if prefer_earliest_observation else "observation_seq DESC, m.id ASC"
+        )
         rows = []
         search_mode = "none"
-        if fts_query:
+        selected_variant = {
+            "query": raw_search_query,
+            "basis": "raw-query",
+            "terms": raw_terms,
+            "fts_query": fts_safe_query(raw_search_query),
+        }
+        semantic_rescue = {
+            "schema": SEMANTIC_RESCUE_SCHEMA,
+            "applied": False,
+            "reason": "not-needed",
+            "query": str(query_lookup.get("search_query") or raw_search_query),
+            "query_terms": semantic_query_terms(str(query_lookup.get("search_query") or raw_search_query)),
+            "model_id": PSEUDO_EMBEDDING_MODEL_ID,
+            "candidate_pool_size": 0,
+            "matched_candidate_count": 0,
+            "selected_candidate_ids": [],
+            "selected_candidates": [],
+        }
+        hybrid = {
+            "schema": HYBRID_RETRIEVAL_SCHEMA,
+            "applied": False,
+            "strategy": "fts_semantic_backfill_v1",
+            "base_search_mode": "none",
+            "reason": "not-needed",
+            "effective_query": str(query_lookup.get("search_query") or raw_search_query),
+            "effective_query_terms": [],
+            "required_terms": [],
+            "lexical_candidate_ids": [],
+            "kept_lexical_candidate_ids": [],
+            "dropped_lexical_candidate_ids": [],
+            "semantic_candidate_ids": [],
+            "introduced_candidate_ids": [],
+            "selected_candidate_ids": [],
+            "confidence": {
+                "minimum_score": HYBRID_SEMANTIC_BACKFILL_MIN_SCORE,
+                "minimum_margin": HYBRID_SEMANTIC_BACKFILL_MIN_MARGIN,
+                "top_semantic_score": None,
+                "top_lexical_score": None,
+                "passed": None,
+                "reason": None,
+            },
+        }
+        candidate_metadata: dict[str, dict[str, Any]] = {}
+        fts_preselection = {
+            "applied": False,
+            "strategy": "fts_window_rescore_prune_v1",
+            "sql_window_order": "authority_trust_bm25_observation_v1",
+            "window_multiplier": FTS_CANDIDATE_WINDOW_MULTIPLIER,
+            "window_candidate_count": 0,
+            "selected_candidate_ids": [],
+            "dropped_candidate_ids": [],
+            "requested_limit": limit,
+            "search_query": str(selected_variant["query"]),
+            "query": query,
+            "search_terms": list(selected_variant["terms"]),
+            "fts_query": str(selected_variant["fts_query"]),
+        }
+        limit = max(0, int(limit))
+        fts_window_limit = _fts_candidate_window_limit(limit)
+        for variant in search_variants:
+            if not fts_window_limit or not variant["fts_query"]:
+                continue
+            params: list[Any] = [variant["fts_query"]]
+            if scope:
+                params.append(scope)
             try:
                 rows = self.conn.execute(
                     f"""
-                    SELECT m.*
+                    SELECT m.*, bm25(memories_fts) AS bm25_score,
+                           COALESCE((SELECT MAX(e.seq) FROM events e WHERE e.memory_id = m.id), 0) AS observation_seq
                     FROM memories_fts f
                     JOIN memories m ON m.id = f.id
                     WHERE memories_fts MATCH ?
                       AND {status_sql}
                       {scope_sql}
-                    ORDER BY m.authority DESC, m.trust DESC, bm25(memories_fts)
-                    LIMIT 20
+                    ORDER BY {authority_order_sql} DESC, m.trust DESC, bm25(memories_fts), {observation_tie_break_sql}
+                    LIMIT {fts_window_limit}
                     """,
                     params,
                 ).fetchall()
                 if rows:
                     search_mode = "fts"
+                    selected_variant = variant
+                    rows, fts_candidate_metadata, fts_preselection = _preselect_fts_rows(
+                        rows,
+                        query=query,
+                        search_query=str(variant["query"]),
+                        search_terms=[str(term) for term in variant["terms"] if str(term)],
+                        fts_query=str(variant["fts_query"]),
+                        query_lookup=query_lookup,
+                        limit=limit,
+                    )
+                    candidate_metadata.update(fts_candidate_metadata)
+                    break
             except sqlite3.OperationalError:
                 rows = []
-        if not rows:
-            terms = query_terms(query)
-            if terms:
-                like_sql = " OR ".join(["lower(m.content) LIKE ?" for _ in terms])
-                like_params: list[Any] = [f"%{term}%" for term in terms]
+        if search_mode == "none":
+            for variant in search_variants:
+                if not limit or not variant["terms"]:
+                    continue
+                like_sql = " OR ".join(["lower(m.content) LIKE ?" for _ in variant["terms"]])
+                like_params: list[Any] = [f"%{term}%" for term in variant["terms"]]
                 if scope:
                     like_params.append(scope)
                 rows = self.conn.execute(
                     f"""
-                    SELECT m.*
+                    SELECT m.*,
+                           COALESCE((SELECT MAX(e.seq) FROM events e WHERE e.memory_id = m.id), 0) AS observation_seq
                     FROM memories m
                     WHERE ({like_sql})
                       AND {status_sql}
                       {scope_sql}
-                    ORDER BY m.authority DESC, m.trust DESC
-                    LIMIT 20
+                    ORDER BY {authority_order_sql} DESC, m.trust DESC, {observation_tie_break_sql}
+                    LIMIT {limit}
                     """,
                     like_params,
                 ).fetchall()
                 if rows:
                     search_mode = "fallback"
+                    selected_variant = variant
+                    break
+        current_update_anchor_terms = _current_update_anchor_terms(current_lookup)
+        current_update_sibling_ids: list[str] = []
+        if current_update_anchor_terms and rows and len(rows) < limit:
+            anchor_sql = " OR ".join(["lower(m.content) LIKE ?" for _ in current_update_anchor_terms])
+            update_terms = sorted(CHRONOLOGY_QUERY_MUTATION_TERMS | {"again"})
+            update_sql = " OR ".join(["lower(m.content) LIKE ?" for _ in update_terms])
+            sibling_params: list[Any] = (
+                [f"%{term}%" for term in current_update_anchor_terms]
+                + [f"%{term}%" for term in update_terms]
+            )
+            if scope:
+                sibling_params.append(scope)
+            sibling_rows = self.conn.execute(
+                f"""
+                SELECT m.*,
+                       COALESCE((SELECT MAX(e.seq) FROM events e WHERE e.memory_id = m.id), 0) AS observation_seq
+                FROM memories m
+                WHERE ({anchor_sql})
+                  AND ({update_sql})
+                  AND {status_sql}
+                  {scope_sql}
+                ORDER BY {authority_order_sql} DESC, m.trust DESC, m.updated_at DESC, m.id ASC
+                LIMIT {limit}
+                """,
+                sibling_params,
+            ).fetchall()
+            existing_ids = {row["id"] for row in rows}
+            for sibling_row in sibling_rows:
+                if sibling_row["id"] in existing_ids:
+                    continue
+                rows.append(sibling_row)
+                existing_ids.add(sibling_row["id"])
+                current_update_sibling_ids.append(sibling_row["id"])
+                if len(rows) >= limit:
+                    break
+        chronology_support = {
+            "applied": False,
+            "reason": "not-needed",
+            "subject_term": None,
+            "relation": None,
+            "relation_terms": [],
+            "mutation_terms": [],
+            "selected_candidate_ids": [],
+            "support_kind": "chronology",
+        }
+        history_support = {
+            "applied": False,
+            "reason": "not-needed",
+            "subject_term": None,
+            "relation": None,
+            "relation_terms": [],
+            "mutation_terms": [],
+            "selected_candidate_ids": [],
+            "support_kind": "history",
+        }
+        update_history_support = {
+            "applied": False,
+            "reason": "not-needed",
+            "subject_term": None,
+            "relation": None,
+            "relation_terms": [],
+            "mutation_terms": [],
+            "selected_candidate_ids": [],
+            "support_kind": "update-history",
+        }
+        chronology_support_profile = _chronology_support_anchor_profile(
+            query_lookup=query_lookup,
+            chronology=chronology,
+            selected_variant=selected_variant,
+        )
+        if chronology_support_profile is not None:
+            chronology_support.update(chronology_support_profile)
+        _append_relation_support_rows(
+            self.conn,
+            support=chronology_support,
+            rows=rows,
+            candidate_metadata=candidate_metadata,
+            status_sql=status_sql,
+            scope_sql=scope_sql,
+            authority_order_sql=authority_order_sql,
+            scope=scope,
+            limit=limit,
+        )
+        history_support_profile = _history_support_anchor_profile(
+            query_lookup=query_lookup,
+            history_lookup=history_lookup,
+            selected_variant=selected_variant,
+        )
+        if history_support_profile is not None:
+            history_support.update(history_support_profile)
+        _append_relation_support_rows(
+            self.conn,
+            support=history_support,
+            rows=rows,
+            candidate_metadata=candidate_metadata,
+            status_sql=status_sql,
+            scope_sql=scope_sql,
+            authority_order_sql=authority_order_sql,
+            scope=scope,
+            limit=limit,
+        )
+        update_history_support_profile = _update_history_support_anchor_profile(
+            query_lookup=query_lookup,
+            update_lookup=update_lookup,
+            selected_variant=selected_variant,
+        )
+        if update_history_support_profile is not None:
+            update_history_support.update(update_history_support_profile)
+        _append_relation_support_rows(
+            self.conn,
+            support=update_history_support,
+            rows=rows,
+            candidate_metadata=candidate_metadata,
+            status_sql=status_sql,
+            scope_sql=scope_sql,
+            authority_order_sql=authority_order_sql,
+            scope=scope,
+            limit=limit,
+        )
+        current_direct_deploy_hybrid_override = _current_direct_deploy_target_hybrid_override(
+            query_lookup=query_lookup,
+            current_lookup=current_lookup,
+            semantic_alias_variant=semantic_alias_variant,
+        )
+        history_direct_deploy_hybrid_override = _history_direct_deploy_target_hybrid_override(
+            query_lookup=query_lookup,
+            history_lookup=history_lookup,
+            semantic_alias_variant=semantic_alias_variant,
+        )
+        update_history_direct_deploy_hybrid_override = _update_history_direct_deploy_target_hybrid_override(
+            query_lookup=query_lookup,
+            update_lookup=update_lookup,
+        )
+        semantic_query = str(query_lookup.get("search_query") or raw_search_query)
+        semantic_terms = semantic_query_terms(semantic_query)
+        declarative_semantic_profile = _declarative_semantic_rescue_profile(
+            raw_tokens=raw_tokens,
+            raw_terms=raw_terms,
+            query_lookup=query_lookup,
+            current_lookup=current_lookup,
+            chronology=chronology,
+            history_lookup=history_lookup,
+            update_lookup=update_lookup,
+            rows=rows,
+            selected_terms=list(selected_variant["terms"]),
+            search_mode=search_mode,
+        )
+        semantic_rescue_query_like = bool(
+            query_lookup.get("lookup_relation")
+            or semantic_alias_variant
+            or (raw_tokens and raw_tokens[0] in SUBJECT_LOOKUP_QUERY_WRAPPERS)
+        )
+        should_try_semantic_rescue = (
+            limit > 0
+            and len(semantic_terms) >= 2
+            and search_mode in {"none", "fallback"}
+            and (semantic_rescue_query_like or declarative_semantic_profile is not None)
+        )
+        if should_try_semantic_rescue:
+            fallback_candidate_ids = [row["id"] for row in rows]
+            rescue_required_terms = [] if declarative_semantic_profile is not None else semantic_anchor_terms
+            semantic_query = str(
+                (declarative_semantic_profile or {}).get("effective_query")
+                or query_lookup.get("search_query")
+                or raw_search_query
+            )
+            semantic_terms_override = (declarative_semantic_profile or {}).get("effective_query_terms")
+            semantic_result = self._semantic_rescue_rows(
+                str(query_lookup.get("search_query") or raw_search_query),
+                scope=scope,
+                include_quarantined=include_quarantined,
+                limit=limit,
+                required_terms=rescue_required_terms,
+                activation_reason="no-lexical-match" if search_mode == "none" else "fallback-paraphrase-match",
+                confidence_profile=declarative_semantic_profile,
+                effective_query=semantic_query,
+                effective_query_terms=semantic_terms_override,
+            )
+            semantic_rescue = semantic_result["metadata"]
+            if semantic_result["rows"]:
+                rows = semantic_result["rows"]
+                search_mode = "semantic"
+                selected_variant = {
+                    "query": semantic_query,
+                    "basis": str(
+                        (declarative_semantic_profile or {}).get("search_basis")
+                        or query_lookup.get("lookup_basis")
+                        or "semantic-rescue"
+                    ),
+                    "terms": [str(term) for term in (semantic_terms_override or semantic_terms) if str(term)],
+                    "fts_query": fts_safe_query_terms(
+                        [str(term) for term in (semantic_terms_override or semantic_terms) if str(term)]
+                    ),
+                }
+            elif declarative_semantic_profile is not None and fallback_candidate_ids:
+                rows = []
+                search_mode = "none"
+                semantic_rescue["abstention"] = {
+                    "applied": True,
+                    "reason": semantic_rescue.get("reason") or "low-confidence-declarative-match",
+                    "dropped_candidate_ids": fallback_candidate_ids,
+                }
+        should_try_hybrid_backfill = (
+            limit > 0
+            and bool(rows)
+            and search_mode == "fts"
+            and len(semantic_terms) >= 2
+            and (semantic_rescue_query_like or declarative_semantic_profile is not None)
+        )
+        if should_try_hybrid_backfill:
+            hybrid_semantic_override = (
+                current_direct_deploy_hybrid_override
+                or history_direct_deploy_hybrid_override
+                or update_history_direct_deploy_hybrid_override
+                or {}
+            )
+            rescue_required_terms = (
+                list(hybrid_semantic_override.get("required_terms", []))
+                if hybrid_semantic_override
+                else ([] if declarative_semantic_profile is not None else semantic_anchor_terms)
+            )
+            semantic_query = str(
+                hybrid_semantic_override.get("effective_query")
+                or (declarative_semantic_profile or {}).get("effective_query")
+                or query_lookup.get("search_query")
+                or raw_search_query
+            )
+            semantic_terms_override = [
+                str(term)
+                for term in (
+                    hybrid_semantic_override.get("effective_query_terms")
+                    or (declarative_semantic_profile or {}).get("effective_query_terms")
+                    or semantic_terms
+                )
+                if str(term)
+            ]
+            hybrid_confidence_profile = (
+                {"ignored_query_terms": list(hybrid_semantic_override.get("ignored_query_terms", []))}
+                if hybrid_semantic_override.get("ignored_query_terms")
+                else None
+            )
+            hybrid["base_search_mode"] = search_mode
+            hybrid["effective_query"] = semantic_query
+            hybrid["effective_query_terms"] = semantic_terms_override
+            hybrid["required_terms"] = list(rescue_required_terms)
+            hybrid["lexical_candidate_ids"] = [row["id"] for row in rows]
+            semantic_result = self._semantic_rescue_rows(
+                str(query_lookup.get("search_query") or raw_search_query),
+                scope=scope,
+                include_quarantined=include_quarantined,
+                limit=limit,
+                required_terms=rescue_required_terms,
+                activation_reason="fts-paraphrase-backfill",
+                confidence_profile=hybrid_confidence_profile,
+                effective_query=semantic_query,
+                effective_query_terms=semantic_terms_override,
+            )
+            semantic_probe = semantic_result["metadata"]
+            hybrid["semantic_probe"] = semantic_probe
+            hybrid["semantic_candidate_ids"] = list(semantic_probe.get("selected_candidate_ids", []))
+            semantic_selected_by_id = {
+                str(item["memory_id"]): item
+                for item in semantic_probe.get("selected_candidates", [])
+                if "memory_id" in item
+            }
+            introduced_ids = [
+                memory_id
+                for memory_id in hybrid["semantic_candidate_ids"]
+                if memory_id not in set(hybrid["lexical_candidate_ids"])
+            ]
+            top_semantic_candidates = list(semantic_probe.get("selected_candidate_ids", []))
+            top_semantic_id = top_semantic_candidates[0] if top_semantic_candidates else None
+            top_semantic_score = None
+            if top_semantic_id in semantic_selected_by_id:
+                top_semantic_score = float(semantic_selected_by_id[top_semantic_id]["score"])
+            hybrid["confidence"]["top_semantic_score"] = round(top_semantic_score, 6) if top_semantic_score is not None else None
+            query_vector = pseudo_embedding(" ".join(semantic_terms_override))
+            lexical_infos = []
+            for index, row in enumerate(rows, start=1):
+                memory = MemoryRecord.from_row(row)
+                haystack = f"{memory.content} {' '.join(memory.labels)}".strip()
+                candidate_terms = semantic_query_terms(haystack)
+                overlap = len(set(semantic_terms_override).intersection(candidate_terms))
+                similarity = cosine_similarity(query_vector, pseudo_embedding(haystack)) if overlap else 0.0
+                lexical_infos.append(
+                    {
+                        "row": row,
+                        "memory": memory,
+                        "pre_hybrid_rank": index,
+                        "semantic_score": similarity,
+                        "semantic_term_overlap": overlap,
+                        "structured_fact": _row_has_structured_fact(row),
+                    }
+                )
+            top_lexical_score = max((float(item["semantic_score"]) for item in lexical_infos), default=0.0)
+            hybrid["confidence"]["top_lexical_score"] = round(top_lexical_score, 6)
+            if semantic_probe.get("abstention", {}).get("applied"):
+                hybrid["reason"] = "semantic-probe-abstained"
+                hybrid["confidence"]["passed"] = False
+                hybrid["confidence"]["reason"] = str(semantic_probe["abstention"].get("reason"))
+            elif not introduced_ids:
+                hybrid["reason"] = "semantic-candidates-already-lexical"
+                hybrid["confidence"]["passed"] = False
+                hybrid["confidence"]["reason"] = "no-introduced-candidates"
+            elif top_semantic_score is None:
+                hybrid["reason"] = "no-semantic-candidates"
+                hybrid["confidence"]["passed"] = False
+                hybrid["confidence"]["reason"] = "no-semantic-candidates"
+            else:
+                passed = (
+                    top_semantic_score >= HYBRID_SEMANTIC_BACKFILL_MIN_SCORE
+                    and top_semantic_score > top_lexical_score + HYBRID_SEMANTIC_BACKFILL_MIN_MARGIN
+                )
+                hybrid["confidence"]["passed"] = passed
+                if not passed:
+                    hybrid["reason"] = "semantic-candidate-not-stronger-than-lexical"
+                    hybrid["confidence"]["reason"] = "semantic-margin-below-threshold"
+                else:
+                    lexical_keep_threshold = top_semantic_score - HYBRID_SEMANTIC_BACKFILL_MIN_MARGIN
+                    kept_lexical_infos = [
+                        item
+                        for item in lexical_infos
+                        if item["structured_fact"] or float(item["semantic_score"]) >= lexical_keep_threshold
+                    ]
+                    introduced_rows = []
+                    introduced_metadata = []
+                    for row in semantic_result["rows"]:
+                        if row["id"] not in introduced_ids:
+                            continue
+                        candidate = semantic_selected_by_id.get(row["id"])
+                        if candidate is None:
+                            continue
+                        if float(candidate["score"]) < HYBRID_SEMANTIC_BACKFILL_MIN_SCORE:
+                            continue
+                        introduced_rows.append(row)
+                        introduced_metadata.append(candidate)
+                        break
+                    if introduced_rows:
+                        rows = [item["row"] for item in kept_lexical_infos] + introduced_rows
+                        hybrid["applied"] = True
+                        hybrid["reason"] = "stronger-semantic-fact-replaced-weak-lexical-hit"
+                        hybrid["confidence"]["reason"] = "semantic-margin-cleared"
+                        hybrid["kept_lexical_candidate_ids"] = [
+                            item["memory"].id for item in kept_lexical_infos
+                        ]
+                        kept_lexical_id_set = set(hybrid["kept_lexical_candidate_ids"])
+                        hybrid["dropped_lexical_candidate_ids"] = [
+                            item["memory"].id
+                            for item in lexical_infos
+                            if item["memory"].id not in kept_lexical_id_set
+                        ]
+                        hybrid["introduced_candidate_ids"] = [row["id"] for row in introduced_rows]
+                        hybrid["selected_candidate_ids"] = [row["id"] for row in rows]
+                        for item in kept_lexical_infos:
+                            candidate_metadata[item["memory"].id] = {
+                                "pre_hybrid_rank": item["pre_hybrid_rank"],
+                                "hybrid_candidate_source": "lexical",
+                                "structured_fact_candidate": item["structured_fact"],
+                                "semantic_backfill_score": round(float(item["semantic_score"]), 6),
+                                "semantic_backfill_term_overlap": int(item["semantic_term_overlap"]),
+                            }
+                        for row, candidate in zip(introduced_rows, introduced_metadata):
+                            candidate_metadata[row["id"]] = {
+                                "pre_hybrid_rank": None,
+                                "hybrid_candidate_source": "semantic-backfill",
+                                "structured_fact_candidate": _row_has_structured_fact(row),
+                                "semantic_backfill_score": round(float(candidate["score"]), 6),
+                                "semantic_backfill_term_overlap": int(candidate["term_overlap"]),
+                            }
+                    else:
+                        hybrid["reason"] = "no-introduced-candidate-cleared-threshold"
+                        hybrid["confidence"]["passed"] = False
+                        hybrid["confidence"]["reason"] = "no-introduced-candidate-cleared-threshold"
+        rows, history_observation_support = self._history_observation_support_rows(
+            query=query,
+            raw_tokens=raw_tokens,
+            raw_terms=raw_terms,
+            query_lookup=query_lookup,
+            rows=rows,
+            search_mode=search_mode,
+            scope=scope,
+            include_quarantined=include_quarantined,
+            limit=limit,
+        )
+        for index, row in enumerate(rows, start=1):
+            candidate_metadata.setdefault(
+                row["id"],
+                {
+                    "pre_hybrid_rank": index if hybrid["applied"] else None,
+                    "hybrid_candidate_source": "lexical" if search_mode in {"fts", "fallback"} else None,
+                    "structured_fact_candidate": _row_has_structured_fact(row) if search_mode in {"fts", "fallback"} else None,
+                    "semantic_backfill_score": None,
+                    "semantic_backfill_term_overlap": None,
+                    "observation_seq": int(row["observation_seq"]) if "observation_seq" in row.keys() else 0,
+                },
+            )
         return {
-            "memories": [MemoryRecord.from_row(row) for row in rows],
+            "rows": rows,
+            "search_mode": search_mode,
+            "fts_query": str(selected_variant["fts_query"]),
+            "terms": list(selected_variant["terms"]),
+            "raw_terms": raw_terms,
+            "search_query": str(selected_variant["query"]),
+            "fusion_query": str(selected_variant["query"]),
+            "fusion_query_basis": str(selected_variant["basis"]),
+            "chronology_support": chronology_support,
+            "history_support": history_support,
+            "update_history_support": update_history_support,
+            "candidate_metadata": candidate_metadata,
+            "query_lookup": {
+                "schema": QUERY_LOOKUP_SCHEMA,
+                "lookup_key": query_lookup.get("lookup_key"),
+                "lookup_basis": query_lookup.get("lookup_basis"),
+                "lookup_relation": query_lookup.get("lookup_relation"),
+                "selected_search_query": selected_variant["query"],
+                "selected_search_terms": selected_variant["terms"],
+                "selected_search_basis": selected_variant["basis"],
+                "chronology": {
+                    "matched_terms": chronology.get("matched_terms", []) if chronology else [],
+                    "raw_core_terms": chronology.get("raw_core_terms", []) if chronology else [],
+                    "core_terms": chronology.get("core_terms", []) if chronology else [],
+                    "matched_aliases": chronology.get("matched_aliases", []) if chronology else [],
+                    "alias_expanded": bool(chronology and chronology.get("alias_expanded")),
+                    "search_alias_variants": chronology.get("search_alias_variants", []) if chronology else [],
+                    "search_alias_expanded": bool(chronology and chronology.get("search_alias_expanded")),
+                    "expanded": bool(chronology and chronology.get("variants")),
+                    "support_candidate_ids": chronology_support["selected_candidate_ids"],
+                    "support_relation_terms": chronology_support["relation_terms"],
+                    "support_subject_term": chronology_support["subject_term"],
+                },
+                "history": {
+                    "matched_terms": history_lookup.get("matched_terms", []) if history_lookup else [],
+                    "raw_core_terms": history_lookup.get("raw_core_terms", []) if history_lookup else [],
+                    "core_terms": history_lookup.get("core_terms", []) if history_lookup else [],
+                    "matched_aliases": history_lookup.get("matched_aliases", []) if history_lookup else [],
+                    "alias_expanded": bool(history_lookup and history_lookup.get("alias_expanded")),
+                    "search_alias_variants": history_lookup.get("search_alias_variants", []) if history_lookup else [],
+                    "search_alias_expanded": bool(history_lookup and history_lookup.get("search_alias_expanded")),
+                    "role_inferred": history_lookup.get("role_inferred") if history_lookup else None,
+                    "role_inference_reason": history_lookup.get("role_inference_reason") if history_lookup else None,
+                    "expanded": bool(history_lookup and history_lookup.get("expanded")),
+                    "support_candidate_ids": history_support["selected_candidate_ids"],
+                    "support_relation_terms": history_support["relation_terms"],
+                    "support_subject_term": history_support["subject_term"],
+                    "observation_support": history_observation_support,
+                },
+                "current": {
+                    "matched_terms": current_lookup.get("matched_terms", []) if current_lookup else [],
+                    "raw_core_terms": current_lookup.get("raw_core_terms", []) if current_lookup else [],
+                    "core_terms": current_lookup.get("core_terms", []) if current_lookup else [],
+                    "matched_aliases": current_lookup.get("matched_aliases", []) if current_lookup else [],
+                    "alias_expanded": bool(current_lookup and current_lookup.get("alias_expanded")),
+                    "search_alias_variants": current_lookup.get("search_alias_variants", []) if current_lookup else [],
+                    "search_alias_expanded": bool(current_lookup and current_lookup.get("search_alias_expanded")),
+                    "expanded": bool(current_lookup and current_lookup.get("expanded")),
+                    "update_anchor_terms": current_update_anchor_terms,
+                    "update_sibling_candidate_ids": current_update_sibling_ids,
+                },
+                "update": {
+                    "matched_terms": update_lookup.get("matched_terms", []) if update_lookup else [],
+                    "raw_core_terms": update_lookup.get("raw_core_terms", []) if update_lookup else [],
+                    "core_terms": update_lookup.get("core_terms", []) if update_lookup else [],
+                    "matched_aliases": update_lookup.get("matched_aliases", []) if update_lookup else [],
+                    "alias_expanded": bool(update_lookup and update_lookup.get("alias_expanded")),
+                    "search_alias_variants": update_lookup.get("search_alias_variants", []) if update_lookup else [],
+                    "search_alias_expanded": bool(update_lookup and update_lookup.get("search_alias_expanded")),
+                    "direction": update_lookup.get("direction") if update_lookup else None,
+                    "direction_terms": update_lookup.get("direction_terms", []) if update_lookup else [],
+                    "role_inferred": update_lookup.get("role_inferred") if update_lookup else None,
+                    "role_inference_reason": update_lookup.get("role_inference_reason") if update_lookup else None,
+                    "expanded": bool(update_lookup and update_lookup.get("expanded")),
+                    "support_candidate_ids": update_history_support["selected_candidate_ids"],
+                    "support_relation_terms": update_history_support["relation_terms"],
+                    "support_subject_term": update_history_support["subject_term"],
+                },
+                "target_history": {
+                    "applied": bool(target_history_lookup and target_history_lookup.get("applied")),
+                    "relation": target_history_lookup.get("relation") if target_history_lookup else None,
+                    "history_terms": target_history_lookup.get("history_terms", []) if target_history_lookup else [],
+                    "mutation_terms": target_history_lookup.get("mutation_terms", []) if target_history_lookup else [],
+                    "target_query": target_history_lookup.get("target_query") if target_history_lookup else None,
+                    "search_variants": (
+                        [
+                            {
+                                "query": str(variant["query"]),
+                                "terms": [str(term) for term in variant.get("terms", []) if str(term)],
+                                "basis": str(variant["basis"]),
+                            }
+                            for variant in target_history_lookup.get("variants", [])
+                        ]
+                        if target_history_lookup
+                        else []
+                    ),
+                },
+                "semantic_aliases": {
+                    "matched_aliases": semantic_alias_variant.get("matched_aliases", []) if semantic_alias_variant else [],
+                    "raw_core_terms": semantic_alias_variant.get("raw_core_terms", []) if semantic_alias_variant else [],
+                    "core_terms": semantic_alias_variant.get("core_terms", []) if semantic_alias_variant else [],
+                    "alias_expanded": bool(semantic_alias_variant and semantic_alias_variant.get("alias_expanded")),
+                    "search_alias_variants": (
+                        semantic_alias_variant.get("search_alias_variants", []) if semantic_alias_variant else []
+                    ),
+                    "search_alias_expanded": bool(
+                        semantic_alias_variant and semantic_alias_variant.get("search_alias_expanded")
+                    ),
+                    "expanded": bool(semantic_alias_variant),
+                },
+                "semantic_rescue": semantic_rescue,
+                "variants": [
+                    {
+                        "query": variant["query"],
+                        "terms": variant["terms"],
+                        "fts_query": variant["fts_query"],
+                        "basis": variant["basis"],
+                    }
+                    for variant in search_variants
+                ],
+            },
+            "bm25_scores": {
+                row["id"]: (float(row["bm25_score"]) if "bm25_score" in row.keys() else None)
+                for row in rows
+            },
+            "fts_preselection": fts_preselection,
+            "semantic_rescue": semantic_rescue,
+            "hybrid": hybrid,
+        }
+
+    def _multi_hop_candidate_union(
+        self,
+        query: str,
+        *,
+        scope: str | None,
+        include_quarantined: bool,
+        parent_rows: list[sqlite3.Row],
+        parent_bm25_scores: dict[str, float | None],
+        retrieval_config: dict[str, Any] | None,
+    ) -> tuple[list[MemoryRecord], dict[str, float | None], dict[str, Any], dict[str, dict[str, Any]]]:
+        multi_hop_config = _candidate_config(retrieval_config, "multi_hop")
+        enabled = bool(multi_hop_config.get("enabled", False))
+        max_subqueries = min(
+            MULTI_HOP_MAX_SUBQUERIES,
+            max(0, int(multi_hop_config.get("max_subqueries", MULTI_HOP_MAX_SUBQUERIES))),
+        )
+        per_subquery_limit = min(
+            MULTI_HOP_PER_SUBQUERY_LIMIT,
+            max(0, int(multi_hop_config.get("per_subquery_limit", MULTI_HOP_PER_SUBQUERY_LIMIT))),
+        )
+        limits = {
+            "max_subqueries": max_subqueries,
+            "per_subquery_results": per_subquery_limit,
+            "candidate_limit": RETRIEVAL_CANDIDATE_LIMIT,
+        }
+        parent_query_hash = sha256_text(query)
+        config_hash = sha256_text(stable_json(multi_hop_config))
+        parent_memories = [MemoryRecord.from_row(row) for row in parent_rows]
+        observation_seq_by_id = {
+            row["id"]: int(row["observation_seq"]) if "observation_seq" in row.keys() else 0
+            for row in parent_rows
+        }
+        parent_rank_by_id = {memory.id: index for index, memory in enumerate(parent_memories, start=1)}
+        memories_by_id = {memory.id: memory for memory in parent_memories}
+        ordered_ids = [memory.id for memory in parent_memories]
+        bm25_scores = dict(parent_bm25_scores)
+        attribution: dict[str, dict[str, Any]] = {
+            memory.id: {
+                "memory_id": memory.id,
+                "sources": ["parent"],
+                "subquery_ids": ["parent"],
+                "introduced_by_subquery_id": None,
+                "pre_multi_hop_rank": parent_rank_by_id[memory.id],
+                "duplicate_count": 0,
+            }
+            for memory in parent_memories
+        }
+        subqueries: list[dict[str, Any]] = []
+        rank_transitions: list[dict[str, Any]] = []
+        disabled_reason = None if enabled else "disabled-by-config"
+
+        if enabled and max_subqueries and per_subquery_limit:
+            subqueries = decompose_multi_hop_query(query, max_subqueries=max_subqueries)
+            if not subqueries:
+                disabled_reason = "no-subqueries"
+            for subquery in subqueries:
+                result = self._retrieval_rows(
+                    subquery["query"],
+                    scope=scope,
+                    include_quarantined=include_quarantined,
+                    limit=per_subquery_limit,
+                )
+                subquery["fts_query"] = result["fts_query"]
+                subquery["search_mode"] = result["search_mode"]
+                subquery["candidate_ids"] = [row["id"] for row in result["rows"]]
+                subquery["candidate_count"] = len(subquery["candidate_ids"])
+                for row in result["rows"]:
+                    memory = MemoryRecord.from_row(row)
+                    item = attribution.setdefault(
+                        memory.id,
+                        {
+                            "memory_id": memory.id,
+                            "sources": [],
+                            "subquery_ids": [],
+                            "introduced_by_subquery_id": subquery["id"],
+                            "pre_multi_hop_rank": parent_rank_by_id.get(memory.id),
+                            "duplicate_count": 0,
+                        },
+                    )
+                    if subquery["id"] in item["subquery_ids"]:
+                        item["duplicate_count"] += 1
+                    elif item["subquery_ids"]:
+                        item["duplicate_count"] += 1
+                    item["sources"].append(subquery["source"])
+                    item["subquery_ids"].append(subquery["id"])
+                    memories_by_id.setdefault(memory.id, memory)
+                    observation_seq_by_id[memory.id] = max(
+                        observation_seq_by_id.get(memory.id, 0),
+                        int(row["observation_seq"]) if "observation_seq" in row.keys() else 0,
+                    )
+                    if memory.id not in ordered_ids and len(ordered_ids) < RETRIEVAL_CANDIDATE_LIMIT:
+                        ordered_ids.append(memory.id)
+                    if memory.id not in bm25_scores or bm25_scores[memory.id] is None:
+                        bm25_scores[memory.id] = result["bm25_scores"].get(memory.id)
+        elif enabled:
+            disabled_reason = "limits-exhausted"
+
+        memories = [memories_by_id[memory_id] for memory_id in ordered_ids[:RETRIEVAL_CANDIDATE_LIMIT]]
+        candidate_metadata: dict[str, dict[str, Any]] = {}
+        introduced_ids = []
+        duplicate_ids = []
+        for rank, memory in enumerate(memories, start=1):
+            item = attribution.setdefault(
+                memory.id,
+                {
+                    "memory_id": memory.id,
+                    "sources": ["parent"],
+                    "subquery_ids": ["parent"],
+                    "introduced_by_subquery_id": None,
+                    "pre_multi_hop_rank": parent_rank_by_id.get(memory.id),
+                    "duplicate_count": 0,
+                },
+            )
+            if item["introduced_by_subquery_id"]:
+                introduced_ids.append(memory.id)
+            if item["duplicate_count"]:
+                duplicate_ids.append(memory.id)
+            candidate_metadata[memory.id] = {
+                "pre_multi_hop_rank": item["pre_multi_hop_rank"],
+                "multi_hop_rank": rank,
+                "introduced_by_subquery_id": item["introduced_by_subquery_id"],
+                "multi_hop_subquery_ids": item["subquery_ids"],
+                "multi_hop_duplicate_count": item["duplicate_count"],
+                "observation_seq": observation_seq_by_id.get(memory.id, 0),
+            }
+            rank_transitions.append(
+                {
+                    "memory_id": memory.id,
+                    "pre_multi_hop_rank": item["pre_multi_hop_rank"],
+                    "multi_hop_rank": rank,
+                    "introduced_by_subquery_id": item["introduced_by_subquery_id"],
+                }
+            )
+
+        metadata = {
+            "schema": MULTI_HOP_DECOMPOSITION_SCHEMA,
+            "enabled": enabled,
+            "decomposer_id": MULTI_HOP_DECOMPOSER_ID if enabled else None,
+            "strategy": MULTI_HOP_STRATEGY,
+            "parent_query_hash": parent_query_hash,
+            "config_hash": config_hash,
+            "decomposition_hash": sha256_text(stable_json(subqueries)),
+            "limits": limits,
+            "subqueries": subqueries,
+            "candidate_attribution": {
+                memory_id: attribution[memory_id]
+                for memory_id in sorted(attribution)
+                if memory_id in candidate_metadata
+            },
+            "merge": {
+                "strategy": "stable_parent_then_subquery_union_v1",
+                "input_candidate_count": len(parent_memories),
+                "merged_candidate_count": len(memories),
+                "introduced_candidate_ids": introduced_ids,
+                "duplicate_candidate_ids": duplicate_ids,
+            },
+            "rank_transitions": rank_transitions,
+            "disabled_reason": disabled_reason,
+        }
+        return memories, bm25_scores, metadata, candidate_metadata
+
+    def search_with_meta(
+        self,
+        query: str,
+        *,
+        scope: str | None = None,
+        include_quarantined: bool = False,
+        retrieval_config: dict[str, Any] | None = None,
+        retrieval_provider_config: dict[str, Any] | None = None,
+        allow_network_providers: bool = False,
+    ) -> dict[str, Any]:
+        self.init()
+        parent = self._retrieval_rows(
+            query,
+            scope=scope,
+            include_quarantined=include_quarantined,
+            limit=RETRIEVAL_CANDIDATE_LIMIT,
+        )
+        fts_query = parent["fts_query"]
+        search_terms = parent["terms"]
+        raw_terms = parent["raw_terms"]
+        rows = parent["rows"]
+        search_mode = parent["search_mode"]
+        fusion_query = parent.get("fusion_query", parent["search_query"])
+        fusion_query_basis = parent.get("fusion_query_basis", parent["query_lookup"].get("selected_search_basis"))
+        memories, bm25_scores, multi_hop_metadata, multi_hop_candidate_metadata = self._multi_hop_candidate_union(
+            query,
+            scope=scope,
+            include_quarantined=include_quarantined,
+            parent_rows=rows,
+            parent_bm25_scores=parent["bm25_scores"],
+            retrieval_config=retrieval_config,
+        )
+        base_candidate_metadata = parent.get("candidate_metadata", {})
+        combined_candidate_metadata = {
+            memory.id: {
+                **base_candidate_metadata.get(memory.id, {}),
+                **multi_hop_candidate_metadata.get(memory.id, {}),
+            }
+            for memory in memories
+        }
+        ranking = _ranking_payload(
+            memories,
+            query=query,
+            query_terms=raw_terms,
+            search_query=parent["search_query"],
+            search_terms=search_terms,
+            fts_query=fts_query,
+            search_mode=search_mode,
+            bm25_scores=bm25_scores,
+            query_lookup=parent["query_lookup"],
+            candidate_metadata=combined_candidate_metadata,
+        )
+        memories = _apply_baseline_ranking(memories, ranking)
+        ranking["multi_hop"] = multi_hop_metadata
+        ranking["fts_preselection"] = parent["fts_preselection"]
+        ranking["chronology_support"] = parent["chronology_support"]
+        ranking["history_support"] = parent["history_support"]
+        ranking["update_history_support"] = parent["update_history_support"]
+        ranking["semantic_rescue"] = parent["semantic_rescue"]
+        ranking["hybrid"] = parent["hybrid"]
+        ranking["fusion_query"] = fusion_query
+        ranking["fusion_query_basis"] = fusion_query_basis
+        model_query = (
+            fusion_query
+            if parent["semantic_rescue"].get("applied") or parent["hybrid"].get("applied")
+            else query
+        )
+        effective_retrieval_config = _effective_retrieval_config(
+            retrieval_config,
+            semantic_rescue_applied=bool(parent["semantic_rescue"].get("applied")),
+            hybrid_backfill_applied=bool(parent["hybrid"].get("applied")),
+            candidate_count=len(memories),
+        )
+        memories, _embedding_metadata = apply_embedding_overlay(
+            model_query,
+            memories,
+            ranking,
+            effective_retrieval_config,
+            retrieval_provider_config=retrieval_provider_config,
+            allow_network_providers=allow_network_providers,
+        )
+        memories, _reranker_metadata = apply_reranker(
+            model_query,
+            memories,
+            ranking,
+            effective_retrieval_config,
+            retrieval_provider_config=retrieval_provider_config,
+            allow_network_providers=allow_network_providers,
+        )
+        temporal = resolve_temporal_lifecycle(memories, ranking)
+        return {
+            "memories": memories,
+            "current_memories": temporal["memories"],
+            "selected_memories": temporal["selected_memories"],
             "query": query,
             "fts_query": fts_query,
             "search_mode": search_mode,
+            "ranking": ranking,
+            "retrieval": ranking,
+            "metadata": ranking,
         }
 
     def queue(self, *, scope: str | None = None, status: str | None = None) -> list[MemoryRecord]:
@@ -590,9 +6691,46 @@ class MemoryStore:
         descendants = [child.to_dict() for child in self.descendants(memory_id)]
         return {
             "memory": memory.to_dict(),
+            "write_receipt": self.memory_write_receipt(memory_id),
             "parents": parents,
+            "parent_write_receipts": {
+                parent_id: self.memory_write_receipt(parent_id)
+                for parent_id in memory.parents
+                if self._exists(parent_id)
+            },
             "descendants": descendants,
         }
+
+    def memory_write_receipt(self, memory_id: str) -> dict[str, Any]:
+        self.init()
+        row = self.conn.execute(
+            "SELECT * FROM memory_write_receipts WHERE memory_id = ? ORDER BY created_at DESC LIMIT 1",
+            (memory_id,),
+        ).fetchone()
+        if row is None:
+            raise KeyError(f"write receipt not found for memory: {memory_id}")
+        return self._memory_write_receipt_from_row(row)
+
+    def _memory_write_receipt_from_row(self, row: sqlite3.Row) -> dict[str, Any]:
+        receipt = {
+            "receipt_schema": row["receipt_schema"],
+            "hash_alg": row["hash_alg"],
+            "merkle_alg": row["merkle_alg"],
+            "receipt_id": row["receipt_id"],
+            "memory_id": row["memory_id"],
+            "actor_uri": row["actor_uri"],
+            "session_id": row["session_id"],
+            "parent_action_id": row["parent_action_id"],
+            "source_uri": row["source_uri"],
+            "content_digest": row["content_digest"],
+            "environment_hash": row["environment_hash"],
+            "event_hash": row["event_hash"],
+            "merkle_root": row["merkle_root"],
+            "treeship_statement": json.loads(row["treeship_statement_json"]),
+            "created_at": row["created_at"],
+            "receipt_hash": row["receipt_hash"],
+        }
+        return receipt
 
     def reject(self, memory_id: str, *, actor_id: str = "human", reason: str | None = None) -> MemoryRecord:
         self.init()
@@ -672,24 +6810,64 @@ class MemoryStore:
         )
         self.conn.commit()
 
-    def inject(self, task: str, *, agent_id: str, risk: str, scope: str | None = None) -> dict[str, Any]:
+    def inject(
+        self,
+        task: str,
+        *,
+        agent_id: str,
+        risk: str,
+        scope: str | None = None,
+        context_budget_tokens: int | None = None,
+        retrieval_config: dict[str, Any] | None = None,
+        retrieval_provider_config: dict[str, Any] | None = None,
+        allow_network_providers: bool = False,
+    ) -> dict[str, Any]:
         self.init()
-        search_result = self.search_with_meta(task, scope=scope, include_quarantined=True)
+        search_result = self.search_with_meta(
+            task,
+            scope=scope,
+            include_quarantined=True,
+            retrieval_config=retrieval_config,
+            retrieval_provider_config=retrieval_provider_config,
+            allow_network_providers=allow_network_providers,
+        )
         candidates = search_result["memories"]
+        current_candidates = search_result["current_memories"]
+        selected_candidates = search_result.get("selected_memories", current_candidates)
+        selected_candidate_ids = {memory.id for memory in selected_candidates}
+        policy_candidates = list(current_candidates)
+        seen_policy_candidate_ids = {memory.id for memory in policy_candidates}
+        for memory in selected_candidates:
+            if memory.id in seen_policy_candidate_ids:
+                continue
+            policy_candidates.append(memory)
+            seen_policy_candidate_ids.add(memory.id)
         injected: list[MemoryRecord] = []
         withheld: list[dict[str, str]] = []
         policy_checks: list[str] = []
         policy_decisions: list[dict[str, str]] = []
         policy_config = load_policy_config(self.policy_path or default_policy_path())
-        for memory in candidates:
+        for memory in policy_candidates:
             decision = decide_memory(memory, risk=risk, config=policy_config)
             policy_decisions.append(decision.to_dict())
             if decision.decision == "withhold":
                 withheld.append({"memory_id": memory.id, "reason": decision.reason, "rule": decision.rule})
                 continue
+            if memory.id not in selected_candidate_ids:
+                continue
             injected.append(memory)
             if memory.type == "policy":
                 policy_checks.append(memory.id)
+        retrieval = dict(search_result["retrieval"])
+        retrieval["policy"] = {
+            "engine": POLICY_ENGINE,
+            "authorized_ids": [memory.id for memory in injected],
+            "withheld_ids": [item["memory_id"] for item in withheld],
+        }
+        packing = pack_memory_context(injected, retrieval=retrieval, max_tokens=context_budget_tokens)
+        injected = packing["memories"]
+        policy_checks = [memory.id for memory in injected if memory.type == "policy"]
+        retrieval["packing"] = packing["metadata"]
         action_id = "act_" + uuid.uuid4().hex[:16]
         root = self.current_merkle_root()
         memory_tree = self.memory_tree(candidates, scope="retrieved")
@@ -697,6 +6875,11 @@ class MemoryStore:
             memory.id: memory_tree["proofs"][memory.id]
             for memory in injected
             if memory.id in memory_tree["proofs"]
+        }
+        injected_write_receipts = {
+            memory.id: self.memory_write_receipt(memory.id)
+            for memory in injected
+            if self._has_write_receipt(memory.id)
         }
         receipt = {
             "receipt_schema": RECEIPT_SCHEMA,
@@ -708,11 +6891,7 @@ class MemoryStore:
             "task_hash": sha256_text(task),
             "risk": risk,
             "retrieved_memory_ids": [m.id for m in candidates],
-            "retrieval": {
-                "query": search_result["query"],
-                "fts_query": search_result["fts_query"],
-                "search_mode": search_result["search_mode"],
-            },
+            "retrieval": retrieval,
             "injected_memory_ids": [m.id for m in injected],
             "withheld": withheld,
             "policy_checks": policy_checks,
@@ -720,6 +6899,7 @@ class MemoryStore:
             "policy_decisions": policy_decisions,
             "memory_tree": memory_tree,
             "injected_memory_proofs": injected_memory_proofs,
+            "injected_memory_write_receipts": injected_write_receipts,
             "merkle_root": root,
             "created_at": now_iso(),
         }
@@ -792,6 +6972,11 @@ class MemoryStore:
             "retrieval": json.loads(row["retrieval_json"]),
             "memory_tree": memory_tree,
             "injected_memory_proofs": injected_memory_proofs,
+            "injected_memory_write_receipts": {
+                memory_id: self.memory_write_receipt(memory_id)
+                for memory_id in injected_ids
+                if self._has_write_receipt(memory_id)
+            },
             "merkle_root": row["merkle_root"],
             "created_at": row["created_at"],
         }
@@ -844,6 +7029,11 @@ class MemoryStore:
             "receipt": receipt,
             "supporting_memory_ids": receipt["retrieved_memory_ids"],
             "supporting_memories": [self.get(mid).to_dict() for mid in receipt["retrieved_memory_ids"] if self._exists(mid)],
+            "supporting_memory_write_receipts": {
+                mid: self.memory_write_receipt(mid)
+                for mid in receipt["retrieved_memory_ids"]
+                if self._exists(mid) and self._has_write_receipt(mid)
+            },
             "supporting_events": events,
             "proof": {
                 "event_count": len(events),
@@ -942,6 +7132,12 @@ class MemoryStore:
             self.why(row["action_id"])
             for row in self.conn.execute("SELECT action_id FROM receipts ORDER BY created_at, action_id").fetchall()
         ]
+        write_receipts = [
+            self._memory_write_receipt_from_row(row)
+            for row in self.conn.execute(
+                "SELECT * FROM memory_write_receipts ORDER BY created_at, receipt_id"
+            ).fetchall()
+        ]
         payload = {
             "snapshot_schema": SNAPSHOT_SCHEMA,
             "hash_alg": HASH_ALG,
@@ -952,9 +7148,11 @@ class MemoryStore:
             "memory_count": len(memories),
             "event_count": len(events),
             "receipt_count": len(receipts),
+            "write_receipt_count": len(write_receipts),
             "memories": memories,
             "events": events,
             "receipts": receipts,
+            "write_receipts": write_receipts,
         }
         payload["snapshot_hash"] = sha256_text(stable_json(payload))
         return payload
@@ -967,10 +7165,11 @@ class MemoryStore:
             SELECT
               (SELECT COUNT(*) FROM memories) AS memory_count,
               (SELECT COUNT(*) FROM events) AS event_count,
-              (SELECT COUNT(*) FROM receipts) AS receipt_count
+              (SELECT COUNT(*) FROM receipts) AS receipt_count,
+              (SELECT COUNT(*) FROM memory_write_receipts) AS write_receipt_count
             """
         ).fetchone()
-        if existing["memory_count"] or existing["event_count"] or existing["receipt_count"]:
+        if existing["memory_count"] or existing["event_count"] or existing["receipt_count"] or existing["write_receipt_count"]:
             raise ValueError("restore requires an empty memory store")
 
         for memory in snapshot["memories"]:
@@ -1054,6 +7253,35 @@ class MemoryStore:
                 ),
             )
 
+        for write_receipt in snapshot.get("write_receipts", []):
+            self.conn.execute(
+                """
+                INSERT INTO memory_write_receipts (
+                  receipt_id, receipt_schema, hash_alg, merkle_alg, memory_id, actor_uri, session_id,
+                  parent_action_id, source_uri, content_digest, environment_hash, event_hash, merkle_root,
+                  treeship_statement_json, created_at, receipt_hash
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    write_receipt["receipt_id"],
+                    write_receipt["receipt_schema"],
+                    write_receipt["hash_alg"],
+                    write_receipt["merkle_alg"],
+                    write_receipt["memory_id"],
+                    write_receipt["actor_uri"],
+                    write_receipt["session_id"],
+                    write_receipt.get("parent_action_id"),
+                    write_receipt.get("source_uri"),
+                    write_receipt["content_digest"],
+                    write_receipt["environment_hash"],
+                    write_receipt["event_hash"],
+                    write_receipt["merkle_root"],
+                    stable_json(write_receipt["treeship_statement"]),
+                    write_receipt["created_at"],
+                    write_receipt["receipt_hash"],
+                ),
+            )
+
         self.conn.commit()
         return {
             "ok": True,
@@ -1062,6 +7290,7 @@ class MemoryStore:
             "memory_count": snapshot["memory_count"],
             "event_count": snapshot["event_count"],
             "receipt_count": snapshot["receipt_count"],
+            "write_receipt_count": snapshot.get("write_receipt_count", len(snapshot.get("write_receipts", []))),
         }
 
     def verify_snapshot(self, snapshot: dict[str, Any]) -> dict[str, Any]:
@@ -1080,6 +7309,7 @@ class MemoryStore:
             "memory_count": snapshot.get("memory_count"),
             "event_count": snapshot.get("event_count"),
             "receipt_count": snapshot.get("receipt_count"),
+            "write_receipt_count": snapshot.get("write_receipt_count"),
         }
         try:
             self._validate_snapshot(snapshot)
@@ -1112,6 +7342,8 @@ class MemoryStore:
             raise ValueError("snapshot event_count mismatch")
         if snapshot.get("receipt_count") != len(snapshot.get("receipts", [])):
             raise ValueError("snapshot receipt_count mismatch")
+        if snapshot.get("write_receipt_count", len(snapshot.get("write_receipts", []))) != len(snapshot.get("write_receipts", [])):
+            raise ValueError("snapshot write_receipt_count mismatch")
 
     def verify(self, action_id: str) -> bool:
         self.init()
@@ -1185,7 +7417,7 @@ class MemoryStore:
         payload: dict[str, Any],
         memory_id: str | None = None,
         action_id: str | None = None,
-    ) -> None:
+    ) -> dict[str, Any]:
         prev_row = self.conn.execute("SELECT event_hash FROM events ORDER BY seq DESC LIMIT 1").fetchone()
         prev_hash = prev_row["event_hash"] if prev_row else sha256_text("genesis")
         payload_json = stable_json(payload)
@@ -1216,6 +7448,108 @@ class MemoryStore:
             """,
             (event_type, memory_id, action_id, actor_id, payload_json, payload_hash, prev_hash, event_hash, root, created_at),
         )
+        return {
+            "event_schema": EVENT_SCHEMA,
+            "hash_alg": HASH_ALG,
+            "merkle_alg": MERKLE_ALG,
+            "event_type": event_type,
+            "memory_id": memory_id,
+            "action_id": action_id,
+            "actor_id": actor_id,
+            "payload_json": payload_json,
+            "payload_hash": payload_hash,
+            "prev_event_hash": prev_hash,
+            "event_hash": event_hash,
+            "merkle_root": root,
+            "created_at": created_at,
+        }
+
+    def _append_write_receipt(
+        self,
+        *,
+        memory_id: str,
+        actor_uri: str,
+        session_id: str,
+        parent_action_id: str | None,
+        source_uri: str | None,
+        content_digest: str,
+        environment_hash: str,
+        event: dict[str, Any],
+        created_at: str,
+    ) -> dict[str, Any]:
+        receipt_id = "wr_" + sha256_text(f"{memory_id}:{event['event_hash']}")[:24]
+        receipt_without_hash = {
+            "receipt_schema": WRITE_RECEIPT_SCHEMA,
+            "hash_alg": HASH_ALG,
+            "merkle_alg": MERKLE_ALG,
+            "receipt_id": receipt_id,
+            "memory_id": memory_id,
+            "actor_uri": actor_uri,
+            "session_id": session_id,
+            "parent_action_id": parent_action_id,
+            "source_uri": source_uri,
+            "content_digest": content_digest,
+            "environment_hash": environment_hash,
+            "event_hash": event["event_hash"],
+            "merkle_root": event["merkle_root"],
+            "created_at": created_at,
+        }
+        treeship_statement = {
+            "schema": "com.zerker.memory.treeship.statement",
+            "schema_version": "0.1.0",
+            "statement_version": "1",
+            "kind": "zerker.memory.write_provenance",
+            "producer": {"name": "zerker-memory"},
+            "subject": {"type": "memory_write", "id": receipt_id, "memory_id": memory_id},
+            "predicate": "memory.write.provenance.generated",
+            "object": {
+                "actor_uri": actor_uri,
+                "session_id": session_id,
+                "parent_action_id": parent_action_id,
+                "source_uri": source_uri,
+                "content_digest": content_digest,
+                "environment_hash": environment_hash,
+            },
+            "evidence": {
+                "hash_alg": HASH_ALG,
+                "merkle_alg": MERKLE_ALG,
+                "event_hash": event["event_hash"],
+                "merkle_root": event["merkle_root"],
+            },
+            "source": {"system": "zerker-memory", "event": event, "receipt": receipt_without_hash},
+            "created_at": created_at,
+        }
+        receipt = dict(receipt_without_hash)
+        receipt["treeship_statement"] = treeship_statement
+        receipt["receipt_hash"] = sha256_text(stable_json(receipt))
+        self.conn.execute(
+            """
+            INSERT INTO memory_write_receipts (
+              receipt_id, receipt_schema, hash_alg, merkle_alg, memory_id, actor_uri, session_id,
+              parent_action_id, source_uri, content_digest, environment_hash, event_hash, merkle_root,
+              treeship_statement_json, created_at, receipt_hash
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                receipt_id,
+                WRITE_RECEIPT_SCHEMA,
+                HASH_ALG,
+                MERKLE_ALG,
+                memory_id,
+                actor_uri,
+                session_id,
+                parent_action_id,
+                source_uri,
+                content_digest,
+                environment_hash,
+                event["event_hash"],
+                event["merkle_root"],
+                stable_json(treeship_statement),
+                created_at,
+                receipt["receipt_hash"],
+            ),
+        )
+        return receipt
 
     @staticmethod
     def _default_trust(source_kind: str) -> float:

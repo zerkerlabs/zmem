@@ -29,6 +29,8 @@ class SnapshotTest(unittest.TestCase):
         self.assertEqual(snapshot["snapshot_schema"], "zerker.memory_snapshot.v1")
         self.assertEqual(snapshot["memory_count"], 1)
         self.assertEqual(snapshot["receipt_count"], 1)
+        self.assertEqual(snapshot["write_receipt_count"], 1)
+        self.assertEqual(snapshot["write_receipts"][0]["memory_id"], snapshot["memories"][0]["id"])
         self.assertGreaterEqual(snapshot["event_count"], 2)
         self.assertEqual(snapshot["merkle_root"], self.store.current_merkle_root())
 
@@ -69,6 +71,7 @@ class SnapshotTest(unittest.TestCase):
         self.assertEqual(result["snapshot_hash"], snapshot["snapshot_hash"])
         self.assertEqual(restored.current_merkle_root(), snapshot["merkle_root"])
         self.assertEqual(restored.get(memory.id).content, memory.content)
+        self.assertEqual(restored.memory_write_receipt(memory.id)["memory_id"], memory.id)
         self.assertTrue(restored.verify(receipt["action_id"]))
 
     def test_restore_refuses_non_empty_store(self):
@@ -154,6 +157,7 @@ class SnapshotTest(unittest.TestCase):
         self.assertTrue(bundle["proof"]["verified"])
         self.assertEqual(bundle["supporting_memory_ids"], [memory.id])
         self.assertEqual(bundle["supporting_memories"][0]["id"], memory.id)
+        self.assertEqual(bundle["supporting_memory_write_receipts"][memory.id]["memory_id"], memory.id)
         self.assertGreaterEqual(bundle["proof"]["event_count"], 1)
 
     def test_export_bundle_writes_hashed_artifact(self):
