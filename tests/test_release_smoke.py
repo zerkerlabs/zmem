@@ -235,6 +235,7 @@ class ReleaseSmokeTest(unittest.TestCase):
                 "operator_prompt_path": "CLEAN_SHELL_OPERATOR_PROMPT.md",
                 "finalize_script_path": "FINALIZE_RETURN_PACKET.sh",
                 "expected_log_files": [
+                    "operator-packet-verify.log",
                     "curl-install.log",
                     "first-run.log",
                     "release-pack.log",
