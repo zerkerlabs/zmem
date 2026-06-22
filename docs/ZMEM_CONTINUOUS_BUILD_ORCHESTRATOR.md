@@ -27,6 +27,20 @@ As of 2026-06-22, the product already has meaningful working surface:
 
 The open frontier gaps are not "start from scratch". They are targeted upgrades to make the existing product top-tier.
 
+## Frontier Blueprint Triage
+
+Latest triage: [`FRONTIER_BLUEPRINT_TRIAGE.md`](FRONTIER_BLUEPRINT_TRIAGE.md).
+
+The frontier report does not change the product thesis. It changes the order of attack:
+
+1. Retrieval first: improve hybrid retrieval, retrieval depth, context expansion, and query routing before complex write-time extraction.
+2. Deterministic conflict assembly: current-value conflict resolution should use explicit serial/timestamp ordering, not LLM judgment.
+3. Explicit temporal state: point-in-time, current, and timeline queries need bi-temporal fields or a side table.
+4. Router before graph sprawl: direct, parallel decomposition, chain-of-query, and temporal override should exist before a large graph extractor.
+5. Profiles after evidence: profile/character consolidation is promising, but it should follow measurable raw episodic retrieval and conflict/temporal behavior.
+
+Score projections, competitor comparisons, and "official benchmark" language stay internal until reproduced with pinned datasets, commands, hashes, and receipt bundles.
+
 ## Non-Negotiables
 
 - Keep slices small enough to review and merge independently.
@@ -40,6 +54,7 @@ The open frontier gaps are not "start from scratch". They are targeted upgrades 
 - Every claim about benchmark quality must be backed by a reproducible command and an artifact hash or receipt path.
 - If the working tree contains uncommitted changes outside the lane, do not edit those files. Record the overlap and choose a smaller slice or stop with a status-only update.
 - Automation lanes should stop themselves from widening scope. The coordinator pauses or deletes automations only after the acceptance gates below are met.
+- Do not let research-blueprint language create public benchmark claims. Primary-source links are not enough; public claims need local reproducible artifacts.
 
 ## Current Diff Review
 
@@ -98,12 +113,12 @@ These gates define when the recurring build automations can be paused or deleted
 | Lane | Acceptance criteria | Pause/delete condition |
 | --- | --- | --- |
 | L0 trust-ledger | Durable mutations have receipt-visible lineage for add, promote, reject, revoke, quarantine, supersede, checkpoint/snapshot/export; trusted means verified provenance, not semantic truth | Pause after mutation receipt tests and export/verify docs pass |
-| L1 temporal-kg | Current/history/superseded behavior is explicit; `query_at(timestamp)` exists or is consciously deferred; identity disambiguation fixture passes | Pause after point-in-time query and identity tests pass |
+| L1 temporal-kg | Current/history/superseded behavior is explicit; deterministic conflict assembly exists for current, historical, and timeline queries; `query_at(timestamp)` exists or is consciously deferred; identity disambiguation fixture passes | Pause after conflict resolver, point-in-time query, and identity tests pass |
 | L2 lifecycle-compaction | Session lifecycle commands/APIs exist or are documented as deferred; checkpoint/snapshot roots are receipt-visible; context packing records injected/withheld/budget-dropped | Pause after lifecycle tests and agent handoff docs agree |
-| L3 hybrid-retrieval | FTS/BM25, local provider config, graph/temporal candidates, RRF/fusion, and context-budget receipts have reproducible tests/benchmarks | Pause after benchmark matrix compares local modes with receipt hashes |
-| L4 consolidation | Consolidation levels, lineage fixture, durable job model, and reversible source-child-to-summary records exist without hosted LLM dependency | Pause after job model and recall planner tests pass |
+| L3 hybrid-retrieval | FTS/BM25, local provider config, retrieval depth tuning, context expansion, direct/parallel/chain query routing, graph/temporal candidates, RRF/fusion, and context-budget receipts have reproducible tests/benchmarks | Pause after benchmark matrix compares local modes with receipt hashes |
+| L4 consolidation | Consolidation levels, profile/character aggregation fixture, lineage fixture, durable job model, and reversible source-child-to-summary records exist without hosted LLM dependency | Pause after job model, profile fixture, and recall planner tests pass |
 | L5 identity-workspaces | CLI/dashboard can show connected agents, chat/session ids, workspace ids, source URI, trust status, and proof lineage; conflict fixture exists | Pause after source report plus first conflict-resolution test pass |
-| L6 benchmarks | LongMemEval/LoCoMo adapters, isolated DBs, metrics, receipt bundles, and public-readable reports are reproducible | Pause after local matrix report can be regenerated from documented commands |
+| L6 benchmarks | LongMemEval/LoCoMo adapters, conflict/temporal fixture candidates, isolated DBs, metrics, receipt bundles, and public-readable reports are reproducible | Pause after local matrix report can be regenerated from documented commands |
 | L7 DX-dashboard-site | Setup, MCP, dashboard, landing, feature matrix, and proof page are public-ready and mobile/desktop checked | Pause after launch QA checklist is complete |
 | L8 hdc-research | Research note exists with go/no-go and no production coupling | Keep paused unless explicitly restarted |
 
@@ -150,10 +165,11 @@ Goal: turn the current temporal retrieval behavior into explicit, queryable bi-t
 Tasks:
 
 1. Map existing temporal metadata and tests before adding schema.
-2. Add explicit fields or tables for `valid_from`, `valid_to`, `learned_at`, `superseded_at`, and `unlearned_at` where they do not already exist.
-3. Add `query_at(timestamp)` behavior for the current local store before introducing any external graph engine.
-4. Preserve superseded facts and prove the current-vs-history distinction in receipt metadata.
-5. Add a tiny identity-disambiguation fixture such as `Alice` vs `Alice Chen` across sessions.
+2. Add explicit fields or tables for `valid_from`, `valid_to`, `learned_at`/`recorded_from`, `superseded_at`, `superseded_by`, `unlearned_at`, and monotonic write `serial` where they do not already exist.
+3. Add deterministic conflict assembly tests before general graph work: current-value -> max valid/serial, historical -> point-in-time, change-detection -> timeline.
+4. Add `query_at(timestamp)` behavior for the current local store before introducing any external graph engine.
+5. Preserve superseded facts and prove the current-vs-history distinction in receipt metadata.
+6. Add a tiny identity-disambiguation fixture such as `Alice` vs `Alice Chen` across sessions.
 
 ### L2 Lifecycle Compaction
 
@@ -174,10 +190,12 @@ Goal: reach frontier retrieval quality while keeping the default local/offline p
 Tasks:
 
 1. Strengthen the existing FTS/BM25 path before adding network providers.
-2. Keep local pseudo-embedding/provider config paths testable with no network.
-3. Add RRF fusion across keyword, dense, and temporal/graph candidates.
-4. Ensure every retrieval result can explain why a memory was retrieved, injected, withheld, or dropped.
-5. Benchmark each mode with isolated DBs and reproducible artifacts.
+2. Tune retrieval depth and add context expansion around nucleus hits before adding more write-time extraction.
+3. Keep local pseudo-embedding/provider config paths testable with no network.
+4. Add RRF fusion across keyword, dense, and temporal/graph candidates.
+5. Add an adaptive router contract: direct single-hop, parallel decomposition, iterative chain-of-query, and temporal override.
+6. Ensure every retrieval result can explain why a memory was retrieved, injected, withheld, expanded, or dropped.
+7. Benchmark each mode with isolated DBs and reproducible artifacts.
 
 ### L4 Consolidation
 
@@ -188,8 +206,9 @@ Tasks:
 1. Start with a docs-plus-test fixture defining levels: turn, session, day, week, profile/project.
 2. Add a consolidation job model that is non-blocking and local-first.
 3. Record source child ids and output summary ids so consolidation is reversible and auditable.
-4. Add recall-planner tests before adding LLM summarization.
-5. Do not add hosted summarization as a hard dependency.
+4. Add profile/character aggregation fixtures for scattered facts about the same person or project.
+5. Add recall-planner tests before adding LLM summarization.
+6. Do not add hosted summarization as a hard dependency.
 
 ### L5 Identity Workspaces
 
@@ -213,7 +232,9 @@ Tasks:
 2. Track accuracy, F1, recall@k, latency, token use, abstention, memory counts, and context budget behavior.
 3. Store benchmark receipts and hashes.
 4. Add matrix comparisons for retrieval modes.
-5. Make public benchmark reports understandable without raw logs.
+5. Add local conflict-resolution and temporal fixture candidates before making external leaderboard claims.
+6. Make public benchmark reports understandable without raw logs.
+7. Treat FactConsolidation and EngramaBench as research candidates until primary-source methodology and local fixture support are pinned.
 
 ### L7 DX Dashboard Site
 
