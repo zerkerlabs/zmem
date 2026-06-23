@@ -1721,11 +1721,16 @@ def _target_history_support_ordered_ids(
     rank_by_id: dict[str, int],
 ) -> list[str]:
     target_history = dict((query_lookup or {}).get("target_history", {}))
-    if not target_history.get("applied") or len(current_ids) != 2:
+    if not target_history.get("applied") or len(current_ids) < 2:
         return []
     target_terms = [str(term) for term in query_terms(str(target_history.get("target_query") or "")) if str(term)]
     if not target_terms:
         return []
+    history_terms = {
+        str(term)
+        for term in target_history.get("history_terms", [])
+        if str(term)
+    }
     target_current_ids: list[str] = []
     support_ids: list[str] = []
     for memory_id in current_ids:
@@ -1737,7 +1742,7 @@ def _target_history_support_ordered_ids(
             target_current_ids.append(memory_id)
         else:
             support_ids.append(memory_id)
-    if len(target_current_ids) != 1 or len(support_ids) != 1:
+    if len(target_current_ids) != 1 or not support_ids:
         return []
     ordered_support_ids = _chronology_ordered_ids(
         support_ids,
@@ -1751,7 +1756,16 @@ def _target_history_support_ordered_ids(
     )
     if not ordered_support_ids or not ordered_target_ids:
         return []
-    return ordered_support_ids + ordered_target_ids
+    history_support_ids = []
+    for memory_id in ordered_support_ids:
+        memory = candidate_by_id.get(memory_id)
+        if memory is None:
+            continue
+        haystack_terms = set(_query_tokens(f"{memory.content} {' '.join(memory.labels)}"))
+        if history_terms.intersection(haystack_terms):
+            history_support_ids.append(memory_id)
+    selected_support_id = (history_support_ids or ordered_support_ids)[0]
+    return [selected_support_id] + ordered_target_ids
 
 
 def _current_update_preferred_ids(
@@ -2284,6 +2298,9 @@ def _packing_reservation(authorized_entries: list[dict[str, Any]], retrieval: di
     elif selection_strategy == "chronological_timeline_v1" and support_id_set:
         reservation_strategy = "chronology_relation_support_chain_v1"
         reservation_reason = "chronology-keep-selected-stale-current-support-chain"
+    elif selection_strategy == "target_history_support_preferred_v1" and support_id_set:
+        reservation_strategy = "target_history_support_chain_v1"
+        reservation_reason = "history-target-keep-selected-support-current-pair"
     if reservation_strategy is None:
         return {
             "strategy": None,
@@ -4594,6 +4611,17 @@ def resolve_temporal_lifecycle(
     selection["selected_current_support_ids"] = injection_preference.get("selected_current_support_ids", [])
     if injection_preference.get("current_anchor_id"):
         selection["selected_current_anchor_id"] = injection_preference["current_anchor_id"]
+    if (
+        selection["selection_strategy"] == "target_history_support_preferred_v1"
+        and not selection["selected_target_current_id"]
+        and selection["selected_current_anchor_id"]
+    ):
+        selection["selected_target_current_id"] = selection["selected_current_anchor_id"]
+        selection["selected_target_support_ids"] = [
+            memory_id
+            for memory_id in selection["selected_ids"]
+            if memory_id != selection["selected_current_anchor_id"]
+        ]
     selected_id_set = set(selection["selected_ids"])
     selection_rank_by_id = {
         memory_id: index

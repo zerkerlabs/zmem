@@ -3213,6 +3213,52 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(retrieval["temporal"]["selected_ids"], [support.id, current.id])
         self.assertEqual(retrieval["temporal"]["selected_current_anchor_id"], current.id)
 
+    def test_before_target_history_context_prefers_explicit_support_pair_over_generic_current_anchor(self):
+        support = self.store.remember(
+            "Blue Finch shipped on Staging before the cutover.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.4,
+        )
+        current = self.store.remember(
+            "Blue Finch deploy target changed to Production.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.6,
+        )
+        generic_anchor = self.store.remember(
+            "Blue Finch changed after freeze.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.99,
+            authority="high",
+        )
+        context_path = self.tmp_path / "before-target-history-generic-current-context.json"
+
+        receipt = run_with_memory(
+            self.store,
+            ["python3", "-c", "import os, pathlib; assert pathlib.Path(os.environ['ZERKER_MEMORY_CONTEXT']).exists()"],
+            task="What did Blue Finch deploy to before it moved to Production?",
+            agent_id="codex",
+            risk="low",
+            scope="project",
+            context_path=context_path,
+        )
+
+        self.assertEqual(receipt["exit_code"], 0)
+        context = json.loads(context_path.read_text())
+        self.assertEqual([memory["id"] for memory in context["memories"]], [support.id, current.id])
+        retrieval = receipt["memory_receipt"]["retrieval"]
+        self.assertCountEqual(receipt["memory_receipt"]["retrieved_memory_ids"], [support.id, current.id, generic_anchor.id])
+        self.assertEqual(retrieval["temporal"]["selection_strategy"], "target_history_support_preferred_v1")
+        self.assertEqual(retrieval["temporal"]["selected_ids"], [support.id, current.id])
+        self.assertEqual(retrieval["temporal"]["selected_current_anchor_id"], current.id)
+        self.assertEqual(retrieval["temporal"]["selected_target_current_id"], current.id)
+        self.assertEqual(retrieval["temporal"]["selected_target_support_ids"], [support.id])
+
     def test_before_target_history_context_prefers_explicit_current_target_before_generic_anchor(self):
         stale = self.store.remember(
             "Blue Finch deploy target is Staging.",

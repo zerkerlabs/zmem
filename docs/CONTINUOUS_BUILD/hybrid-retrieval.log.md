@@ -29,3 +29,13 @@
 - Artifacts/receipts: no new external artifacts.
 - Blockers: the working tree now contains multiple verified lanes plus generated/runtime folders. Checkpoint or split reviewed work before adding another broad retrieval slice.
 - Next safe slice: checkpoint the reviewed support-chain reservation, then extend target-history support reservation in a fresh narrow L3 run.
+
+## 2026-06-23T00:08:02Z - target-history support pair selection
+
+- Scope: fixed the no-superseded target-history path so `before ... moved to ...` queries keep the explicit support/current pair even when a generic current anchor is also retrieved.
+- Files touched: `zerker_memory/store.py`, `tests/test_store.py`, `tests/test_runner.py`.
+- Behavior changed: `target_history_support_preferred_v1` now accepts larger current candidate sets, prefers the explicit history-cued support memory over generic current anchors, surfaces `selected_target_current_id` plus `selected_target_support_ids` in temporal receipts, and marks the pair through `packing.reservation.strategy = target_history_support_chain_v1` when it fits the budget.
+- Tests: `python3 -m unittest tests.test_store -q`, `python3 -m unittest tests.test_policy -q`, `python3 -m unittest tests.test_runner -q`, `python3 -m zerker_memory eval`.
+- Artifacts/receipts: target-history receipts now show the chosen support/current pair explicitly; generic current anchors can still appear in `retrieved_memory_ids` without being injected.
+- Blockers: extra target-history current anchors are now excluded deterministically, but temporal receipts still do not label those excluded anchors with a dedicated withheld reason.
+- Next safe slice: add receipt-visible exclusion metadata for extra target-history current anchors so generic notes are explicitly marked as retrieved-but-not-selected.

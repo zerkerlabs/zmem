@@ -5763,6 +5763,56 @@ class MemoryStoreTest(unittest.TestCase):
         self.assertEqual(retrieval["temporal"]["selected_current_ids"], [support.id, current.id])
         self.assertEqual(retrieval["temporal"]["selected_current_anchor_id"], current.id)
 
+    def test_before_target_history_prefers_explicit_support_pair_over_generic_current_anchor(self):
+        support = self.store.remember(
+            "Blue Finch shipped on Staging before the cutover.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.4,
+        )
+        current = self.store.remember(
+            "Blue Finch deploy target changed to Production.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.6,
+        )
+        generic_anchor = self.store.remember(
+            "Blue Finch changed after freeze.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.99,
+            authority="high",
+        )
+
+        budget = approx_memory_tokens(support) + approx_memory_tokens(current)
+        receipt = self.store.inject(
+            "What did Blue Finch deploy to before it moved to Production?",
+            agent_id="codex",
+            risk="low",
+            scope="project",
+            context_budget_tokens=budget,
+        )
+        retrieval = receipt["retrieval"]
+        temporal = retrieval["temporal"]
+        packing = retrieval["packing"]
+
+        self.assertCountEqual(receipt["retrieved_memory_ids"], [support.id, current.id, generic_anchor.id])
+        self.assertEqual(receipt["injected_memory_ids"], [support.id, current.id])
+        self.assertEqual(temporal["selection_strategy"], "target_history_support_preferred_v1")
+        self.assertEqual(temporal["selection_reason"], "history-target-query-terms")
+        self.assertEqual(temporal["selected_ids"], [support.id, current.id])
+        self.assertEqual(temporal["selected_target_current_id"], current.id)
+        self.assertEqual(temporal["selected_target_support_ids"], [support.id])
+        self.assertEqual(temporal["selected_current_anchor_id"], current.id)
+        self.assertEqual(packing["reservation"]["strategy"], "target_history_support_chain_v1")
+        self.assertTrue(packing["reservation"]["applied"])
+        self.assertEqual(packing["reservation"]["requested_ids"], [support.id, current.id])
+        self.assertEqual(packing["reservation"]["applied_ids"], [support.id, current.id])
+        self.assertEqual(packing["budget_dropped"], [])
+
     def test_before_target_history_injects_explicit_current_target_before_generic_current_anchor(self):
         stale = self.store.remember(
             "Blue Finch deploy target is Staging.",
