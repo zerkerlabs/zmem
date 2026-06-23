@@ -26,6 +26,19 @@ class MemoryStoreTest(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
+    def _set_memory_clock(self, memory_id: str, created_at: str, *, updated_at=None) -> None:
+        updated_at = updated_at or created_at
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            (created_at, updated_at, memory_id),
+        )
+
+    def _set_event_clock(self, memory_id: str, event_type: str, created_at: str) -> None:
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = ?",
+            (created_at, memory_id, event_type),
+        )
+
     def test_policy_memory_can_be_promoted_and_injected(self):
         memory = self.store.remember(
             "Production deploys require approval",
@@ -165,6 +178,84 @@ class MemoryStoreTest(unittest.TestCase):
         self.assertEqual(rejected.status, "deprecated")
         self.assertEqual(rejected.authority, "none")
         self.assertEqual(self.store.queue(scope="project"), [])
+
+    def test_promote_persists_mutation_receipt_without_overwriting_original_write_provenance(self):
+        memory = self.store.remember(
+            "Production deploys require approval",
+            memory_type="policy",
+            scope="project",
+            source_kind="agent",
+            actor_id="codex",
+            actor_uri="agent://codex/session-a",
+            session_id="session://alpha",
+            source_uri="conversation://session-a/message-17",
+            parent_action_id="act_prompt_injection",
+            environment_hash="sha256:env_fixture",
+        )
+        original_receipt = self.store.memory_write_receipt(memory.id)
+
+        promoted = self.store.promote(memory.id, actor_id="reviewer")
+        receipts = self.store.memory_write_receipts(memory.id)
+
+        self.assertEqual(promoted.status, "active")
+        self.assertEqual(len(receipts), 2)
+        self.assertEqual(self.store.memory_write_receipt(memory.id)["receipt_id"], original_receipt["receipt_id"])
+
+        mutation_receipt = receipts[-1]
+        mutation_statement = mutation_receipt["treeship_statement"]
+        self.assertEqual(mutation_statement["kind"], "zerker.memory.mutation_receipt")
+        self.assertEqual(mutation_statement["predicate"], "memory.mutation.receipt.generated")
+        self.assertEqual(mutation_statement["object"]["mutation"], "promote")
+        self.assertEqual(mutation_statement["object"]["status"], "active")
+        self.assertEqual(mutation_statement["object"]["authority"], "policy")
+        self.assertEqual(mutation_statement["object"]["content_digest"], f"sha256:{memory.content_hash}")
+        self.assertEqual(mutation_statement["object"]["actor_id"], "reviewer")
+        self.assertEqual(mutation_statement["object"]["actor_uri"], "actor://reviewer")
+        self.assertEqual(mutation_statement["evidence"]["prior_merkle_root"], original_receipt["merkle_root"])
+        self.assertEqual(mutation_statement["evidence"]["new_merkle_root"], mutation_receipt["merkle_root"])
+        self.assertEqual(mutation_statement["source"]["prior_receipt_id"], original_receipt["receipt_id"])
+        self.assertEqual(mutation_statement["source"]["prior_receipt_hash"], original_receipt["receipt_hash"])
+
+    def test_reject_persists_mutation_receipt_without_overwriting_original_write_provenance(self):
+        memory = self.store.remember(
+            "Staging deploys require manual SSH",
+            memory_type="semantic",
+            scope="project",
+            source_kind="agent",
+            actor_id="codex",
+            actor_uri="agent://codex/session-b",
+            session_id="session://beta",
+            source_uri="conversation://session-b/message-4",
+            parent_action_id="act_review",
+            environment_hash="sha256:env_fixture",
+        )
+        original_receipt = self.store.memory_write_receipt(memory.id)
+
+        rejected = self.store.reject(memory.id, actor_id="reviewer", reason="superseded runbook")
+        receipts = self.store.memory_write_receipts(memory.id)
+
+        self.assertEqual(rejected.status, "deprecated")
+        self.assertEqual(rejected.authority, "none")
+        self.assertEqual(len(receipts), 2)
+        self.assertEqual(self.store.memory_write_receipt(memory.id)["receipt_id"], original_receipt["receipt_id"])
+
+        mutation_receipt = receipts[-1]
+        mutation_statement = mutation_receipt["treeship_statement"]
+        self.assertEqual(mutation_statement["kind"], "zerker.memory.mutation_receipt")
+        self.assertEqual(mutation_statement["predicate"], "memory.mutation.receipt.generated")
+        self.assertEqual(mutation_statement["object"]["mutation"], "reject")
+        self.assertEqual(mutation_statement["object"]["status"], "deprecated")
+        self.assertEqual(mutation_statement["object"]["authority"], "none")
+        self.assertEqual(mutation_statement["object"]["reason"], "superseded runbook")
+        self.assertEqual(mutation_statement["object"]["previous_status"], "quarantined")
+        self.assertEqual(mutation_statement["object"]["content_digest"], f"sha256:{memory.content_hash}")
+        self.assertEqual(mutation_statement["object"]["actor_id"], "reviewer")
+        self.assertEqual(mutation_statement["object"]["actor_uri"], "actor://reviewer")
+        self.assertEqual(mutation_statement["evidence"]["prior_merkle_root"], original_receipt["merkle_root"])
+        self.assertEqual(mutation_statement["evidence"]["new_merkle_root"], mutation_receipt["merkle_root"])
+        self.assertEqual(mutation_statement["source"]["prior_receipt_id"], original_receipt["receipt_id"])
+        self.assertEqual(mutation_statement["source"]["prior_receipt_hash"], original_receipt["receipt_hash"])
+        self.assertNotIn("truth", json.dumps(mutation_statement, sort_keys=True).lower())
 
     def test_lineage_and_revoke_descendants(self):
         source = self.store.remember(
@@ -6808,6 +6899,100 @@ class MemoryStoreTest(unittest.TestCase):
         self.assertEqual(history_temporal["selected_current_ids"], [current.id])
         self.assertEqual(history_candidates[stale.id]["temporal_state"], "superseded")
         self.assertEqual(history_candidates[stale.id]["superseded_by_candidate"], current.id)
+
+    def test_query_at_projects_learned_and_valid_time_from_existing_events(self):
+        queued = self.store.remember(
+            "Release checklist owner is Alice Chen.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="agent",
+        )
+        self.store.promote(queued.id)
+        self._set_memory_clock(
+            queued.id,
+            "2024-01-05T00:00:00Z",
+            updated_at="2024-01-20T00:00:00Z",
+        )
+        self._set_event_clock(queued.id, "PROPOSED", "2024-01-05T00:00:00Z")
+        self._set_event_clock(queued.id, "PROMOTED", "2024-01-20T00:00:00Z")
+        self.store.conn.commit()
+
+        before_promotion = self.store.query_at("2024-01-10T00:00:00Z", scope="project")
+        after_promotion = self.store.query_at("2024-01-25T00:00:00Z", scope="project")
+
+        before_temporal = before_promotion["temporal_graph"][queued.id]
+        after_temporal = after_promotion["temporal_graph"][queued.id]
+
+        self.assertEqual(before_promotion["schema"], "zerker.temporal_query.v1")
+        self.assertEqual(before_temporal["learned_at"], "2024-01-05T00:00:00Z")
+        self.assertEqual(before_temporal["valid_from"], "2024-01-20T00:00:00Z")
+        self.assertEqual(before_temporal["status_at_query"], "quarantined")
+        self.assertEqual(before_temporal["temporal_state"], "learned")
+        self.assertNotIn(queued.id, before_promotion["current_memory_ids"])
+
+        self.assertEqual(after_temporal["learned_at"], "2024-01-05T00:00:00Z")
+        self.assertEqual(after_temporal["valid_from"], "2024-01-20T00:00:00Z")
+        self.assertEqual(after_temporal["status_at_query"], "active")
+        self.assertEqual(after_temporal["temporal_state"], "current")
+        self.assertIn(queued.id, after_promotion["current_memory_ids"])
+
+    def test_query_at_projects_parent_supersession_without_merging_unrelated_alice_identity(self):
+        unrelated = self.store.remember(
+            "Alice owns the billing exporter.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        stale = self.store.remember(
+            "Status page owner is Alice.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        current = self.store.remember(
+            "Status page owner is Alice Chen.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            parents=[stale.id],
+        )
+        self._set_memory_clock(unrelated.id, "2024-01-15T00:00:00Z")
+        self._set_memory_clock(stale.id, "2024-01-01T00:00:00Z")
+        self._set_memory_clock(current.id, "2024-02-01T00:00:00Z")
+        self._set_event_clock(unrelated.id, "OBSERVED", "2024-01-15T00:00:00Z")
+        self._set_event_clock(stale.id, "OBSERVED", "2024-01-01T00:00:00Z")
+        self._set_event_clock(current.id, "OBSERVED", "2024-02-01T00:00:00Z")
+        self.store.conn.commit()
+
+        january = self.store.query_at("2024-01-20T00:00:00Z", scope="project")
+        february = self.store.query_at("2024-02-20T00:00:00Z", scope="project")
+        focused = self.store.query_at(
+            "2024-02-20T00:00:00Z",
+            scope="project",
+            search_query="status page owner",
+        )
+
+        stale_january = january["temporal_graph"][stale.id]
+        stale_february = february["temporal_graph"][stale.id]
+        current_january = january["temporal_graph"][current.id]
+        current_february = february["temporal_graph"][current.id]
+
+        self.assertCountEqual(january["current_memory_ids"], [unrelated.id, stale.id])
+        self.assertEqual(january["future_memory_ids"], [current.id])
+        self.assertEqual(stale_january["valid_from"], "2024-01-01T00:00:00Z")
+        self.assertEqual(stale_january["superseded_at"], "2024-02-01T00:00:00Z")
+        self.assertEqual(stale_january["valid_to"], "2024-02-01T00:00:00Z")
+        self.assertEqual(stale_january["temporal_state"], "current")
+        self.assertEqual(current_january["temporal_state"], "future")
+
+        self.assertCountEqual(february["current_memory_ids"], [unrelated.id, current.id])
+        self.assertIn(stale.id, february["superseded_memory_ids"])
+        self.assertEqual(stale_february["temporal_state"], "superseded")
+        self.assertEqual(stale_february["superseded_by_ids"], [current.id])
+        self.assertEqual(current_february["temporal_state"], "current")
+
+        self.assertCountEqual(focused["current_memory_ids"], [current.id])
+        self.assertNotIn(unrelated.id, focused["temporal_graph"])
 
     def test_runner_context_contains_only_current_injected_memories(self):
         parent = self.store.remember(

@@ -36,6 +36,7 @@ RETRIEVAL_SCHEMA = "zerker.retrieval.v1"
 RETRIEVAL_RANK_CONFIG_SCHEMA = "zerker.retrieval_rank_config.v1"
 CONTEXT_PACKING_SCHEMA = "zerker.context_packing.v1"
 TEMPORAL_RESOLUTION_SCHEMA = "zerker.temporal_resolution.v1"
+TEMPORAL_QUERY_SCHEMA = "zerker.temporal_query.v1"
 QUERY_LOOKUP_SCHEMA = "zerker.query_lookup.v1"
 EMBEDDING_RETRIEVAL_SCHEMA = "zerker.embedding_retrieval.v1"
 RERANKER_SCHEMA = "zerker.reranker.v1"
@@ -4904,6 +4905,23 @@ def verify_merkle_proof(leaf_hash: str, proof: list[dict[str, Any]], root: str) 
     return computed == root
 
 
+def _status_from_event(event_type: str, payload: dict[str, Any]) -> str | None:
+    if event_type in {"PROPOSED", "OBSERVED"}:
+        status = str(payload.get("status") or "")
+        if status in STATUSES:
+            return status
+        return "active" if event_type == "OBSERVED" else "quarantined"
+    if event_type == "PROMOTED":
+        return "active"
+    if event_type == "REJECTED":
+        return "deprecated"
+    if event_type == "REVOKED":
+        return "revoked"
+    if event_type == "FORGOTTEN":
+        return "forgotten"
+    return None
+
+
 @dataclass(frozen=True)
 class MemoryRecord:
     id: str
@@ -5215,6 +5233,223 @@ class MemoryStore:
             params,
         ).fetchall()
         return [MemoryRecord.from_row(row) for row in rows]
+
+    def query_at(
+        self,
+        timestamp: str,
+        *,
+        scope: str | None = None,
+        search_query: str | None = None,
+    ) -> dict[str, Any]:
+        self.init()
+        if not re.match(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$", timestamp):
+            raise ValueError("query_at timestamp must be in ISO 8601 UTC form like 2024-01-01T00:00:00Z")
+
+        params: list[Any] = []
+        where_sql = ""
+        if scope:
+            where_sql = "WHERE (scope = ? OR scope = 'global')"
+            params.append(scope)
+        rows = self.conn.execute(
+            f"""
+            SELECT *
+            FROM memories
+            {where_sql}
+            ORDER BY created_at ASC, updated_at ASC, id ASC
+            """,
+            params,
+        ).fetchall()
+        memories = [MemoryRecord.from_row(row) for row in rows]
+        memories_by_id = {memory.id: memory for memory in memories}
+
+        if search_query:
+            search_terms = query_terms(search_query)
+            matched_ids = {
+                memory.id
+                for memory in memories
+                if all(
+                    term in _query_tokens(f"{memory.content} {' '.join(memory.labels)}")
+                    for term in search_terms
+                )
+            } if search_terms else {memory.id for memory in memories}
+            expanded_ids = set(matched_ids)
+            changed = True
+            while changed:
+                changed = False
+                for memory in memories:
+                    if memory.id in expanded_ids:
+                        for parent_id in memory.parents:
+                            if parent_id in memories_by_id and parent_id not in expanded_ids:
+                                expanded_ids.add(parent_id)
+                                changed = True
+                        continue
+                    if any(parent_id in expanded_ids for parent_id in memory.parents):
+                        expanded_ids.add(memory.id)
+                        changed = True
+            memories = [memory for memory in memories if memory.id in expanded_ids]
+            memories_by_id = {memory.id: memory for memory in memories}
+
+        if not memories:
+            return {
+                "schema": TEMPORAL_QUERY_SCHEMA,
+                "query_at": timestamp,
+                "scope": scope,
+                "search_query": search_query,
+                "entries": [],
+                "temporal_graph": {},
+                "history_memory_ids": [],
+                "current_memory_ids": [],
+                "future_memory_ids": [],
+                "superseded_memory_ids": [],
+                "unlearned_memory_ids": [],
+            }
+
+        memory_ids = [memory.id for memory in memories]
+        placeholders = ",".join("?" for _ in memory_ids)
+        event_rows = self.conn.execute(
+            f"""
+            SELECT seq, memory_id, event_type, payload_json, created_at
+            FROM events
+            WHERE memory_id IN ({placeholders})
+            ORDER BY seq ASC
+            """,
+            memory_ids,
+        ).fetchall()
+        status_history_by_id: dict[str, list[dict[str, Any]]] = {memory_id: [] for memory_id in memory_ids}
+        for row in event_rows:
+            payload = json.loads(row["payload_json"])
+            status = _status_from_event(str(row["event_type"]), payload)
+            if status is None:
+                continue
+            status_history_by_id[str(row["memory_id"])].append(
+                {
+                    "at": str(row["created_at"]),
+                    "event_type": str(row["event_type"]),
+                    "status": status,
+                }
+            )
+
+        valid_from_by_id: dict[str, str | None] = {}
+        unlearned_at_by_id: dict[str, str | None] = {}
+        status_at_query_by_id: dict[str, str] = {}
+        for memory in memories:
+            status_history = status_history_by_id.get(memory.id, [])
+            valid_from = next((item["at"] for item in status_history if item["status"] == "active"), None)
+            unlearned_at = next(
+                (
+                    item["at"]
+                    for item in status_history
+                    if item["status"] in {"deprecated", "revoked", "forgotten"}
+                ),
+                None,
+            )
+            status_at_query = "future"
+            for item in status_history:
+                if item["at"] > timestamp:
+                    break
+                status_at_query = str(item["status"])
+            valid_from_by_id[memory.id] = valid_from
+            unlearned_at_by_id[memory.id] = unlearned_at
+            status_at_query_by_id[memory.id] = status_at_query
+
+        child_ids_by_parent: dict[str, list[str]] = {}
+        for memory in memories:
+            if valid_from_by_id.get(memory.id) is None:
+                continue
+            for parent_id in memory.parents:
+                if parent_id in memories_by_id:
+                    child_ids_by_parent.setdefault(parent_id, []).append(memory.id)
+
+        superseded_at_by_id: dict[str, str | None] = {memory.id: None for memory in memories}
+        superseded_by_ids: dict[str, list[str]] = {memory.id: [] for memory in memories}
+        for parent_id, child_ids in child_ids_by_parent.items():
+            child_events = [
+                (str(valid_from_by_id[child_id]), child_id)
+                for child_id in child_ids
+                if valid_from_by_id.get(child_id) is not None
+            ]
+            if not child_events:
+                continue
+            child_events.sort(key=lambda item: (item[0], item[1]))
+            superseded_at = child_events[0][0]
+            superseded_at_by_id[parent_id] = superseded_at
+            superseded_by_ids[parent_id] = [
+                child_id for child_at, child_id in child_events if child_at == superseded_at
+            ]
+
+        entries = []
+        temporal_graph: dict[str, dict[str, Any]] = {}
+        history_memory_ids: list[str] = []
+        current_memory_ids: list[str] = []
+        future_memory_ids: list[str] = []
+        superseded_memory_ids: list[str] = []
+        unlearned_memory_ids: list[str] = []
+        learned_memory_ids: list[str] = []
+        for memory in memories:
+            learned_at = memory.created_at
+            valid_from = valid_from_by_id.get(memory.id)
+            superseded_at = superseded_at_by_id.get(memory.id)
+            unlearned_at = unlearned_at_by_id.get(memory.id)
+            valid_to = min(
+                [item for item in (superseded_at, unlearned_at) if item is not None],
+                default=None,
+            )
+            status_at_query = status_at_query_by_id.get(memory.id, "future")
+
+            if learned_at > timestamp:
+                temporal_state = "future"
+                future_memory_ids.append(memory.id)
+            elif unlearned_at is not None and unlearned_at <= timestamp:
+                temporal_state = "unlearned"
+                history_memory_ids.append(memory.id)
+                unlearned_memory_ids.append(memory.id)
+            elif valid_from is not None and valid_from <= timestamp and superseded_at is not None and superseded_at <= timestamp:
+                temporal_state = "superseded"
+                history_memory_ids.append(memory.id)
+                superseded_memory_ids.append(memory.id)
+            elif valid_from is not None and valid_from <= timestamp and status_at_query == "active":
+                temporal_state = "current"
+                history_memory_ids.append(memory.id)
+                current_memory_ids.append(memory.id)
+            else:
+                temporal_state = "learned"
+                history_memory_ids.append(memory.id)
+                learned_memory_ids.append(memory.id)
+
+            envelope = {
+                "memory_id": memory.id,
+                "parents": list(memory.parents),
+                "learned_at": learned_at,
+                "valid_from": valid_from,
+                "valid_to": valid_to,
+                "superseded_at": superseded_at,
+                "superseded_by_ids": superseded_by_ids.get(memory.id, []),
+                "unlearned_at": unlearned_at,
+                "status_at_query": status_at_query,
+                "temporal_state": temporal_state,
+            }
+            temporal_graph[memory.id] = envelope
+            entries.append(
+                {
+                    "memory": memory.to_dict(),
+                    "temporal": envelope,
+                }
+            )
+
+        return {
+            "schema": TEMPORAL_QUERY_SCHEMA,
+            "query_at": timestamp,
+            "scope": scope,
+            "search_query": search_query,
+            "entries": entries,
+            "temporal_graph": temporal_graph,
+            "history_memory_ids": history_memory_ids,
+            "current_memory_ids": current_memory_ids,
+            "future_memory_ids": future_memory_ids,
+            "superseded_memory_ids": superseded_memory_ids,
+            "unlearned_memory_ids": unlearned_memory_ids,
+            "learned_memory_ids": learned_memory_ids,
+        }
 
     def memory_leaf(self, memory: MemoryRecord) -> dict[str, Any]:
         material = {
@@ -6729,6 +6964,7 @@ class MemoryStore:
         return {
             "memory": memory.to_dict(),
             "write_receipt": self.memory_write_receipt(memory_id),
+            "write_receipts": self.memory_write_receipts(memory_id),
             "parents": parents,
             "parent_write_receipts": {
                 parent_id: self.memory_write_receipt(parent_id)
@@ -6741,12 +6977,33 @@ class MemoryStore:
     def memory_write_receipt(self, memory_id: str) -> dict[str, Any]:
         self.init()
         row = self.conn.execute(
-            "SELECT * FROM memory_write_receipts WHERE memory_id = ? ORDER BY created_at DESC LIMIT 1",
+            """
+            SELECT receipts.*
+            FROM memory_write_receipts AS receipts
+            LEFT JOIN events ON events.event_hash = receipts.event_hash
+            WHERE receipts.memory_id = ?
+            ORDER BY COALESCE(events.seq, 0) ASC, receipts.created_at ASC, receipts.receipt_id ASC
+            LIMIT 1
+            """,
             (memory_id,),
         ).fetchone()
         if row is None:
             raise KeyError(f"write receipt not found for memory: {memory_id}")
         return self._memory_write_receipt_from_row(row)
+
+    def memory_write_receipts(self, memory_id: str) -> list[dict[str, Any]]:
+        self.init()
+        rows = self.conn.execute(
+            """
+            SELECT receipts.*
+            FROM memory_write_receipts AS receipts
+            LEFT JOIN events ON events.event_hash = receipts.event_hash
+            WHERE receipts.memory_id = ?
+            ORDER BY COALESCE(events.seq, 0) ASC, receipts.created_at ASC, receipts.receipt_id ASC
+            """,
+            (memory_id,),
+        ).fetchall()
+        return [self._memory_write_receipt_from_row(row) for row in rows]
 
     def _memory_write_receipt_from_row(self, row: sqlite3.Row) -> dict[str, Any]:
         receipt = {
@@ -6772,18 +7029,53 @@ class MemoryStore:
     def reject(self, memory_id: str, *, actor_id: str = "human", reason: str | None = None) -> MemoryRecord:
         self.init()
         memory = self.get(memory_id)
+        prior_receipts = self.memory_write_receipts(memory_id)
+        prior_receipt = prior_receipts[-1] if prior_receipts else None
+        prior_merkle_root = self.current_merkle_root()
         self.conn.execute(
             "UPDATE memories SET status = 'deprecated', authority = 'none', updated_at = ? WHERE id = ?",
             (now_iso(), memory_id),
         )
-        self._append_event(
+        event = self._append_event(
             "REJECTED",
             actor_id=actor_id,
             memory_id=memory_id,
             payload={"id": memory_id, "previous_status": memory.status, "reason": reason},
         )
+        rejected = self.get(memory_id)
+        self._append_write_receipt(
+            memory_id=memory_id,
+            actor_uri=actor_uri_for(actor_id),
+            session_id=prior_receipt["session_id"] if prior_receipt is not None else f"session://{self.db_path.resolve()}",
+            parent_action_id=prior_receipt.get("parent_action_id") if prior_receipt is not None else None,
+            source_uri=prior_receipt.get("source_uri") if prior_receipt is not None else None,
+            content_digest=digest_uri(rejected.content),
+            environment_hash=prior_receipt["environment_hash"] if prior_receipt is not None else default_environment_hash(),
+            event=event,
+            created_at=event["created_at"],
+            statement_kind="zerker.memory.mutation_receipt",
+            predicate="memory.mutation.receipt.generated",
+            subject_type="memory_mutation",
+            object_updates={
+                "mutation": "reject",
+                "status": rejected.status,
+                "authority": rejected.authority,
+                "actor_id": actor_id,
+                "reason": reason,
+                "previous_status": memory.status,
+            },
+            evidence_updates={
+                "prior_event_hash": event["prev_event_hash"],
+                "prior_merkle_root": prior_merkle_root,
+                "new_merkle_root": event["merkle_root"],
+            },
+            source_updates={
+                "prior_receipt_id": prior_receipt["receipt_id"] if prior_receipt is not None else None,
+                "prior_receipt_hash": prior_receipt["receipt_hash"] if prior_receipt is not None else None,
+            },
+        )
         self.conn.commit()
-        return self.get(memory_id)
+        return rejected
 
     def revoke(self, memory_id: str, *, actor_id: str = "human", reason: str | None = None) -> dict[str, Any]:
         self.init()
@@ -6818,19 +7110,52 @@ class MemoryStore:
     def promote(self, memory_id: str, *, actor_id: str = "human") -> MemoryRecord:
         self.init()
         memory = self.get(memory_id)
+        prior_receipts = self.memory_write_receipts(memory_id)
+        prior_receipt = prior_receipts[-1] if prior_receipts else None
+        prior_merkle_root = self.current_merkle_root()
         authority = "policy" if memory.type == "policy" else max_authority(memory.authority, "medium")
         self.conn.execute(
             "UPDATE memories SET status = 'active', trust = ?, authority = ?, updated_at = ? WHERE id = ?",
             (max(memory.trust, 0.9), authority, now_iso(), memory_id),
         )
-        self._append_event(
+        event = self._append_event(
             "PROMOTED",
             actor_id=actor_id,
             memory_id=memory_id,
             payload={"id": memory_id, "authority": authority},
         )
+        promoted = self.get(memory_id)
+        self._append_write_receipt(
+            memory_id=memory_id,
+            actor_uri=actor_uri_for(actor_id),
+            session_id=prior_receipt["session_id"] if prior_receipt is not None else f"session://{self.db_path.resolve()}",
+            parent_action_id=prior_receipt.get("parent_action_id") if prior_receipt is not None else None,
+            source_uri=prior_receipt.get("source_uri") if prior_receipt is not None else None,
+            content_digest=digest_uri(promoted.content),
+            environment_hash=prior_receipt["environment_hash"] if prior_receipt is not None else default_environment_hash(),
+            event=event,
+            created_at=event["created_at"],
+            statement_kind="zerker.memory.mutation_receipt",
+            predicate="memory.mutation.receipt.generated",
+            subject_type="memory_mutation",
+            object_updates={
+                "mutation": "promote",
+                "status": promoted.status,
+                "authority": promoted.authority,
+                "actor_id": actor_id,
+            },
+            evidence_updates={
+                "prior_event_hash": event["prev_event_hash"],
+                "prior_merkle_root": prior_merkle_root,
+                "new_merkle_root": event["merkle_root"],
+            },
+            source_updates={
+                "prior_receipt_id": prior_receipt["receipt_id"] if prior_receipt is not None else None,
+                "prior_receipt_hash": prior_receipt["receipt_hash"] if prior_receipt is not None else None,
+            },
+        )
         self.conn.commit()
-        return self.get(memory_id)
+        return promoted
 
     def forget(self, memory_id: str, *, actor_id: str = "human") -> None:
         self.init()
@@ -7172,7 +7497,12 @@ class MemoryStore:
         write_receipts = [
             self._memory_write_receipt_from_row(row)
             for row in self.conn.execute(
-                "SELECT * FROM memory_write_receipts ORDER BY created_at, receipt_id"
+                """
+                SELECT receipts.*
+                FROM memory_write_receipts AS receipts
+                LEFT JOIN events ON events.event_hash = receipts.event_hash
+                ORDER BY COALESCE(events.seq, 0) ASC, receipts.created_at ASC, receipts.receipt_id ASC
+                """
             ).fetchall()
         ]
         payload = {
@@ -7513,6 +7843,12 @@ class MemoryStore:
         environment_hash: str,
         event: dict[str, Any],
         created_at: str,
+        statement_kind: str = "zerker.memory.write_provenance",
+        predicate: str = "memory.write.provenance.generated",
+        subject_type: str = "memory_write",
+        object_updates: dict[str, Any] | None = None,
+        evidence_updates: dict[str, Any] | None = None,
+        source_updates: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         receipt_id = "wr_" + sha256_text(f"{memory_id}:{event['event_hash']}")[:24]
         receipt_without_hash = {
@@ -7531,29 +7867,38 @@ class MemoryStore:
             "merkle_root": event["merkle_root"],
             "created_at": created_at,
         }
+        statement_object = {
+            "actor_uri": actor_uri,
+            "session_id": session_id,
+            "parent_action_id": parent_action_id,
+            "source_uri": source_uri,
+            "content_digest": content_digest,
+            "environment_hash": environment_hash,
+        }
+        if object_updates:
+            statement_object.update(object_updates)
+        statement_evidence = {
+            "hash_alg": HASH_ALG,
+            "merkle_alg": MERKLE_ALG,
+            "event_hash": event["event_hash"],
+            "merkle_root": event["merkle_root"],
+        }
+        if evidence_updates:
+            statement_evidence.update(evidence_updates)
+        statement_source = {"system": "zerker-memory", "event": event, "receipt": receipt_without_hash}
+        if source_updates:
+            statement_source.update(source_updates)
         treeship_statement = {
             "schema": "com.zerker.memory.treeship.statement",
             "schema_version": "0.1.0",
             "statement_version": "1",
-            "kind": "zerker.memory.write_provenance",
+            "kind": statement_kind,
             "producer": {"name": "zerker-memory"},
-            "subject": {"type": "memory_write", "id": receipt_id, "memory_id": memory_id},
-            "predicate": "memory.write.provenance.generated",
-            "object": {
-                "actor_uri": actor_uri,
-                "session_id": session_id,
-                "parent_action_id": parent_action_id,
-                "source_uri": source_uri,
-                "content_digest": content_digest,
-                "environment_hash": environment_hash,
-            },
-            "evidence": {
-                "hash_alg": HASH_ALG,
-                "merkle_alg": MERKLE_ALG,
-                "event_hash": event["event_hash"],
-                "merkle_root": event["merkle_root"],
-            },
-            "source": {"system": "zerker-memory", "event": event, "receipt": receipt_without_hash},
+            "subject": {"type": subject_type, "id": receipt_id, "memory_id": memory_id},
+            "predicate": predicate,
+            "object": statement_object,
+            "evidence": statement_evidence,
+            "source": statement_source,
             "created_at": created_at,
         }
         receipt = dict(receipt_without_hash)

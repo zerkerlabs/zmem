@@ -62,6 +62,34 @@ class SnapshotTest(unittest.TestCase):
         self.assertEqual(promoted_payload["id"], memory.id)
         self.assertEqual(promoted_payload["authority"], "policy")
 
+    def test_snapshot_captures_promote_mutation_write_receipt(self):
+        memory = self.store.remember(
+            "Production deploys require approval",
+            memory_type="policy",
+            scope="project",
+            source_kind="agent",
+            actor_id="codex",
+            actor_uri="agent://codex/session-a",
+            session_id="session://alpha",
+            source_uri="conversation://session-a/message-17",
+            parent_action_id="act_prompt_injection",
+            environment_hash="sha256:env_fixture",
+        )
+
+        self.store.promote(memory.id, actor_id="reviewer")
+        snapshot = self.store.snapshot()
+
+        self.assertEqual(snapshot["write_receipt_count"], 2)
+        memory_receipts = [receipt for receipt in snapshot["write_receipts"] if receipt["memory_id"] == memory.id]
+        self.assertEqual(len(memory_receipts), 2)
+        mutation_receipt = memory_receipts[-1]
+        self.assertEqual(mutation_receipt["treeship_statement"]["kind"], "zerker.memory.mutation_receipt")
+        self.assertEqual(mutation_receipt["treeship_statement"]["object"]["mutation"], "promote")
+        self.assertEqual(
+            mutation_receipt["treeship_statement"]["evidence"]["new_merkle_root"],
+            mutation_receipt["merkle_root"],
+        )
+
     def test_export_snapshot_writes_hashed_artifact(self):
         self.store.remember(
             "Use SQLite for local memory",
