@@ -144,6 +144,7 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
     init.add_argument("--with-provider-config", action="store_true", help="Also write a starter provider config")
 
     sub.add_parser("eval", help="Run the built-in Zerker Memory evaluation harness")
+    sub.add_parser("cto-smoke", help="Run the fast CTO quality smoke across the canonical audit rows")
 
     demo = sub.add_parser("demo", help="Run a local end-to-end Zerker Memory demo")
     demo.add_argument("--scope", default="project")
@@ -959,6 +960,12 @@ def main(argv: list[str] | None = None) -> int:
             from .eval import run_eval
 
             result = run_eval()
+            print_json(result)
+            return 0 if result["ok"] else 1
+        if args.command == "cto-smoke":
+            from .eval import run_cto_smoke
+
+            result = run_cto_smoke()
             print_json(result)
             return 0 if result["ok"] else 1
         if args.command == "doctor":

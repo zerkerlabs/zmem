@@ -1,10 +1,28 @@
 # ZMem Codex CTO Quality Loop
 
-Last updated: 2026-06-22
+Last updated: 2026-06-23
 
-This is the executive operating loop for end-to-end ZMem quality. It sits above the lane roadmap and continuous-build orchestrator: lanes may improve pieces of the system, but this loop proves the product behaves coherently as a memory system.
+This is the executive operating loop for end-to-end ZMem quality. It is not the frontier build swarm and it is not the launch readiness track. It audits the whole product, records pass/fail/blocked status, and prioritizes dangerous gaps.
 
 The mode is CTO-style: high agency, tight scope control, eval-first discipline, no vague "make it better" work, and no product claims without evidence.
+
+## Three Orchestrators
+
+ZMem has three separate operating loops. Keep them distinct:
+
+| Loop | Canonical file | Owns | Does not own |
+| --- | --- | --- | --- |
+| Frontier Build Orchestrator | `docs/ZMEM_CONTINUOUS_BUILD_ORCHESTRATOR.md` | Active frontier capability work: retrieval, temporal KG, lifecycle, consolidation, identity, benchmarks, and proof ledger | Launch packaging or executive pass/fail audit |
+| Launch / Public Readiness | Launch proof, release pack, clean-shell proof, public docs/site/assets, alpha tag docs | Customer-facing readiness: site, docs, release pack, clean-shell proof, launch assets, public copy, alpha tag | Frontier architecture or broad product-quality arbitration |
+| CTO Quality Loop | `docs/internal/ZMEM_CODEX_CTO_LOOP.md` and `docs/internal/ZMEM_CODEX_QUALITY_AUDIT.md` | Executive audit: does the whole product work end to end, what is pass/fail/blocked, what is dangerous to ship | Competing feature work or redirecting frontier lanes |
+
+Clean hierarchy:
+
+- Frontier swarm builds.
+- Launch readiness packages and publishes.
+- CTO loop audits and prioritizes.
+
+The CTO loop may recommend frontier or launch work, but it should not spin up competing feature work unless it finds a P0/P1 issue. Its default output is an updated audit ledger, not a redirected build plan.
 
 ## Operating Principle
 
@@ -58,6 +76,11 @@ Work in phases:
 7. End with an internal readout: audited surface, pass/fail counts, fixes landed, blockers, product ambiguities, and next evals.
 
 Constraints:
+- Treat this as an executive audit loop, not a frontier build swarm.
+- Update the audit ledger before redirecting any lane work.
+- Do not spin up feature work unless the audit finds a P0/P1 or the user explicitly asks for implementation.
+- Recommend frontier work back to the Frontier Build Orchestrator instead of owning it here.
+- Recommend public-readiness work back to the launch track instead of owning it here.
 - Do not refactor unrelated code.
 - Do not invent requirements when code/docs/tests disagree; record a product ambiguity.
 - Do not edit files already dirty from another lane unless this loop explicitly owns the integration.
@@ -179,4 +202,3 @@ The first pass should be documentation and eval-heavy:
 3. Add focused tests only for high-risk missing contracts.
 4. Fix only P0/P1 failures found during baseline.
 5. Leave P2/P3 items as audit-backed backlog unless they are tiny and isolated.
-
