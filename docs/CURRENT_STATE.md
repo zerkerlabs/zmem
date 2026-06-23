@@ -2,6 +2,55 @@
 
 This is the short orchestration dashboard for Zerker Memory. Every autonomous build run should update this file after it updates `docs/BUILD_LOG.md`.
 
+## Live Integration Checkpoint
+`2026-06-22`
+
+- Checkpointed three reviewed automation drops into clean commits: benchmark evidence summary, dashboard workspace-source lineage, and target-history support-pair retrieval.
+- Verified benchmark evidence with `python3 -m unittest tests.test_bench.BenchmarkHarnessTest.test_synthetic_trace_run_writes_receipt_with_token_efficiency tests.test_bench_scripts -q` and full `python3 -m unittest tests.test_bench -q` (`Ran 135 tests`).
+- Verified dashboard/source lineage with focused dashboard tests plus `python3 -m unittest tests.test_dashboard -q`, `python3 -m unittest tests.test_workspaces -q`, and the workspace CLI parser smoke.
+- Verified target-history retrieval with focused store/runner tests plus `python3 -m unittest tests.test_store -q`, `python3 -m unittest tests.test_runner -q`, `python3 -m unittest tests.test_policy -q`, and `python3 -m zerker_memory eval`.
+- Left local runtime/evidence folders uncommitted: `.treeship/` and `data/`. The active benchmark process should continue writing independently of these source/doc checkpoints.
+
+## Retrieval Baseline
+`2026-06-23T00:08:02Z`
+
+- `before ... moved to ...` target-history queries now keep the explicit support/current pair even when a generic current anchor is also retrieved.
+- Temporal receipts now expose `selected_target_current_id` and `selected_target_support_ids` for `target_history_support_preferred_v1`, and packing receipts mark `target_history_support_chain_v1` when that pair fits the context budget.
+- Verified `python3 -m unittest tests.test_store -q` (`Ran 165 tests`), `python3 -m unittest tests.test_policy -q` (`Ran 7 tests`), `python3 -m unittest tests.test_runner -q` (`Ran 75 tests`), and `python3 -m zerker_memory eval` (`11/11`).
+- Next highest-leverage retrieval step is to add explicit receipt metadata for extra retrieved generic current anchors that the target-history selector excludes.
+
+## Launch Oversight
+`2026-06-22T23:44:49Z`
+
+- Current phase remains `Phase 1 - Public Alpha Launch Gate`, and this bounded pass stayed on launch/readiness oversight only.
+- Reverified `bash scripts/gstack_check.sh`, `git status --short -uno`, `git remote -v`, `gh auth status`, `python3 scripts/release_smoke.py --summary-only`, `python3 -m zerker_memory status --summary-only`, `python3 -m zerker_memory verify-operator-packet .zerker/launch-proof/public-verify-operator-packet.tar.gz --summary-only`, `python3 -m zerker_memory verify-public-verify --summary-only`, `python3 -m zerker_memory verify-launch-assets --summary-only`, `python3 -m zerker_memory verify-return-packet .zerker/launch-proof/public-verify-return-packet.tar.gz --summary-only`, and `python3 -m zerker_memory prelaunch --summary-only`. The authoritative post-refresh state stayed unchanged: operator packet `Ready: yes`, public verify `0/6`, launch assets `0/8`, return packet `Ready: no`, and strict publish blocked only on `launch_assets` plus `public_verify_evidence`.
+- `origin` still targets `https://github.com/zerkerlabs/zmem.git`, `gh auth status` still fails because the active `rezker1` token is invalid, `git status --short -uno` still shows only the same broader benchmark, trust-ledger, temporal-KG, and coordinator-doc drift, and the focused stale-target scan across active launch entrypoints plus supporting scripts, tests, `zerker_memory`, `README.md`, `QUICKSTART.md`, and coordinator docs again found no non-historical stale public repo, raw-installer, `rezkerlabs`, or stale GitHub repo targets.
+- Next highest-leverage launch step is still external: forward `.zerker/launch-proof/CLEAN_SHELL_OPERATOR_PROMPT.md`, `.zerker/launch-proof/CLEAN_SHELL_PUBLIC_VERIFY.md`, and `.zerker/launch-proof/public-verify-operator-packet.tar.gz` to a networked operator with valid GitHub auth, then accept handback only after `verify-public-verify`, `verify-launch-assets`, `verify-return-packet`, and `prelaunch` all report ready.
+
+## Frontier Blueprint Triage
+`2026-06-22T23:12:00Z`
+
+- Reviewed the downloaded frontier architecture blueprint against the current continuous build lanes and spot-checked the key research directions against primary sources.
+- Added `docs/FRONTIER_BLUEPRINT_TRIAGE.md` and updated `docs/ZMEM_CONTINUOUS_BUILD_ORCHESTRATOR.md`.
+- Decision: keep the blueprint's retrieval-first, deterministic-conflict, temporal-dispatch, and profile-consolidation direction, but keep projected scores and competitor comparisons internal until reproduced with pinned datasets, commands, hashes, and receipt bundles.
+- Next safe build move is L3 retrieval depth/context expansion plus L1 deterministic conflict assembly, not broad write-time graph extraction.
+
+## Temporal Query Projection
+`2026-06-22T22:55:26Z`
+
+- Added a first local `query_at(timestamp)` projection in [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/store.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/store.py) that derives `learned_at`, `valid_from`, `valid_to`, `superseded_at`, `unlearned_at`, `status_at_query`, and current-vs-history point-in-time state from existing events plus parent lineage.
+- Added focused store contracts in [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_store.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_store.py) for event-derived learned-vs-valid time and for the `Alice` vs `Alice Chen` supersession fixture without collapsing an unrelated `Alice` identity.
+- Verified `python3 -m unittest tests.test_store -q` (`Ran 163 tests`), `python3 -m unittest tests.test_runner -q` (`Ran 74 tests`), and `python3 -m zerker_memory eval` (`11/11`).
+- No SQLite schema changed in this slice; the new temporal surface is a derived local projection over existing receipts/events, and explicit same-subject update/restatement edges are still only receipt-time retrieval logic outside `query_at`.
+
+## Trust Ledger
+`2026-06-22T22:54:56Z`
+
+- `promote()` now emits a durable mutation receipt in addition to the original source-provenance write receipt.
+- Ordered receipt-chain access now exists in the store: `memory_write_receipt(memory_id)` remains the original provenance anchor, while `memory_write_receipts(memory_id)` exposes the full event-ordered chain for independent verification and snapshot export.
+- The promote mutation receipt records actor identity, content digest, prior receipt link, prior/new Merkle roots, and event hash in its embedded Treeship statement. This verifies provenance and integrity only; it does not guarantee semantic truth of the promoted memory.
+- Verified with `python3 -m unittest tests.test_snapshot -q`, `python3 -m unittest tests.test_store -q`, `python3 -m zerker_memory eval`, `python3 scripts/release_smoke.py --summary-only`, and `python3 -m zerker_memory status --summary-only`.
+
 ## Benchmark Scoring Workflow
 `2026-06-22T22:59:00Z`
 

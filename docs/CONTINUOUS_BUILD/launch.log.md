@@ -1,8 +1,28 @@
 # Launch Lane Log
 
+## 2026-06-22 - coordinator rerun 22:45:21Z
+
+- Scope: revalidated the bounded Phase 1 public-alpha gate after the latest benchmark-lane drift and refreshed launch oversight docs only.
+- Files touched: `docs/LAUNCH_READINESS_NOW.md`, `docs/CURRENT_STATE.md`, `docs/SWARM_OPERATION_TRACKER.md`, `docs/BUILD_LOG.md`, this lane log.
+- Behavior changed: none; launch state remains externally blocked.
+- Tests: `bash scripts/gstack_check.sh`; `git status --short -uno`; `git remote -v`; `gh auth status`; `python3 scripts/release_smoke.py --summary-only`; `python3 -m zerker_memory status --summary-only`; `python3 -m zerker_memory verify-operator-packet .zerker/launch-proof/public-verify-operator-packet.tar.gz --summary-only`; `python3 -m zerker_memory verify-public-verify --summary-only`; `python3 -m zerker_memory verify-launch-assets --summary-only`; `python3 -m zerker_memory verify-return-packet .zerker/launch-proof/public-verify-return-packet.tar.gz --summary-only`; `python3 -m zerker_memory prelaunch --summary-only`.
+- Artifacts/receipts: operator packet still `Ready: yes`; public verify still `0/6`; launch assets still `0/8`; return packet still `Ready: no`; strict publish still blocked only on `launch_assets` plus `public_verify_evidence`.
+- Blockers: invalid local GitHub auth plus missing clean-shell logs and launch assets from an external networked operator.
+- Next safe slice: forward `.zerker/launch-proof/CLEAN_SHELL_OPERATOR_PROMPT.md`, `.zerker/launch-proof/CLEAN_SHELL_PUBLIC_VERIFY.md`, and `.zerker/launch-proof/public-verify-operator-packet.tar.gz`, then accept handback only after `verify-public-verify`, `verify-launch-assets`, `verify-return-packet`, and `prelaunch` all report ready.
+
 ## 2026-06-22 - coordinator rerun 21:44:20Z
 
 - Scope: revalidated the bounded Phase 1 public-alpha gate after the latest repo-local drift and refreshed oversight docs only.
+- Files touched: `docs/LAUNCH_READINESS_NOW.md`, `docs/CURRENT_STATE.md`, `docs/SWARM_OPERATION_TRACKER.md`, `docs/BUILD_LOG.md`, this lane log.
+- Behavior changed: none; launch state remains externally blocked.
+- Tests: `bash scripts/gstack_check.sh`; `git status --short -uno`; `git remote -v`; `gh auth status`; `python3 scripts/release_smoke.py --summary-only`; `python3 -m zerker_memory status --summary-only`; `python3 -m zerker_memory verify-operator-packet .zerker/launch-proof/public-verify-operator-packet.tar.gz --summary-only`; `python3 -m zerker_memory verify-public-verify --summary-only`; `python3 -m zerker_memory verify-launch-assets --summary-only`; `python3 -m zerker_memory verify-return-packet .zerker/launch-proof/public-verify-return-packet.tar.gz --summary-only`; `python3 -m zerker_memory prelaunch --summary-only`.
+- Artifacts/receipts: operator packet still `Ready: yes`; public verify still `0/6`; launch assets still `0/8`; return packet still `Ready: no`; strict publish still blocked only on `launch_assets` plus `public_verify_evidence`.
+- Blockers: invalid local GitHub auth plus missing clean-shell logs and launch assets from an external networked operator.
+- Next safe slice: forward `.zerker/launch-proof/CLEAN_SHELL_OPERATOR_PROMPT.md`, `.zerker/launch-proof/CLEAN_SHELL_PUBLIC_VERIFY.md`, and `.zerker/launch-proof/public-verify-operator-packet.tar.gz`, then accept handback only after `verify-public-verify`, `verify-launch-assets`, `verify-return-packet`, and `prelaunch` all report ready.
+
+## 2026-06-22 - coordinator rerun 23:44:49Z
+
+- Scope: revalidated the bounded Phase 1 public-alpha gate after the latest trust-ledger and temporal-KG drift and refreshed oversight docs only.
 - Files touched: `docs/LAUNCH_READINESS_NOW.md`, `docs/CURRENT_STATE.md`, `docs/SWARM_OPERATION_TRACKER.md`, `docs/BUILD_LOG.md`, this lane log.
 - Behavior changed: none; launch state remains externally blocked.
 - Tests: `bash scripts/gstack_check.sh`; `git status --short -uno`; `git remote -v`; `gh auth status`; `python3 scripts/release_smoke.py --summary-only`; `python3 -m zerker_memory status --summary-only`; `python3 -m zerker_memory verify-operator-packet .zerker/launch-proof/public-verify-operator-packet.tar.gz --summary-only`; `python3 -m zerker_memory verify-public-verify --summary-only`; `python3 -m zerker_memory verify-launch-assets --summary-only`; `python3 -m zerker_memory verify-return-packet .zerker/launch-proof/public-verify-return-packet.tar.gz --summary-only`; `python3 -m zerker_memory prelaunch --summary-only`.
