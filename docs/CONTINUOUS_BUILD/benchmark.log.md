@@ -1,5 +1,27 @@
 # Benchmark Lane Log
 
+## 2026-06-23T06:05:00Z - interactive mode scoreboard
+
+- Scope: after the official LoCoMo target collision, ran an isolated interactive mode comparison and read the existing LongMemEval oracle matrix for current retrieval guidance.
+- LoCoMo pilot command: `python -m zerker_memory bench matrix locomo --dataset data/locomo/_pilot8.json --out .zerker/bench --run-id locomo-pilot8-mode-compare-20260623 --seed 42 --trace --summary-only`.
+- LoCoMo pilot result: matrix verification `ok`, comparison verification `ok`, 8 questions, visible deltas `2`, stable wins `3`, stable misses `3`.
+- LoCoMo pilot mode scores: `fts` accuracy `0.5`, `fts-multihop` `0.5`, `pseudo-embedding` `0.5`, `pseudo-embedding-rerank` `0.5`. `fts` remained best by latency; `fts-multihop` retrieved/injected more memory but did not improve accuracy on this slice.
+- LoCoMo pilot artifacts: `.zerker/bench/locomo-pilot8-mode-compare-20260623/benchmark-matrix.json`, `benchmark-comparison.json`, `score-summary.json`, and `matrix-report.md`.
+- LongMemEval matrix readout from existing `.zerker/bench/longmemeval-oracle-official-v1/`: `fts` accuracy `0.746`, `fts-multihop` `0.776`, `pseudo-embedding` `0.746`, and `pseudo-embedding-rerank` `0.746` over 500 questions.
+- Product signal: current local multihop improves LongMemEval but not the LoCoMo pilot. Pseudo-embedding/rerank are not yet improving either benchmark locally, so the next L3 slice should focus on retrieval-to-answer conversion and multi-hop/open-domain evidence quality instead of only adding more candidates.
+
+## 2026-06-23T05:45:49Z - LoCoMo fts-multihop attempt and ActiveGraph smoke
+
+- Scope: executed the next planned LoCoMo `fts-multihop` measurement and then validated the ActiveGraph compact trace path.
+- Conventional matrix command attempted: `python3 -m zerker_memory bench matrix locomo --dataset data/locomo/locomo_official_zmem.json --out .zerker/bench --run-id locomo-official-v1 --mode fts-multihop --seed 42 --summary-only`.
+- Result: the matrix run failed with `sqlite3.OperationalError: attempt to write a readonly database` after partial progress. Partial artifacts were archived under `.zerker/bench/locomo-official-v1/fts-multihop.incomplete-20260623T053720Z/` with `226` question files and `226` receipt bundles.
+- Coordination finding: the shared `.zerker/bench/locomo-official-v1/fts-multihop/` target was moved/archived while benchmark work was active; a second partial appeared as `.zerker/bench/locomo-official-v1/fts-multihop.incomplete-20260623Tcompact-switch/`. Treat the shared official matrix target as unsafe for manual full runs while other workers can touch it.
+- Automation action: paused `zmem-benchmark-harness-swarm` so the official LoCoMo mode runs can be coordinated manually.
+- ActiveGraph smoke command passed: `python3 -m zerker_memory.bench.activegraph_runner --dataset data/locomo/locomo_official_zmem.json --out .zerker/bench/activegraph-locomo-smoke --run-id activegraph-smoke-fts-multihop --retrieval-mode fts-multihop --split default --limit 5`.
+- ActiveGraph smoke artifacts: `.zerker/bench/activegraph-locomo-smoke/activegraph-smoke-fts-multihop/trace.jsonl` (`5` lines), `scored_receipt.json`, `activegraph.sqlite`, and `memory.sqlite`; `find ... -name '*.bundle.json'` returned `0`.
+- ActiveGraph smoke receipt: aggregate Merkle root `b827f09a31af1863b4f2317fd7def02eacaa9e188e1aaf12bde63a7e7806f6d5`, trace SHA `3916c59c2eb25f9906c57c2088bd2d812c70815a17f4fbab3bc4018d8a24fec5`, `question_count=5`, `mean_f1=0.0`, `overall_accuracy=0.0`, `public_benchmark_claim=false`.
+- Next safe slice: do not run `pseudo-embedding`, `pseudo-embedding-rerank`, or `zmem-retrieval` yet. First choose either an isolated conventional output path for the full `fts-multihop` comparison or a full ActiveGraph compact trace run, then compare category deltas against the FTS baseline.
+
 ## 2026-06-23T04:22:30Z - official LoCoMo FTS baseline scored
 
 - Scope: recorded the completed full LoCoMo official FTS run as the current baseline for retrieval and benchmark prioritization.
