@@ -2074,6 +2074,8 @@ def render_benchmark_summary(result: dict[str, object]) -> str:
             lines.append(f"Matrix JSON: {result.get('artifact_path', 'n/a')}")
             if result.get("comparison_path"):
                 lines.append(f"Comparison JSON: {result.get('comparison_path')}")
+            if result.get("score_summary_path"):
+                lines.append(f"Score summary JSON: {result.get('score_summary_path')}")
             return "\n".join(lines) + "\n"
 
         if artifact_type == "matrix_comparison":
@@ -2202,6 +2204,8 @@ def render_benchmark_summary(result: dict[str, object]) -> str:
         _append_benchmark_mode_proof_lines(lines, summary.get("mode_proofs"))
         lines.append(f"Matrix JSON: {result.get('matrix_path', 'n/a')}")
         lines.append(f"Comparison JSON: {result.get('comparison_path', 'n/a')}")
+        if result.get("score_summary_path"):
+            lines.append(f"Score summary JSON: {result.get('score_summary_path')}")
         lines.append(f"Report: {result.get('report_path', 'n/a')}")
         return "\n".join(lines) + "\n"
 
@@ -2257,6 +2261,8 @@ def render_benchmark_summary(result: dict[str, object]) -> str:
                 _append_benchmark_efficiency_delta_lines(lines, summary)
                 _append_benchmark_budget_context_lines(lines, summary)
                 _append_benchmark_mode_proof_lines(lines, summary.get("mode_proofs"))
+        if result.get("score_summary_path"):
+            lines.append(f"Score summary JSON: {result.get('score_summary_path')}")
         lines.append(f"Dashboard: {result.get('dashboard_path', 'n/a')}")
         return "\n".join(lines) + "\n"
 
@@ -2273,6 +2279,8 @@ def render_benchmark_summary(result: dict[str, object]) -> str:
             _append_benchmark_question_summary_lines(lines, question_summary)
             _append_benchmark_budget_context_lines(lines, summary)
             _append_benchmark_mode_proof_lines(lines, summary.get("mode_proofs"))
+        if result.get("score_summary_path"):
+            lines.append(f"Score summary JSON: {result.get('score_summary_path')}")
         lines.append(f"Page: {result.get('page_path', 'n/a')}")
         return "\n".join(lines) + "\n"
 

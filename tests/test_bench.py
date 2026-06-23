@@ -13,6 +13,7 @@ from zerker_memory.bench import (
     BENCHMARK_MATRIX_COMPARISON_SCHEMA,
     BENCHMARK_RETRIEVAL_CONFIG_SCHEMA,
     BENCHMARK_RETRIEVAL_MODES,
+    BENCHMARK_SCORE_SUMMARY_SCHEMA,
     _comparison_question_summary,
     compare_benchmark_matrices,
     _render_matrix_report_text,
@@ -117,6 +118,55 @@ class BenchmarkHarnessTest(unittest.TestCase):
                 matrix,
                 dataset=dataset,
                 expected_dataset_name="snap-research/locomo",
+            )
+
+    def test_benchmark_matrix_writes_score_summary_artifact(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            matrix = run_benchmark_matrix(Path(tmp), "synthetic", seed=0, run_id="score-summary-matrix")
+            matrix_dir = Path(matrix["matrix_dir"])
+            score_summary_path = matrix_dir / "score-summary.json"
+
+            score_summary = json.loads(score_summary_path.read_text(encoding="utf-8"))
+
+            self.assertEqual(score_summary["schema"], BENCHMARK_SCORE_SUMMARY_SCHEMA)
+            self.assertEqual(score_summary["artifact_type"], "matrix")
+            self.assertEqual(score_summary["run_id"], matrix["run_id"])
+            self.assertEqual(score_summary["benchmark"], "synthetic")
+            self.assertEqual(score_summary["dataset"], "synthetic")
+            self.assertEqual(score_summary["matrix_hash"], matrix["matrix_hash"])
+            self.assertEqual(score_summary["comparison_hash"], matrix["comparison_hash"])
+            self.assertEqual(score_summary["claim_status"], "local synthetic proof")
+            self.assertEqual(score_summary["verification_status"], matrix["verification_status"])
+            self.assertEqual(
+                score_summary["comparison_verification_status"],
+                matrix["comparison_verification_status"],
+            )
+            self.assertEqual(score_summary["question_summary"], matrix["summary"]["question_summary"])
+            self.assertEqual(score_summary["budget_context_question_count"], 0)
+            self.assertEqual(
+                [mode["retrieval_mode"] for mode in score_summary["modes"]],
+                list(BENCHMARK_RETRIEVAL_MODES),
+            )
+            expected_best_mode = max(
+                score_summary["modes"],
+                key=lambda mode: (
+                    float(mode.get("accuracy", 0.0)),
+                    -float(mode.get("p95_retrieval_latency_ms", 0.0)),
+                ),
+            )["retrieval_mode"]
+            self.assertEqual(score_summary["best_mode"], expected_best_mode)
+            abstention_mode = next(
+                mode for mode in score_summary["modes"] if mode["retrieval_mode"] == "pseudo-embedding-rerank"
+            )
+            self.assertEqual(abstention_mode["question_count"], 4)
+            self.assertIn("f1", abstention_mode)
+            self.assertIn("recall_at_k", abstention_mode)
+            self.assertEqual(abstention_mode["abstention"]["question_count"], 1)
+            self.assertEqual(abstention_mode["abstention"]["accuracy"], 1.0)
+            self.assertIn("abstention", abstention_mode["category_summaries"])
+            self.assertEqual(
+                abstention_mode["category_summaries"]["abstention"]["budget_dropped_memory_count"],
+                0,
             )
 
     def test_benchmark_report_surfaces_memory_counts_hashes_and_proof_roots(self):
@@ -7126,6 +7176,10 @@ class BenchmarkHarnessTest(unittest.TestCase):
                 output,
             )
             self.assertIn(
+                f"Score summary JSON: {tmp_path / 'bench-cli' / 'summary-only-matrix' / 'score-summary.json'}",
+                output,
+            )
+            self.assertIn(
                 f"Report: {tmp_path / 'bench-cli' / 'summary-only-matrix' / 'matrix-report.md'}",
                 output,
             )
@@ -7169,6 +7223,8 @@ class BenchmarkHarnessTest(unittest.TestCase):
             self.assertIn("Comparison verify", html_text)
             self.assertIn("Matrix failed checks", html_text)
             self.assertIn("Comparison failed checks", html_text)
+            self.assertIn("Score summary artifact", html_text)
+            self.assertIn("score-summary.json", html_text)
             self.assertIn("Category Performance", html_text)
             self.assertIn("Per-mode category performance", html_text)
             self.assertIn("Question Evidence", html_text)
@@ -7728,12 +7784,17 @@ class BenchmarkHarnessTest(unittest.TestCase):
         self.assertEqual(receipt["artifact_hashes"]["matrix"], sha256_text(matrix_json.read_text(encoding="utf-8")))
         self.assertEqual(receipt["artifact_hashes"]["comparison"], sha256_text(comparison_json.read_text(encoding="utf-8")))
         self.assertEqual(receipt["artifact_hashes"]["report"], sha256_text(report_path.read_text(encoding="utf-8")))
+        self.assertEqual(
+            receipt["artifact_hashes"]["score_summary"],
+            sha256_text((matrix_dir / "score-summary.json").read_text(encoding="utf-8")),
+        )
         self.assertEqual(receipt["artifact_hashes"]["summary"], sha256_text((matrix_dir / "summary.json").read_text(encoding="utf-8")))
         self.assertEqual(receipt["artifact_hashes"]["trace"], sha256_text(trace_path.read_text(encoding="utf-8")))
         self.assertEqual(receipt["proof_roots"]["comparison_file_hash"], matrix["proof"]["comparison_file_hash"])
         self.assertEqual(receipt["proof_roots"]["input_result_hashes"], matrix["proof"]["input_result_hashes"])
         self.assertEqual(receipt["proof_roots"]["input_aggregate_roots"], matrix["proof"]["input_aggregate_roots"])
         self.assertEqual(receipt["mode_commands"], expected_mode_commands)
+        self.assertEqual(receipt["score_summary_path"], "score-summary.json")
         self.assertEqual(receipt["trace_sha256"], sha256_text(trace_path.read_text(encoding="utf-8")))
 
     def _assert_mode_proofs_match_result_payloads(self, matrix):

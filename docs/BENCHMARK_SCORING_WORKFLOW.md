@@ -12,6 +12,23 @@ The current benchmark path is useful for product development and reproducible lo
 - LLM answer generation and external LongMemEval judging are explicit opt-in paths.
 - Public benchmark claims still require pinned dataset versions, reproducible commands, result bundles, and a verified scoring method.
 
+Current official LoCoMo local baseline:
+
+- Run directory: `.zerker/bench/locomo-official-v1/fts/`.
+- Scored receipt: `scored_receipt.json`.
+- Result: F1 `0.3752394031509457`, EM `0.37210473313192344`, 1,986 questions, retrieval mode `fts`, eval scope `per-conversation`.
+- Trace SHA: `67a005bf87b4bafcd2d7ce1cf8bfff97d7f430788afd0472511f738594971d0c`.
+- Claim boundary: `scored_receipt.json` carries the public rule-based token-F1/EM claim with no LLM judge; `receipt.json` remains a broader provisional harness receipt.
+
+Next comparison queue:
+
+- Run LongMemEval-S next. It directly tests abstention and token efficiency, which are the current gaps surfaced by LoCoMo adversarial scoring.
+- Run the same official LoCoMo setup with semantic/hybrid modes by changing `ZMEM_RETRIEVAL_MODE` / retrieval mode and comparing against the existing FTS trace SHA.
+- Optionally run `pseudo-embedding` alone to separate dense recall from reranking.
+- Add BEAM as the scale benchmark for 100K -> 10M token contexts. Treat it as a planned runner until dataset source, command, hashes, and receipt bundle are pinned.
+- Isolate multi-hop, open-domain, and adversarial category slices; if the harness cannot filter categories yet, add that filter before more long full-run sweeps.
+- Add a deterministic answerer abstention threshold for `retrieved_count == 0` or low-confidence retrieval, then verify on LoCoMo adversarial and LongMemEval-S.
+
 ## 1. Convert Official Files
 
 LongMemEval:

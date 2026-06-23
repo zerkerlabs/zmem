@@ -1,5 +1,17 @@
 # Benchmark Lane Log
 
+## 2026-06-23T04:22:30Z - official LoCoMo FTS baseline scored
+
+- Scope: recorded the completed full LoCoMo official FTS run as the current baseline for retrieval and benchmark prioritization.
+- Artifacts: `.zerker/bench/locomo-official-v1/fts/benchmark-result.json`, `summary.json`, `trace.jsonl`, `receipt.json`, and `scored_receipt.json`.
+- Result: `scored_receipt.json` reports 1,986 questions, F1 `0.3752394031509457`, EM `0.37210473313192344`, retrieval mode `fts`, eval scope `per-conversation`, and trace SHA `67a005bf87b4bafcd2d7ce1cf8bfff97d7f430788afd0472511f738594971d0c`.
+- Category readout: single-hop `0.6049` F1 / `0.6005` EM; multi-hop `0.0758` F1 / `0.0709` EM; temporal `0.6293` F1 / `0.6293` EM; open-domain `0.1369` F1 / `0.1250` EM; adversarial abstention `0.0` F1 / `0.0` EM.
+- Token efficiency: mean query tokens `693.289`, mean ingest tokens `0.0`, total run tokens `1,376,872`.
+- Claim boundary: `scored_receipt.json` carries `public_benchmark_claim: true` for the explicit rule-based token-F1/EM claim with no LLM judge. The sibling `receipt.json` is still a broader provisional harness receipt and has `public_benchmark_claim: false`.
+- Product signal: retrieval and abstention are the bottlenecks. Multi-hop and open-domain are the largest quality gaps; temporal is comparatively strong and should be protected with regression runs; adversarial abstention needs a scoring/answering slice because the scored receipt gives it zero despite the provisional harness receipt treating abstention differently.
+- Updated benchmark queue: run LongMemEval-S next because it directly tests abstention and semantic token efficiency; run LoCoMo semantic/hybrid fork-and-diff against this FTS baseline trace SHA using `ZMEM_RETRIEVAL_MODE`; add BEAM as the scale/collapse benchmark for 100K -> 10M token contexts where causal/event-chain memory should matter; then isolate multi-hop/open-domain/adversarial category slices or add category filtering to the harness if missing.
+- Fastest product slice: add a deterministic answerer abstention threshold for `retrieved_count == 0` or low-confidence retrieval, then rerun LoCoMo adversarial and LongMemEval-S before deeper retrieval architecture changes.
+
 ## 2026-06-23T00:47:21Z - L6 benchmarks - matrix receipt proof surface
 
 - Scope: enriched dataset-backed `bench matrix` trace receipts so LongMemEval and LoCoMo matrix runs keep reproducible commands, artifact hashes, proof roots, per-mode metrics, and the existing question-summary delta evidence in one machine-readable receipt.

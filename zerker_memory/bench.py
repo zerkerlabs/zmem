@@ -28,11 +28,14 @@ from .store import (
     stable_json,
 )
 
+__path__ = [str(Path(__file__).with_suffix(""))]
+
 
 BENCHMARK_RESULT_SCHEMA = "zerker.benchmark_result.v1"
 BENCHMARK_COMPARISON_SCHEMA = "zerker.benchmark_comparison.v1"
 BENCHMARK_MATRIX_SCHEMA = "zerker.benchmark_matrix.v1"
 BENCHMARK_MATRIX_COMPARISON_SCHEMA = "zerker.benchmark_matrix_comparison.v1"
+BENCHMARK_SCORE_SUMMARY_SCHEMA = "zerker.benchmark_score_summary.v1"
 BENCHMARK_RUN_SCHEMA = "zerker.benchmark_run.v1"
 BENCHMARK_QUESTION_SCHEMA = "zerker.benchmark_question.v1"
 BENCHMARK_RETRIEVAL_CONFIG_SCHEMA = "zerker.benchmark_retrieval_config.v1"
@@ -873,6 +876,7 @@ def run_benchmark_matrix(
         "question_summary": persisted_comparison["question_summary"],
         "matrix_path": _portable_artifact_path(matrix_path, matrix_dir),
         "report_path": _portable_artifact_path(report_path, matrix_dir),
+        "score_summary_path": "score-summary.json",
         "proof": {
             "hash_alg": "sha256",
             "comparison_hash": persisted_comparison["comparison_hash"],
@@ -886,10 +890,31 @@ def run_benchmark_matrix(
             "matrix": "benchmark-matrix.json",
             "comparison": "benchmark-comparison.json",
             "report": "matrix-report.md",
+            "score_summary": "score-summary.json",
         },
     }
     matrix["matrix_hash"] = _matrix_hash(matrix)
     _write_json(matrix_path, matrix)
+    score_summary_path = matrix_dir / "score-summary.json"
+    _write_json(
+        score_summary_path,
+        _matrix_score_summary(
+            matrix,
+            verification_status="ok",
+            comparison_verification_status=(
+                "ok" if persisted_comparison.get("proof", {}).get("verification_status") == "ok" else "failed"
+            ),
+        ),
+    )
+    verification = _benchmark_matrix_verification_summary(matrix, matrix_path)
+    _write_json(
+        score_summary_path,
+        _matrix_score_summary(
+            matrix,
+            verification_status=verification["matrix"]["status"],
+            comparison_verification_status=verification["comparison"]["status"],
+        ),
+    )
     verification = _benchmark_matrix_verification_summary(matrix, matrix_path)
     summary = _matrix_artifact_summary(
         matrix,
@@ -906,6 +931,7 @@ def run_benchmark_matrix(
     result["summary"] = summary
     result["comparison_path"] = str(comparison_path.absolute())
     result["report_path"] = str(report_path.absolute())
+    result["score_summary_path"] = str(score_summary_path.absolute())
     if write_trace:
         _write_matrix_trace_artifacts(matrix_dir, result)
     return result
@@ -959,12 +985,31 @@ def render_benchmark_report(run_dir: Path) -> dict[str, Any]:
             if matrix.get("schema") != BENCHMARK_MATRIX_SCHEMA:
                 raise ValueError(f"benchmark matrix schema not found: {matrix_path}")
             verification = _benchmark_matrix_verification_summary(matrix, matrix_path)
+            report_path = run_dir / "matrix-report.md"
+            score_summary_path = run_dir / "score-summary.json"
+            _write_json(
+                score_summary_path,
+                _matrix_score_summary(
+                    matrix,
+                    verification_status="ok",
+                    comparison_verification_status=verification["comparison"]["status"],
+                ),
+            )
+            verification = _benchmark_matrix_verification_summary(matrix, matrix_path)
+            _write_json(
+                score_summary_path,
+                _matrix_score_summary(
+                    matrix,
+                    verification_status=verification["matrix"]["status"],
+                    comparison_verification_status=verification["comparison"]["status"],
+                ),
+            )
+            verification = _benchmark_matrix_verification_summary(matrix, matrix_path)
             summary = _matrix_artifact_summary(
                 matrix,
                 verification_status=verification["matrix"]["status"],
                 comparison_verification_status=verification["comparison"]["status"],
             )
-            report_path = run_dir / "matrix-report.md"
             report_path.write_text(_render_matrix_report_text(matrix, verification), encoding="utf-8")
             return {
                 "ok": True,
@@ -977,6 +1022,7 @@ def render_benchmark_report(run_dir: Path) -> dict[str, Any]:
                 "comparison_hash": matrix.get("comparison_hash"),
                 "verification_status": verification["matrix"]["status"],
                 "comparison_verification_status": verification["comparison"]["status"],
+                "score_summary_path": str(score_summary_path),
                 "summary": summary,
             }
     if not run_dir.exists():
@@ -1016,12 +1062,31 @@ def render_benchmark_report(run_dir: Path) -> dict[str, Any]:
         }
     if artifact.get("schema") == BENCHMARK_MATRIX_SCHEMA:
         verification = _benchmark_matrix_verification_summary(artifact, run_dir)
+        report_path = run_dir.with_name("matrix-report.md")
+        score_summary_path = run_dir.with_name("score-summary.json")
+        _write_json(
+            score_summary_path,
+            _matrix_score_summary(
+                artifact,
+                verification_status="ok",
+                comparison_verification_status=verification["comparison"]["status"],
+            ),
+        )
+        verification = _benchmark_matrix_verification_summary(artifact, run_dir)
+        _write_json(
+            score_summary_path,
+            _matrix_score_summary(
+                artifact,
+                verification_status=verification["matrix"]["status"],
+                comparison_verification_status=verification["comparison"]["status"],
+            ),
+        )
+        verification = _benchmark_matrix_verification_summary(artifact, run_dir)
         summary = _matrix_artifact_summary(
             artifact,
             verification_status=verification["matrix"]["status"],
             comparison_verification_status=verification["comparison"]["status"],
         )
-        report_path = run_dir.with_name("matrix-report.md")
         report_path.write_text(
             _render_matrix_report_text(artifact, verification, artifact_dir=run_dir.parent),
             encoding="utf-8",
@@ -1037,6 +1102,7 @@ def render_benchmark_report(run_dir: Path) -> dict[str, Any]:
             "comparison_hash": artifact.get("comparison_hash"),
             "verification_status": verification["matrix"]["status"],
             "comparison_verification_status": verification["comparison"]["status"],
+            "score_summary_path": str(score_summary_path),
             "summary": summary,
         }
     raise ValueError(f"unsupported benchmark report target: {run_dir}")
@@ -1148,6 +1214,7 @@ def _write_retrieval_receipt(run_dir: Path, matrix: dict[str, Any]) -> None:
     matrix_path = _resolve_artifact_path(matrix.get("matrix_path"), run_dir)
     comparison_path = _resolve_artifact_path(matrix.get("comparison_path"), run_dir)
     report_path = _resolve_artifact_path(matrix.get("report_path"), run_dir)
+    score_summary_path = _resolve_matrix_score_summary_path(run_dir, matrix)
     summary_path = run_dir / "summary.json"
     summary = matrix.get("summary", {}) if isinstance(matrix.get("summary"), dict) else {}
     proof = matrix.get("proof", {}) if isinstance(matrix.get("proof"), dict) else {}
@@ -1187,6 +1254,7 @@ def _write_retrieval_receipt(run_dir: Path, matrix: dict[str, Any]) -> None:
             "matrix": _file_hash(matrix_path),
             "comparison": _file_hash(comparison_path),
             "report": _file_hash(report_path),
+            "score_summary": _file_hash(score_summary_path),
             "summary": _file_hash(summary_path),
             "trace": _file_hash(trace_path),
         },
@@ -1196,6 +1264,7 @@ def _write_retrieval_receipt(run_dir: Path, matrix: dict[str, Any]) -> None:
             "input_aggregate_roots": proof.get("input_aggregate_roots", []),
         },
         "mode_commands": _matrix_mode_receipt_commands(matrix.get("mode_runs"), run_dir),
+        "score_summary_path": _portable_artifact_path(score_summary_path, run_dir),
         "trace_sha256": _file_hash(trace_path),
     }
     if matrix.get("benchmark") == "longmemeval":
@@ -1287,6 +1356,15 @@ def _matrix_mode_receipt_metrics(mode_runs: Any) -> list[dict[str, Any]]:
             }
         )
     return metrics
+
+
+def _resolve_matrix_score_summary_path(base_dir: Path, matrix: dict[str, Any]) -> Path:
+    path_value = matrix.get("score_summary_path")
+    if not path_value and isinstance(matrix.get("paths"), dict):
+        path_value = matrix["paths"].get("score_summary")
+    if path_value:
+        return _resolve_artifact_path(path_value, base_dir)
+    return base_dir / "score-summary.json"
 
 
 def _read_optional_text(path: Path) -> str | None:
@@ -1382,6 +1460,7 @@ def render_benchmark_dashboard(matrix_path_or_dir: Path, *, out: Path | None = N
         "matrix_path": str(matrix_path),
         "matrix_hash": matrix.get("matrix_hash"),
         "comparison_hash": matrix.get("comparison_hash"),
+        "score_summary_path": str(_resolve_matrix_score_summary_path(matrix_path.parent, matrix)),
         "retrieval_modes": matrix.get("retrieval_modes", []),
         "summary": _matrix_artifact_summary(
             matrix,
@@ -1413,6 +1492,7 @@ def render_public_benchmark_page(matrix_path_or_dir: Path, *, out: Path | None =
         "matrix_hash": matrix.get("matrix_hash"),
         "comparison_hash": matrix.get("comparison_hash"),
         "claim_status": _public_claim_status(matrix),
+        "score_summary_path": str(_resolve_matrix_score_summary_path(matrix_path.parent, matrix)),
         "retrieval_modes": matrix.get("retrieval_modes", []),
         "summary": _matrix_artifact_summary(
             matrix,
@@ -1859,6 +1939,31 @@ def verify_benchmark_matrix(matrix_path_or_dir: Path) -> dict[str, Any]:
             and matrix.get("context_budget_tokens") == baseline.get("context_budget_tokens"),
             "matrix metadata matches baseline result payload",
         )
+
+    score_summary_path_value = matrix.get("score_summary_path")
+    if not score_summary_path_value and isinstance(matrix.get("paths"), dict):
+        score_summary_path_value = matrix["paths"].get("score_summary")
+    if score_summary_path_value:
+        score_summary_path = _resolve_artifact_path(score_summary_path_value, matrix_path.parent)
+        matrix_verification_status = "ok" if all(check["ok"] for check in checks) else "failed"
+        comparison_verification_status = (
+            "ok" if isinstance(comparison, dict) and comparison.get("proof", {}).get("verification_status") == "ok" else "failed"
+        )
+        try:
+            stored_score_summary = _read_json(score_summary_path)
+        except (FileNotFoundError, json.JSONDecodeError) as exc:
+            add_check("score_summary", False, str(exc))
+        else:
+            expected_score_summary = _matrix_score_summary(
+                matrix,
+                verification_status=matrix_verification_status,
+                comparison_verification_status=comparison_verification_status,
+            )
+            add_check(
+                "score_summary",
+                stored_score_summary == expected_score_summary,
+                str(score_summary_path),
+            )
 
     ok = all(check["ok"] for check in checks)
     summary = matrix.get("summary") if isinstance(matrix.get("summary"), dict) else {}
@@ -3170,6 +3275,113 @@ def _matrix_artifact_summary(
         ),
         "question_summary": _question_summary_payload(comparison.get("question_summary")),
     }
+
+
+def _matrix_score_summary(
+    matrix: dict[str, Any],
+    *,
+    verification_status: str,
+    comparison_verification_status: str,
+) -> dict[str, Any]:
+    target = _matrix_target(matrix)
+    comparison = matrix.get("comparison", {}) if isinstance(matrix.get("comparison"), dict) else {}
+    question_rows = comparison.get("questions", []) if isinstance(comparison.get("questions"), list) else []
+    budget_context_question_ids = _budget_context_question_ids(question_rows)
+    runs = comparison.get("runs", []) if isinstance(comparison.get("runs"), list) else []
+    best_run = _best_public_run(runs)
+    modes = []
+    for mode_run in matrix.get("mode_runs", []):
+        if not isinstance(mode_run, dict):
+            continue
+        summary = mode_run.get("summary", {}) if isinstance(mode_run.get("summary"), dict) else {}
+        category_summaries = _score_summary_category_summaries(summary.get("category_summaries"))
+        abstention = category_summaries.get("abstention", {})
+        modes.append(
+            {
+                "retrieval_mode": mode_run.get("retrieval_mode"),
+                "run_id": mode_run.get("run_id"),
+                "retrieval_config_hash": mode_run.get("retrieval_config_hash"),
+                "result_hash": mode_run.get("result_hash"),
+                "aggregate_merkle_root": mode_run.get("aggregate_merkle_root"),
+                "accuracy": summary.get("accuracy"),
+                "f1": summary.get("f1"),
+                "recall_at_k": summary.get("recall_at_k"),
+                "precision_at_k": summary.get("precision_at_k"),
+                "passed": summary.get("passed"),
+                "failed": summary.get("failed"),
+                "question_count": summary.get("question_count"),
+                "retrieved_memory_count": summary.get("retrieved_memory_count"),
+                "injected_memory_count": summary.get("injected_memory_count"),
+                "withheld_memory_count": summary.get("withheld_memory_count"),
+                "budget_dropped_memory_count": summary.get("budget_dropped_memory_count"),
+                "p50_retrieval_latency_ms": summary.get("p50_retrieval_latency_ms"),
+                "p95_retrieval_latency_ms": summary.get("p95_retrieval_latency_ms"),
+                "p99_retrieval_latency_ms": summary.get("p99_retrieval_latency_ms"),
+                "total_tokens": summary.get("total_tokens"),
+                "token_efficiency": summary.get("token_efficiency"),
+                "outcome_reason_counts": summary.get("outcome_reason_counts", {}),
+                "failure_reason_counts": summary.get("failure_reason_counts", {}),
+                "abstention": {
+                    "question_count": abstention.get("question_count"),
+                    "passed": abstention.get("passed"),
+                    "failed": abstention.get("failed"),
+                    "accuracy": abstention.get("accuracy"),
+                    "label_status": abstention.get("label_status"),
+                    "scoring": abstention.get("scoring"),
+                },
+                "category_summaries": category_summaries,
+            }
+        )
+    return {
+        "schema": BENCHMARK_SCORE_SUMMARY_SCHEMA,
+        "artifact_type": "matrix",
+        "run_id": matrix.get("run_id"),
+        "benchmark": target.get("benchmark"),
+        "dataset": target.get("dataset"),
+        "split": target.get("split"),
+        "dataset_version": target.get("dataset_version"),
+        "dataset_hash": target.get("dataset_hash"),
+        "filtered_dataset_hash": target.get("filtered_dataset_hash"),
+        "context_budget_tokens": target.get("context_budget_tokens"),
+        "matrix_hash": matrix.get("matrix_hash"),
+        "comparison_hash": matrix.get("comparison_hash"),
+        "claim_status": _public_claim_status(matrix),
+        "verification_status": verification_status,
+        "comparison_verification_status": comparison_verification_status,
+        "budget_context_question_count": len(budget_context_question_ids),
+        "budget_context_question_ids": budget_context_question_ids,
+        "question_summary": _question_summary_payload(comparison.get("question_summary")),
+        "best_mode": best_run.get("retrieval_mode") if isinstance(best_run, dict) else None,
+        "modes": modes,
+    }
+
+
+def _score_summary_category_summaries(category_summaries: Any) -> dict[str, dict[str, Any]]:
+    if not isinstance(category_summaries, dict):
+        return {}
+    normalized = {}
+    for category, category_summary in category_summaries.items():
+        if not isinstance(category, str) or not isinstance(category_summary, dict):
+            continue
+        normalized[category] = {
+            "question_count": category_summary.get("question_count"),
+            "passed": category_summary.get("passed"),
+            "failed": category_summary.get("failed"),
+            "accuracy": category_summary.get("accuracy"),
+            "retrieved_memory_count": category_summary.get("retrieved_memory_count"),
+            "injected_memory_count": category_summary.get("injected_memory_count"),
+            "withheld_memory_count": category_summary.get("withheld_memory_count"),
+            "budget_dropped_memory_count": category_summary.get("budget_dropped_memory_count"),
+            "p50_retrieval_latency_ms": category_summary.get("p50_retrieval_latency_ms"),
+            "p95_retrieval_latency_ms": category_summary.get("p95_retrieval_latency_ms"),
+            "p99_retrieval_latency_ms": category_summary.get("p99_retrieval_latency_ms"),
+            "total_tokens": category_summary.get("total_tokens"),
+            "label_status": category_summary.get("label_status"),
+            "scoring": category_summary.get("scoring"),
+            "outcome_reason_counts": category_summary.get("outcome_reason_counts", {}),
+            "failure_reason_counts": category_summary.get("failure_reason_counts", {}),
+        }
+    return normalized
 
 
 def _matrix_comparison_artifact_summary(
@@ -4767,6 +4979,7 @@ def _render_matrix_report_text(
             "## Comparison",
             "",
             f"- Artifact: `{_relative_dashboard_path(matrix.get('comparison_path'), matrix_dir)}`",
+            f"- Score summary: `{_relative_dashboard_path(matrix.get('score_summary_path'), matrix_dir)}`",
             f"- Axis: `{matrix['comparison']['compatibility']['comparison_axis']}`",
             f"- Category rows: `{len(matrix['comparison'].get('categories', []))}`",
             f"- Question evidence rows: `{len(matrix['comparison'].get('questions', []))}`",
@@ -6602,6 +6815,7 @@ def _render_public_benchmark_page_html(
         <div class="card"><span class="label">Matrix failed checks</span><span class="value small">{_h(matrix_failed_checks)}</span></div>
         <div class="card"><span class="label">Comparison failed checks</span><span class="value small">{_h(comparison_failed_checks)}</span></div>
         <div class="card"><span class="label">Matrix artifact</span><span class="value mono small">{_h(_relative_dashboard_path(matrix.get('matrix_path'), matrix_dir))}</span></div>
+        <div class="card"><span class="label">Score summary artifact</span><span class="value mono small">{_h(_relative_dashboard_path(matrix.get('score_summary_path'), matrix_dir))}</span></div>
       </div>
       <h2>Per-Mode Proof Hops</h2>
       {mode_proof_table}

@@ -5,6 +5,58 @@ description: Run proof-backed synthetic, LongMemEval-style, and LoCoMo-style ben
 
 ZMem should compete on benchmark accuracy, latency, token efficiency, and proof-backed reproducibility. The current benchmark harness is designed for internal development and honest public evidence, not unsupported leaderboard claims.
 
+## Official LoCoMo FTS Baseline
+
+The first full LoCoMo FTS run is recorded under `.zerker/bench/locomo-official-v1/fts/`.
+
+- Questions: `1,986`
+- F1: `0.3752394031509457`
+- EM: `0.37210473313192344`
+- Retrieval mode: `fts`
+- Trace SHA: `67a005bf87b4bafcd2d7ce1cf8bfff97d7f430788afd0472511f738594971d0c`
+
+Per category:
+
+- Single-hop: `0.6049` F1 / `0.6005` EM
+- Multi-hop: `0.0758` F1 / `0.0709` EM
+- Temporal: `0.6293` F1 / `0.6293` EM
+- Open-domain: `0.1369` F1 / `0.1250` EM
+- Adversarial abstention: `0.0` F1 / `0.0` EM
+
+This result says retrieval depth is the immediate bottleneck. The next runs compare multihop decomposition against reranking on the same dataset.
+
+## Next LoCoMo Runs
+
+Run multihop first:
+
+```bash
+zmem bench run locomo \
+  --dataset data/locomo/locomo_official_zmem.json \
+  --split default \
+  --out .zerker/bench/locomo-official-v1 \
+  --seed 42 \
+  --run-id fts-multihop \
+  --retrieval-mode fts-multihop
+```
+
+Then run hybrid/rerank:
+
+```bash
+zmem bench run locomo \
+  --dataset data/locomo/locomo_official_zmem.json \
+  --split default \
+  --out .zerker/bench/locomo-official-v1 \
+  --seed 42 \
+  --run-id pseudo-embedding-rerank \
+  --retrieval-mode pseudo-embedding-rerank
+```
+
+Why this order:
+
+- `fts-multihop` tests whether query decomposition moves the weakest multi-hop and open-domain categories.
+- `pseudo-embedding-rerank` tests whether reranking improves retrieval depth against the same fixed dataset and seed.
+- The same `--out`, `--seed`, and dataset keep the comparison clean.
+
 ## Synthetic Matrix
 
 ```bash
@@ -50,6 +102,20 @@ zmem bench matrix locomo \
   --run-id locomo-dev-local
 ```
 
+## Frontier Queue
+
+Next benchmark priorities:
+
+- LongMemEval-S: abstention and token-efficiency benchmark.
+- LoCoMo `fts-multihop`: decomposition delta against the recorded FTS baseline.
+- LoCoMo `pseudo-embedding-rerank`: reranking delta against the same baseline.
+- BEAM: scale benchmark for 100K to 10M token memory pressure and causal traces.
+
+Fast product fix to test:
+
+- Add a deterministic abstention path when retrieved memory is empty or confidence is below threshold.
+- Verify it against LoCoMo adversarial abstention and LongMemEval-S.
+
 ## Public Claim Rules
 
 Allowed before official submissions:
@@ -70,4 +136,3 @@ Do not claim official LongMemEval or LoCoMo ranking, vendor superiority, or cano
 - verification status,
 - matrix hash and comparison hash,
 - optional Treeship proof URL when public proof publishing is enabled.
-
