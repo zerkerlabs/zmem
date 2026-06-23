@@ -2,6 +2,57 @@
 
 This is the short orchestration dashboard for Zerker Memory. Every autonomous build run should update this file after it updates `docs/BUILD_LOG.md`.
 
+## Identity Workspaces
+`2026-06-23T03:00:22Z`
+
+- Workspace source-lineage reports and dashboard state now include read-only `claim_conflicts` / `claim_conflict_count` for competing current claims written by connected agents or sessions.
+- Each conflict now carries a normalized entity key, relation, connected agent ids, chat/session ids, source URI/proof lineage, and a deterministic local merge preview that chooses by authority/trust/freshness or abstains on exact ties.
+- The dashboard’s existing "Connected Agents And Sources" panel now surfaces the top claim conflicts inline instead of requiring a separate tool or Hub connection.
+- Verified `python3 -m unittest tests.test_workspaces -q` (`Ran 5 tests`) and `python3 -m unittest tests.test_dashboard.DashboardTest.test_console_has_proof_inspector tests.test_dashboard.DashboardTest.test_build_workspace_sources_state_is_dashboard_ready -q` (`Ran 2 tests`).
+- Next highest-leverage L5 step is to add one explicit abstention fixture and a compact CLI summary for unresolved exact-tie cross-agent conflicts.
+
+## Retrieval Baseline
+`2026-06-23T02:58:51Z`
+
+- Hybrid FTS + semantic backfill receipts now expose `retrieval.hybrid.fusion` with deterministic `reciprocal_rank_fusion_v1` metadata.
+- The fusion receipt separates selected source rankings from considered source rankings, so dropped lexical decoys stay inspectable without being credited as selected contributors.
+- Selected hybrid candidates now carry `fusion_rank`, `fusion_score`, and `fusion_sources`.
+- Verified `python3 -m unittest tests.test_store -k hybrid_semantic_backfill -q` (`Ran 2 tests`), full `python3 -m unittest tests.test_store -q` (`Ran 168 tests`), and `python3 -m zerker_memory eval` (`11/11`).
+- Next highest-leverage L3 step is either to extend fusion summaries to multi-hop merge receipts or to move into a deterministic conflict-resolution fixture before changing ranking behavior.
+
+## Retrieval Baseline
+`2026-06-23T02:42:10Z`
+
+- Target-history receipts now explain generic current anchors that were retrieved but not selected by `target_history_support_preferred_v1`.
+- The new receipt surface is `retrieval.temporal.selection_exclusions`; matching candidates also carry `temporal_selection_exclusion` and `temporal_selection_exclusion_reason`.
+- Verified focused target-history store/runner tests, full `python3 -m unittest tests.test_store -q` (`Ran 168 tests`), full `python3 -m unittest tests.test_runner -q` (`Ran 76 tests`), and `python3 -m zerker_memory eval` (`11/11`).
+- Next highest-leverage L3 step is to decide whether to generalize `selection_exclusions` to relation-history and chronology strategies, or let L2 continue with a minimal checkpoint/root contract.
+
+## Launch Oversight
+`2026-06-23T02:46:22Z`
+
+- Current phase remains `Phase 1 - Public Alpha Launch Gate`, and this bounded pass stayed on launch/readiness oversight only.
+- Reverified `bash scripts/gstack_check.sh`, `git remote -v`, `gh auth status`, `~/.pyenv/versions/3.10.15/bin/python3.10 scripts/release_smoke.py --summary-only`, `~/.pyenv/versions/3.10.15/bin/python3.10 -m zerker_memory status --summary-only`, `~/.pyenv/versions/3.10.15/bin/python3.10 -m zerker_memory verify-operator-packet .zerker/launch-proof/public-verify-operator-packet.tar.gz --summary-only`, `~/.pyenv/versions/3.10.15/bin/python3.10 -m zerker_memory verify-public-verify --summary-only`, `~/.pyenv/versions/3.10.15/bin/python3.10 -m zerker_memory verify-launch-assets --summary-only`, `~/.pyenv/versions/3.10.15/bin/python3.10 -m zerker_memory verify-return-packet .zerker/launch-proof/public-verify-return-packet.tar.gz --summary-only`, and `~/.pyenv/versions/3.10.15/bin/python3.10 -m zerker_memory prelaunch --summary-only`.
+- The authoritative current `status --summary-only` snapshot is unchanged: workspace ready `yes`, doctor `ok`, memory proof ready `yes`, release packet ready `yes`, strict publish ready `no`, manual pack ready `yes`, operator packet `Ready: yes`, public verify `0/6`, launch assets `0/8`, and return packet pending only on `launch_assets` plus `public_verify_evidence`.
+- `origin` still targets `https://github.com/zerkerlabs/zmem.git`, `gh auth status` still fails because the active `rezker1` token is invalid, the shell default `python3` is still `3.9.6`, and the focused stale-target scan across active launch entrypoints plus supporting scripts, tests, `zerker_memory`, `README.md`, `QUICKSTART.md`, and coordinator docs again found no non-historical stale public repo, raw-installer, `rezkerlabs`, or stale GitHub repo targets.
+- Next highest-leverage launch step is still external: forward `.zerker/launch-proof/CLEAN_SHELL_OPERATOR_PROMPT.md`, `.zerker/launch-proof/CLEAN_SHELL_PUBLIC_VERIFY.md`, and `.zerker/launch-proof/public-verify-operator-packet.tar.gz` to a networked operator with valid GitHub auth, then accept handback only after `verify-public-verify`, `verify-launch-assets`, `verify-return-packet`, and `prelaunch` all report ready.
+
+## Lifecycle Compaction
+`2026-06-23T00:57:48Z`
+
+- Inject receipts and runner context now separate policy/procedural instructions from episodic/semantic recall through `retrieval.packing.memory_type_summary`, context `memory_classes`, and explicit `budget_dropped` context payloads.
+- Verified `python3 -m unittest tests.test_cli_onboarding tests.test_store tests.test_runner -q` (`Ran 353 tests`) and `python3 -m zerker_memory eval` (`11/11`).
+- This slice stayed bounded: no new session lifecycle commands, checkpoint roots, snapshot roots, or retention behavior landed yet.
+- Next highest-leverage L2 step is to add one minimal checkpoint receipt/root contract without widening handoff or restore UX.
+
+## Benchmark Harness
+`2026-06-23T00:47:21Z`
+
+- Dataset-backed `bench matrix` runs with `write_trace=True` now persist richer `receipt.json` proof surfaces for LongMemEval and LoCoMo fixtures: reproducible per-mode commands, artifact hashes, proof roots, per-mode metrics, question summary, and question-level memory/efficiency deltas all travel with the matrix receipt.
+- Verified `python3 -m unittest tests.test_bench.BenchmarkHarnessTest.test_longmemeval_matrix_trace_receipt_preserves_summary_hashes_and_mode_commands tests.test_bench.BenchmarkHarnessTest.test_locomo_matrix_trace_receipt_preserves_summary_hashes_and_mode_commands -q` (`Ran 2 tests`), `python3 -m unittest tests.test_bench -q` (`Ran 137 tests`), `python3 -m unittest tests.test_store -q` (`Ran 165 tests`), and `python3 -m zerker_memory eval` (`11/11`).
+- Focused stale-target scan on `zerker_memory/bench.py` and `tests/test_bench.py` found no active stale `zerkerlabs/zerker-memory`, stale raw-installer, `rezkerlabs`, or stale GitHub repo targets in the changed benchmark code/tests.
+- Next highest-leverage benchmark step is to give standalone matrix-comparison or comparison trace artifacts the same receipt-level command/hash/proof summary parity as matrix directories.
+
 ## Live Integration Checkpoint
 `2026-06-22`
 
@@ -20,11 +71,21 @@ This is the short orchestration dashboard for Zerker Memory. Every autonomous bu
 - Next highest-leverage retrieval step is to add explicit receipt metadata for extra retrieved generic current anchors that the target-history selector excludes.
 
 ## Launch Oversight
-`2026-06-22T23:44:49Z`
+`2026-06-23T01:49:01Z`
 
 - Current phase remains `Phase 1 - Public Alpha Launch Gate`, and this bounded pass stayed on launch/readiness oversight only.
-- Reverified `bash scripts/gstack_check.sh`, `git status --short -uno`, `git remote -v`, `gh auth status`, `python3 scripts/release_smoke.py --summary-only`, `python3 -m zerker_memory status --summary-only`, `python3 -m zerker_memory verify-operator-packet .zerker/launch-proof/public-verify-operator-packet.tar.gz --summary-only`, `python3 -m zerker_memory verify-public-verify --summary-only`, `python3 -m zerker_memory verify-launch-assets --summary-only`, `python3 -m zerker_memory verify-return-packet .zerker/launch-proof/public-verify-return-packet.tar.gz --summary-only`, and `python3 -m zerker_memory prelaunch --summary-only`. The authoritative post-refresh state stayed unchanged: operator packet `Ready: yes`, public verify `0/6`, launch assets `0/8`, return packet `Ready: no`, and strict publish blocked only on `launch_assets` plus `public_verify_evidence`.
-- `origin` still targets `https://github.com/zerkerlabs/zmem.git`, `gh auth status` still fails because the active `rezker1` token is invalid, `git status --short -uno` still shows only the same broader benchmark, trust-ledger, temporal-KG, and coordinator-doc drift, and the focused stale-target scan across active launch entrypoints plus supporting scripts, tests, `zerker_memory`, `README.md`, `QUICKSTART.md`, and coordinator docs again found no non-historical stale public repo, raw-installer, `rezkerlabs`, or stale GitHub repo targets.
+- Reverified `bash scripts/gstack_check.sh`, `git remote -v`, `gh auth status`, `~/.pyenv/versions/3.10.15/bin/python3.10 scripts/release_smoke.py --summary-only`, `~/.pyenv/versions/3.10.15/bin/python3.10 -m zerker_memory status --summary-only`, `~/.pyenv/versions/3.10.15/bin/python3.10 -m zerker_memory verify-operator-packet .zerker/launch-proof/public-verify-operator-packet.tar.gz --summary-only`, `~/.pyenv/versions/3.10.15/bin/python3.10 -m zerker_memory verify-public-verify --summary-only`, `~/.pyenv/versions/3.10.15/bin/python3.10 -m zerker_memory verify-launch-assets --summary-only`, `~/.pyenv/versions/3.10.15/bin/python3.10 -m zerker_memory verify-return-packet .zerker/launch-proof/public-verify-return-packet.tar.gz --summary-only`, and `~/.pyenv/versions/3.10.15/bin/python3.10 -m zerker_memory prelaunch --summary-only`.
+- The authoritative current `status --summary-only` snapshot is unchanged: workspace ready `yes`, doctor `ok`, memory proof ready `yes`, release packet ready `yes`, strict publish ready `no`, manual pack ready `yes`, operator packet `Ready: yes`, public verify `0/6`, launch assets `0/8`, and return packet pending only on `launch_assets` plus `public_verify_evidence`.
+- `origin` still targets `https://github.com/zerkerlabs/zmem.git`, `gh auth status` still fails because the active `rezker1` token is invalid, the shell default `python3` is still `3.9.6`, and the focused stale-target scan across active launch entrypoints plus supporting scripts, tests, `zerker_memory`, `README.md`, `QUICKSTART.md`, and coordinator docs again found no non-historical stale public repo, raw-installer, `rezkerlabs`, or stale GitHub repo targets.
+- Next highest-leverage launch step is still external: forward `.zerker/launch-proof/CLEAN_SHELL_OPERATOR_PROMPT.md`, `.zerker/launch-proof/CLEAN_SHELL_PUBLIC_VERIFY.md`, and `.zerker/launch-proof/public-verify-operator-packet.tar.gz` to a networked operator with valid GitHub auth, then accept handback only after `verify-public-verify`, `verify-launch-assets`, `verify-return-packet`, and `prelaunch` all report ready.
+
+## Launch Oversight
+`2026-06-23T00:47:51Z`
+
+- Current phase remains `Phase 1 - Public Alpha Launch Gate`, and this bounded pass stayed on launch/readiness oversight only.
+- Reverified `bash scripts/gstack_check.sh`, `git remote -v`, `gh auth status`, `~/.pyenv/versions/3.10.15/bin/python3.10 scripts/release_smoke.py --summary-only`, `~/.pyenv/versions/3.10.15/bin/python3.10 -m zerker_memory status --summary-only`, `~/.pyenv/versions/3.10.15/bin/python3.10 -m zerker_memory verify-operator-packet .zerker/launch-proof/public-verify-operator-packet.tar.gz --summary-only`, `~/.pyenv/versions/3.10.15/bin/python3.10 -m zerker_memory verify-public-verify --summary-only`, `~/.pyenv/versions/3.10.15/bin/python3.10 -m zerker_memory verify-launch-assets --summary-only`, `~/.pyenv/versions/3.10.15/bin/python3.10 -m zerker_memory verify-return-packet .zerker/launch-proof/public-verify-return-packet.tar.gz --summary-only`, and `~/.pyenv/versions/3.10.15/bin/python3.10 -m zerker_memory prelaunch --summary-only`.
+- The authoritative current `status --summary-only` snapshot is unchanged: workspace ready `yes`, doctor `ok`, memory proof ready `yes`, release packet ready `yes`, strict publish ready `no`, manual pack ready `yes`, operator packet `Ready: yes`, public verify `0/6`, launch assets `0/8`, and return packet pending only on `launch_assets` plus `public_verify_evidence`.
+- `origin` still targets `https://github.com/zerkerlabs/zmem.git`, `gh auth status` still fails because the active `rezker1` token is invalid, and the focused stale-target scan across active launch entrypoints plus supporting scripts, tests, `zerker_memory`, `README.md`, `QUICKSTART.md`, and coordinator docs again found no non-historical stale public repo, raw-installer, `rezkerlabs`, or stale GitHub repo targets.
 - Next highest-leverage launch step is still external: forward `.zerker/launch-proof/CLEAN_SHELL_OPERATOR_PROMPT.md`, `.zerker/launch-proof/CLEAN_SHELL_PUBLIC_VERIFY.md`, and `.zerker/launch-proof/public-verify-operator-packet.tar.gz` to a networked operator with valid GitHub auth, then accept handback only after `verify-public-verify`, `verify-launch-assets`, `verify-return-packet`, and `prelaunch` all report ready.
 
 ## Frontier Blueprint Triage
@@ -124,6 +185,14 @@ This is the short orchestration dashboard for Zerker Memory. Every autonomous bu
 - Mapped the current temporal surface in [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/temporal-kg.log.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/temporal-kg.log.md): existing behavior derives temporal state from `created_at`, `updated_at`, `expires_at`, `status`, and `parents_json`; explicit `valid_from`/`valid_to`/`learned_at`/`superseded_at`/`unlearned_at` fields and `query_at(timestamp)` are still unbuilt.
 - Verified `python3 -m unittest tests.test_store.MemoryStoreTest.test_temporal_contract_current_vs_history_keeps_identity_disambiguation -q` and `python3 -m unittest tests.test_store -q`; no runtime behavior or schema changed.
 - Next safe temporal slice is a failing `query_at(timestamp)` contract on the same fixture, followed by the smallest local-store point-in-time API.
+
+## Consolidation
+`2026-06-23T02:54:23Z`
+
+- Added the first L4 local consolidation job ledger contract in [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/consolidation.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/consolidation.py), with focused coverage in [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_consolidation.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_consolidation.py) and updated operator notes in [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONSOLIDATION_FIXTURE.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONSOLIDATION_FIXTURE.md).
+- Consolidation jobs are now modeled as local append-only records with `pending`/`running`/`completed` terminal states, non-blocking local execution, reversible lineage, unique `source_child_ids`, and required completed-job `output_summary_ids`.
+- Verified `python3 -m unittest tests.test_consolidation -q` (`Ran 6 tests`); no retrieval, store schema, benchmark, daemon, CLI command, or hosted summarization behavior changed.
+- Next safe consolidation slice is a recall-planner fixture that decides when to queue turn/session/day/week/profile-project jobs against the ledger.
 
 ## Consolidation
 `2026-06-22T18:49:38Z`

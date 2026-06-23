@@ -1145,8 +1145,15 @@ def _lookup_reference_answer(result: dict[str, Any], question: dict[str, Any]) -
 
 def _write_retrieval_receipt(run_dir: Path, matrix: dict[str, Any]) -> None:
     trace_path = run_dir / "trace.jsonl"
+    matrix_path = _resolve_artifact_path(matrix.get("matrix_path"), run_dir)
+    comparison_path = _resolve_artifact_path(matrix.get("comparison_path"), run_dir)
+    report_path = _resolve_artifact_path(matrix.get("report_path"), run_dir)
+    summary_path = run_dir / "summary.json"
+    summary = matrix.get("summary", {}) if isinstance(matrix.get("summary"), dict) else {}
+    proof = matrix.get("proof", {}) if isinstance(matrix.get("proof"), dict) else {}
     receipt = {
         "run_id": matrix.get("run_id"),
+        "benchmark": matrix.get("benchmark"),
         "dataset": _receipt_dataset_name(str(matrix.get("benchmark", ""))),
         "dataset_commit": _read_optional_text(Path(".zerker/bench/provenance/locomo-commit.txt"))
         if matrix.get("benchmark") == "locomo"
@@ -1154,6 +1161,7 @@ def _write_retrieval_receipt(run_dir: Path, matrix: dict[str, Any]) -> None:
         "dataset_sha256": _file_hash(Path(str(matrix.get("dataset"))))
         if matrix.get("dataset") and matrix.get("dataset") != "synthetic"
         else matrix.get("dataset_hash"),
+        "split": matrix.get("split"),
         "adapter_version": "zmem-adapter-0.1.0",
         "harness_version": _zmem_version(),
         "model": "deterministic-oracle-retrieval",
@@ -1164,8 +1172,30 @@ def _write_retrieval_receipt(run_dir: Path, matrix: dict[str, Any]) -> None:
         "claimable_as": "evidence-recall on official LoCoMo/LongMemEval datasets with SHA-pinned provenance",
         "seed": matrix.get("seed"),
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
-        "scores": matrix.get("summary", {}),
-        "token_efficiency": matrix.get("summary", {}).get("token_efficiency"),
+        "scores": summary,
+        "token_efficiency": summary.get("token_efficiency"),
+        "matrix_hash": matrix.get("matrix_hash"),
+        "comparison_hash": matrix.get("comparison_hash"),
+        "verification_status": summary.get("verification_status"),
+        "comparison_verification_status": summary.get("comparison_verification_status"),
+        "question_summary": summary.get("question_summary"),
+        "mode_proofs": summary.get("mode_proofs", []),
+        "mode_metrics": _matrix_mode_receipt_metrics(matrix.get("mode_runs")),
+        "memory_count_deltas": summary.get("memory_count_deltas", []),
+        "efficiency_deltas": summary.get("efficiency_deltas", []),
+        "artifact_hashes": {
+            "matrix": _file_hash(matrix_path),
+            "comparison": _file_hash(comparison_path),
+            "report": _file_hash(report_path),
+            "summary": _file_hash(summary_path),
+            "trace": _file_hash(trace_path),
+        },
+        "proof_roots": {
+            "comparison_file_hash": proof.get("comparison_file_hash"),
+            "input_result_hashes": proof.get("input_result_hashes", []),
+            "input_aggregate_roots": proof.get("input_aggregate_roots", []),
+        },
+        "mode_commands": _matrix_mode_receipt_commands(matrix.get("mode_runs"), run_dir),
         "trace_sha256": _file_hash(trace_path),
     }
     if matrix.get("benchmark") == "longmemeval":
@@ -1208,6 +1238,55 @@ def _receipt_dataset_name(benchmark: str) -> str:
     if benchmark == "longmemeval":
         return "xiaowu0162/longmemeval-cleaned"
     return benchmark
+
+
+def _matrix_mode_receipt_commands(mode_runs: Any, run_dir: Path) -> list[dict[str, Any]]:
+    if not isinstance(mode_runs, list):
+        return []
+    commands = []
+    for mode_run in mode_runs:
+        if not isinstance(mode_run, dict):
+            continue
+        result_path = _resolve_artifact_path(mode_run.get("result_path"), run_dir)
+        manifest_path = result_path.parent / "benchmark-run.json"
+        command = None
+        if manifest_path.exists():
+            command = _read_json(manifest_path).get("command")
+        commands.append(
+            {
+                "retrieval_mode": mode_run.get("retrieval_mode"),
+                "run_id": mode_run.get("run_id"),
+                "command": command,
+                "result_hash": mode_run.get("result_hash"),
+                "aggregate_merkle_root": mode_run.get("aggregate_merkle_root"),
+            }
+        )
+    return commands
+
+
+def _matrix_mode_receipt_metrics(mode_runs: Any) -> list[dict[str, Any]]:
+    if not isinstance(mode_runs, list):
+        return []
+    metrics = []
+    for mode_run in mode_runs:
+        if not isinstance(mode_run, dict):
+            continue
+        summary = mode_run.get("summary", {}) if isinstance(mode_run.get("summary"), dict) else {}
+        metrics.append(
+            {
+                "retrieval_mode": mode_run.get("retrieval_mode"),
+                "accuracy": summary.get("accuracy"),
+                "f1": summary.get("f1"),
+                "recall_at_k": summary.get("recall_at_k"),
+                "retrieved_memory_count": summary.get("retrieved_memory_count"),
+                "injected_memory_count": summary.get("injected_memory_count"),
+                "withheld_memory_count": summary.get("withheld_memory_count"),
+                "total_tokens": summary.get("total_tokens"),
+                "token_efficiency": summary.get("token_efficiency"),
+                "p95_retrieval_latency_ms": summary.get("p95_retrieval_latency_ms"),
+            }
+        )
+    return metrics
 
 
 def _read_optional_text(path: Path) -> str | None:

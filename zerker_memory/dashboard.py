@@ -671,8 +671,9 @@ INDEX_HTML = """<!doctype html>
     function renderWorkspaceSources(state) {
       const report = state.workspace_sources || {};
       const agents = report.connected_agents || [];
+      const conflicts = report.claim_conflicts || [];
       const sources = report.sources || [];
-      if (!agents.length && !sources.length) {
+      if (!agents.length && !sources.length && !conflicts.length) {
         $('workspaceSources').innerHTML = '<div class="empty">No source-lineage receipts yet. Agent writes will appear here after memory is saved.</div>';
         return;
       }
@@ -694,14 +695,41 @@ INDEX_HTML = """<!doctype html>
           <div class="topline">${escapeHtml(source.chat_session_id || 'no session')} · ${escapeHtml(source.workspace_id || 'no workspace')} · receipt ${escapeHtml(lineage.receipt_id || 'none')} · root ${escapeHtml(shortHash(lineage.merkle_root))}</div>
         </div>`;
       }).join('');
+      const conflictRows = conflicts.slice(0, 3).map((conflict) => {
+        const preview = conflict.merge_preview || {};
+        const claims = (conflict.claims || []).slice(0, 3).map((claim) => {
+          const lineage = claim.proof_lineage || {};
+          const chosen = preview.chosen_memory_id && preview.chosen_memory_id === claim.memory_id;
+          return `<div class="quick-card">
+            <strong>${escapeHtml(claim.agent_id || 'unknown agent')} · ${escapeHtml(claim.value || 'unknown claim')}</strong>
+            <span>${escapeHtml(claim.chat_session_id || 'no session')}</span>
+            <span>${escapeHtml(`${claim.trust_status || 'unknown'} · ${claim.authority || 'unknown'} authority`)}</span>
+            <span>${escapeHtml(`root ${shortHash(lineage.merkle_root)}${chosen ? ' · selected' : ''}`)}</span>
+          </div>`;
+        }).join('');
+        const headline = `${conflict.subject_key || 'unknown entity'} ${conflict.relation || 'is'}`;
+        return `<div class="item">
+          <div class="meta">
+            ${pill(preview.resolution_outcome || 'unknown')}
+            ${pill(`agents ${(conflict.connected_agent_ids || []).length}`)}
+            ${pill(`sessions ${(conflict.chat_session_ids || []).length}`)}
+          </div>
+          <div class="content">${escapeHtml(headline)}</div>
+          <div class="topline">${escapeHtml(preview.rule_summary || 'read-only merge preview')}</div>
+          <div class="quick-grid" style="margin-top:12px">${claims}</div>
+        </div>`;
+      }).join('');
       $('workspaceSources').innerHTML = `
         <div class="proof-status">
           ${pill(`agents ${report.connected_agent_count || 0}`)}
           ${pill(`sessions ${report.chat_session_count || 0}`)}
           ${pill(`sources ${report.source_count || 0}`)}
+          ${pill(`claim conflicts ${report.claim_conflict_count || 0}`)}
           ${pill(report.workspace_id || 'workspace none')}
         </div>
         <div class="quick-grid">${agentCards}</div>
+        ${conflicts.length ? `<h3 style="margin-top:14px">Claim Conflicts</h3><div class="list" style="margin-top:12px">${conflictRows}</div>` : ''}
+        <h3 style="margin-top:14px">Recent Source Lineage</h3>
         <div class="list" style="margin-top:12px">${sourceRows}</div>`;
     }
 

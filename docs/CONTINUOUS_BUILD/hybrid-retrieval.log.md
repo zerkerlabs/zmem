@@ -1,5 +1,25 @@
 # Hybrid Retrieval Lane Log
 
+## 2026-06-23T02:58:51Z - hybrid backfill RRF receipt summary
+
+- Scope: closed a narrow L3 fusion explainability gap for existing FTS + semantic backfill retrieval.
+- Files touched: `zerker_memory/store.py`, `tests/test_store.py`, `docs/CONTINUOUS_BUILD/hybrid-retrieval.log.md`, `docs/CURRENT_STATE.md`, `docs/BUILD_LOG.md`.
+- Behavior changed: when `fts_semantic_backfill_v1` applies, `retrieval.hybrid.fusion` now records a deterministic `reciprocal_rank_fusion_v1` summary of the actual selected lexical/semantic sources, plus the considered lexical and semantic candidate rankings. Selected candidates also carry `fusion_rank`, `fusion_score`, and `fusion_sources`.
+- Tests: `python3 -m unittest tests.test_store -k hybrid_semantic_backfill -q` -> passed (`Ran 2 tests`); `python3 -m unittest tests.test_store -q` -> passed (`Ran 168 tests`); `python3 -m zerker_memory eval` -> passed (`11/11`).
+- Artifacts/receipts: hybrid receipts now distinguish considered candidates from selected fusion contributors, so dropped lexical decoys remain visible without being credited as selected-source evidence.
+- Blockers: this is receipt metadata only; it does not yet reorder retrieval through RRF, fuse graph traversal candidates, or add hosted vector provider calls.
+- Next safe slice: extend the same fusion summary to multi-hop merge receipts or add a small deterministic conflict-resolution fixture before changing ranking behavior.
+
+## 2026-06-23T02:42:10Z - target-history selection exclusions
+
+- Scope: closed the next L3 explainability gap for no-superseded target-history prompts.
+- Files touched: `zerker_memory/store.py`, `tests/test_store.py`, `tests/test_runner.py`, `docs/CONTINUOUS_BUILD/hybrid-retrieval.log.md`.
+- Behavior changed: `retrieval.temporal.selection_exclusions` now records current anchors that were retrieved but not selected by `target_history_support_preferred_v1`, and each excluded candidate carries `temporal_selection_exclusion` plus `temporal_selection_exclusion_reason`.
+- Tests: `python3 -m unittest tests.test_store.MemoryStoreTest.test_before_target_history_prefers_explicit_support_pair_over_generic_current_anchor tests.test_runner.RunnerTest.test_before_target_history_context_prefers_explicit_support_pair_over_generic_current_anchor -q` -> passed (`Ran 2 tests`); `python3 -m unittest tests.test_store -q` -> passed (`Ran 168 tests`); `python3 -m unittest tests.test_runner -q` -> passed (`Ran 76 tests`); `python3 -m zerker_memory eval` -> passed (`11/11`).
+- Artifacts/receipts: generic anchors such as `Blue Finch changed after freeze.` can still appear in `retrieved_memory_ids`, but receipts now mark them as `target-history-current-anchor-not-selected` with the selected support/current pair ids.
+- Blockers: this labels no-superseded target-history selection exclusions only; other temporal strategies still expose non-selection mostly through rank/selection fields rather than dedicated exclusion objects.
+- Next safe slice: decide whether to generalize `selection_exclusions` to relation-history and chronology strategies, or switch to L2 checkpoint/root contracts if lifecycle remains the higher-priority lane.
+
 ## 2026-06-22 - coordinator
 
 - Scope: seeded lane for BM25/FTS, dense providers, graph candidates, RRF, context packing, and receipt-visible retrieval decisions.

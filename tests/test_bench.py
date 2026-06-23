@@ -79,6 +79,46 @@ class BenchmarkHarnessTest(unittest.TestCase):
             self.assertEqual(receipt["token_efficiency"], summary["token_efficiency"])
             self.assertEqual(receipt["trace_sha256"], sha256_text((run_dir / "trace.jsonl").read_text(encoding="utf-8")))
 
+    def test_longmemeval_matrix_trace_receipt_preserves_summary_hashes_and_mode_commands(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            dataset = self._write_richer_longmemeval_jsonl(tmp_path)
+            matrix = run_benchmark_matrix(
+                tmp_path / "bench",
+                "longmemeval",
+                dataset=dataset,
+                split="analysis",
+                seed=0,
+                run_id="lme-trace-matrix",
+                write_trace=True,
+            )
+
+            self._assert_matrix_trace_receipt(
+                matrix,
+                dataset=dataset,
+                expected_dataset_name="xiaowu0162/longmemeval-cleaned",
+            )
+
+    def test_locomo_matrix_trace_receipt_preserves_summary_hashes_and_mode_commands(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            dataset = self._write_richer_locomo_jsonl(tmp_path)
+            matrix = run_benchmark_matrix(
+                tmp_path / "bench",
+                "locomo",
+                dataset=dataset,
+                split="dev",
+                seed=0,
+                run_id="locomo-trace-matrix",
+                write_trace=True,
+            )
+
+            self._assert_matrix_trace_receipt(
+                matrix,
+                dataset=dataset,
+                expected_dataset_name="snap-research/locomo",
+            )
+
     def test_benchmark_report_surfaces_memory_counts_hashes_and_proof_roots(self):
         with tempfile.TemporaryDirectory() as tmp:
             result = run_synthetic_benchmark(Path(tmp), seed=0, run_id="report-proof")
@@ -7625,6 +7665,76 @@ class BenchmarkHarnessTest(unittest.TestCase):
         if path.is_absolute():
             return path
         return Path(matrix["matrix_path"]).parent / path
+
+    def _assert_matrix_trace_receipt(self, matrix, *, dataset: Path, expected_dataset_name: str):
+        matrix_dir = Path(matrix["matrix_dir"])
+        receipt = json.loads((matrix_dir / "receipt.json").read_text(encoding="utf-8"))
+        summary = json.loads((matrix_dir / "summary.json").read_text(encoding="utf-8"))
+        matrix_json = matrix_dir / "benchmark-matrix.json"
+        comparison_json = matrix_dir / "benchmark-comparison.json"
+        report_path = matrix_dir / "matrix-report.md"
+        trace_path = matrix_dir / "trace.jsonl"
+        expected_mode_commands = []
+        expected_mode_metrics = []
+
+        for mode_run in matrix["mode_runs"]:
+            manifest = json.loads(
+                (self._resolve_matrix_artifact_path(matrix, mode_run["result_path"]).parent / "benchmark-run.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            expected_mode_commands.append(
+                {
+                    "retrieval_mode": mode_run["retrieval_mode"],
+                    "run_id": mode_run["run_id"],
+                    "command": manifest["command"],
+                    "result_hash": mode_run["result_hash"],
+                    "aggregate_merkle_root": mode_run["aggregate_merkle_root"],
+                }
+            )
+            mode_summary = mode_run["summary"]
+            expected_mode_metrics.append(
+                {
+                    "retrieval_mode": mode_run["retrieval_mode"],
+                    "accuracy": mode_summary.get("accuracy"),
+                    "f1": mode_summary.get("f1"),
+                    "recall_at_k": mode_summary.get("recall_at_k"),
+                    "retrieved_memory_count": mode_summary.get("retrieved_memory_count"),
+                    "injected_memory_count": mode_summary.get("injected_memory_count"),
+                    "withheld_memory_count": mode_summary.get("withheld_memory_count"),
+                    "total_tokens": mode_summary.get("total_tokens"),
+                    "token_efficiency": mode_summary.get("token_efficiency"),
+                    "p95_retrieval_latency_ms": mode_summary.get("p95_retrieval_latency_ms"),
+                }
+            )
+
+        self.assertFalse(receipt["public_benchmark_claim"])
+        self.assertEqual(receipt["run_id"], matrix["run_id"])
+        self.assertEqual(receipt["benchmark"], matrix["benchmark"])
+        self.assertEqual(receipt["dataset"], expected_dataset_name)
+        self.assertEqual(receipt["split"], matrix["split"])
+        self.assertEqual(receipt["dataset_sha256"], sha256_text(dataset.read_text(encoding="utf-8")))
+        self.assertEqual(receipt["scores"], summary)
+        self.assertIsNone(receipt["token_efficiency"])
+        self.assertEqual(receipt["matrix_hash"], matrix["matrix_hash"])
+        self.assertEqual(receipt["comparison_hash"], matrix["comparison_hash"])
+        self.assertEqual(receipt["verification_status"], summary["verification_status"])
+        self.assertEqual(receipt["comparison_verification_status"], summary["comparison_verification_status"])
+        self.assertEqual(receipt["question_summary"], summary["question_summary"])
+        self.assertEqual(receipt["mode_proofs"], summary["mode_proofs"])
+        self.assertEqual(receipt["mode_metrics"], expected_mode_metrics)
+        self.assertEqual(receipt["memory_count_deltas"], summary["memory_count_deltas"])
+        self.assertEqual(receipt["efficiency_deltas"], summary["efficiency_deltas"])
+        self.assertEqual(receipt["artifact_hashes"]["matrix"], sha256_text(matrix_json.read_text(encoding="utf-8")))
+        self.assertEqual(receipt["artifact_hashes"]["comparison"], sha256_text(comparison_json.read_text(encoding="utf-8")))
+        self.assertEqual(receipt["artifact_hashes"]["report"], sha256_text(report_path.read_text(encoding="utf-8")))
+        self.assertEqual(receipt["artifact_hashes"]["summary"], sha256_text((matrix_dir / "summary.json").read_text(encoding="utf-8")))
+        self.assertEqual(receipt["artifact_hashes"]["trace"], sha256_text(trace_path.read_text(encoding="utf-8")))
+        self.assertEqual(receipt["proof_roots"]["comparison_file_hash"], matrix["proof"]["comparison_file_hash"])
+        self.assertEqual(receipt["proof_roots"]["input_result_hashes"], matrix["proof"]["input_result_hashes"])
+        self.assertEqual(receipt["proof_roots"]["input_aggregate_roots"], matrix["proof"]["input_aggregate_roots"])
+        self.assertEqual(receipt["mode_commands"], expected_mode_commands)
+        self.assertEqual(receipt["trace_sha256"], sha256_text(trace_path.read_text(encoding="utf-8")))
 
     def _assert_mode_proofs_match_result_payloads(self, matrix):
         mode_proofs = []

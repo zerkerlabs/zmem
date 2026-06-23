@@ -4614,12 +4614,25 @@ class MemoryStoreTest(unittest.TestCase):
         self.assertEqual(hybrid["introduced_candidate_ids"], [target.id])
         self.assertEqual(hybrid["dropped_lexical_candidate_ids"], [decoy.id])
         self.assertEqual(hybrid["selected_candidate_ids"], [target.id])
+        self.assertEqual(hybrid["fusion"]["schema"], "zerker.rank_fusion.v1")
+        self.assertEqual(hybrid["fusion"]["strategy"], "reciprocal_rank_fusion_v1")
+        self.assertNotIn("lexical", hybrid["fusion"]["source_rankings"])
+        self.assertEqual(hybrid["fusion"]["source_rankings"]["semantic"], [target.id])
+        self.assertEqual(hybrid["fusion"]["considered_source_rankings"]["lexical"], [decoy.id])
+        self.assertEqual(
+            hybrid["fusion"]["considered_source_rankings"]["semantic"],
+            [target.id, decoy.id],
+        )
+        self.assertEqual(hybrid["fusion"]["selected_candidate_ids"], [target.id])
         self.assertEqual(receipt["retrieved_memory_ids"], [target.id])
         self.assertEqual(receipt["injected_memory_ids"], [target.id])
         self.assertTrue(retrieval["embedding"]["auto_enabled"])
         self.assertEqual(retrieval["embedding"]["activation_reason"], "hybrid-semantic-backfill")
         self.assertFalse(retrieval["reranker"]["enabled"])
         self.assertEqual(candidates[target.id]["hybrid_candidate_source"], "semantic-backfill")
+        self.assertEqual(candidates[target.id]["fusion_rank"], 1)
+        self.assertAlmostEqual(candidates[target.id]["fusion_score"], 1.0 / 61.0)
+        self.assertEqual(candidates[target.id]["fusion_sources"], ["semantic"])
 
     def test_deploy_target_question_hybrid_semantic_backfill_replaces_weak_fts_mention(self):
         decoy = self.store.remember(
@@ -4653,9 +4666,18 @@ class MemoryStoreTest(unittest.TestCase):
         self.assertEqual(hybrid["lexical_candidate_ids"], [decoy.id])
         self.assertEqual(hybrid["introduced_candidate_ids"], [target.id])
         self.assertEqual(hybrid["dropped_lexical_candidate_ids"], [decoy.id])
+        self.assertNotIn("lexical", hybrid["fusion"]["source_rankings"])
+        self.assertEqual(hybrid["fusion"]["source_rankings"]["semantic"], [target.id])
+        self.assertEqual(hybrid["fusion"]["considered_source_rankings"]["lexical"], [decoy.id])
+        self.assertEqual(
+            hybrid["fusion"]["considered_source_rankings"]["semantic"],
+            [target.id, decoy.id],
+        )
+        self.assertEqual(hybrid["fusion"]["ranked_candidate_ids"], [target.id])
         self.assertEqual(receipt["retrieved_memory_ids"], [target.id])
         self.assertEqual(receipt["injected_memory_ids"], [target.id])
         self.assertEqual(candidates[target.id]["hybrid_candidate_source"], "semantic-backfill")
+        self.assertEqual(candidates[target.id]["fusion_sources"], ["semantic"])
         self.assertEqual(retrieval["embedding"]["activation_reason"], "hybrid-semantic-backfill")
 
     def test_deploy_destination_question_uses_deploy_target_alias_variant_before_lexical_decoys(self):
@@ -5920,6 +5942,25 @@ class MemoryStoreTest(unittest.TestCase):
         self.assertEqual(temporal["selected_target_current_id"], current.id)
         self.assertEqual(temporal["selected_target_support_ids"], [support.id])
         self.assertEqual(temporal["selected_current_anchor_id"], current.id)
+        self.assertEqual(
+            temporal["selection_exclusions"],
+            [
+                {
+                    "memory_id": generic_anchor.id,
+                    "reason": "target-history-current-anchor-not-selected",
+                    "detail": "explicit-target-history-support-pair-selected",
+                    "selection_strategy": "target_history_support_preferred_v1",
+                    "selected_target_current_id": current.id,
+                    "selected_target_support_ids": [support.id],
+                    "selected_target_pair_ids": [support.id, current.id],
+                }
+            ],
+        )
+        candidate_by_id = {candidate["memory_id"]: candidate for candidate in retrieval["candidates"]}
+        self.assertEqual(
+            candidate_by_id[generic_anchor.id]["temporal_selection_exclusion_reason"],
+            "target-history-current-anchor-not-selected",
+        )
         self.assertEqual(packing["reservation"]["strategy"], "target_history_support_chain_v1")
         self.assertTrue(packing["reservation"]["applied"])
         self.assertEqual(packing["reservation"]["requested_ids"], [support.id, current.id])

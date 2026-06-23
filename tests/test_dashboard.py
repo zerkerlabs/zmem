@@ -30,6 +30,7 @@ class DashboardTest(unittest.TestCase):
         self.assertIn("Memory In Use", INDEX_HTML)
         self.assertIn("Workspace Profile", INDEX_HTML)
         self.assertIn("Connected Agents And Sources", INDEX_HTML)
+        self.assertIn("Claim Conflicts", INDEX_HTML)
         self.assertIn("Memory Status", INDEX_HTML)
         self.assertIn("Memory Clusters", INDEX_HTML)
         self.assertIn("Benchmark Panel", INDEX_HTML)
@@ -80,7 +81,7 @@ class DashboardTest(unittest.TestCase):
             root.mkdir()
             registered = register_workspace(name="Project", root=root, registry_path=registry_path)
             store = MemoryStore(root / ".zerker" / "memory.sqlite")
-            store.remember(
+            first = store.remember(
                 "Release notes owner is Maya",
                 memory_type="semantic",
                 scope="project",
@@ -88,7 +89,27 @@ class DashboardTest(unittest.TestCase):
                 actor_uri="agent://codex/chat-5",
                 session_id="chat://codex/session-5",
                 source_uri="conversation://codex/session-5/message-2",
+                status="active",
             )
+            second = store.remember(
+                "Release notes owner is Iris",
+                memory_type="semantic",
+                scope="project",
+                source_kind="agent",
+                actor_uri="agent://openclaw/chat-8",
+                session_id="chat://openclaw/session-8",
+                source_uri="conversation://openclaw/session-8/message-4",
+                status="active",
+            )
+            store.conn.execute(
+                "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+                ("2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z", first.id),
+            )
+            store.conn.execute(
+                "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+                ("2024-02-01T00:00:00Z", "2024-02-01T00:00:00Z", second.id),
+            )
+            store.conn.commit()
 
             with patch.dict(os.environ, {"ZMEM_WORKSPACE_REGISTRY": str(registry_path)}):
                 state = build_workspace_sources_state(store)
@@ -96,9 +117,15 @@ class DashboardTest(unittest.TestCase):
         self.assertEqual(state["schema"], "zerker.workspace_sources.v1")
         self.assertEqual(state["workspace_id"], registered["workspace"]["id"])
         self.assertEqual(state["connected_agents"][0]["agent_id"], "codex")
-        self.assertEqual(state["sources"][0]["source_uri"], "conversation://codex/session-5/message-2")
-        self.assertEqual(state["sources"][0]["trust_status"], "quarantined")
-        self.assertIn("merkle_root", state["sources"][0]["proof_lineage"])
+        self.assertEqual({source["source_uri"] for source in state["sources"]}, {
+            "conversation://codex/session-5/message-2",
+            "conversation://openclaw/session-8/message-4",
+        })
+        self.assertEqual({source["trust_status"] for source in state["sources"]}, {"active"})
+        self.assertTrue(all("merkle_root" in source["proof_lineage"] for source in state["sources"]))
+        self.assertEqual(state["claim_conflict_count"], 1)
+        self.assertEqual(state["claim_conflicts"][0]["merge_preview"]["chosen_memory_id"], second.id)
+        self.assertEqual(state["claim_conflicts"][0]["merge_preview"]["chosen_value"], "iris")
 
     def test_dashboard_server_is_threaded(self):
         self.assertIn("Threading", DashboardServer.__mro__[1].__name__)

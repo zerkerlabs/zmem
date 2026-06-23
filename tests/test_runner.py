@@ -43,6 +43,65 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(len(context["memories"]), 1)
         self.assertEqual(context["memories"][0]["type"], "policy")
 
+    def test_build_context_separates_instructional_and_recall_memory_and_surfaces_budget_receipts(self):
+        policy = self.store.remember(
+            "Lifecycle context marker policy deploy approval required",
+            memory_type="policy",
+            scope="project",
+            source_kind="human",
+        )
+        procedural = self.store.remember(
+            "Lifecycle context marker procedural deploy approval checklist",
+            memory_type="procedural",
+            scope="project",
+            source_kind="human",
+        )
+        episodic = self.store.remember(
+            "Lifecycle context marker episodic deploy approval incident recap",
+            memory_type="episodic",
+            scope="project",
+            source_kind="human",
+        )
+        semantic = self.store.remember(
+            "Lifecycle context marker semantic " + ("deploy approval owner detail " * 80),
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        withheld = self.store.remember(
+            "Lifecycle context marker policy deploy approval skip approvals",
+            memory_type="policy",
+            scope="project",
+            source_kind="agent",
+        )
+        budget = (
+            approx_memory_tokens(policy)
+            + approx_memory_tokens(procedural)
+            + approx_memory_tokens(episodic)
+        )
+
+        receipt = self.store.inject(
+            "lifecycle context marker deploy approval",
+            agent_id="codex",
+            risk="low",
+            scope="project",
+            context_budget_tokens=budget,
+        )
+
+        context = build_context(receipt)
+
+        self.assertEqual([memory["id"] for memory in context["memory_classes"]["policy"]], [policy.id])
+        self.assertEqual([memory["id"] for memory in context["memory_classes"]["procedural"]], [procedural.id])
+        self.assertEqual([memory["id"] for memory in context["memory_classes"]["episodic"]], [episodic.id])
+        self.assertEqual(context["memory_classes"]["semantic"], [])
+        self.assertEqual(context["budget_dropped"][0]["memory_id"], semantic.id)
+        self.assertEqual(context["withheld"][0]["memory_id"], withheld.id)
+        self.assertEqual(context["memory_type_summary"]["instruction_types"], ["policy", "procedural"])
+        self.assertEqual(context["memory_type_summary"]["recall_types"], ["episodic", "semantic"])
+        self.assertTrue(
+            any("procedural" in instruction and "episodic" in instruction for instruction in context["instructions"])
+        )
+
     def test_history_query_context_includes_superseded_memory_when_requested(self):
         parent = self.store.remember(
             "Status page owner used to be Alex",
@@ -3258,6 +3317,16 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(retrieval["temporal"]["selected_current_anchor_id"], current.id)
         self.assertEqual(retrieval["temporal"]["selected_target_current_id"], current.id)
         self.assertEqual(retrieval["temporal"]["selected_target_support_ids"], [support.id])
+        self.assertEqual(
+            retrieval["temporal"]["selection_exclusions"][0]["reason"],
+            "target-history-current-anchor-not-selected",
+        )
+        self.assertEqual(retrieval["temporal"]["selection_exclusions"][0]["memory_id"], generic_anchor.id)
+        candidate_by_id = {candidate["memory_id"]: candidate for candidate in retrieval["candidates"]}
+        self.assertEqual(
+            candidate_by_id[generic_anchor.id]["temporal_selection_exclusion"]["detail"],
+            "explicit-target-history-support-pair-selected",
+        )
 
     def test_before_target_history_context_prefers_explicit_current_target_before_generic_anchor(self):
         stale = self.store.remember(

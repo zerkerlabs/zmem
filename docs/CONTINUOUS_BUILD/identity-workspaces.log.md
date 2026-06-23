@@ -1,5 +1,15 @@
 # Identity Workspaces Lane Log
 
+## 2026-06-23T03:00:22Z - L5 identity-workspaces - Codex
+
+- Scope: extended the existing read-only workspace source-lineage report into a read-only claim-conflict view so multi-agent setups can see when connected agents or sessions wrote competing claims about the same entity and how the local merge preview resolves or abstains.
+- Files touched: `zerker_memory/workspaces.py`, `zerker_memory/dashboard.py`, `tests/test_workspaces.py`, `tests/test_dashboard.py`, `docs/CONTINUOUS_BUILD/identity-workspaces.log.md`, `docs/SWARM_OPERATION_TRACKER.md`, `docs/CURRENT_STATE.md`, `docs/BUILD_LOG.md`.
+- Behavior changed: `workspace_source_report` now adds `claim_conflicts` / `claim_conflict_count` with entity key, relation, connected agents, chat/session ids, proof lineage, and a read-only deterministic merge preview; the dashboard "Connected Agents And Sources" panel now shows top claim conflicts inline.
+- Tests: `python3 -m unittest tests.test_workspaces -q` passed; `python3 -m unittest tests.test_dashboard.DashboardTest.test_console_has_proof_inspector tests.test_dashboard.DashboardTest.test_build_workspace_sources_state_is_dashboard_ready -q` passed.
+- Artifacts/receipts: no external artifacts; conflict views are derived from existing local memories plus existing write receipts and remain offline-safe.
+- Blockers: this is preview/reporting only; it does not yet persist explicit source-level merge decisions, agent identity keys, or a broader cross-session entity registry.
+- Next safe slice: add a tiny abstention-focused fixture and CLI summary copy for exact-tie cross-agent conflicts without changing write paths or introducing Hub dependence.
+
 ## 2026-06-22T23:59:39Z - L5 identity-workspaces - Codex
 
 - Scope: advanced the existing read-only workspace source-lineage report into the dashboard state and console UI so humans can see connected agents, sessions, workspace id, source URI, trust status, and proof root without changing memory write paths.

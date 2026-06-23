@@ -1,5 +1,15 @@
 # Benchmark Lane Log
 
+## 2026-06-23T00:47:21Z - L6 benchmarks - matrix receipt proof surface
+
+- Scope: enriched dataset-backed `bench matrix` trace receipts so LongMemEval and LoCoMo matrix runs keep reproducible commands, artifact hashes, proof roots, per-mode metrics, and the existing question-summary delta evidence in one machine-readable receipt.
+- Files touched: `zerker_memory/bench.py`, `tests/test_bench.py`, `docs/CONTINUOUS_BUILD/benchmark.log.md`, `docs/SWARM_OPERATION_TRACKER.md`, `docs/BUILD_LOG.md`, `docs/CURRENT_STATE.md`.
+- Behavior changed: `write_trace=True` matrix runs now write a richer `receipt.json` with `benchmark`, `split`, `matrix_hash`, `comparison_hash`, `artifact_hashes`, `proof_roots`, `mode_commands`, `mode_metrics`, `question_summary`, `memory_count_deltas`, and `efficiency_deltas` for local LongMemEval/LoCoMo evidence bundles.
+- Tests: `python3 -m unittest tests.test_bench.BenchmarkHarnessTest.test_longmemeval_matrix_trace_receipt_preserves_summary_hashes_and_mode_commands tests.test_bench.BenchmarkHarnessTest.test_locomo_matrix_trace_receipt_preserves_summary_hashes_and_mode_commands -q` -> passed (`Ran 2 tests in 18.886s`); `python3 -m unittest tests.test_bench -q` -> passed (`Ran 137 tests in 478.450s`); `python3 -m unittest tests.test_store -q` -> passed (`Ran 165 tests in 6.051s`); `python3 -m zerker_memory eval` -> passed (`passed: 11`, `failed: 0`).
+- Artifacts/receipts: temporary test matrices now prove dataset-backed receipt richness locally; no downloaded `data/` payloads, hosted judges, published reports, or generated `.zerker/launch-proof/` artifacts were committed.
+- Blockers: matrix receipts are now richer, but standalone matrix-comparison and single-run comparison trace receipts still do not carry the same command/hash/proof summary surface.
+- Next safe slice: extend the same receipt summary fields to standalone `benchmark-matrix-comparison.json` or comparison trace artifacts so reopened comparison-only evidence keeps parity with matrix directories.
+
 ## 2026-06-22T23:59:19Z - L6 benchmarks - cheap evidence summary
 
 - Scope: added a fast fixture-backed summary path for persisted benchmark matrix evidence so future agents can inspect hashes and mode proof pointers without replaying the full matrix.

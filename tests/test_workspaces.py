@@ -101,6 +101,62 @@ class WorkspaceRegistryTest(unittest.TestCase):
                 "zerker.memory.write_provenance",
             )
 
+    def test_workspace_source_report_surfaces_cross_agent_claim_conflicts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            registry_path = tmp_path / "workspaces.json"
+            root = tmp_path / "project"
+            root.mkdir()
+            register_workspace(name="Project", root=root, registry_path=registry_path)
+            store = MemoryStore(root / ".zerker" / "memory.sqlite")
+            first = store.remember(
+                "Incident owner is Alex",
+                memory_type="semantic",
+                scope="project",
+                source_kind="agent",
+                actor_uri="agent://codex/chat-17",
+                session_id="chat://codex/session-17",
+                source_uri="conversation://codex/session-17/message-3",
+                status="active",
+            )
+            second = store.remember(
+                "Incident owner is Priya",
+                memory_type="semantic",
+                scope="project",
+                source_kind="agent",
+                actor_uri="agent://openclaw/chat-22",
+                session_id="chat://openclaw/session-22",
+                source_uri="conversation://openclaw/session-22/message-9",
+                status="active",
+            )
+            store.conn.execute(
+                "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+                ("2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z", first.id),
+            )
+            store.conn.execute(
+                "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+                ("2024-02-01T00:00:00Z", "2024-02-01T00:00:00Z", second.id),
+            )
+            store.conn.commit()
+
+            report = workspace_source_report(
+                store,
+                db_path=root / ".zerker" / "memory.sqlite",
+                policy_path=root / ".zerker" / "policy.json",
+                registry_path=registry_path,
+            )
+
+            self.assertEqual(report["claim_conflict_count"], 1)
+            conflict = report["claim_conflicts"][0]
+            self.assertEqual(conflict["entity_key"], "incident owner")
+            self.assertEqual(conflict["relation"], "is")
+            self.assertTrue(conflict["cross_session"])
+            self.assertEqual(conflict["connected_agent_ids"], ["codex", "openclaw"])
+            self.assertEqual(conflict["merge_preview"]["resolution_outcome"], "resolved")
+            self.assertEqual(conflict["merge_preview"]["chosen_memory_id"], second.id)
+            self.assertEqual(conflict["merge_preview"]["chosen_value"], "priya")
+            self.assertEqual(conflict["claims"][0]["proof_lineage"]["treeship_statement_kind"], "zerker.memory.write_provenance")
+
     def test_workspace_sources_cli_prints_read_only_lineage(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)

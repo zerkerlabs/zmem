@@ -33,6 +33,17 @@ The first supported traversal is deliberately small:
 
 This makes a summary auditable before summarization policy exists: a future consolidation job can compact noisy turns into session/day/week/profile-project summaries while still letting operators inspect or revoke the child evidence behind any summary.
 
+## Local Job Ledger
+
+The next shipped L4 contract is a local append-only job ledger:
+
+- `create_consolidation_job(...)` creates a pending non-blocking job with ordered levels, unique `source_child_ids`, reversible lineage, and `hosted_llm: false`.
+- `transition_consolidation_job(...)` records `running`, `completed`, `failed`, or `cancelled` state without mutating child lineage.
+- `append_consolidation_job_record(path, job)` writes newline-delimited JSON records for local durability and auditability.
+- `load_consolidation_job_records(path)` and `latest_consolidation_jobs(path)` reload the append-only ledger into full history or latest-state views.
+
+Completed jobs must record `output_summary_ids`, so a future summary writer can remain reversible: operators can trace a summary id back to the exact source children that fed the job.
+
 ## Current Boundary
 
-The fixture in [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/consolidation.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/consolidation.py) uses `deterministic-fixture` metadata with `hosted_llm: false` and `model_id: null`. The next implementation slice should add a non-blocking local consolidation job model that writes these fields to storage, without adding hosted summarization as a hard dependency.
+The fixture in [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/consolidation.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/consolidation.py) now also exposes the first local job ledger contract, still with `hosted_llm: false` and `model_id: null`. The next implementation slice should add recall-planner fixtures or a minimal runtime summary writer on top of this ledger, without adding hosted summarization as a hard dependency.

@@ -22,6 +22,8 @@ from .retrieval_providers import (
 
 
 MEMORY_TYPES = {"episodic", "semantic", "procedural", "policy"}
+INSTRUCTION_MEMORY_TYPES = ("policy", "procedural")
+RECALL_MEMORY_TYPES = ("episodic", "semantic")
 AUTHORITIES = {"none", "low", "medium", "high", "policy"}
 STATUSES = {"proposed", "quarantined", "active", "deprecated", "revoked", "forgotten"}
 HASH_ALG = "sha256"
@@ -55,6 +57,8 @@ DECLARATIVE_EARLIEST_HISTORY_SEMANTIC_RESCUE_PROFILE = "declarative_earliest_his
 DECLARATIVE_SEMANTIC_RESCUE_MIN_SCORE = 0.6
 HYBRID_SEMANTIC_BACKFILL_MIN_SCORE = 0.75
 HYBRID_SEMANTIC_BACKFILL_MIN_MARGIN = 0.05
+RANK_FUSION_SCHEMA = "zerker.rank_fusion.v1"
+RRF_K = 60
 DETERMINISTIC_RERANKER_ID = "zmem-deterministic-rerank-v1"
 MULTI_HOP_DECOMPOSER_ID = "zmem-local-query-decomposer-v1"
 MULTI_HOP_STRATEGY = "local_query_decomposition_v1"
@@ -1596,6 +1600,9 @@ def _ranking_payload(
             "structured_fact_candidate",
             "semantic_backfill_score",
             "semantic_backfill_term_overlap",
+            "fusion_rank",
+            "fusion_score",
+            "fusion_sources",
             "pre_multi_hop_rank",
             "multi_hop_rank",
             "introduced_by_subquery_id",
@@ -1630,6 +1637,70 @@ def _rank_lookup(retrieval: dict[str, Any]) -> dict[str, int]:
         str(candidate["memory_id"]): int(candidate["rank"])
         for candidate in retrieval.get("candidates", [])
         if "memory_id" in candidate and "rank" in candidate
+    }
+
+
+def _reciprocal_rank_fusion(
+    source_rankings: dict[str, list[str]],
+    *,
+    selected_candidate_ids: list[str] | None = None,
+    k: int = RRF_K,
+) -> dict[str, Any]:
+    selected_set = set(selected_candidate_ids or [])
+    candidate_scores: dict[str, dict[str, Any]] = {}
+    normalized_sources: dict[str, list[str]] = {}
+    for source, memory_ids in source_rankings.items():
+        ordered_ids = []
+        seen_ids: set[str] = set()
+        for memory_id in memory_ids:
+            memory_id = str(memory_id)
+            if not memory_id or memory_id in seen_ids:
+                continue
+            seen_ids.add(memory_id)
+            ordered_ids.append(memory_id)
+        if not ordered_ids:
+            continue
+        normalized_sources[source] = ordered_ids
+        for rank, memory_id in enumerate(ordered_ids, start=1):
+            contribution = round(1.0 / (float(k) + rank), 9)
+            entry = candidate_scores.setdefault(
+                memory_id,
+                {
+                    "memory_id": memory_id,
+                    "score": 0.0,
+                    "best_source_rank": rank,
+                    "source_contributions": [],
+                    "selected": memory_id in selected_set,
+                },
+            )
+            entry["score"] = round(float(entry["score"]) + contribution, 9)
+            entry["best_source_rank"] = min(int(entry["best_source_rank"]), rank)
+            entry["source_contributions"].append(
+                {
+                    "source": source,
+                    "rank": rank,
+                    "score": contribution,
+                }
+            )
+
+    ranked_candidates = sorted(
+        candidate_scores.values(),
+        key=lambda item: (-float(item["score"]), int(item["best_source_rank"]), str(item["memory_id"])),
+    )
+    rank_by_id = {
+        str(item["memory_id"]): rank
+        for rank, item in enumerate(ranked_candidates, start=1)
+    }
+    for item in ranked_candidates:
+        item["fusion_rank"] = rank_by_id[str(item["memory_id"])]
+    return {
+        "schema": RANK_FUSION_SCHEMA,
+        "strategy": "reciprocal_rank_fusion_v1",
+        "k": int(k),
+        "source_rankings": normalized_sources,
+        "selected_candidate_ids": list(selected_candidate_ids or []),
+        "ranked_candidate_ids": [str(item["memory_id"]) for item in ranked_candidates],
+        "candidate_scores": ranked_candidates,
     }
 
 
@@ -4623,6 +4694,32 @@ def resolve_temporal_lifecycle(
             if memory_id != selection["selected_current_anchor_id"]
         ]
     selected_id_set = set(selection["selected_ids"])
+    selection_exclusions: list[dict[str, Any]] = []
+    if selection["selection_strategy"] == "target_history_support_preferred_v1":
+        selected_target_pair = [*selection["selected_target_support_ids"]]
+        if selection["selected_target_current_id"]:
+            selected_target_pair.append(selection["selected_target_current_id"])
+        for memory_id in current_ids:
+            if memory_id in selected_id_set:
+                continue
+            if memory_id not in candidate_by_id:
+                continue
+            selection_exclusions.append(
+                {
+                    "memory_id": memory_id,
+                    "reason": "target-history-current-anchor-not-selected",
+                    "detail": "explicit-target-history-support-pair-selected",
+                    "selection_strategy": selection["selection_strategy"],
+                    "selected_target_current_id": selection["selected_target_current_id"],
+                    "selected_target_support_ids": selection["selected_target_support_ids"],
+                    "selected_target_pair_ids": selected_target_pair,
+                }
+            )
+    selection["selection_exclusions"] = selection_exclusions
+    selection_exclusion_by_id = {
+        str(item["memory_id"]): item
+        for item in selection_exclusions
+    }
     selection_rank_by_id = {
         memory_id: index
         for index, memory_id in enumerate(selection["selected_ids"], start=1)
@@ -4636,10 +4733,18 @@ def resolve_temporal_lifecycle(
         candidate["selected_by_temporal_strategy"] = selected
         candidate["temporal_selection_rank"] = selection_rank_by_id.get(memory_id)
         candidate["temporal_injection_rank"] = injection_rank_by_id.get(memory_id)
+        candidate["temporal_selection_exclusion"] = selection_exclusion_by_id.get(memory_id)
+        candidate["temporal_selection_exclusion_reason"] = (
+            selection_exclusion_by_id.get(memory_id, {}).get("reason")
+        )
         features = candidate.setdefault("features", {})
         features["selected_by_temporal_strategy"] = selected
         features["temporal_selection_rank"] = selection_rank_by_id.get(memory_id)
         features["temporal_injection_rank"] = injection_rank_by_id.get(memory_id)
+        features["temporal_selection_exclusion"] = selection_exclusion_by_id.get(memory_id)
+        features["temporal_selection_exclusion_reason"] = (
+            selection_exclusion_by_id.get(memory_id, {}).get("reason")
+        )
 
     retrieval["temporal"] = {
         "schema": TEMPORAL_RESOLUTION_SCHEMA,
@@ -4653,6 +4758,7 @@ def resolve_temporal_lifecycle(
         "selection_matched_terms": selection["matched_terms"],
         "selection_order": selection["selection_order"],
         "selected_ids": selection["selected_ids"],
+        "selection_exclusions": selection["selection_exclusions"],
         "selected_superseded_ids": selection["selected_superseded_ids"],
         "selected_current_ids": selection["selected_current_ids"],
         "selected_stale_anchor_id": selection["selected_stale_anchor_id"],
@@ -4676,6 +4782,31 @@ def resolve_temporal_lifecycle(
         "selected_memories": [candidate_by_id[memory_id] for memory_id in selection["selected_ids"] if memory_id in candidate_by_id],
         "metadata": retrieval["temporal"],
     }
+
+
+def _empty_memory_type_buckets() -> dict[str, list[str]]:
+    return {memory_type: [] for memory_type in sorted(MEMORY_TYPES)}
+
+
+def _memory_ids_by_type(memories: list["MemoryRecord"]) -> dict[str, list[str]]:
+    buckets = _empty_memory_type_buckets()
+    for memory in memories:
+        buckets.setdefault(memory.type, []).append(memory.id)
+    return buckets
+
+
+def _memory_ids_by_type_from_ids(
+    memory_ids: list[str],
+    *,
+    memory_by_id: dict[str, "MemoryRecord"],
+) -> dict[str, list[str]]:
+    buckets = _empty_memory_type_buckets()
+    for memory_id in memory_ids:
+        memory = memory_by_id.get(memory_id)
+        if memory is None:
+            continue
+        buckets.setdefault(memory.type, []).append(memory.id)
+    return buckets
 
 
 def pack_memory_context(
@@ -6061,6 +6192,7 @@ class MemoryStore:
             "semantic_candidate_ids": [],
             "introduced_candidate_ids": [],
             "selected_candidate_ids": [],
+            "fusion": None,
             "confidence": {
                 "minimum_score": HYBRID_SEMANTIC_BACKFILL_MIN_SCORE,
                 "minimum_margin": HYBRID_SEMANTIC_BACKFILL_MIN_MARGIN,
@@ -6502,21 +6634,50 @@ class MemoryStore:
                         ]
                         hybrid["introduced_candidate_ids"] = [row["id"] for row in introduced_rows]
                         hybrid["selected_candidate_ids"] = [row["id"] for row in rows]
+                        hybrid["fusion"] = _reciprocal_rank_fusion(
+                            {
+                                "lexical": hybrid["kept_lexical_candidate_ids"],
+                                "semantic": hybrid["introduced_candidate_ids"],
+                            },
+                            selected_candidate_ids=hybrid["selected_candidate_ids"],
+                        )
+                        hybrid["fusion"]["considered_source_rankings"] = {
+                            "lexical": hybrid["lexical_candidate_ids"],
+                            "semantic": hybrid["semantic_candidate_ids"],
+                        }
+                        fusion_by_id = {
+                            str(item["memory_id"]): item
+                            for item in hybrid["fusion"]["candidate_scores"]
+                        }
                         for item in kept_lexical_infos:
+                            fusion_item = fusion_by_id.get(item["memory"].id, {})
                             candidate_metadata[item["memory"].id] = {
                                 "pre_hybrid_rank": item["pre_hybrid_rank"],
                                 "hybrid_candidate_source": "lexical",
                                 "structured_fact_candidate": item["structured_fact"],
                                 "semantic_backfill_score": round(float(item["semantic_score"]), 6),
                                 "semantic_backfill_term_overlap": int(item["semantic_term_overlap"]),
+                                "fusion_rank": fusion_item.get("fusion_rank"),
+                                "fusion_score": fusion_item.get("score"),
+                                "fusion_sources": [
+                                    contribution["source"]
+                                    for contribution in fusion_item.get("source_contributions", [])
+                                ],
                             }
                         for row, candidate in zip(introduced_rows, introduced_metadata):
+                            fusion_item = fusion_by_id.get(row["id"], {})
                             candidate_metadata[row["id"]] = {
                                 "pre_hybrid_rank": None,
                                 "hybrid_candidate_source": "semantic-backfill",
                                 "structured_fact_candidate": _row_has_structured_fact(row),
                                 "semantic_backfill_score": round(float(candidate["score"]), 6),
                                 "semantic_backfill_term_overlap": int(candidate["term_overlap"]),
+                                "fusion_rank": fusion_item.get("fusion_rank"),
+                                "fusion_score": fusion_item.get("score"),
+                                "fusion_sources": [
+                                    contribution["source"]
+                                    for contribution in fusion_item.get("source_contributions", [])
+                                ],
                             }
                     else:
                         hybrid["reason"] = "no-introduced-candidate-cleared-threshold"
@@ -7257,6 +7418,20 @@ class MemoryStore:
         packing = pack_memory_context(injected, retrieval=retrieval, max_tokens=context_budget_tokens)
         injected = packing["memories"]
         policy_checks = [memory.id for memory in injected if memory.type == "policy"]
+        memory_by_id = {memory.id: memory for memory in candidates}
+        packing["metadata"]["memory_type_summary"] = {
+            "instruction_types": list(INSTRUCTION_MEMORY_TYPES),
+            "recall_types": list(RECALL_MEMORY_TYPES),
+            "injected_ids_by_type": _memory_ids_by_type(injected),
+            "withheld_ids_by_type": _memory_ids_by_type_from_ids(
+                [item["memory_id"] for item in withheld],
+                memory_by_id=memory_by_id,
+            ),
+            "budget_dropped_ids_by_type": _memory_ids_by_type_from_ids(
+                [str(item["memory_id"]) for item in packing["metadata"]["budget_dropped"]],
+                memory_by_id=memory_by_id,
+            ),
+        }
         retrieval["packing"] = packing["metadata"]
         action_id = "act_" + uuid.uuid4().hex[:16]
         root = self.current_merkle_root()

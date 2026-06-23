@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from .store import now_iso, sha256_text
+from .store import MemoryRecord, _resolve_current_conflicts, now_iso, sha256_text
 
 
 WORKSPACE_REGISTRY_SCHEMA = "zerker.workspace_registry.v1"
@@ -212,6 +212,116 @@ def _agent_id_from_actor_uri(actor_uri: str) -> str:
     return actor_uri
 
 
+def _preferred_claim_source(source_rows: list[dict[str, Any]]) -> dict[str, Any]:
+    for source in source_rows:
+        proof_lineage = source.get("proof_lineage") or {}
+        if proof_lineage.get("treeship_statement_kind") == "zerker.memory.write_provenance":
+            return source
+    return source_rows[0] if source_rows else {}
+
+
+def _workspace_claim_conflicts(store: Any, *, source_rows_by_memory_id: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:
+    if not source_rows_by_memory_id:
+        return []
+    memory_ids = list(source_rows_by_memory_id)
+    placeholders = ",".join("?" for _ in memory_ids)
+    rows = store.conn.execute(
+        f"""
+        SELECT *
+        FROM memories
+        WHERE id IN ({placeholders})
+          AND status IN ('active', 'proposed', 'quarantined')
+        ORDER BY updated_at DESC, created_at DESC, id DESC
+        """,
+        tuple(memory_ids),
+    ).fetchall()
+    candidate_by_id = {row["id"]: MemoryRecord.from_row(row) for row in rows}
+    if not candidate_by_id:
+        return []
+    candidate_ids_in_rank_order: list[str] = []
+    for memory_id in memory_ids:
+        if memory_id in candidate_by_id and memory_id not in candidate_ids_in_rank_order:
+            candidate_ids_in_rank_order.append(memory_id)
+    conflict_sets = _resolve_current_conflicts(
+        candidate_by_id=candidate_by_id,
+        current_ids=list(candidate_ids_in_rank_order),
+        candidate_ids_in_rank_order=candidate_ids_in_rank_order,
+    )
+    claim_conflicts: list[dict[str, Any]] = []
+    for conflict in conflict_sets:
+        involved_ids = [
+            memory_id
+            for memory_id in conflict.get("involved_candidate_ids", [])
+            if memory_id in candidate_by_id and source_rows_by_memory_id.get(memory_id)
+        ]
+        if not involved_ids:
+            continue
+        claims: list[dict[str, Any]] = []
+        connected_agent_ids: list[str] = []
+        chat_session_ids: list[str] = []
+        for memory_id in involved_ids:
+            memory = candidate_by_id[memory_id]
+            source = _preferred_claim_source(source_rows_by_memory_id[memory_id])
+            agent_id = str(source.get("agent_id") or "unknown")
+            chat_session_id = str(source.get("chat_session_id") or "")
+            if agent_id not in connected_agent_ids:
+                connected_agent_ids.append(agent_id)
+            if chat_session_id and chat_session_id not in chat_session_ids:
+                chat_session_ids.append(chat_session_id)
+            claims.append(
+                {
+                    "memory_id": memory.id,
+                    "content": memory.content,
+                    "value": (conflict.get("value_by_id") or {}).get(memory.id),
+                    "agent_id": agent_id,
+                    "actor_uri": source.get("actor_uri"),
+                    "chat_session_id": source.get("chat_session_id"),
+                    "workspace_id": source.get("workspace_id"),
+                    "source_kind": memory.source_kind,
+                    "trust_status": memory.status,
+                    "trust": memory.trust,
+                    "authority": memory.authority,
+                    "source_uri": source.get("source_uri"),
+                    "parent_action_id": source.get("parent_action_id"),
+                    "created_at": memory.created_at,
+                    "updated_at": memory.updated_at,
+                    "proof_lineage": source.get("proof_lineage"),
+                }
+            )
+        chosen_memory_id = conflict.get("chosen_current_id")
+        resolution_outcome = str(
+            conflict.get("resolution_outcome") or ("resolved" if chosen_memory_id else "abstained")
+        )
+        claim_conflicts.append(
+            {
+                "group_key": f"{conflict.get('subject_key')}|{conflict.get('relation')}",
+                "entity_key": conflict.get("subject_key"),
+                "subject_key": conflict.get("subject_key"),
+                "relation": conflict.get("relation"),
+                "claim_count": len(claims),
+                "connected_agent_ids": sorted(connected_agent_ids),
+                "chat_session_ids": sorted(chat_session_ids),
+                "cross_session": len(chat_session_ids) > 1,
+                "claims": claims,
+                "merge_preview": {
+                    "resolution_strategy": conflict.get("resolution_strategy"),
+                    "resolution_outcome": resolution_outcome,
+                    "chosen_memory_id": chosen_memory_id,
+                    "chosen_value": (conflict.get("value_by_id") or {}).get(chosen_memory_id) if chosen_memory_id else None,
+                    "abstained_memory_ids": conflict.get("abstained_current_ids", []),
+                    "tied_memory_ids": conflict.get("tied_current_ids", []),
+                    "tie_fields": conflict.get("tie_fields", []),
+                    "ignored_tie_breakers": conflict.get("ignored_tie_breakers", []),
+                    "rule_summary": (
+                        "Choose the highest authority, then trust, then freshest updated_at/created_at; abstain on exact ties."
+                    ),
+                    "read_only_preview": True,
+                },
+            }
+        )
+    return claim_conflicts
+
+
 def workspace_source_report(
     store: Any,
     *,
@@ -254,6 +364,7 @@ def workspace_source_report(
         (limit,),
     ).fetchall()
     sources: list[dict[str, Any]] = []
+    source_rows_by_memory_id: dict[str, list[dict[str, Any]]] = {}
     agents: dict[str, dict[str, Any]] = {}
     for row in rows:
         actor_uri = row["actor_uri"]
@@ -283,6 +394,7 @@ def workspace_source_report(
             "created_at": row["created_at"],
         }
         sources.append(source)
+        source_rows_by_memory_id.setdefault(str(row["memory_id"]), []).append(source)
         agent = agents.setdefault(
             agent_id,
             {
@@ -304,6 +416,7 @@ def workspace_source_report(
         if agent["latest_proof_lineage"] is None:
             agent["latest_proof_lineage"] = proof_lineage
             agent["last_seen_at"] = row["created_at"]
+    claim_conflicts = _workspace_claim_conflicts(store, source_rows_by_memory_id=source_rows_by_memory_id)
     return {
         "schema": "zerker.workspace_sources.v1",
         "workspace_profile": workspace_profile,
@@ -311,6 +424,8 @@ def workspace_source_report(
         "connected_agent_count": len(agents),
         "chat_session_count": len({source["chat_session_id"] for source in sources}),
         "source_count": len(sources),
+        "claim_conflict_count": len(claim_conflicts),
         "connected_agents": sorted(agents.values(), key=lambda item: item["agent_id"]),
+        "claim_conflicts": claim_conflicts,
         "sources": sources,
     }

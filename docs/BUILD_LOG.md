@@ -1,6 +1,181 @@
+## 2026-06-23 - Launch Gate Rechecked At 02:46:22Z
+
+Shipped:
+
+- Stayed strictly on the Phase 1 launch-oversight track and updated only [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/LAUNCH_READINESS_NOW.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/LAUNCH_READINESS_NOW.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/launch.log.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/launch.log.md), and this build log.
+- Re-ran the bounded repo-local launch proof set: `bash scripts/gstack_check.sh`, `git remote -v`, `gh auth status`, `~/.pyenv/versions/3.10.15/bin/python3.10 scripts/release_smoke.py --summary-only`, `~/.pyenv/versions/3.10.15/bin/python3.10 -m zerker_memory status --summary-only`, `~/.pyenv/versions/3.10.15/bin/python3.10 -m zerker_memory verify-operator-packet .zerker/launch-proof/public-verify-operator-packet.tar.gz --summary-only`, `~/.pyenv/versions/3.10.15/bin/python3.10 -m zerker_memory verify-public-verify --summary-only`, `~/.pyenv/versions/3.10.15/bin/python3.10 -m zerker_memory verify-launch-assets --summary-only`, `~/.pyenv/versions/3.10.15/bin/python3.10 -m zerker_memory verify-return-packet .zerker/launch-proof/public-verify-return-packet.tar.gz --summary-only`, and `~/.pyenv/versions/3.10.15/bin/python3.10 -m zerker_memory prelaunch --summary-only`.
+- Reconfirmed the authoritative Phase 1 state is still unchanged: operator packet stayed `Ready: yes`, public verify stayed `0/6`, launch assets stayed `0/8`, return packet stayed `Ready: no`, and strict publish stayed blocked only on `launch_assets` plus `public_verify_evidence`.
+- Kept the slice surgical: no installer, README, QUICKSTART, site copy, release smoke code, runtime code, tests, or generated `.zerker/launch-proof/` artifacts were edited by hand.
+
+Verification:
+
+- `bash scripts/gstack_check.sh` -> `GSTACK_OK source=codex-skills path=/Users/zzo/.Codex/skills/gstack/bin command_on_path=no`
+- `git remote -v` -> `origin` fetch/push target is `https://github.com/zerkerlabs/zmem.git`
+- `gh auth status` -> failed; active `rezker1` token invalid
+- `python3 --version` -> `3.9.6`; bounded proof rerun pinned to `~/.pyenv/versions/3.10.15/bin/python3.10`
+- `~/.pyenv/versions/3.10.15/bin/python3.10 scripts/release_smoke.py --summary-only` -> passed; release smoke summary checks completed
+- `~/.pyenv/versions/3.10.15/bin/python3.10 -m zerker_memory status --summary-only` -> passed; workspace ready `yes`, doctor `ok`, memory proof ready `yes`, release packet ready `yes`, strict publish ready `no`
+- `~/.pyenv/versions/3.10.15/bin/python3.10 -m zerker_memory verify-operator-packet .zerker/launch-proof/public-verify-operator-packet.tar.gz --summary-only` -> `Ready: yes`
+- `~/.pyenv/versions/3.10.15/bin/python3.10 -m zerker_memory verify-public-verify --summary-only` -> `Ready: no`; still missing all `6/6` clean-shell logs
+- `~/.pyenv/versions/3.10.15/bin/python3.10 -m zerker_memory verify-launch-assets --summary-only` -> `Ready: no`; still missing all `8/8` launch assets
+- `~/.pyenv/versions/3.10.15/bin/python3.10 -m zerker_memory verify-return-packet .zerker/launch-proof/public-verify-return-packet.tar.gz --summary-only` -> `Ready: no`; still pending clean-shell evidence plus launch assets
+- `~/.pyenv/versions/3.10.15/bin/python3.10 -m zerker_memory prelaunch --summary-only` -> blocked only on `launch_assets` and `public_verify_evidence`
+- focused active-surface stale-target scan across `README.md`, `QUICKSTART.md`, `install.sh`, `scripts/release_smoke.py`, `zerker_memory`, `tests`, `docs/ZMEM_LAUNCH_LIST.md`, `docs/LAUNCH_READINESS_NOW.md`, `docs/CURRENT_STATE.md`, `docs/SWARM_OPERATION_TRACKER.md`, and `docs/ZMEM_CONTINUOUS_BUILD_ORCHESTRATOR.md` -> no non-historical stale public repo, raw-installer, `rezkerlabs`, or stale GitHub repo targets in active launch surfaces; only historical coordinator text still carries the older `rezker1` token note
+
+Blockers:
+
+- Phase 1 launch proof remains externally blocked on `0/6` clean-shell public verify logs and `0/8` launch assets.
+- This shell still cannot complete repo publish proof, clean-shell evidence capture, site deploy/DNS, or the first alpha tag because GitHub auth is invalid and the required external networked shell is out of scope here.
+
+Next:
+
+- Keep Phase 1 narrowly blocked on external execution: hand `.zerker/launch-proof/CLEAN_SHELL_OPERATOR_PROMPT.md`, `.zerker/launch-proof/CLEAN_SHELL_PUBLIC_VERIFY.md`, and `.zerker/launch-proof/public-verify-operator-packet.tar.gz` to a networked operator with valid GitHub auth, then accept handback only after `verify-public-verify`, `verify-launch-assets`, `verify-return-packet`, and `prelaunch` all report ready.
+
 # Build Log
 
 This file tracks product-build slices so parallel Codex runs and hourly automations do not become invisible.
+
+## 2026-06-23 - Workspace Claim Conflicts Surfaced
+
+Shipped:
+
+- Stayed on the L5 identity-workspaces lane and updated [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/workspaces.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/workspaces.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/dashboard.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/dashboard.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_workspaces.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_workspaces.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_dashboard.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_dashboard.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/identity-workspaces.log.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/identity-workspaces.log.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md), and this build log.
+- Landed one narrow identity slice only: the existing read-only workspace source-lineage report now derives `claim_conflicts` / `claim_conflict_count` from recent local memories plus existing write receipts, and the existing dashboard source panel now shows the top conflict groups with connected agents, sessions, trust status, and proof roots.
+- Kept the slice surgical: no SQLite schema change, no memory write-path change, no new CLI command, no remote Hub dependency, and no generated `.zerker/launch-proof/` artifacts were edited by hand.
+
+Verification:
+
+- `python3 -m unittest tests.test_workspaces -q` -> passed (`Ran 5 tests in 0.228s`)
+- `python3 -m unittest tests.test_dashboard.DashboardTest.test_console_has_proof_inspector tests.test_dashboard.DashboardTest.test_build_workspace_sources_state_is_dashboard_ready -q` -> passed (`Ran 2 tests in 0.191s`)
+
+Blockers:
+
+- The new surface is a read-only merge preview; it does not yet persist merge decisions or expose a compact human-readable CLI summary.
+- Exact-tie cross-agent abstentions are supported by the merge preview contract but still need a dedicated L5 fixture and summary presentation.
+
+Next:
+
+- Add one exact-tie abstention fixture and summary surface so unresolved cross-agent claim conflicts are as explicit as resolved ones.
+
+## 2026-06-23 - Hybrid Backfill Fusion Receipts Added
+
+Shipped:
+
+- Stayed on the L3 hybrid-retrieval lane and updated [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/store.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/store.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_store.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_store.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/hybrid-retrieval.log.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/hybrid-retrieval.log.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md), and this build log.
+- Added `retrieval.hybrid.fusion` for applied `fts_semantic_backfill_v1` receipts, using deterministic `reciprocal_rank_fusion_v1` metadata over the selected lexical/semantic sources.
+- Preserved the considered lexical and semantic rankings separately so dropped lexical decoys remain visible without being counted as selected-source evidence.
+- Mirrored selected hybrid fusion details onto candidates through `fusion_rank`, `fusion_score`, and `fusion_sources`.
+- Kept the slice surgical: no retrieval behavior reorder, no SQLite schema change, no hosted provider call, and no benchmark harness change.
+
+Verification:
+
+- `python3 -m unittest tests.test_store -k hybrid_semantic_backfill -q` -> passed (`Ran 2 tests`)
+- `python3 -m unittest tests.test_store -q` -> passed (`Ran 168 tests`)
+- `python3 -m zerker_memory eval` -> passed (`passed: 11`, `failed: 0`)
+
+Blockers:
+
+- This adds the receipt-visible fusion contract only. Multi-hop merge receipts, graph traversal candidates, and behavior-changing RRF ranking remain future L3 slices.
+- The broader worktree still contains other automation changes from L2, L4, L6, launch, and CTO lanes; this slice intentionally did not checkpoint or normalize them.
+
+Next:
+
+- Extend the same fusion summary to multi-hop merge receipts or move to a deterministic conflict-resolution fixture before changing ranking behavior.
+
+## 2026-06-23 - Local Consolidation Job Ledger Landed
+
+Shipped:
+
+- Stayed on the L4 consolidation lane and updated [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/consolidation.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/consolidation.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_consolidation.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_consolidation.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONSOLIDATION_FIXTURE.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONSOLIDATION_FIXTURE.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/consolidation.log.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/consolidation.log.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md), and [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md).
+- Landed one narrow consolidation slice only: local append-only job records now model `pending`, `running`, `completed`, `failed`, and `cancelled` consolidation work with ordered rollup levels, reversible lineage, unique `source_child_ids`, and required completed-job `output_summary_ids`.
+- Kept the slice surgical: no `zerker_memory/store.py`, no SQLite migration, no benchmark harness change, no daemon/worker loop, and no hosted LLM summarization dependency were introduced.
+
+Verification:
+
+- `python3 -m unittest tests.test_consolidation -q` -> passed (`Ran 6 tests in 0.004s`)
+
+Blockers:
+
+- The new ledger persists auditable job state but does not yet decide what should consolidate or generate summary content.
+- Recall planning, runtime summary writing, and any store-backed job queue remain future slices.
+
+Next:
+
+- Add a recall-planner fixture that chooses when turn/session/day/week/profile-project jobs should be queued against the local ledger.
+
+## 2026-06-23 - Target-History Selection Exclusions Added
+
+Shipped:
+
+- Stayed on the L3 hybrid-retrieval lane and added receipt-visible exclusion metadata for no-superseded target-history queries.
+- `retrieval.temporal.selection_exclusions` now records generic current anchors that were retrieved but not selected because the explicit support/current target-history pair won.
+- Candidate metadata now mirrors the same decision through `temporal_selection_exclusion` and `temporal_selection_exclusion_reason`.
+- The behavior is explanatory only: it does not change retrieval ranking, selected ids, injected ids, or context-packing reservation.
+
+Verification:
+
+- `python3 -m unittest tests.test_store.MemoryStoreTest.test_before_target_history_prefers_explicit_support_pair_over_generic_current_anchor tests.test_runner.RunnerTest.test_before_target_history_context_prefers_explicit_support_pair_over_generic_current_anchor -q` -> passed (`Ran 2 tests`)
+- `python3 -m unittest tests.test_store -q` -> passed (`Ran 168 tests`)
+- `python3 -m unittest tests.test_runner -q` -> passed (`Ran 76 tests`)
+- `python3 -m zerker_memory eval` -> passed (`passed: 11`, `failed: 0`)
+
+Blockers:
+
+- Other temporal strategies still expose non-selected candidates mostly through rank/selection fields rather than first-class `selection_exclusions`.
+- The broader worktree already contains fresh L2, L6, launch, and CTO-loop changes from other automations; this slice intentionally did not checkpoint or normalize them.
+
+Next:
+
+- Either generalize `selection_exclusions` to relation-history and chronology strategies, or let the L2 lifecycle lane continue with a minimal checkpoint/root contract.
+
+## 2026-06-23 - Lifecycle Context Separates Rules From Recall
+
+Shipped:
+
+- Stayed on the L2 lifecycle-compaction lane and updated [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/store.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/store.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/runner.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/runner.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_store.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_store.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_runner.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_runner.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/lifecycle-compaction.log.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/lifecycle-compaction.log.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md), and this build log.
+- Landed one narrow lifecycle slice only: inject/packing receipts now summarize injected, withheld, and budget-dropped ids by memory type, while runner context payloads now expose `memory_classes`, `memory_type_summary`, and `budget_dropped` so policy/procedural rules do not get mixed into episodic/semantic recall at context boundaries.
+- Kept the slice surgical: no CLI session commands, no checkpoint/snapshot command surface changes, no SQLite schema change, no retention policy change, and no generated `.zerker/launch-proof/` artifacts were edited by hand.
+
+Verification:
+
+- `python3 -m unittest tests.test_store.MemoryStoreTest.test_packing_receipt_summarizes_instructional_recall_withheld_and_budget_dropped_types -q` -> passed (`Ran 1 test`)
+- `python3 -m unittest tests.test_runner.RunnerTest.test_build_context_separates_instructional_and_recall_memory_and_surfaces_budget_receipts -q` -> passed (`Ran 1 test`)
+- `python3 -m unittest tests.test_cli_onboarding tests.test_store tests.test_runner -q` -> passed (`Ran 353 tests in 62.746s`)
+- `python3 -m zerker_memory eval` -> passed (`passed: 11`, `failed: 0`)
+
+Blockers:
+
+- Working memory, session lifecycle, checkpoint roots, snapshot roots, and retention are still implicit or deferred; this slice only hardened the context contract around existing inject/runner behavior.
+- Phase 1 launch proof remains externally blocked on `0/6` clean-shell public-verify logs plus `0/8` launch assets; this slice did not touch any Phase 1 surface.
+
+Next:
+
+- Add one minimal checkpoint/root contract that emits receipt-visible session state without widening snapshot/handoff UX or introducing a broad new session subsystem.
+
+## 2026-06-23 - Matrix Trace Receipts Carry Proof Summary
+
+Shipped:
+
+- Stayed on the L6 benchmark lane and updated [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/bench.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/bench.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_bench.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_bench.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/benchmark.log.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/benchmark.log.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md), and this build log.
+- Landed one narrow benchmark slice only: dataset-backed `bench matrix` runs with `write_trace=True` now persist richer `receipt.json` content for LongMemEval and LoCoMo matrices, including reproducible per-mode commands, artifact hashes, proof roots, question-summary deltas, and per-mode token/latency/memory metrics.
+- Kept the slice surgical: no benchmark scoring rules, dataset conversion scripts, CLI dispatch, release-pack, launch-proof, public site copy, or generated `.zerker/launch-proof/` artifacts were edited by hand.
+
+Verification:
+
+- `python3 -m unittest tests.test_bench.BenchmarkHarnessTest.test_longmemeval_matrix_trace_receipt_preserves_summary_hashes_and_mode_commands tests.test_bench.BenchmarkHarnessTest.test_locomo_matrix_trace_receipt_preserves_summary_hashes_and_mode_commands -q` -> passed (`Ran 2 tests in 18.886s`)
+- `python3 -m unittest tests.test_bench -q` -> passed (`Ran 137 tests in 478.450s`)
+- `python3 -m unittest tests.test_store -q` -> passed (`Ran 165 tests in 6.051s`)
+- `python3 -m zerker_memory eval` -> passed (`passed: 11`, `failed: 0`)
+- Focused stale-target scan on `zerker_memory/bench.py` and `tests/test_bench.py` -> no active `zerkerlabs/zerker-memory`, stale raw-installer, `rezkerlabs`, or stale GitHub repo targets
+
+Blockers:
+
+- Standalone matrix-comparison and comparison trace receipts still do not expose the same machine-readable command/hash/proof summary as matrix directories.
+- Phase 1 launch proof remains externally blocked on `0/6` clean-shell public-verify logs plus `0/8` launch assets; this slice did not touch any Phase 1 surface.
+
+Next:
+
+- Extend the same receipt summary fields to standalone matrix-comparison or comparison trace artifacts so reopened comparison-only evidence keeps parity with matrix directories.
 
 ## 2026-06-22 - Automation Drops Integrated Into Clean Commits
 
@@ -60,6 +235,38 @@ Blockers:
 Next:
 
 - Add receipt-visible exclusion metadata for extra target-history current anchors so retrieved-but-not-selected generic notes are explicitly labeled in temporal receipts.
+
+## 2026-06-23 - Launch Gate Rechecked At 00:47:51Z
+
+Shipped:
+
+- Stayed strictly on the Phase 1 launch-oversight track and updated [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/LAUNCH_READINESS_NOW.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/LAUNCH_READINESS_NOW.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/launch.log.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/launch.log.md), and this build log.
+- Re-ran the bounded repo-local launch proof set with the pinned interpreter path that returned the current authoritative snapshot: `bash scripts/gstack_check.sh`, `git remote -v`, `gh auth status`, `~/.pyenv/versions/3.10.15/bin/python3.10 scripts/release_smoke.py --summary-only`, `~/.pyenv/versions/3.10.15/bin/python3.10 -m zerker_memory status --summary-only`, `~/.pyenv/versions/3.10.15/bin/python3.10 -m zerker_memory verify-operator-packet .zerker/launch-proof/public-verify-operator-packet.tar.gz --summary-only`, `~/.pyenv/versions/3.10.15/bin/python3.10 -m zerker_memory verify-public-verify --summary-only`, `~/.pyenv/versions/3.10.15/bin/python3.10 -m zerker_memory verify-launch-assets --summary-only`, `~/.pyenv/versions/3.10.15/bin/python3.10 -m zerker_memory verify-return-packet .zerker/launch-proof/public-verify-return-packet.tar.gz --summary-only`, and `~/.pyenv/versions/3.10.15/bin/python3.10 -m zerker_memory prelaunch --summary-only`.
+- Reconfirmed the authoritative Phase 1 state is still unchanged: `status --summary-only` still reports workspace ready `yes`, doctor `ok`, memory proof ready `yes`, release packet ready `yes`, strict publish ready `no`, and manual pack ready `yes`; operator packet stayed `Ready: yes`, public verify stayed `0/6`, launch assets stayed `0/8`, and the return packet stayed pending only on `launch_assets` plus `public_verify_evidence`.
+- Kept the slice surgical: no installer, README, QUICKSTART, site copy, release smoke code, runtime code, tests, or generated `.zerker/launch-proof/` artifacts were edited by hand.
+
+Verification:
+
+- `bash scripts/gstack_check.sh` -> `GSTACK_OK source=codex-skills path=/Users/zzo/.Codex/skills/gstack/bin command_on_path=no`
+- `git remote -v` -> `origin` fetch/push target is `https://github.com/zerkerlabs/zmem.git`
+- `gh auth status` -> failed; active `rezker1` token invalid
+- `~/.pyenv/versions/3.10.15/bin/python3.10 scripts/release_smoke.py --summary-only` -> passed; release smoke summary checks completed
+- `~/.pyenv/versions/3.10.15/bin/python3.10 -m zerker_memory status --summary-only` -> passed; workspace ready `yes`, doctor `ok`, memory proof ready `yes`, release packet ready `yes`, strict publish ready `no`
+- `~/.pyenv/versions/3.10.15/bin/python3.10 -m zerker_memory verify-operator-packet .zerker/launch-proof/public-verify-operator-packet.tar.gz --summary-only` -> `Ready: yes`
+- `~/.pyenv/versions/3.10.15/bin/python3.10 -m zerker_memory verify-public-verify --summary-only` -> `Ready: no`; still missing all `6/6` clean-shell logs
+- `~/.pyenv/versions/3.10.15/bin/python3.10 -m zerker_memory verify-launch-assets --summary-only` -> `Ready: no`; still missing all `8/8` launch assets
+- `~/.pyenv/versions/3.10.15/bin/python3.10 -m zerker_memory verify-return-packet .zerker/launch-proof/public-verify-return-packet.tar.gz --summary-only` -> `Ready: no`; still pending clean-shell evidence plus launch assets
+- `~/.pyenv/versions/3.10.15/bin/python3.10 -m zerker_memory prelaunch --summary-only` -> blocked only on `launch_assets` and `public_verify_evidence`
+- focused active-surface stale-target scan across `README.md`, `QUICKSTART.md`, `install.sh`, `scripts/release_smoke.py`, `zerker_memory`, `tests`, `docs/ZMEM_LAUNCH_LIST.md`, `docs/LAUNCH_READINESS_NOW.md`, `docs/CURRENT_STATE.md`, `docs/SWARM_OPERATION_TRACKER.md`, and `docs/ZMEM_CONTINUOUS_BUILD_ORCHESTRATOR.md` -> no non-historical stale public repo, raw-installer, `rezkerlabs`, or stale GitHub repo targets in active launch surfaces; only historical coordinator text still carries the older `rezker1` token note
+
+Blockers:
+
+- Phase 1 launch proof remains externally blocked on `0/6` clean-shell public verify logs and `0/8` launch assets.
+- This shell still cannot complete repo publish proof, clean-shell evidence capture, site deploy/DNS, or the first alpha tag because GitHub auth is invalid and the required external networked shell is out of scope here.
+
+Next:
+
+- Keep Phase 1 narrowly blocked on external execution: hand `.zerker/launch-proof/CLEAN_SHELL_OPERATOR_PROMPT.md`, `.zerker/launch-proof/CLEAN_SHELL_PUBLIC_VERIFY.md`, and `.zerker/launch-proof/public-verify-operator-packet.tar.gz` to a networked operator with valid GitHub auth, then accept handback only after `verify-public-verify`, `verify-launch-assets`, `verify-return-packet`, and `prelaunch` all report ready.
 
 ## 2026-06-22 - Launch Gate Rechecked At 23:44:49Z
 
@@ -17567,6 +17774,39 @@ Next:
 - `2026-06-22T11:22:08Z` Coordinator launch oversight rerun: reran the bounded Phase 1 proof set without changing product/runtime code. `bash scripts/gstack_check.sh` still reports `GSTACK_OK`, `git status --short -uno` still shows a broader dirty tree across launch-facing plus benchmark, retrieval, landing, agent, workspace, onboarding, dashboard, and Treeship surfaces, `origin` still targets `https://github.com/zerkerlabs/zmem.git`, and `gh auth status` still fails because the active `rezker1` token is invalid. `python3 scripts/release_smoke.py --summary-only` still passes, `python3 -m zerker_memory status --summary-only` still reports release packet ready with strict publish blocked, serialized `verify-operator-packet` still reports `Ready: yes`, `verify-public-verify` remains `0/6`, `verify-launch-assets` remains `0/8`, `verify-return-packet` remains `Ready: no`, and `prelaunch --summary-only` remains blocked only on `launch_assets` plus `public_verify_evidence`. Updated only the coordinator launch docs to record that unchanged state; the focused stale-target scan again found no active stale public repo, raw-installer, `rezkerlabs`, or stale GitHub repo targets in launch surfaces, and confirmed the `zerker-memory/zerker-memory` entry in `zerker_memory/cli.py` is still an intentional prelaunch placeholder sentinel rather than an active launch target. The only non-launch `rezker1` match in the scan was `docs/PERMANENT_CHAT_BRIEF.md`, plus the expected historical coordinator text. The exact next step remains forwarding `.zerker/launch-proof/CLEAN_SHELL_OPERATOR_PROMPT.md`, `.zerker/launch-proof/CLEAN_SHELL_PUBLIC_VERIFY.md`, and `.zerker/launch-proof/public-verify-operator-packet.tar.gz` to a networked operator with valid GitHub auth.
 - `2026-06-22T12:30:43Z` Coordinator launch oversight rerun: reran the bounded Phase 1 proof set without changing product/runtime code after detecting that `zerker_memory/cli.py` had advanced to `2026-06-22T11:23:03.437498Z` after the prior handoff. `bash scripts/gstack_check.sh` still reports `GSTACK_OK`, `git status --short -uno` still shows a broader dirty tree across launch-facing plus benchmark, retrieval, landing, agent, workspace, onboarding, dashboard, and Treeship surfaces, `origin` still targets `https://github.com/zerkerlabs/zmem.git`, and `gh auth status` still fails because the active `rezker1` token is invalid. `python3 scripts/release_smoke.py --summary-only` still passes, `python3 -m zerker_memory status --summary-only` still reports release packet ready with strict publish blocked, serialized `verify-operator-packet` still reports `Ready: yes`, `verify-public-verify` remains `0/6`, `verify-launch-assets` remains `0/8`, `verify-return-packet` remains `Ready: no`, and `prelaunch --summary-only` remains blocked only on `launch_assets` plus `public_verify_evidence`. The rerun refreshed `.zerker/launch-proof/CLEAN_SHELL_OPERATOR_PROMPT.md`, `.zerker/launch-proof/CLEAN_SHELL_PUBLIC_VERIFY.md`, `.zerker/launch-proof/public-verify-operator-packet.tar.gz`, `.zerker/launch-proof/public-verify-return-packet.tar.gz`, `.zerker/launch-proof/public-verify-logs/`, and `.zerker/launch-proof/assets/` into the `2026-06-22T12:30:43Z` window while keeping both evidence directories at `0` files. Updated only the coordinator launch docs to record that unchanged state; the focused stale-target scan again found no active stale public repo, raw-installer, `rezkerlabs`, or stale GitHub repo targets in launch surfaces, and confirmed the `zerker-memory/zerker-memory` entry in `zerker_memory/cli.py` is still an intentional prelaunch placeholder sentinel rather than an active launch target. The only non-launch `rezker1` match in the scan was `docs/PERMANENT_CHAT_BRIEF.md`, plus the expected historical coordinator text. The exact next step remains forwarding `.zerker/launch-proof/CLEAN_SHELL_OPERATOR_PROMPT.md`, `.zerker/launch-proof/CLEAN_SHELL_PUBLIC_VERIFY.md`, and `.zerker/launch-proof/public-verify-operator-packet.tar.gz` to a networked operator with valid GitHub auth.
 - `2026-06-22T15:39:25Z` launch-oversight repair: fixed a real repo-local launch regression in `zerker_memory/store.py` after `python3 scripts/release_smoke.py --summary-only` started failing because `zmem status --summary-only` reported eval failures in `poisoned_memory_withheld` and `provider_poisoning_quarantined`. The bounded change now runs policy decision/withheld accounting across all lifecycle-current candidates while still restricting actual injection to the temporal selection subset, restoring quarantined receipt accounting without broad retrieval changes. Verification passed with `python3 -m unittest tests.test_eval -q`, `python3 -m zerker_memory eval`, `python3 scripts/release_smoke.py --summary-only`, `python3 -m zerker_memory status --summary-only`, `python3 -m zerker_memory verify-operator-packet .zerker/launch-proof/public-verify-operator-packet.tar.gz --summary-only`, `python3 -m zerker_memory verify-public-verify --summary-only`, `python3 -m zerker_memory verify-launch-assets --summary-only`, `python3 -m zerker_memory verify-return-packet .zerker/launch-proof/public-verify-return-packet.tar.gz --summary-only`, and `python3 -m zerker_memory prelaunch --summary-only`. Durable Phase 1 status after the fix is unchanged externally: operator packet `Ready: yes`, public verify `0/6`, launch assets `0/8`, return packet `Ready: no`, strict publish blocked only on `launch_assets` plus `public_verify_evidence`, `origin` still points at `https://github.com/zerkerlabs/zmem.git`, `gh auth status` still fails because the active `rezker1` token is invalid, and the focused stale-target scan again found no active stale public repo, raw-installer, `rezkerlabs`, or stale GitHub repo targets in active launch surfaces.
+
+## 2026-06-23 - Launch Gate Rechecked At 01:49:01Z
+
+Shipped:
+
+- Stayed strictly on the Phase 1 launch-oversight track and updated only [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/LAUNCH_READINESS_NOW.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/LAUNCH_READINESS_NOW.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/launch.log.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/launch.log.md), and this build log.
+- Re-ran the bounded repo-local launch proof set: `bash scripts/gstack_check.sh`, `git remote -v`, `gh auth status`, `~/.pyenv/versions/3.10.15/bin/python3.10 scripts/release_smoke.py --summary-only`, `~/.pyenv/versions/3.10.15/bin/python3.10 -m zerker_memory status --summary-only`, `~/.pyenv/versions/3.10.15/bin/python3.10 -m zerker_memory verify-operator-packet .zerker/launch-proof/public-verify-operator-packet.tar.gz --summary-only`, `~/.pyenv/versions/3.10.15/bin/python3.10 -m zerker_memory verify-public-verify --summary-only`, `~/.pyenv/versions/3.10.15/bin/python3.10 -m zerker_memory verify-launch-assets --summary-only`, `~/.pyenv/versions/3.10.15/bin/python3.10 -m zerker_memory verify-return-packet .zerker/launch-proof/public-verify-return-packet.tar.gz --summary-only`, and `~/.pyenv/versions/3.10.15/bin/python3.10 -m zerker_memory prelaunch --summary-only`.
+- Reconfirmed the authoritative Phase 1 state is still unchanged: operator packet stayed `Ready: yes`, public verify stayed `0/6`, launch assets stayed `0/8`, return packet stayed `Ready: no`, and strict publish stayed blocked only on `launch_assets` plus `public_verify_evidence`.
+- Kept the slice surgical: no installer, README, QUICKSTART, site copy, release smoke code, runtime code, tests, or generated `.zerker/launch-proof/` artifacts were edited by hand.
+
+Verification:
+
+- `bash scripts/gstack_check.sh` -> `GSTACK_OK source=codex-skills path=/Users/zzo/.Codex/skills/gstack/bin command_on_path=no`
+- `git remote -v` -> `origin` fetch/push target is `https://github.com/zerkerlabs/zmem.git`
+- `gh auth status` -> failed; active `rezker1` token invalid
+- `python3 --version` -> `3.9.6`; bounded proof rerun pinned to `~/.pyenv/versions/3.10.15/bin/python3.10`
+- `~/.pyenv/versions/3.10.15/bin/python3.10 scripts/release_smoke.py --summary-only` -> passed; strict publish still blocked only on `launch_assets` plus `public_verify_evidence`
+- `~/.pyenv/versions/3.10.15/bin/python3.10 -m zerker_memory status --summary-only` -> passed; release packet ready, strict publish still `no`
+- `~/.pyenv/versions/3.10.15/bin/python3.10 -m zerker_memory verify-operator-packet .zerker/launch-proof/public-verify-operator-packet.tar.gz --summary-only` -> `Ready: yes`
+- `~/.pyenv/versions/3.10.15/bin/python3.10 -m zerker_memory verify-public-verify --summary-only` -> `Ready: no`; still missing all `6/6` clean-shell logs
+- `~/.pyenv/versions/3.10.15/bin/python3.10 -m zerker_memory verify-launch-assets --summary-only` -> `Ready: no`; still missing all `8/8` launch assets
+- `~/.pyenv/versions/3.10.15/bin/python3.10 -m zerker_memory verify-return-packet .zerker/launch-proof/public-verify-return-packet.tar.gz --summary-only` -> `Ready: no`; still pending clean-shell evidence plus launch assets
+- `~/.pyenv/versions/3.10.15/bin/python3.10 -m zerker_memory prelaunch --summary-only` -> blocked only on `launch_assets` and `public_verify_evidence`
+- focused active-surface stale-target scan across `README.md`, `QUICKSTART.md`, `install.sh`, `scripts/release_smoke.py`, `zerker_memory`, `tests`, `docs/ZMEM_LAUNCH_LIST.md`, `docs/LAUNCH_READINESS_NOW.md`, `docs/CURRENT_STATE.md`, `docs/SWARM_OPERATION_TRACKER.md`, and `docs/ZMEM_CONTINUOUS_BUILD_ORCHESTRATOR.md` -> no non-historical stale public repo, raw-installer, `rezkerlabs`, or stale GitHub repo targets in active launch surfaces; only historical coordinator text still carries the older `rezker1` token note
+
+Blockers:
+
+- Phase 1 launch proof remains externally blocked on `0/6` clean-shell public verify logs and `0/8` launch assets.
+- This shell still cannot complete repo publish proof, clean-shell evidence capture, site deploy/DNS, or the first alpha tag because GitHub auth is invalid and the required external networked shell is out of scope here.
+
+Next:
+
+- Keep Phase 1 narrowly blocked on external execution: hand `.zerker/launch-proof/CLEAN_SHELL_OPERATOR_PROMPT.md`, `.zerker/launch-proof/CLEAN_SHELL_PUBLIC_VERIFY.md`, and `.zerker/launch-proof/public-verify-operator-packet.tar.gz` to a networked operator with valid GitHub auth, then accept handback only after `verify-public-verify`, `verify-launch-assets`, `verify-return-packet`, and `prelaunch` all report ready.
 
 ## 2026-06-22 - Launch Gate Rechecked At 20:43:59Z
 

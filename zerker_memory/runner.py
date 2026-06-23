@@ -11,6 +11,17 @@ from .store import MemoryStore, now_iso, sha256_text
 
 
 RUN_SCHEMA = "zerker.run.v1"
+MEMORY_CONTEXT_SCHEMA = "zerker.memory_context.v1"
+MEMORY_TYPES = ("episodic", "policy", "procedural", "semantic")
+
+
+def _group_memories_by_type(memories: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    grouped = {memory_type: [] for memory_type in MEMORY_TYPES}
+    for memory in memories:
+        memory_type = str(memory.get("type") or "")
+        if memory_type in grouped:
+            grouped[memory_type].append(memory)
+    return grouped
 
 
 def run_with_memory(
@@ -73,18 +84,44 @@ def default_context_path(action_id: str) -> Path:
 
 
 def build_context(receipt: dict[str, Any]) -> dict[str, Any]:
+    memories = receipt.get("memories")
+    if not isinstance(memories, list):
+        injected = receipt.get("injected")
+        memories = injected if isinstance(injected, list) else []
+    retrieval = receipt.get("retrieval") if isinstance(receipt.get("retrieval"), dict) else {}
+    packing = retrieval.get("packing") if isinstance(retrieval.get("packing"), dict) else {}
+    budget_dropped = packing.get("budget_dropped") if isinstance(packing.get("budget_dropped"), list) else []
+    memory_classes = _group_memories_by_type(memories)
+    memory_type_summary = packing.get("memory_type_summary") if isinstance(packing.get("memory_type_summary"), dict) else None
+    if memory_type_summary is None:
+        memory_type_summary = {
+            "instruction_types": ["policy", "procedural"],
+            "recall_types": ["episodic", "semantic"],
+            "injected_ids_by_type": {
+                memory_type: [memory["id"] for memory in grouped_memories]
+                for memory_type, grouped_memories in memory_classes.items()
+            },
+            "withheld_ids_by_type": {memory_type: [] for memory_type in MEMORY_TYPES},
+            "budget_dropped_ids_by_type": {memory_type: [] for memory_type in MEMORY_TYPES},
+        }
     return {
-        "schema": "zerker.memory_context.v1",
+        "schema": MEMORY_CONTEXT_SCHEMA,
         "action_id": receipt["action_id"],
         "task": receipt["task"],
         "risk": receipt["risk"],
         "merkle_root": receipt["merkle_root"],
         "policy_checks": receipt["policy_checks"],
-        "memories": receipt.get("memories", []),
+        "memories": memories,
+        "memory_classes": memory_classes,
+        "memory_type_summary": memory_type_summary,
         "withheld": receipt.get("withheld", []),
+        "budget_dropped": budget_dropped,
         "instructions": [
             "Use only the memories listed in `memories` as durable memory context.",
+            "Treat `policy` and `procedural` memories as rules or workflows, not as narrative recall.",
+            "Treat `episodic` and `semantic` memories as recall/evidence, not as procedural rules.",
             "Treat `withheld` memories as unavailable and non-authoritative.",
+            "Treat `budget_dropped` memories as relevant-but-omitted due to the current context budget.",
             "Use ZERKER_ACTION_ID when asking Zerker to explain this run later.",
         ],
     }
