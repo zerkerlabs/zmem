@@ -2,6 +2,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from zerker_memory.dashboard import (
     DashboardServer,
@@ -9,6 +10,7 @@ from zerker_memory.dashboard import (
     build_benchmark_state,
     build_onboarding_state,
     build_release_readiness_state,
+    build_workspace_sources_state,
     create_dashboard_handoff,
     create_dashboard_handoff_restore,
     create_dashboard_launch_assets_verify,
@@ -19,6 +21,7 @@ from zerker_memory.dashboard import (
     re_receipt_action,
 )
 from zerker_memory.store import MemoryStore
+from zerker_memory.workspaces import register_workspace
 
 
 class DashboardTest(unittest.TestCase):
@@ -26,6 +29,7 @@ class DashboardTest(unittest.TestCase):
         self.assertIn("Proof Inspector", INDEX_HTML)
         self.assertIn("Memory In Use", INDEX_HTML)
         self.assertIn("Workspace Profile", INDEX_HTML)
+        self.assertIn("Connected Agents And Sources", INDEX_HTML)
         self.assertIn("Memory Status", INDEX_HTML)
         self.assertIn("Memory Clusters", INDEX_HTML)
         self.assertIn("Benchmark Panel", INDEX_HTML)
@@ -38,6 +42,7 @@ class DashboardTest(unittest.TestCase):
         self.assertIn("renderMemoryClusters", INDEX_HTML)
         self.assertIn("renderBenchmarkPanel", INDEX_HTML)
         self.assertIn("renderWorkspaceProfile", INDEX_HTML)
+        self.assertIn("renderWorkspaceSources", INDEX_HTML)
         self.assertIn("renderBoundaryZones", INDEX_HTML)
         self.assertIn("renderAgentBenchmarkSpotlight", INDEX_HTML)
         self.assertIn("http://127.0.0.1:8766/benchmarks.html", INDEX_HTML)
@@ -66,6 +71,34 @@ class DashboardTest(unittest.TestCase):
         self.assertIn("public verify pending", INDEX_HTML)
         self.assertIn("launch assets pending", INDEX_HTML)
         self.assertIn("return packet pending", INDEX_HTML)
+
+    def test_build_workspace_sources_state_is_dashboard_ready(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            registry_path = tmp_path / "workspaces.json"
+            root = tmp_path / "project"
+            root.mkdir()
+            registered = register_workspace(name="Project", root=root, registry_path=registry_path)
+            store = MemoryStore(root / ".zerker" / "memory.sqlite")
+            store.remember(
+                "Release notes owner is Maya",
+                memory_type="semantic",
+                scope="project",
+                source_kind="agent",
+                actor_uri="agent://codex/chat-5",
+                session_id="chat://codex/session-5",
+                source_uri="conversation://codex/session-5/message-2",
+            )
+
+            with patch.dict(os.environ, {"ZMEM_WORKSPACE_REGISTRY": str(registry_path)}):
+                state = build_workspace_sources_state(store)
+
+        self.assertEqual(state["schema"], "zerker.workspace_sources.v1")
+        self.assertEqual(state["workspace_id"], registered["workspace"]["id"])
+        self.assertEqual(state["connected_agents"][0]["agent_id"], "codex")
+        self.assertEqual(state["sources"][0]["source_uri"], "conversation://codex/session-5/message-2")
+        self.assertEqual(state["sources"][0]["trust_status"], "quarantined")
+        self.assertIn("merkle_root", state["sources"][0]["proof_lineage"])
 
     def test_dashboard_server_is_threaded(self):
         self.assertIn("Threading", DashboardServer.__mro__[1].__name__)

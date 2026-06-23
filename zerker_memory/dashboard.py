@@ -10,7 +10,7 @@ from urllib.parse import parse_qs, urlparse
 
 from .exporter import export_bundle, export_snapshot
 from .store import MemoryStore, default_db_path, default_policy_path
-from .workspaces import workspace_status_for_paths
+from .workspaces import workspace_source_report, workspace_status_for_paths
 
 
 INDEX_HTML = """<!doctype html>
@@ -368,6 +368,11 @@ INDEX_HTML = """<!doctype html>
       <p class="helper">Switching projects and agents starts here: the console shows whether this DB is registered, current, or pointed at a different workspace.</p>
       <div id="workspaceProfile" class="empty">Loading workspace profile...</div>
     </section>
+    <section class="status-panel">
+      <h2>Connected Agents And Sources</h2>
+      <p class="helper">Read-only source lineage for recent memory writes: connected agent, chat/session id, source URI, trust status, and proof root.</p>
+      <div id="workspaceSources" class="empty">Loading workspace sources...</div>
+    </section>
     <section class="status-strip">
       <div class="status-panel">
         <h2>Memory In Use</h2>
@@ -661,6 +666,43 @@ INDEX_HTML = """<!doctype html>
           ${proofCell('Registry', profile.registry_path || 'unknown')}
         </div>
         <div class="topline">DB ${escapeHtml(profile.db_path || state.stats.db_path || 'unknown')}</div>`;
+    }
+
+    function renderWorkspaceSources(state) {
+      const report = state.workspace_sources || {};
+      const agents = report.connected_agents || [];
+      const sources = report.sources || [];
+      if (!agents.length && !sources.length) {
+        $('workspaceSources').innerHTML = '<div class="empty">No source-lineage receipts yet. Agent writes will appear here after memory is saved.</div>';
+        return;
+      }
+      const agentCards = agents.slice(0, 6).map((agent) => `<div class="quick-card">
+        <strong>${escapeHtml(agent.agent_id || 'unknown agent')}</strong>
+        <span>${escapeHtml((agent.chat_session_ids || []).join(', ') || 'no sessions')}</span>
+        <span>${escapeHtml(`memories ${agent.memory_count || 0} · workspace ${agent.workspace_id || report.workspace_id || 'none'}`)}</span>
+        <span>${escapeHtml(`latest root ${shortHash((agent.latest_proof_lineage || {}).merkle_root)}`)}</span>
+      </div>`).join('');
+      const sourceRows = sources.slice(0, 5).map((source) => {
+        const lineage = source.proof_lineage || {};
+        return `<div class="item">
+          <div class="meta">
+            ${pill(source.agent_id || 'unknown agent')}
+            ${pill(source.trust_status || 'unknown')}
+            ${pill(source.source_kind || 'unknown source')}
+          </div>
+          <div class="content">${escapeHtml(source.source_uri || 'no source URI recorded')}</div>
+          <div class="topline">${escapeHtml(source.chat_session_id || 'no session')} · ${escapeHtml(source.workspace_id || 'no workspace')} · receipt ${escapeHtml(lineage.receipt_id || 'none')} · root ${escapeHtml(shortHash(lineage.merkle_root))}</div>
+        </div>`;
+      }).join('');
+      $('workspaceSources').innerHTML = `
+        <div class="proof-status">
+          ${pill(`agents ${report.connected_agent_count || 0}`)}
+          ${pill(`sessions ${report.chat_session_count || 0}`)}
+          ${pill(`sources ${report.source_count || 0}`)}
+          ${pill(report.workspace_id || 'workspace none')}
+        </div>
+        <div class="quick-grid">${agentCards}</div>
+        <div class="list" style="margin-top:12px">${sourceRows}</div>`;
     }
 
     function renderBoundaryZones(provenItems, assertedItems) {
@@ -1270,6 +1312,7 @@ INDEX_HTML = """<!doctype html>
       renderMemorySpotlight(state);
       renderAgentBenchmarkSpotlight(state);
       renderWorkspaceProfile(state);
+      renderWorkspaceSources(state);
       renderMemoryStatusPanel(state);
       renderMemoryClusters(state);
       renderBenchmarkPanel(state);
@@ -1454,6 +1497,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                             db_path=store.db_path,
                             policy_path=store.policy_path,
                         ),
+                        "workspace_sources": build_workspace_sources_state(store),
                         "onboarding": build_onboarding_state(store),
                         "agent_continuity": build_agent_continuity_state(store),
                         "benchmark": build_benchmark_state(),
@@ -1650,6 +1694,15 @@ def build_onboarding_state(store: MemoryStore) -> dict[str, Any]:
         "checks": setup_checks,
         "commands": commands,
     }
+
+
+def build_workspace_sources_state(store: MemoryStore, *, limit: int = 25) -> dict[str, Any]:
+    return workspace_source_report(
+        store,
+        db_path=store.db_path,
+        policy_path=store.policy_path,
+        limit=limit,
+    )
 
 
 def build_agent_continuity_state(store: MemoryStore) -> dict[str, Any]:
