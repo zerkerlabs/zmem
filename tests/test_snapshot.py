@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 from zerker_memory.exporter import export_bundle, export_snapshot
-from zerker_memory.store import MemoryStore, sha256_text, stable_json
+from zerker_memory.store import MemoryStore, merkle_root, sha256_text, stable_json
 
 
 class SnapshotTest(unittest.TestCase):
@@ -90,6 +90,76 @@ class SnapshotTest(unittest.TestCase):
             mutation_receipt["merkle_root"],
         )
 
+    def test_snapshot_captures_revoke_mutation_write_receipt(self):
+        source = self.store.remember(
+            "Production deploys go through Railway",
+            memory_type="episodic",
+            scope="project",
+            source_kind="agent",
+            actor_id="codex",
+            actor_uri="agent://codex/session-c",
+            session_id="session://gamma",
+            source_uri="conversation://session-c/message-9",
+            parent_action_id="act_review",
+            environment_hash="sha256:env_fixture",
+        )
+        derived = self.store.remember(
+            "Deploy target is Railway",
+            memory_type="semantic",
+            scope="project",
+            source_kind="agent",
+            parents=[source.id],
+        )
+
+        self.store.revoke(source.id, actor_id="reviewer", reason="source evidence was wrong")
+        snapshot = self.store.snapshot()
+
+        self.assertEqual(snapshot["write_receipt_count"], 3)
+        source_receipts = [receipt for receipt in snapshot["write_receipts"] if receipt["memory_id"] == source.id]
+        derived_receipts = [receipt for receipt in snapshot["write_receipts"] if receipt["memory_id"] == derived.id]
+        self.assertEqual(len(source_receipts), 2)
+        self.assertEqual(len(derived_receipts), 1)
+        mutation_receipt = source_receipts[-1]
+        self.assertEqual(mutation_receipt["treeship_statement"]["kind"], "zerker.memory.mutation_receipt")
+        self.assertEqual(mutation_receipt["treeship_statement"]["object"]["mutation"], "revoke")
+        self.assertEqual(
+            mutation_receipt["treeship_statement"]["object"]["revoked_ids"],
+            [source.id, derived.id],
+        )
+        self.assertEqual(
+            mutation_receipt["treeship_statement"]["evidence"]["new_merkle_root"],
+            mutation_receipt["merkle_root"],
+        )
+
+    def test_snapshot_captures_forget_mutation_write_receipt(self):
+        memory = self.store.remember(
+            "Temporary routing snack is ramen",
+            memory_type="episodic",
+            scope="project",
+            source_kind="agent",
+            actor_id="codex",
+            actor_uri="agent://codex/session-d",
+            session_id="session://delta",
+            source_uri="conversation://session-d/message-5",
+            parent_action_id="act_capture",
+            environment_hash="sha256:env_fixture",
+            status="active",
+        )
+
+        self.store.forget(memory.id, actor_id="reviewer")
+        snapshot = self.store.snapshot()
+
+        self.assertEqual(snapshot["write_receipt_count"], 2)
+        memory_receipts = [receipt for receipt in snapshot["write_receipts"] if receipt["memory_id"] == memory.id]
+        self.assertEqual(len(memory_receipts), 2)
+        mutation_receipt = memory_receipts[-1]
+        self.assertEqual(mutation_receipt["treeship_statement"]["kind"], "zerker.memory.mutation_receipt")
+        self.assertEqual(mutation_receipt["treeship_statement"]["object"]["mutation"], "forget")
+        self.assertEqual(
+            mutation_receipt["treeship_statement"]["evidence"]["new_merkle_root"],
+            mutation_receipt["merkle_root"],
+        )
+
     def test_export_snapshot_writes_hashed_artifact(self):
         self.store.remember(
             "Use SQLite for local memory",
@@ -104,6 +174,39 @@ class SnapshotTest(unittest.TestCase):
             self.assertTrue(path.exists())
             self.assertEqual(result["format"], "snapshot")
             self.assertEqual(json.loads(path.read_text())["snapshot_schema"], "zerker.memory_snapshot.v1")
+
+    def test_restore_snapshot_returns_deterministic_restore_receipt_without_changing_snapshot_root(self):
+        self.store.remember(
+            "Portable snapshots must preserve memory provenance",
+            memory_type="policy",
+            scope="project",
+            source_kind="human",
+        )
+        snapshot = self.store.snapshot()
+
+        restored = MemoryStore(Path(self.tmp.name) / "restored-with-receipt.sqlite")
+        result = restored.restore_snapshot(snapshot)
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["snapshot_hash"], snapshot["snapshot_hash"])
+        self.assertEqual(result["merkle_root"], snapshot["merkle_root"])
+        self.assertEqual(restored.current_merkle_root(), snapshot["merkle_root"])
+        receipt = result["receipt"]
+        receipt_without_hash = dict(receipt)
+        receipt_hash = receipt_without_hash.pop("receipt_hash")
+        self.assertEqual(receipt["receipt_schema"], "zerker.lifecycle_receipt.v1")
+        self.assertEqual(receipt["mutation"], "restore_snapshot")
+        self.assertEqual(receipt["actor_uri"], "actor://snapshot_restore")
+        self.assertEqual(receipt["treeship_artifact_id"], None)
+        self.assertEqual(receipt["merkle_root"], snapshot["merkle_root"])
+        self.assertEqual(receipt["content_digest"], f"sha256:{sha256_text(stable_json(receipt['source_payload']))}")
+        self.assertEqual(receipt_hash, sha256_text(stable_json(receipt_without_hash)))
+        self.assertEqual(receipt["treeship_statement"]["kind"], "zerker.memory.mutation_receipt")
+        self.assertEqual(receipt["treeship_statement"]["object"]["mutation"], "restore_snapshot")
+        self.assertEqual(receipt["treeship_statement"]["object"]["semantic_truth_guaranteed"], False)
+        self.assertEqual(receipt["treeship_statement"]["evidence"]["prior_merkle_root"], merkle_root([]))
+        self.assertEqual(receipt["treeship_statement"]["evidence"]["new_merkle_root"], snapshot["merkle_root"])
+        self.assertEqual(receipt["treeship_statement"]["evidence"]["snapshot_hash"], snapshot["snapshot_hash"])
 
     def test_restore_snapshot_round_trips_to_empty_store(self):
         memory = self.store.remember(

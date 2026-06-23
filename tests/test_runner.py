@@ -222,6 +222,43 @@ class RunnerTest(unittest.TestCase):
         context = json.loads(context_path.read_text())
         self.assertEqual([memory["id"] for memory in context["memories"]], [parent.id, child.id])
 
+    def test_build_context_multi_hop_budget_prefers_two_specific_hops_over_generic_overview(self):
+        overview = self.store.remember(
+            "Project Atlas owner Morgan rollback policy notes.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.99,
+        )
+        rollback = self.store.remember(
+            "DeployWindow rollback policy is canary first for Project Atlas.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.95,
+        )
+        owner = self.store.remember(
+            "Project Atlas owner is Morgan.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.95,
+        )
+        budget = approx_memory_tokens(rollback) + approx_memory_tokens(owner)
+
+        receipt = self.store.inject(
+            "What is the Project Atlas owner DeployWindow rollback policy?",
+            agent_id="codex",
+            risk="low",
+            scope="project",
+            context_budget_tokens=budget,
+            retrieval_config={"multi_hop": {"enabled": True, "max_subqueries": 4, "per_subquery_limit": 5}},
+        )
+
+        context = build_context(receipt)
+        self.assertEqual([memory["id"] for memory in context["memories"]], [rollback.id, owner.id])
+        self.assertIn(overview.id, [item["memory_id"] for item in context["budget_dropped"]])
+
     def test_benchmark_chronology_context_puts_explicit_change_event_before_timeline_support(self):
         stale = self.store.remember(
             "On Monday, the deployment approver was Noor.",
@@ -3253,6 +3290,40 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(retrieval["packing"]["injected_ids"], [target.id])
         self.assertEqual(retrieval["packing"]["budget_dropped"][0]["memory_id"], current.id)
 
+    def test_build_context_current_deploy_target_budget_prefers_semantic_backfill_state_without_embedding_or_reranker(self):
+        current = self.store.remember(
+            "Deploy target changed to Production.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.8,
+        )
+        target = self.store.remember(
+            "Deploy destination is Production.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.7,
+        )
+
+        receipt = self.store.inject(
+            "what is the deploy target",
+            agent_id="codex",
+            risk="low",
+            scope="project",
+            context_budget_tokens=approx_memory_tokens(current),
+            retrieval_config={"embedding": {"enabled": False}, "reranker": {"enabled": False}},
+        )
+        context = build_context(receipt)
+        retrieval = receipt["retrieval"]
+
+        self.assertEqual([memory["id"] for memory in context["memories"]], [target.id])
+        self.assertEqual(retrieval["packing"]["injected_ids"], [target.id])
+        self.assertFalse(retrieval["embedding"]["enabled"])
+        self.assertFalse(retrieval["reranker"]["enabled"])
+        self.assertTrue(retrieval["baseline_ranking"]["hybrid_semantic_signal_applied"])
+        self.assertEqual(retrieval["packing"]["budget_dropped"][0]["memory_id"], current.id)
+
     def test_before_target_history_deploy_context_uses_subject_entity_expansion(self):
         support = self.store.remember(
             "Blue Finch shipped on Staging before the cutover.",
@@ -3347,12 +3418,19 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(retrieval["temporal"]["selected_current_anchor_id"], current.id)
         self.assertEqual(retrieval["temporal"]["selected_target_current_id"], current.id)
         self.assertEqual(retrieval["temporal"]["selected_target_support_ids"], [support.id])
+        self.assertTrue(retrieval["temporal"]["fusion"]["applied"])
+        self.assertEqual(
+            retrieval["baseline_ranking"]["temporal_fusion_signal"],
+            "temporal_support_rrf_score_v1",
+        )
         self.assertEqual(
             retrieval["temporal"]["selection_exclusions"][0]["reason"],
             "target-history-current-anchor-not-selected",
         )
         self.assertEqual(retrieval["temporal"]["selection_exclusions"][0]["memory_id"], generic_anchor.id)
         candidate_by_id = {candidate["memory_id"]: candidate for candidate in retrieval["candidates"]}
+        self.assertEqual([candidate["memory_id"] for candidate in retrieval["candidates"]], [support.id, current.id, generic_anchor.id])
+        self.assertEqual(candidate_by_id[support.id]["temporal_fusion_rank"], 1)
         self.assertEqual(
             candidate_by_id[generic_anchor.id]["temporal_selection_exclusion"]["detail"],
             "explicit-target-history-support-pair-selected",

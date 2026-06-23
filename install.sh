@@ -48,21 +48,24 @@ PYTHON_BIN="$(pick_python)" || {
 cd "$REPO_DIR"
 "$PYTHON_BIN" -m venv .venv
 . .venv/bin/activate
-if python -m pip install -e .; then
-  :
-else
-  echo "Editable install with build isolation failed; retrying with local build backend." >&2
-  if python -m pip install -e . --no-build-isolation; then
-    :
-  else
-    echo "Editable install could not fetch or build packaging dependencies; creating venv-local import bootstrap." >&2
-    SITE_PACKAGES="$(python - <<'PY'
+SITE_PACKAGES="$(python - <<'PY'
 import sysconfig
 print(sysconfig.get_path("purelib"))
 PY
 )"
-    mkdir -p "$SITE_PACKAGES"
-    printf '%s\n' "$REPO_DIR" > "$SITE_PACKAGES/zerker_memory_repo.pth"
+write_repo_path_bootstrap() {
+  mkdir -p "$SITE_PACKAGES"
+  printf '%s\n' "$REPO_DIR" > "$SITE_PACKAGES/zerker_memory_repo.pth"
+}
+if python -m pip install -e .; then
+  write_repo_path_bootstrap
+else
+  echo "Editable install with build isolation failed; retrying with local build backend." >&2
+  if python -m pip install -e . --no-build-isolation; then
+    write_repo_path_bootstrap
+  else
+    echo "Editable install could not fetch or build packaging dependencies; creating venv-local import bootstrap." >&2
+    write_repo_path_bootstrap
     cat > .venv/bin/zmem <<EOF
 #!/usr/bin/env bash
 exec "$REPO_DIR/.venv/bin/python" -m zerker_memory "\$@"

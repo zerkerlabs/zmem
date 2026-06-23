@@ -1545,10 +1545,11 @@ class CliOnboardingTest(unittest.TestCase):
             self.assertIn("falls back to local wrappers", public_verify_checklist)
             self.assertIn("Running launch-asset verification before rebuilding the archive", return_packet_finalize_script)
             self.assertIn("Running clean-shell public-verify validation before rebuilding the archive", return_packet_finalize_script)
-            self.assertIn('zmem verify-public-verify --summary-only', return_packet_finalize_script)
+            self.assertIn('ZMEM_CMD="${ZMEM_CMD:-python3 -m zerker_memory}"', return_packet_finalize_script)
+            self.assertIn('$ZMEM_CMD verify-public-verify --summary-only', return_packet_finalize_script)
             self.assertIn("Running receive-side verification locally before handback", return_packet_finalize_script)
-            self.assertIn('zmem verify-launch-assets --summary-only', return_packet_finalize_script)
-            self.assertIn('zmem verify-return-packet "$ARCHIVE_PATH" --summary-only', return_packet_finalize_script)
+            self.assertIn('$ZMEM_CMD verify-launch-assets --summary-only', return_packet_finalize_script)
+            self.assertIn('$ZMEM_CMD verify-return-packet "$ARCHIVE_PATH" --summary-only', return_packet_finalize_script)
             self.assertIn("Zerker Memory Launch Proof Report", report)
             self.assertIn("Clean-shell runbook copy", report)
             self.assertIn("Launch Asset Storyboard", report)
@@ -2158,6 +2159,80 @@ class CliOnboardingTest(unittest.TestCase):
 
         self.assertTrue(result["ok"])
         self.assertEqual(result["install_mode_requirement"], "packaged")
+
+    def test_release_pack_preserves_ready_public_verify_logs_and_launch_assets(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            previous_cwd = Path.cwd()
+            os.chdir(root)
+            try:
+                policy_path = root / ".zerker" / "policy.json"
+                providers_path = root / ".zerker" / "providers.json"
+                store = MemoryStore(root / ".zerker" / "memory.sqlite", policy_path=policy_path)
+                store.init()
+                bt_trace_path = Path(__file__).resolve().parents[1] / "examples" / "bt_trace.jsonl"
+                run_release_pack(
+                    store,
+                    policy_path=policy_path,
+                    providers_path=providers_path,
+                    agent_id="codex",
+                    scope="project",
+                    task="deploy service to production",
+                    bt_trace_path=bt_trace_path,
+                    action_id=None,
+                    allow_placeholders=False,
+                )
+                proof_dir = root / ".zerker" / "launch-proof"
+                logs_dir = proof_dir / "public-verify-logs"
+                logs_dir.mkdir(parents=True, exist_ok=True)
+                for name in PUBLIC_VERIFY_LOG_FILENAMES:
+                    (logs_dir / name).write_text(f"{name} ok\n", encoding="utf-8")
+                result_payload = json.loads((proof_dir / "public-verify-result.json").read_text(encoding="utf-8"))
+                result_payload["status"] = "passed"
+                result_payload["ok"] = True
+                result_payload["details"] = "public verify ok"
+                result_payload["install_mode"] = "venv-pth"
+                (proof_dir / "public-verify-result.json").write_text(
+                    json.dumps(result_payload, indent=2) + "\n",
+                    encoding="utf-8",
+                )
+                (proof_dir / "public-verify-summary.md").write_text("public verify summary\n", encoding="utf-8")
+                manifest = json.loads((proof_dir / "launch-proof.json").read_text(encoding="utf-8"))
+                for asset in manifest["launch_assets"]:
+                    asset_path = proof_dir / str(asset["output_path"])
+                    asset_path.parent.mkdir(parents=True, exist_ok=True)
+                    asset_path.write_text(f"{asset['id']} asset\n", encoding="utf-8")
+                write_return_packet_archive(
+                    root=proof_dir,
+                    archive_path=proof_dir / "public-verify-return-packet.tar.gz",
+                )
+
+                self.assertTrue(public_verify_status(root)["ready"])
+                self.assertTrue(verify_launch_assets(root)["ok"])
+                self.assertTrue(return_packet_status(root)["ready"])
+
+                result = run_release_pack(
+                    store,
+                    policy_path=policy_path,
+                    providers_path=providers_path,
+                    agent_id="codex",
+                    scope="project",
+                    task="deploy service to production",
+                    bt_trace_path=bt_trace_path,
+                    action_id=None,
+                    allow_placeholders=False,
+                )
+            finally:
+                os.chdir(previous_cwd)
+
+        self.assertTrue(result["public_verify"]["ready"])
+        self.assertEqual(result["public_verify"]["present_count"], len(PUBLIC_VERIFY_LOG_FILENAMES))
+        self.assertTrue(result["launch_assets"]["ready"])
+        self.assertEqual(result["launch_assets"]["present_count"], len(manifest["launch_assets"]))
+        self.assertTrue(result["return_packet"]["ready"])
+        prelaunch_checks = {check["name"]: check["ok"] for check in result["prelaunch"]["checks"]}
+        self.assertTrue(prelaunch_checks["launch_assets"])
+        self.assertTrue(prelaunch_checks["public_verify_evidence"])
 
     def test_verify_operator_packet_archive_reports_missing_files(self):
         with tempfile.TemporaryDirectory() as tmp:

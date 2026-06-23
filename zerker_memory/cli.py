@@ -14,7 +14,7 @@ import time
 from contextlib import contextmanager
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 from .providers import (
     SUPPORTED_PROVIDERS,
@@ -291,6 +291,11 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
     workspace_sub.add_parser("status", help="Show whether this CLI DB path matches the active workspace")
     workspace_sources = workspace_sub.add_parser("sources", help="Show connected agents and memory source lineage for this workspace")
     workspace_sources.add_argument("--limit", type=int, default=50, help="Maximum write receipts to inspect")
+    workspace_sources.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Print only a compact human-readable workspace-source summary",
+    )
 
     prelaunch = sub.add_parser("prelaunch", help="Audit local alpha release readiness before publishing")
     prelaunch.add_argument(
@@ -1018,14 +1023,16 @@ def main(argv: list[str] | None = None) -> int:
                 print_json(workspace_status_for_paths(db_path=args.db, policy_path=args.policy))
                 return 0
             if args.workspace_command == "sources":
-                print_json(
-                    workspace_source_report(
-                        store,
-                        db_path=args.db,
-                        policy_path=args.policy,
-                        limit=args.limit,
-                    )
+                result = workspace_source_report(
+                    store,
+                    db_path=args.db,
+                    policy_path=args.policy,
+                    limit=args.limit,
                 )
+                if args.summary_only:
+                    print(render_workspace_sources_summary(result), end="")
+                else:
+                    print_json(result)
                 return 0
         if args.command == "prelaunch":
             result = run_prelaunch_check(
@@ -4422,19 +4429,20 @@ def run_release_pack(
         blockers=strict_publish_blockers,
         warnings=strict_publish_warnings,
     )
-    write_public_verify_result(
-        result_path=public_verify_result_path,
-        ok=False,
-        exit_code=1,
-        details="pending clean-shell public verify run",
-        status="pending",
-        install_mode_requirement="packaged",
-        next_step="Run PUBLIC_VERIFY_COMMANDS.sh from a clean networked shell and keep the saved logs with this proof pack.",
-        summary_path=public_verify_summary_path,
-        logs_dir_path=public_verify_logs_dir_path,
-        expected_log_files=PUBLIC_VERIFY_LOG_FILENAMES,
-        assets_dir_path=launch_asset_outputs_dir(Path(launch_proof["out_dir"])),
-    )
+    if not public_verify_status(Path.cwd()).get("ready"):
+        write_public_verify_result(
+            result_path=public_verify_result_path,
+            ok=False,
+            exit_code=1,
+            details="pending clean-shell public verify run",
+            status="pending",
+            install_mode_requirement="packaged",
+            next_step="Run PUBLIC_VERIFY_COMMANDS.sh from a clean networked shell and keep the saved logs with this proof pack.",
+            summary_path=public_verify_summary_path,
+            logs_dir_path=public_verify_logs_dir_path,
+            expected_log_files=PUBLIC_VERIFY_LOG_FILENAMES,
+            assets_dir_path=launch_asset_outputs_dir(Path(launch_proof["out_dir"])),
+        )
     write_launch_capture_checklist(
         checklist_path=capture_checklist_path,
         db_path=Path(launch_proof["db_path"]),
@@ -4999,11 +5007,11 @@ def render_return_packet_summary(result: dict[str, object]) -> str:
 
 
 def operator_handoff_triplet_text(
-    *, operator_prompt_path: str | Path, runbook_path: str | Path, archive_path: str | Path
+    *, operator_prompt_path: str | Path, runbook_path: str | Path, archive_path: str | Path, cwd: Path | None = None
 ) -> str:
-    prompt_text = workspace_relative_text(str(operator_prompt_path))
-    runbook_text = workspace_relative_text(str(runbook_path))
-    archive_text = workspace_relative_text(str(archive_path))
+    prompt_text = workspace_relative_text(str(operator_prompt_path), cwd=cwd)
+    runbook_text = workspace_relative_text(str(runbook_path), cwd=cwd)
+    archive_text = workspace_relative_text(str(archive_path), cwd=cwd)
     return f"Forward together: {prompt_text}, {runbook_text}, and {archive_text}"
 
 
@@ -5650,6 +5658,87 @@ def transcript_command(command: str, payload: object) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
+def render_workspace_sources_summary(report: dict[str, Any]) -> str:
+    workspace_profile = report.get("workspace_profile") or {}
+    workspace = workspace_profile.get("matched") or workspace_profile.get("current") or {}
+    workspace_name = str(workspace.get("name") or report.get("workspace_id") or "unregistered")
+    workspace_id = str(workspace.get("id") or report.get("workspace_id") or "none")
+    connected_agents = list(report.get("connected_agents") or [])
+    claim_conflicts = list(report.get("claim_conflicts") or [])
+
+    def claim_lineage_summary(claim: dict[str, Any]) -> str:
+        agent_id = str(claim.get("agent_id") or "unknown")
+        session_id = str(claim.get("chat_session_id") or "unknown-session")
+        source_uri = str(claim.get("source_uri") or "unknown-source")
+        trust_status = str(claim.get("trust_status") or "unknown")
+        authority = str(claim.get("authority") or "none")
+        trust = claim.get("trust")
+        trust_text = f"{float(trust):.2f}" if isinstance(trust, (int, float)) else "unknown"
+        proof_lineage = claim.get("proof_lineage") or {}
+        receipt_id = str(proof_lineage.get("receipt_id") or "unknown-receipt")
+        return (
+            f"{agent_id} @ {session_id} via {source_uri} "
+            f"[status={trust_status} authority={authority} trust={trust_text} receipt={receipt_id}]"
+        )
+
+    lines = [
+        "Workspace sources",
+        "",
+        f"Workspace: {workspace_name} ({workspace_id})",
+        f"Connected agents: {report.get('connected_agent_count', 0)}",
+        f"Chat sessions: {report.get('chat_session_count', 0)}",
+        f"Source receipts inspected: {report.get('source_count', 0)}",
+        f"Claim conflicts: {report.get('claim_conflict_count', 0)}",
+        "Conflict rule: choose highest authority, then trust, then freshest timestamps; abstain on exact ties.",
+        "",
+        "Agents:",
+    ]
+    if connected_agents:
+        for agent in connected_agents:
+            session_count = len(agent.get("chat_session_ids") or [])
+            memory_count = int(agent.get("memory_count") or 0)
+            last_seen_at = agent.get("last_seen_at") or "unknown"
+            lines.append(
+                f"  {agent.get('agent_id', 'unknown')}: {memory_count} receipts, {session_count} sessions, last seen {last_seen_at}"
+            )
+    else:
+        lines.append("  none")
+    lines.extend(["", "Claim conflicts:"])
+    if claim_conflicts:
+        for conflict in claim_conflicts[:5]:
+            merge_preview = conflict.get("merge_preview") or {}
+            outcome = str(merge_preview.get("resolution_outcome") or "unknown")
+            subject_key = str(conflict.get("entity_key") or conflict.get("subject_key") or "unknown entity")
+            relation = str(conflict.get("relation") or "is")
+            values = [
+                str(value)
+                for value in (claim.get("value") for claim in conflict.get("claims") or [])
+                if str(value)
+            ]
+            unique_values = sorted(dict.fromkeys(values))
+            value_summary = ", ".join(unique_values) if unique_values else "unknown values"
+            agent_summary = ", ".join(conflict.get("connected_agent_ids") or ["unknown"])
+            if outcome == "abstained":
+                tie_fields = ", ".join(merge_preview.get("tie_fields") or []) or "unknown"
+                lines.append(
+                    f"  - unresolved exact tie: {subject_key} {relation} [{value_summary}] from {agent_summary}"
+                )
+                lines.append(f"    tie fields: {tie_fields}")
+                for claim in conflict.get("claims") or []:
+                    claim_value = str(claim.get("value") or "unknown")
+                    lines.append(f"    {claim_value}: {claim_lineage_summary(claim)}")
+            else:
+                chosen_value = merge_preview.get("chosen_value") or "unknown"
+                lines.append(
+                    f"  - resolved: {subject_key} {relation} -> {chosen_value} from {agent_summary}"
+                )
+        if len(claim_conflicts) > 5:
+            lines.append(f"  ... {len(claim_conflicts) - 5} more conflicts omitted")
+    else:
+        lines.append("  none in inspected receipts")
+    return "\n".join(lines).rstrip() + "\n"
+
+
 def launch_proof_relative_path(path: Path, *, root: Path) -> str:
     try:
         return str(path.relative_to(root))
@@ -6105,14 +6194,19 @@ def render_public_verify_result_summary(
         for asset in launch_assets
         if assets_dir_path is not None and (assets_dir_path / Path(asset["output_path"]).name).exists()
     ]
+    summary_base = result_path.parent.parent.parent
+
+    def summary_relative(path: Path) -> str:
+        return workspace_relative_path(path, cwd=summary_base)
+
     lines = [
         "# Zerker Memory Public Verify Run Summary",
         "",
         "Use this generated summary when another chat needs the clean-shell pass state without opening every raw log first.",
         "",
         f"- Status: `{result_payload.get('status', 'unknown')}`",
-        f"- Receipt: `{workspace_relative_path(result_path)}`",
-        f"- Logs dir: `{workspace_relative_path(logs_dir_path)}` ({len(present_logs)}/{len(expected_log_files)} expected logs present)",
+        f"- Receipt: `{summary_relative(result_path)}`",
+        f"- Logs dir: `{summary_relative(logs_dir_path)}` ({len(present_logs)}/{len(expected_log_files)} expected logs present)",
         f"- Details: `{summarize_public_verify_result(result_payload) or 'unknown'}`",
     ]
     install_mode = result_payload.get("install_mode")
@@ -6124,18 +6218,18 @@ def render_public_verify_result_summary(
     lines.append(f"- Expected public repo: `{public_repo_url}`")
     lines.append(f"- Expected raw install URL: `{public_raw_install_url}`")
     if runbook_path is not None:
-        lines.append(f"- Open first: `{workspace_relative_path(runbook_path)}`")
+        lines.append(f"- Open first: `{summary_relative(runbook_path)}`")
     if operator_prompt_path is not None:
-        lines.append(f"- Operator prompt: `{workspace_relative_path(operator_prompt_path)}`")
+        lines.append(f"- Operator prompt: `{summary_relative(operator_prompt_path)}`")
     if operator_packet_archive_path is not None:
-        archive_dir = workspace_relative_path(operator_packet_archive_path.parent)
-        archive_rel = workspace_relative_path(operator_packet_archive_path)
+        archive_dir = summary_relative(operator_packet_archive_path.parent)
+        archive_rel = summary_relative(operator_packet_archive_path)
         lines.append(f"- Outbound packet: `{archive_rel}`")
         lines.append(f"- Verify outbound packet: `zmem verify-operator-packet {archive_rel} --summary-only`")
         lines.append(f"- Unpack into repo: `mkdir -p {archive_dir} && tar -xzf {archive_rel} -C {archive_dir}`")
         if runbook_path is not None and operator_prompt_path is not None:
             lines.append(
-                f"- {operator_handoff_triplet_text(operator_prompt_path=operator_prompt_path, runbook_path=runbook_path, archive_path=operator_packet_archive_path)}"
+                f"- {operator_handoff_triplet_text(operator_prompt_path=operator_prompt_path, runbook_path=runbook_path, archive_path=operator_packet_archive_path, cwd=summary_base)}"
             )
     if expected_log_files and isinstance(requirement, str) and requirement:
         lines.append(
@@ -6154,19 +6248,19 @@ def render_public_verify_result_summary(
     if isinstance(finished_at, str) and finished_at:
         lines.append(f"- Finished at: `{finished_at}`")
     if assets_dir_path is not None:
-        lines.append(f"- Launch assets dir: `{workspace_relative_path(assets_dir_path)}`")
+        lines.append(f"- Launch assets dir: `{summary_relative(assets_dir_path)}`")
         if launch_assets:
             lines.append(f"- Launch assets: `{len(present_assets)}/{len(launch_assets)}` expected assets present")
         if capture_checklist_path is not None:
-            lines.append(f"- Capture checklist: `{workspace_relative_path(capture_checklist_path)}`")
+            lines.append(f"- Capture checklist: `{summary_relative(capture_checklist_path)}`")
         if launch_asset_board_path is not None:
-            lines.append(f"- Launch asset board: `{workspace_relative_path(launch_asset_board_path)}`")
+            lines.append(f"- Launch asset board: `{summary_relative(launch_asset_board_path)}`")
         if finalize_script_path is not None:
-            lines.append(f"- Return packet finalize: `{workspace_relative_path(finalize_script_path)}`")
+            lines.append(f"- Return packet finalize: `{summary_relative(finalize_script_path)}`")
         if return_packet_archive_path is not None:
-            lines.append(f"- Return packet archive: `{workspace_relative_path(return_packet_archive_path)}`")
+            lines.append(f"- Return packet archive: `{summary_relative(return_packet_archive_path)}`")
             lines.append(
-                f"- Receive-side accept: `zmem verify-return-packet {workspace_relative_path(return_packet_archive_path)} --summary-only`"
+                f"- Receive-side accept: `zmem verify-return-packet {summary_relative(return_packet_archive_path)} --summary-only`"
             )
         lines.append("- Verify before asset pass: `zmem verify-public-verify --summary-only`")
         lines.append("- Verify after asset capture: `zmem verify-launch-assets --summary-only`")
@@ -7501,6 +7595,71 @@ def write_public_verify_script(*, script_path: Path, logs_dir_path: Path) -> Non
     script_path.chmod(0o755)
 
 
+def snapshot_ready_launch_evidence(*, root: Path, launch_proof_dir: Path) -> Path | None:
+    if not launch_proof_dir.exists():
+        return None
+    snapshot_root = Path(tempfile.mkdtemp(prefix="zmem-launch-evidence-"))
+    copied = False
+    public_verify = public_verify_status(root)
+    if public_verify.get("ready"):
+        for relative in (
+            "public-verify-logs",
+            PUBLIC_VERIFY_RESULT_FILENAME,
+            PUBLIC_VERIFY_SUMMARY_FILENAME,
+        ):
+            source = launch_proof_dir / relative
+            target = snapshot_root / relative
+            if source.is_dir():
+                shutil.copytree(source, target)
+                copied = True
+            elif source.exists():
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source, target)
+                copied = True
+    launch_assets = launch_asset_status(root)
+    if launch_assets.get("ready"):
+        source = launch_asset_outputs_dir(launch_proof_dir)
+        if source.exists():
+            shutil.copytree(source, snapshot_root / source.name)
+            copied = True
+    return_packet = return_packet_status(root)
+    if return_packet.get("ready"):
+        source = launch_proof_dir / RETURN_PACKET_ARCHIVE_FILENAME
+        if source.exists():
+            shutil.copy2(source, snapshot_root / RETURN_PACKET_ARCHIVE_FILENAME)
+            copied = True
+    if not copied:
+        remove_tree_if_present(snapshot_root)
+        return None
+    return snapshot_root
+
+
+def restore_ready_launch_evidence(*, snapshot_root: Path | None, launch_proof_dir: Path) -> bool:
+    if snapshot_root is None or not snapshot_root.exists():
+        return False
+    restored = False
+    for relative in (
+        "public-verify-logs",
+        "assets",
+        PUBLIC_VERIFY_RESULT_FILENAME,
+        PUBLIC_VERIFY_SUMMARY_FILENAME,
+        RETURN_PACKET_ARCHIVE_FILENAME,
+    ):
+        source = snapshot_root / relative
+        target = launch_proof_dir / relative
+        if source.is_dir():
+            if target.exists():
+                remove_tree_if_present(target)
+            shutil.copytree(source, target)
+            restored = True
+        elif source.exists():
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, target)
+            restored = True
+    remove_tree_if_present(snapshot_root)
+    return restored
+
+
 def write_return_packet_finalize_script(*, script_path: Path) -> None:
     archive_name = RETURN_PACKET_ARCHIVE_FILENAME
     script_path.write_text(
@@ -7512,12 +7671,13 @@ def write_return_packet_finalize_script(*, script_path: Path) -> None:
                 "# Generated by `zmem launch-proof`; run this after the launch assets are saved.",
                 'SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"',
                 f'ARCHIVE_PATH="$SCRIPT_DIR/{archive_name}"',
+                'ZMEM_CMD="${ZMEM_CMD:-python3 -m zerker_memory}"',
                 "",
                 'printf "Running clean-shell public-verify validation before rebuilding the archive...\\n"',
-                'zmem verify-public-verify --summary-only',
+                '$ZMEM_CMD verify-public-verify --summary-only',
                 "",
                 'printf "Running launch-asset verification before rebuilding the archive...\\n"',
-                'zmem verify-launch-assets --summary-only',
+                '$ZMEM_CMD verify-launch-assets --summary-only',
                 "",
                 "python3 - \"$SCRIPT_DIR\" \"$ARCHIVE_PATH\" <<'PY'",
                 "import tarfile",
@@ -7535,7 +7695,7 @@ def write_return_packet_finalize_script(*, script_path: Path) -> None:
                 "",
                 'printf "Return packet archive refreshed at %s\\n" "$ARCHIVE_PATH"',
                 'printf "Running receive-side verification locally before handback...\\n"',
-                'zmem verify-return-packet "$ARCHIVE_PATH" --summary-only',
+                '$ZMEM_CMD verify-return-packet "$ARCHIVE_PATH" --summary-only',
                 "",
             ]
         ),
@@ -7789,6 +7949,7 @@ def run_launch_proof(
         exports_dir = target_dir / "exports"
         existing_handoff_dir = target_dir.parent / "handoff"
         existing_handoff: dict[str, object] | None = None
+        evidence_snapshot = snapshot_ready_launch_evidence(root=Path.cwd(), launch_proof_dir=target_dir)
 
         if target_dir.exists():
             remove_tree_if_present(target_dir)
@@ -8179,6 +8340,24 @@ def run_launch_proof(
         expected_log_files=PUBLIC_VERIFY_LOG_FILENAMES,
         assets_dir_path=launch_assets_dir_path,
     )
+    evidence_restored = restore_ready_launch_evidence(snapshot_root=evidence_snapshot, launch_proof_dir=target_dir)
+    if evidence_restored:
+        refreshed_readiness = build_release_readiness(Path.cwd())
+        manifest_payload["status_summary"] = render_status_summary(
+            build_status_report(store, providers_path=providers_path, include_eval=False)
+        ).rstrip()
+        manifest_payload["local_alpha_gate"] = release_gate_status_text(
+            ok=bool(refreshed_readiness.get("local_alpha_ready")),
+            blockers=refreshed_readiness.get("local_alpha_blockers", []),
+            warnings=refreshed_readiness.get("local_alpha_warnings", []),
+        )
+        manifest_payload["strict_publish_gate"] = release_gate_status_text(
+            ok=bool(refreshed_readiness.get("strict_publish_ready")),
+            blockers=refreshed_readiness.get("strict_publish_blockers", []),
+            warnings=refreshed_readiness.get("strict_publish_warnings", []),
+        )
+        manifest_path.write_text(json.dumps(manifest_payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        final_status_summary = str(manifest_payload["status_summary"])
     write_return_packet_archive(root=target_dir, archive_path=return_packet_archive_path)
     write_operator_packet_archive(root=target_dir, archive_path=operator_packet_archive_path)
     operator_packet = verify_operator_packet_archive(operator_packet_archive_path)
