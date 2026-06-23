@@ -3223,6 +3223,36 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(retrieval["hybrid"]["kept_lexical_candidate_ids"], [current.id])
         self.assertEqual(retrieval["hybrid"]["introduced_candidate_ids"], [stale.id])
 
+    def test_build_context_current_deploy_target_budget_prefers_semantic_backfill_state(self):
+        current = self.store.remember(
+            "Deploy target changed to Production.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.8,
+        )
+        target = self.store.remember(
+            "Deploy destination is Production.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.7,
+        )
+
+        receipt = self.store.inject(
+            "what is the deploy target",
+            agent_id="codex",
+            risk="low",
+            scope="project",
+            context_budget_tokens=approx_memory_tokens(current),
+        )
+        context = build_context(receipt)
+        retrieval = receipt["retrieval"]
+
+        self.assertEqual([memory["id"] for memory in context["memories"]], [target.id])
+        self.assertEqual(retrieval["packing"]["injected_ids"], [target.id])
+        self.assertEqual(retrieval["packing"]["budget_dropped"][0]["memory_id"], current.id)
+
     def test_before_target_history_deploy_context_uses_subject_entity_expansion(self):
         support = self.store.remember(
             "Blue Finch shipped on Staging before the cutover.",

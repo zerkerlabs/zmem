@@ -5609,6 +5609,48 @@ class MemoryStoreTest(unittest.TestCase):
         self.assertEqual(receipt["retrieved_memory_ids"], [target.id])
         self.assertEqual(receipt["injected_memory_ids"], [target.id])
 
+    def test_current_deploy_target_budget_prefers_semantic_backfill_state_over_lexical_update_anchor(self):
+        current = self.store.remember(
+            "Deploy target changed to Production.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.8,
+        )
+        target = self.store.remember(
+            "Deploy destination is Production.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.7,
+        )
+
+        receipt = self.store.inject(
+            "what is the deploy target",
+            agent_id="codex",
+            risk="low",
+            scope="project",
+            context_budget_tokens=approx_memory_tokens(current),
+        )
+        retrieval = receipt["retrieval"]
+        candidates = {candidate["memory_id"]: candidate for candidate in retrieval["candidates"]}
+
+        self.assertTrue(retrieval["hybrid"]["applied"])
+        self.assertEqual(
+            [candidate["memory_id"] for candidate in retrieval["candidates"]],
+            [target.id, current.id],
+        )
+        self.assertEqual(receipt["injected_memory_ids"], [target.id])
+        self.assertEqual(
+            candidates[target.id]["reranker"]["local_strategy"],
+            "hybrid_semantic_backfill_score_v1",
+        )
+        self.assertGreater(
+            candidates[target.id]["reranker"]["hybrid_semantic_score"],
+            candidates[current.id]["reranker"]["hybrid_semantic_score"],
+        )
+        self.assertEqual(retrieval["packing"]["budget_dropped"][0]["memory_id"], current.id)
+
     def test_previous_deploy_target_query_uses_canonical_hybrid_backfill_without_history_noise(self):
         decoy = self.store.remember(
             "Deploy target docs mention Production",

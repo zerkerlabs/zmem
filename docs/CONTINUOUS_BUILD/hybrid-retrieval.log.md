@@ -1,5 +1,15 @@
 # Hybrid Retrieval Lane Log
 
+## 2026-06-23T04:09:04Z - hybrid semantic budget rerank
+
+- Scope: fixed a direct-current hybrid retrieval ranking bug that surfaced under tight context budgets.
+- Files touched: `zerker_memory/store.py`, `tests/test_store.py`, `tests/test_runner.py`, `docs/CONTINUOUS_BUILD/hybrid-retrieval.log.md`, `docs/SWARM_OPERATION_TRACKER.md`, `docs/BUILD_LOG.md`, `docs/CURRENT_STATE.md`.
+- Behavior changed: when `fts_semantic_backfill_v1` applies on the default local reranker path, deterministic reranking now uses each candidate's `semantic_backfill_score` instead of pure query-term counts. Receipts now expose `reranker.local_strategy`, `local_score`, `local_lexical_score`, and `hybrid_semantic_score`, so a direct semantic state fact can outrank a weaker lexical update/support anchor and stay injected under one-memory budgets.
+- Tests: `python3 -m unittest tests.test_store.MemoryStoreTest.test_current_deploy_target_budget_prefers_semantic_backfill_state_over_lexical_update_anchor -q` -> passed (`Ran 1 test`); `python3 -m unittest tests.test_runner.RunnerTest.test_build_context_current_deploy_target_budget_prefers_semantic_backfill_state -q` -> passed (`Ran 1 test`); `python3 -m unittest tests.test_store -q` -> passed (`Ran 169 tests`); `python3 -m unittest tests.test_policy -q` -> passed (`Ran 7 tests`); `python3 -m unittest tests.test_runner -q` -> passed (`Ran 77 tests`); `python3 -m zerker_memory eval` -> passed (`11/11`); `git diff --check -- zerker_memory/store.py tests/test_store.py tests/test_runner.py docs/CONTINUOUS_BUILD/hybrid-retrieval.log.md docs/SWARM_OPERATION_TRACKER.md docs/BUILD_LOG.md docs/CURRENT_STATE.md` -> passed.
+- Artifacts/receipts: `retrieval.reranker` now explains whether `hybrid_semantic_backfill_score_v1` or lexical term matching decided local rerank order, and `retrieval.packing.budget_dropped` now makes the displaced lexical anchor explicit in the direct-query budget path.
+- Blockers: this improves the default local reranker path only; baseline ordering when reranking is explicitly disabled, plus multi-hop/graph fusion ordering, still use older ranking signals.
+- Next safe slice: make baseline ranking honor the same hybrid semantic signal when reranking is explicitly disabled so candidate order stays aligned across local retrieval modes.
+
 ## 2026-06-23T02:58:51Z - hybrid backfill RRF receipt summary
 
 - Scope: closed a narrow L3 fusion explainability gap for existing FTS + semantic backfill retrieval.

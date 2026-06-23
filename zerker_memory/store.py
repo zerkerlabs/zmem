@@ -1378,6 +1378,8 @@ def apply_reranker(
 ) -> tuple[list[MemoryRecord], dict[str, Any]]:
     reranker_config = _candidate_config(config, "reranker")
     enabled = bool(reranker_config.get("enabled", False))
+    hybrid = retrieval.get("hybrid") if isinstance(retrieval.get("hybrid"), dict) else {}
+    hybrid_applied = bool(hybrid.get("applied"))
     provider_id = reranker_config.get("provider_id")
     requested_reranker_id = str(reranker_config.get("reranker_id", reranker_config.get("model_id", "none")))
     if enabled and requested_reranker_id == "none":
@@ -1467,7 +1469,11 @@ def apply_reranker(
         lexical_score = 0.0
         if enabled and terms:
             lexical_score = _term_match_count(haystack, terms) / len(terms)
-        reranker_score = provider_scores.get(memory.id, lexical_score) if enabled else 0.0
+        hybrid_semantic_score = candidate.get("semantic_backfill_score") if hybrid_applied else None
+        local_score = lexical_score
+        if enabled and isinstance(hybrid_semantic_score, (int, float)):
+            local_score = float(hybrid_semantic_score)
+        reranker_score = provider_scores.get(memory.id, local_score) if enabled else 0.0
         _record_candidate_score_component(candidate, "reranker", reranker_score if enabled else 0.0)
         candidate["reranker_score"] = round(reranker_score, 6) if enabled else None
         candidate.setdefault("features", {})["reranker_score"] = candidate["reranker_score"]
@@ -1477,7 +1483,18 @@ def apply_reranker(
             "reranker_id": metadata["reranker_id"],
             "score": candidate["reranker_score"],
             "score_hash": provider_score_hashes.get(memory.id),
-            "local_score": round(lexical_score, 6) if enabled else None,
+            "local_score": round(local_score, 6) if enabled else None,
+            "local_lexical_score": round(lexical_score, 6) if enabled else None,
+            "hybrid_semantic_score": (
+                round(float(hybrid_semantic_score), 6)
+                if isinstance(hybrid_semantic_score, (int, float))
+                else None
+            ),
+            "local_strategy": (
+                "hybrid_semantic_backfill_score_v1"
+                if enabled and isinstance(hybrid_semantic_score, (int, float))
+                else ("lexical_term_match_v1" if enabled else None)
+            ),
             "provider_eligible": bool(enabled and provider_id and memory.id not in provider_excluded_reason_by_id),
             "provider_excluded_reason": provider_excluded_reason_by_id.get(memory.id),
         }
@@ -5247,6 +5264,7 @@ class MemoryStore:
         source_uri: str | None = None,
         actor_uri: str | None = None,
         session_id: str | None = None,
+        caused_by_event: str | None = None,
         parent_action_id: str | None = None,
         environment_hash: str | None = None,
     ) -> MemoryRecord:
@@ -5307,6 +5325,7 @@ class MemoryStore:
                 "status": status,
                 "content_hash": content_hash,
                 "source_uri": source_uri,
+                "caused_by_event": caused_by_event,
                 "parent_action_id": parent_action_id,
             },
         )
@@ -5316,6 +5335,7 @@ class MemoryStore:
             session_id=session_id or f"session://{self.db_path.resolve()}",
             parent_action_id=parent_action_id,
             source_uri=source_uri,
+            caused_by_event=caused_by_event,
             content_digest=digest_uri(content),
             environment_hash=environment_hash or default_environment_hash(),
             event=event,
@@ -8046,6 +8066,7 @@ class MemoryStore:
         environment_hash: str,
         event: dict[str, Any],
         created_at: str,
+        caused_by_event: str | None = None,
         statement_kind: str = "zerker.memory.write_provenance",
         predicate: str = "memory.write.provenance.generated",
         subject_type: str = "memory_write",
@@ -8064,6 +8085,7 @@ class MemoryStore:
             "session_id": session_id,
             "parent_action_id": parent_action_id,
             "source_uri": source_uri,
+            "caused_by_event": caused_by_event,
             "content_digest": content_digest,
             "environment_hash": environment_hash,
             "event_hash": event["event_hash"],
@@ -8075,6 +8097,7 @@ class MemoryStore:
             "session_id": session_id,
             "parent_action_id": parent_action_id,
             "source_uri": source_uri,
+            "caused_by_event": caused_by_event,
             "content_digest": content_digest,
             "environment_hash": environment_hash,
         }
