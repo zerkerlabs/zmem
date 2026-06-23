@@ -1,10 +1,18 @@
+import hashlib
 import json
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from scripts.bench import judge_longmemeval, llm_answerer, locomo_to_zmem, longmemeval_to_zmem, score_locomo
+from scripts.bench import (
+    judge_longmemeval,
+    llm_answerer,
+    locomo_to_zmem,
+    longmemeval_to_zmem,
+    score_locomo,
+    summarize_evidence,
+)
 
 
 class BenchScriptsTest(unittest.TestCase):
@@ -89,6 +97,74 @@ class BenchScriptsTest(unittest.TestCase):
         with patch.dict("os.environ", {}, clear=True):
             with self.assertRaisesRegex(RuntimeError, "OPENAI_API_KEY"):
                 llm_answerer.generate_hypothesis("question", ["memory"])
+
+    def test_evidence_summary_checks_matrix_and_comparison_hashes_without_replay(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            matrix_dir = Path(tmp) / "matrix"
+            matrix_dir.mkdir()
+            comparison = {
+                "schema": "zerker.benchmark_comparison.v1",
+                "ok": True,
+                "question_summary": {"visible_delta_question_count": 0},
+            }
+            comparison["comparison_hash"] = _content_hash(comparison, "comparison_hash")
+            (matrix_dir / "benchmark-comparison.json").write_text(
+                json.dumps(comparison, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+            matrix = {
+                "schema": "zerker.benchmark_matrix.v1",
+                "ok": True,
+                "run_id": "fixture-matrix",
+                "benchmark": "longmemeval",
+                "dataset": "fixtures/longmemeval.jsonl",
+                "split": "dev",
+                "seed": 42,
+                "context_budget_tokens": 200,
+                "retrieval_modes": ["fts", "pseudo-embedding-rerank"],
+                "comparison_path": "some/repo-relative/matrix/benchmark-comparison.json",
+                "comparison_hash": comparison["comparison_hash"],
+                "question_summary": {"visible_delta_question_count": 0},
+                "mode_runs": [
+                    {
+                        "retrieval_mode": "fts",
+                        "result_hash": "result-a",
+                        "aggregate_merkle_root": "root-a",
+                        "summary": {"accuracy": 1.0, "question_count": 1},
+                    }
+                ],
+            }
+            matrix["matrix_hash"] = _content_hash(matrix, "matrix_hash")
+            (matrix_dir / "benchmark-matrix.json").write_text(
+                json.dumps(matrix, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+
+            summary = summarize_evidence.load_summary(matrix_dir)
+
+            self.assertTrue(summary["ok"])
+            self.assertEqual(summary["schema"], "zerker.benchmark_evidence_summary.v1")
+            self.assertEqual(summary["run_id"], "fixture-matrix")
+            self.assertEqual(summary["benchmark"], "longmemeval")
+            self.assertFalse(summary["claim_boundary"]["public_benchmark_claim"])
+            self.assertEqual(summary["mode_summaries"][0]["result_hash"], "result-a")
+            self.assertEqual(summary["artifacts"]["matrix"]["declared_hash"], matrix["matrix_hash"])
+
+            matrix["seed"] = 43
+            (matrix_dir / "benchmark-matrix.json").write_text(
+                json.dumps(matrix, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+            tampered = summarize_evidence.load_summary(matrix_dir)
+
+            self.assertFalse(tampered["ok"])
+            self.assertFalse(tampered["checks"]["matrix_hash"])
+
+
+def _content_hash(payload: dict, hash_key: str) -> str:
+    canonical = dict(payload)
+    canonical.pop(hash_key, None)
+    return hashlib.sha256(json.dumps(canonical, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
 
 
 if __name__ == "__main__":

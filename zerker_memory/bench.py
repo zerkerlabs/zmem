@@ -1080,6 +1080,7 @@ def _write_single_run_trace_artifacts(run_dir: Path, result: dict[str, Any]) -> 
                 + "\n"
             )
     _write_json(run_dir / "summary.json", result.get("summary", {}))
+    _write_single_run_receipt(run_dir, result)
 
 
 def _write_matrix_trace_artifacts(matrix_dir: Path, matrix: dict[str, Any]) -> None:
@@ -1164,10 +1165,40 @@ def _write_retrieval_receipt(run_dir: Path, matrix: dict[str, Any]) -> None:
         "seed": matrix.get("seed"),
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
         "scores": matrix.get("summary", {}),
+        "token_efficiency": matrix.get("summary", {}).get("token_efficiency"),
         "trace_sha256": _file_hash(trace_path),
     }
     if matrix.get("benchmark") == "longmemeval":
         receipt["dataset_commit"] = _read_optional_text(Path(".zerker/bench/provenance/longmemeval-sha256.txt"))
+    _write_json(run_dir / "receipt.json", receipt)
+
+
+def _write_single_run_receipt(run_dir: Path, result: dict[str, Any]) -> None:
+    trace_path = run_dir / "trace.jsonl"
+    receipt = {
+        "run_id": result.get("run_id"),
+        "dataset": _receipt_dataset_name(str(result.get("benchmark", ""))),
+        "dataset_commit": _read_optional_text(Path(".zerker/bench/provenance/locomo-commit.txt"))
+        if result.get("benchmark") == "locomo"
+        else _read_optional_text(Path(".zerker/bench/provenance/longmemeval-sha256.txt")),
+        "dataset_sha256": _file_hash(Path(str(result.get("dataset"))))
+        if result.get("dataset") and result.get("dataset") != "synthetic"
+        else result.get("dataset_hash"),
+        "adapter_version": "zmem-adapter-0.1.0",
+        "harness_version": _zmem_version(),
+        "model": "deterministic-oracle-retrieval",
+        "judge": "oracle-recall (no LLM judge)",
+        "scoring_type": "retrieval-recall",
+        "eval_scope": "per-conversation",
+        "retrieval_mode": result.get("retrieval_mode"),
+        "public_benchmark_claim": False,
+        "claimable_as": "evidence-recall on official LoCoMo/LongMemEval datasets with SHA-pinned provenance",
+        "seed": result.get("seed"),
+        "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+        "scores": result.get("summary", {}),
+        "token_efficiency": result.get("summary", {}).get("token_efficiency"),
+        "trace_sha256": _file_hash(trace_path),
+    }
     _write_json(run_dir / "receipt.json", receipt)
 
 
@@ -4334,6 +4365,12 @@ def _candidate_rank_hash(retrieval: dict[str, Any]) -> str:
 def _summarize_questions(records: list[dict[str, Any]]) -> dict[str, Any]:
     count = len(records)
     latencies = sorted(record["retrieval_latency_ms"] for record in records)
+    total_tokens = sum(record["total_tokens"] for record in records)
+    token_efficiency = {
+        "mean_tokens_per_query": total_tokens / count if count else 0.0,
+        "mean_tokens_per_ingest": 0.0,
+        "total_tokens_run": total_tokens,
+    }
     category_summaries: dict[str, dict[str, Any]] = {}
     outcome_reason_counts: dict[str, int] = {}
     failure_reason_counts: dict[str, int] = {}
@@ -4401,7 +4438,8 @@ def _summarize_questions(records: list[dict[str, Any]]) -> dict[str, Any]:
         "p50_retrieval_latency_ms": _percentile(latencies, 50),
         "p95_retrieval_latency_ms": _percentile(latencies, 95),
         "p99_retrieval_latency_ms": _percentile(latencies, 99),
-        "total_tokens": sum(record["total_tokens"] for record in records),
+        "total_tokens": total_tokens,
+        "token_efficiency": token_efficiency,
         "proof_verification_status": "ok",
         "outcome_reason_counts": outcome_reason_counts,
         "failure_reason_counts": failure_reason_counts,

@@ -1,5 +1,15 @@
 # Benchmark Lane Log
 
+## 2026-06-22T23:59:19Z - L6 benchmarks - cheap evidence summary
+
+- Scope: added a fast fixture-backed summary path for persisted benchmark matrix evidence so future agents can inspect hashes and mode proof pointers without replaying the full matrix.
+- Files touched: `scripts/bench/summarize_evidence.py`, `tests/test_bench_scripts.py`, `docs/BENCHMARK_SCORING_WORKFLOW.md`, `docs/CONTINUOUS_BUILD/benchmark.log.md`.
+- Behavior changed: `python3 scripts/bench/summarize_evidence.py <matrix-dir|benchmark-matrix.json>` now reads `benchmark-matrix.json` plus sibling `benchmark-comparison.json`, recomputes their stored content hashes, reports file hashes, mode summaries, question summary, and keeps `public_benchmark_claim` false.
+- Tests: `python3 -m unittest tests.test_bench_scripts -q` -> passed (`Ran 6 tests`); `python3 scripts/bench/summarize_evidence.py .zerker/bench/current-synthetic-20260612 --compact` -> passed read-only with `ok: true`.
+- Artifacts/receipts: none; the test builds a temporary fixture and no downloaded `data/` or `.zerker` runtime outputs are committed.
+- Blockers: this is a persisted-artifact health check only; official LoCoMo/LongMemEval claims still require pinned dataset versions, reproducible conversion/scoring commands, result bundles, and verified scoring.
+- Next safe slice: add the same cheap summary path for standalone `benchmark-comparison.json` artifacts if agents need to inspect comparison-only evidence without opening full dashboards.
+
 ## 2026-06-22T22:59:00Z - L6 benchmarks - scoring workflow documented
 
 - Scope: documented the operator workflow for converting official LongMemEval/LoCoMo files, running local proof-backed benchmark evidence, and opting into LLM/scored paths.

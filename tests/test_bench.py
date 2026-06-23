@@ -65,6 +65,20 @@ class BenchmarkHarnessTest(unittest.TestCase):
             self.assertTrue(all(check["ok"] for check in verify["checks"]))
             self.assertEqual(result["summary"]["accuracy"], 0.75)
 
+    def test_synthetic_trace_run_writes_receipt_with_token_efficiency(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_synthetic_benchmark(Path(tmp), seed=0, run_id="trace-receipt", write_trace=True)
+            run_dir = Path(result["run_dir"])
+
+            receipt = json.loads((run_dir / "receipt.json").read_text(encoding="utf-8"))
+            summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
+
+            self.assertFalse(receipt["public_benchmark_claim"])
+            self.assertEqual(receipt["run_id"], "trace-receipt")
+            self.assertEqual(receipt["retrieval_mode"], "fts")
+            self.assertEqual(receipt["token_efficiency"], summary["token_efficiency"])
+            self.assertEqual(receipt["trace_sha256"], sha256_text((run_dir / "trace.jsonl").read_text(encoding="utf-8")))
+
     def test_benchmark_report_surfaces_memory_counts_hashes_and_proof_roots(self):
         with tempfile.TemporaryDirectory() as tmp:
             result = run_synthetic_benchmark(Path(tmp), seed=0, run_id="report-proof")

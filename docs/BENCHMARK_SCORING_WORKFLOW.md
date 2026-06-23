@@ -62,7 +62,17 @@ zmem bench public-page .zerker/bench/longmemeval-local-v1
 
 The `zmem-retrieval` mode is a stable alias for the strongest current local retrieval mode in the harness. The stored result still records the concrete mode.
 
-## 3. Run Optional LLM Scoring
+## 3. Inspect Evidence Cheaply
+
+Use this when you need a fast audit of an existing matrix without replaying every mode:
+
+```bash
+python3 scripts/bench/summarize_evidence.py .zerker/bench/longmemeval-local-v1
+```
+
+The summary reads `benchmark-matrix.json` and `benchmark-comparison.json`, recomputes their stored content hashes, reports mode proof pointers, and keeps `public_benchmark_claim` set to `false`. It is a cheap health check for persisted evidence, not a substitute for rerunning or officially scoring the benchmark.
+
+## 4. Run Optional LLM Scoring
 
 Only run this when you intentionally want network/API use:
 
@@ -81,7 +91,7 @@ Those scripts:
 
 If `OPENAI_API_KEY` is missing, the LLM answerer fails closed.
 
-## 4. Keep The Evidence
+## 5. Keep The Evidence
 
 For every benchmark run that might become public evidence, keep:
 
@@ -98,7 +108,7 @@ For every benchmark run that might become public evidence, keep:
 
 Do not commit downloaded dataset payloads unless the dataset license and repo policy explicitly allow it.
 
-## 5. Claim Boundary
+## 6. Claim Boundary
 
 Allowed now:
 
