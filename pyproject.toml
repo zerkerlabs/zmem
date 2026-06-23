@@ -35,6 +35,13 @@ zerker-memory = "zerker_memory.cli:main"
 zmem = "zerker_memory.cli:main"
 zerker = "zerker_memory.cli:main"
 zerker-memory-mcp = "zerker_memory.mcp:main"
+zmem-bench-locomo = "zerker_memory.bench.activegraph_runner:main"
+
+[project.entry-points."activegraph.packs"]
+zmem = "zerker_memory.pack:ZMemPack"
 
 [tool.setuptools.packages.find]
 include = ["zerker_memory*"]
+
+[tool.setuptools.package-data]
+zerker_memory = ["bench/*.py"]

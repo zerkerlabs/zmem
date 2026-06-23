@@ -1,0 +1,18 @@
+name: zmem
+version: "0.1.0"
+description: "Cross-session memory and bench runner for ActiveGraph agents"
+entry_point: zerker_memory.integrations.activegraph
+behaviors:
+  - zmem.persist
+  - zmem.recall
+  - zmem.bench.question_started
+  - zmem.bench.memory_retrieved
+  - zmem.bench.answer_generated
+  - zmem.bench.question_completed
+config:
+  ZMEM_RETRIEVAL_MODE:
+    default: "fts"
+    description: "Retrieval mode: fts, semantic, or hybrid"
+  ZMEM_TREESHIP_ENABLED:
+    default: "false"
+    description: "Emit Treeship attestation artifacts on memory ops"
