@@ -2738,7 +2738,7 @@ class BenchmarkHarnessTest(unittest.TestCase):
             report_text = _render_matrix_report_text(payload)
 
             self.assertIn("- Matrix artifact verification: `failed`", report_text)
-            self.assertIn("- Matrix failed checks: `mode_runs`", report_text)
+            self.assertIn("- Matrix failed checks: `mode_runs, score_summary`", report_text)
             self.assertIn("- Comparison artifact verification: `ok`", report_text)
 
     def test_matrix_report_surfaces_per_mode_result_hash_and_aggregate_root(self):

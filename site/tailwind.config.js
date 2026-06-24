@@ -1,16 +1,18 @@
-/** @type {import('tailwindcss').Config} */
 module.exports = {
   darkMode: ["class"],
-  content: [
-    './index.html',
-    './src/App.{js,ts,jsx,tsx}',
-    './src/main.{js,ts,jsx,tsx}',
-    './src/components/**/*.{js,ts,jsx,tsx}',
-    '!./src/components/ui/**/*',
-    './src/hooks/**/*.{js,ts,jsx,tsx}',
-    './src/pages/**/*.{js,ts,jsx,tsx}',
-    './src/sections/**/*.{js,ts,jsx,tsx}',
-  ],
+  content: {
+    relative: true,
+    files: [
+      './index.html',
+      './src/App.{js,ts,jsx,tsx}',
+      './src/main.{js,ts,jsx,tsx}',
+      './src/components/**/*.{js,ts,jsx,tsx}',
+      '!./src/components/ui/**/*',
+      './src/hooks/**/*.{js,ts,jsx,tsx}',
+      './src/pages/**/*.{js,ts,jsx,tsx}',
+      './src/sections/**/*.{js,ts,jsx,tsx}',
+    ],
+  },
   theme: {
     extend: {
       fontFamily: {
