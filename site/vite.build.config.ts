@@ -14,6 +14,9 @@ export default defineConfig({
     jsx: "automatic",
     jsxImportSource: "react",
   },
+  css: {
+    postcss: path.resolve(siteRoot, "postcss.config.js"),
+  },
   resolve: {
     dedupe: ["react", "react-dom"],
     alias: {
