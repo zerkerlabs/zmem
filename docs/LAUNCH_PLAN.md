@@ -64,7 +64,7 @@ Before publishing:
 - Use `docs/CLEAN_SHELL_PUBLIC_VERIFY.md` as the durable runbook for the outbound operator packet, clean-shell pass, and receive-side acceptance loop.
 - Add GitHub repo URL to `pyproject.toml`.
 - Run `make verify` in Python 3.10+.
-- Tag `v0.1.0`.
+- Tag `v0.1.1` for the current launch checkpoint. The earlier `v0.1.0` tag already exists and must not be moved.
 - Complete `docs/PUBLIC_LAUNCH_AUDIT.md`.
 
 ## Product Packaging

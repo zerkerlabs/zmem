@@ -118,13 +118,13 @@ treeship
 Tag:
 
 ```text
-v0.1.0-alpha
+v0.1.1
 ```
 
 Release title:
 
 ```text
-ZMem v0.1.0-alpha: verifiable memory for agents that act
+ZMem v0.1.1: governed memory for agents that act
 ```
 
 Release notes:
