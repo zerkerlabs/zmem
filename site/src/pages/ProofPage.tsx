@@ -8,6 +8,7 @@ const featureRows = [
   { feature: 'Explain influence', proof: 'zmem why <action-id>' },
   { feature: 'Verify integrity', proof: 'zmem verify <action-id>' },
   { feature: 'Export evidence', proof: 'zmem bundle <action-id>' },
+  { feature: 'Attest write digests', proof: 'ZMEM_TREESHIP_AUTO_SIGN=1' },
   { feature: 'Publish public proof', proof: 'zmem treeship publish <action-id>' },
   { feature: 'Hand off state', proof: 'zmem handoff --summary-only' },
   { feature: 'ActiveGraph memory', proof: 'pack/pack.yaml' },
@@ -32,7 +33,7 @@ const proofSteps = [
   },
   {
     title: 'The proof can be shared',
-    detail: 'Local bundles stay private by default; Treeship publishing is optional when a public URL is useful.',
+    detail: 'Local bundles stay private by default. Treeship can attest write-receipt digests or publish a public proof URL when sharing is useful.',
     command: 'zmem treeship publish <action-id>',
   },
 ];
@@ -52,6 +53,7 @@ const statusCode = `Memory store: local
 Receipt mode: enabled
 Merkle root: sha256:7bb4...91e2
 Agent context: scoped
+Write attestation: optional digest-only Treeship artifact
 Proof export: local bundle
 Public proof: optional Treeship URL`;
 
@@ -63,6 +65,9 @@ $ zmem why <action-id>
 
 $ zmem verify <action-id>
 # verifies the local receipt against the Merkle state
+
+$ ZMEM_TREESHIP_AUTO_SIGN=1 zmem remember --type semantic "fact"
+# optional: Treeship attests only sha256:<receipt_hash>
 
 $ zmem treeship publish <action-id>
 # optional public proof URL`;
@@ -111,7 +116,8 @@ export default function ProofPage() {
             </h2>
             <p className="mt-4 text-sm leading-relaxed text-zmuted">
               ZMem keeps memory and receipts on the user's machine first. When a team needs evidence,
-              a receipt bundle or optional Treeship proof URL can show what influenced the agent.
+              ZMem can share a receipt bundle, publish a proof URL, or ask Treeship to attest only
+              the compact write-receipt digest.
             </p>
           </Card>
           <CodeBlock code={statusCode} title="zmem status --summary-only" />
@@ -181,7 +187,8 @@ export default function ProofPage() {
             </h2>
             <p className="mt-5 text-sm leading-relaxed text-zmuted">
               ZMem records injected and withheld memory, source metadata, local Merkle roots, and action
-              receipts. Treeship is the optional public proof layer when a local receipt needs a shareable URL.
+              receipts. Treeship is optional: it can sign the compact digest for write-time attribution,
+              or publish a public proof URL when a local receipt needs to travel.
             </p>
           </div>
           <CodeBlock code={proofCode} title="memory receipt flow" />

@@ -117,7 +117,8 @@ export default function ActiveGraphPage() {
             </h2>
             <p className="mt-4 text-sm leading-relaxed text-zmuted">
               Behaviors listen for ActiveGraph events, call the real ZMem store, preserve the
-              causal event pointer, and optionally emit Treeship memory read/write artifacts.
+              causal event pointer, and can optionally attach Treeship digest attestations to
+              memory-write receipts without sending raw memory content to Treeship.
             </p>
           </Card>
           <CodeBlock code={packManifest} title="pack/pack.yaml" />

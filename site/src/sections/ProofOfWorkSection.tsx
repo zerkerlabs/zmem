@@ -12,7 +12,7 @@ const tableRows = [
   { feature: 'Memory receipts', shipped: 'Records what memory shaped an action', proof: 'zmem why <action-id>' },
   { feature: 'Merkle verification', shipped: 'Tamper-evident local proof roots', proof: 'zmem verify <action-id>' },
   { feature: 'Portable handoff', shipped: 'Move memory state between sessions or machines', proof: 'zmem handoff --summary-only' },
-  { feature: 'Treeship export', shipped: 'Optional public proof URL', proof: 'zmem treeship publish <action-id>' },
+  { feature: 'Digest-only write attestation', shipped: 'Optional Treeship artifact for write receipt hashes', proof: 'ZMEM_TREESHIP_AUTO_SIGN=1' },
   { feature: 'ActiveGraph pack', shipped: 'Cross-run memory with causal event ids', proof: 'pack/pack.yaml' },
   { feature: 'Compact benchmark traces', shipped: 'trace.jsonl plus scored_receipt.json', proof: 'zmem-bench-locomo --dataset <file>' },
   { feature: 'LoCoMo FTS baseline', shipped: '1,986 questions scored with public receipt', proof: '.zerker/bench/locomo-official-v1/fts' },
