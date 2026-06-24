@@ -8961,6 +8961,104 @@ class MemoryStoreTest(unittest.TestCase):
         self.assertEqual(snapshot["conflict_sets"], [])
         self.assertFalse(snapshot["abstention"]["applied"])
 
+    def test_query_at_can_focus_only_selected_current_identity_subset(self):
+        unrelated = self.store.remember(
+            "Alice owns the billing exporter.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            actor_uri="agent://codex/session-ops",
+            session_id="session://ops",
+        )
+        stale = self.store.remember(
+            "Status page owner is Alice.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            actor_uri="agent://codex/session-january",
+            session_id="session://january",
+        )
+        current = self.store.remember(
+            "Status page owner is Alice Chen.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            actor_uri="agent://codex/session-february",
+            session_id="session://february",
+            parents=[stale.id],
+        )
+        self._set_memory_clock(unrelated.id, "2024-01-15T00:00:00Z")
+        self._set_memory_clock(stale.id, "2024-01-01T00:00:00Z")
+        self._set_memory_clock(current.id, "2024-02-01T00:00:00Z")
+        self._set_event_clock(unrelated.id, "OBSERVED", "2024-01-15T00:00:00Z")
+        self._set_event_clock(stale.id, "OBSERVED", "2024-01-01T00:00:00Z")
+        self._set_event_clock(current.id, "OBSERVED", "2024-02-01T00:00:00Z")
+        self.store.conn.commit()
+
+        snapshot = self.store.query_at(
+            "2024-02-20T00:00:00Z",
+            scope="project",
+            search_query="status page owner",
+            current_resolution="selected",
+        )
+
+        self.assertTrue(snapshot["include_abstained_current"])
+        self.assertEqual(snapshot["current_resolution"], "selected")
+        self.assertEqual([entry["memory"]["id"] for entry in snapshot["entries"]], [current.id])
+        self.assertEqual(list(snapshot["temporal_graph"]), [current.id])
+        self.assertEqual(snapshot["history_memory_ids"], [current.id])
+        self.assertEqual(snapshot["current_memory_ids"], [current.id])
+        self.assertEqual(snapshot["resolved_current_memory_ids"], [current.id])
+        self.assertEqual(snapshot["dropped_current_memory_ids"], [])
+        self.assertEqual(snapshot["abstained_current_memory_ids"], [])
+        self.assertEqual(snapshot["superseded_memory_ids"], [])
+        self.assertEqual(snapshot["temporal_graph"][current.id]["temporal_state"], "current")
+        self.assertEqual(snapshot["temporal_graph"][current.id]["current_resolution"], "selected")
+        self.assertNotIn(stale.id, snapshot["temporal_graph"])
+        self.assertNotIn(unrelated.id, snapshot["temporal_graph"])
+        self.assertEqual(snapshot["conflict_sets"], [])
+        self.assertFalse(snapshot["abstention"]["applied"])
+
+    def test_query_at_selected_resolution_stays_empty_for_unresolved_current_contradiction(self):
+        first = self.store.remember(
+            "Incident owner is Alex.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        second = self.store.remember(
+            "Incident owner is Priya.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="system",
+            trust=0.95,
+            authority="medium",
+            status="active",
+        )
+        shared_timestamp = "2024-02-01T00:00:00Z"
+        self._set_memory_clock(first.id, shared_timestamp)
+        self._set_memory_clock(second.id, shared_timestamp)
+        self._set_event_clock(first.id, "OBSERVED", shared_timestamp)
+        self._set_event_clock(second.id, "OBSERVED", shared_timestamp)
+        self.store.conn.commit()
+
+        snapshot = self.store.query_at(
+            "2024-02-20T00:00:00Z",
+            scope="project",
+            current_resolution="selected",
+        )
+
+        self.assertEqual(snapshot["current_resolution"], "selected")
+        self.assertEqual(snapshot["entries"], [])
+        self.assertEqual(snapshot["temporal_graph"], {})
+        self.assertEqual(snapshot["history_memory_ids"], [])
+        self.assertEqual(snapshot["current_memory_ids"], [])
+        self.assertEqual(snapshot["resolved_current_memory_ids"], [])
+        self.assertEqual(snapshot["dropped_current_memory_ids"], [])
+        self.assertEqual(snapshot["abstained_current_memory_ids"], [])
+        self.assertEqual(snapshot["conflict_sets"], [])
+        self.assertFalse(snapshot["abstention"]["applied"])
+
     def test_query_at_rejects_hidden_abstained_resolution_filter_combination(self):
         with self.assertRaisesRegex(
             ValueError,

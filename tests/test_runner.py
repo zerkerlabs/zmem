@@ -246,6 +246,76 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(budget_temporal["budget_dropped_temporal_graph"][current.id]["temporal_state"], "current")
         self.assertEqual(budget_temporal["budget_dropped_temporal_graph"][current.id]["valid_from"], "2024-02-01T00:00:00Z")
 
+    def test_build_context_preserves_current_conflict_abstention_without_injected_memories(self):
+        first = self.store.remember(
+            "Incident owner is Alex.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        second = self.store.remember(
+            "Incident owner is Priya.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="system",
+            trust=0.95,
+            authority="medium",
+            status="active",
+        )
+        shared_timestamp = "2024-02-01T00:00:00Z"
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            (shared_timestamp, shared_timestamp, first.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            (shared_timestamp, shared_timestamp, second.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            (shared_timestamp, first.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            (shared_timestamp, second.id),
+        )
+        self.store.conn.commit()
+
+        receipt = self.store.inject("incident owner", agent_id="codex", risk="low", scope="project")
+        context = build_context(receipt)
+        temporal = context["temporal"]
+        conflict = next(item for item in temporal["conflict_sets"] if item["reason"] == "lexical-current-conflict")
+
+        self.assertEqual(context["memories"], [])
+        self.assertEqual(temporal["selection_strategy"], "current_conflict_abstained_v1")
+        self.assertEqual(temporal["selection_reason"], "lexical-current-conflict-abstained")
+        self.assertEqual(temporal["resolved_current_memory_ids"], [])
+        self.assertEqual(temporal["dropped_current_memory_ids"], [])
+        self.assertCountEqual(temporal["current_memory_ids"], [first.id, second.id])
+        self.assertCountEqual(temporal["abstained_current_memory_ids"], [first.id, second.id])
+        self.assertEqual(temporal["selected_temporal_graph"], {})
+        self.assertCountEqual(list(temporal["abstained_temporal_graph"]), [first.id, second.id])
+        self.assertEqual(temporal["abstained_temporal_graph"][first.id]["temporal_state"], "current")
+        self.assertEqual(temporal["abstained_temporal_graph"][first.id]["current_resolution"], "abstained")
+        self.assertEqual(
+            temporal["abstained_temporal_graph"][first.id]["current_conflict_reasons"],
+            ["lexical-current-conflict"],
+        )
+        self.assertEqual(temporal["abstained_temporal_graph"][second.id]["temporal_state"], "current")
+        self.assertEqual(temporal["abstained_temporal_graph"][second.id]["current_resolution"], "abstained")
+        self.assertEqual(
+            temporal["abstained_temporal_graph"][second.id]["current_conflict_reasons"],
+            ["lexical-current-conflict"],
+        )
+        self.assertEqual(temporal["injected_temporal_graph"], {})
+        self.assertTrue(temporal["abstention"]["applied"])
+        self.assertEqual(temporal["abstention"]["reason"], "unresolved-current-conflict")
+        self.assertEqual(temporal["abstention"]["conflict_reasons"], ["lexical-current-conflict"])
+        self.assertCountEqual(temporal["abstention"]["abstained_ids"], [first.id, second.id])
+        self.assertEqual(conflict["resolution_outcome"], "abstained")
+        self.assertEqual(conflict["chosen_current_id"], None)
+        self.assertCountEqual(conflict["abstained_current_ids"], [first.id, second.id])
+
     def test_history_query_context_includes_superseded_memory_when_requested(self):
         parent = self.store.remember(
             "Status page owner used to be Alex",
@@ -401,7 +471,13 @@ class RunnerTest(unittest.TestCase):
 
         context = build_context(receipt)
         self.assertEqual([memory["id"] for memory in context["memories"]], [rollback.id, owner.id])
-        self.assertIn(overview.id, [item["memory_id"] for item in context["budget_dropped"]])
+        self.assertEqual(context["budget_dropped"][0]["memory_id"], overview.id)
+        self.assertEqual(context["budget_dropped"][0]["packing_rank_basis"], "multi_hop_fusion_rank")
+        self.assertEqual(context["budget_dropped"][0]["multi_hop_fusion_rank"], 2)
+        self.assertEqual(
+            context["budget_dropped"][0]["multi_hop_outranked_reason"],
+            "multi-hop-fusion-ranked-lower",
+        )
 
     def test_benchmark_chronology_context_puts_explicit_change_event_before_timeline_support(self):
         stale = self.store.remember(
@@ -3579,6 +3655,19 @@ class RunnerTest(unittest.TestCase):
         self.assertFalse(retrieval["reranker"]["enabled"])
         self.assertTrue(retrieval["baseline_ranking"]["hybrid_semantic_signal_applied"])
         self.assertEqual(retrieval["packing"]["budget_dropped"][0]["memory_id"], current.id)
+        self.assertEqual(retrieval["packing"]["budget_dropped"][0]["packing_rank_basis"], "temporal_selection_rank")
+        self.assertEqual(retrieval["packing"]["budget_dropped"][0]["hybrid_semantic_rank"], 2)
+        self.assertEqual(
+            retrieval["packing"]["budget_dropped"][0]["hybrid_outranked_reason"],
+            "hybrid-semantic-backfill-ranked-lower",
+        )
+        self.assertEqual(context["budget_dropped"][0]["memory_id"], current.id)
+        self.assertEqual(context["budget_dropped"][0]["packing_rank_basis"], "temporal_selection_rank")
+        self.assertEqual(context["budget_dropped"][0]["hybrid_semantic_rank"], 2)
+        self.assertEqual(
+            context["budget_dropped"][0]["hybrid_outranked_reason"],
+            "hybrid-semantic-backfill-ranked-lower",
+        )
 
     def test_before_target_history_deploy_context_uses_subject_entity_expansion(self):
         support = self.store.remember(
@@ -3985,6 +4074,57 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(temporal["selected_relation_support_ids"], [generic_anchor.id])
         self.assertEqual(temporal["selected_current_support_ids"], [generic_anchor.id])
 
+    def test_original_target_history_context_rrf_promotes_explicit_current_relation_over_high_authority_generic_anchor(self):
+        stale = self.store.remember(
+            "Deploy target is Staging.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.7,
+        )
+        current = self.store.remember(
+            "Deploy target is the production control plane in us-east-1.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.4,
+            authority="low",
+            parents=[stale.id],
+        )
+        generic_anchor = self.store.remember(
+            "Deploy target changed after CAB review.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.99,
+            authority="high",
+        )
+        budget = approx_memory_tokens(stale) + approx_memory_tokens(current)
+
+        receipt = self.store.inject(
+            "what was the original deploy target",
+            agent_id="codex",
+            risk="low",
+            scope="project",
+            context_budget_tokens=budget,
+        )
+        context = build_context(receipt)
+
+        self.assertEqual([memory["id"] for memory in context["memories"]], [stale.id, current.id])
+        retrieval = receipt["retrieval"]
+        temporal = retrieval["temporal"]
+        self.assertTrue(temporal["fusion"]["applied"])
+        self.assertEqual(temporal["fusion"]["signal"], "temporal_earliest_relation_pair_rrf_score_v1")
+        self.assertEqual(
+            [candidate["memory_id"] for candidate in retrieval["candidates"]],
+            [stale.id, current.id, generic_anchor.id],
+        )
+        self.assertEqual(
+            retrieval["baseline_ranking"]["temporal_fusion_signal"],
+            "temporal_earliest_relation_pair_rrf_score_v1",
+        )
+        self.assertEqual(retrieval["packing"]["budget_dropped"][0]["memory_id"], generic_anchor.id)
+
     def test_recent_history_relation_context_prefers_plain_current_relation_before_generic_anchor(self):
         stale = self.store.remember(
             "API gateway points to staging.",
@@ -4035,6 +4175,53 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(temporal["selected_relation_current_id"], current.id)
         self.assertEqual(temporal["selected_relation_support_ids"], [generic_anchor.id])
         self.assertEqual(temporal["selected_current_support_ids"], [generic_anchor.id])
+
+    def test_recent_history_relation_context_rrf_promotes_explicit_current_relation_over_high_authority_generic_anchor(self):
+        stale = self.store.remember(
+            "API gateway points to staging.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.7,
+        )
+        current = self.store.remember(
+            "API gateway points to the production control plane in us-east-1.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.4,
+            authority="low",
+            parents=[stale.id],
+        )
+        generic_anchor = self.store.remember(
+            "API gateway points changed after migration.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.99,
+            authority="high",
+        )
+        receipt = self.store.inject(
+            "what did the api gateway point at before",
+            agent_id="codex",
+            risk="low",
+            scope="project",
+            context_budget_tokens=approx_memory_tokens(stale) + approx_memory_tokens(current),
+        )
+        context = build_context(receipt)
+        self.assertEqual(
+            [memory["id"] for memory in context["memories"]],
+            [stale.id, current.id],
+        )
+        retrieval = receipt["retrieval"]
+        temporal = retrieval["temporal"]
+        self.assertEqual(temporal["fusion"]["signal"], "temporal_history_relation_pair_rrf_score_v1")
+        self.assertEqual(
+            [candidate["memory_id"] for candidate in retrieval["candidates"]],
+            [stale.id, current.id, generic_anchor.id],
+        )
+        self.assertEqual(retrieval["baseline_ranking"]["temporal_fusion_signal"], "temporal_history_relation_pair_rrf_score_v1")
+        self.assertEqual(retrieval["packing"]["budget_dropped"][0]["memory_id"], generic_anchor.id)
 
     def test_recent_history_relation_context_budget_keeps_selected_support_chain_when_it_fits(self):
         first = self.store.remember(

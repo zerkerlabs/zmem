@@ -6323,10 +6323,13 @@ class MemoryStore:
         current_resolution: str,
     ) -> dict[str, Any]:
         filtered = dict(projection)
-        if current_resolution == "abstained":
+        if current_resolution in {"abstained", "selected"}:
+            resolution_id_key = (
+                "abstained_current_memory_ids" if current_resolution == "abstained" else "resolved_current_memory_ids"
+            )
             visible_ids = {
                 str(memory_id)
-                for memory_id in projection.get("abstained_current_memory_ids", [])
+                for memory_id in projection.get(resolution_id_key, [])
                 if str(memory_id)
             }
             filtered["entries"] = [
@@ -6355,15 +6358,23 @@ class MemoryStore:
                     for memory_id in projection.get(key, [])
                     if memory_id in visible_ids
                 ]
-            filtered["conflict_sets"] = [
-                conflict_set
-                for conflict_set in projection.get("conflict_sets", [])
-                if str(conflict_set.get("resolution_outcome") or "") == "abstained"
-                and any(
-                    str(memory_id) in visible_ids
-                    for memory_id in conflict_set.get("abstained_current_ids", [])
-                )
-            ]
+            if current_resolution == "abstained":
+                filtered["conflict_sets"] = [
+                    conflict_set
+                    for conflict_set in projection.get("conflict_sets", [])
+                    if str(conflict_set.get("resolution_outcome") or "") == "abstained"
+                    and any(
+                        str(memory_id) in visible_ids
+                        for memory_id in conflict_set.get("abstained_current_ids", [])
+                    )
+                ]
+            else:
+                filtered["conflict_sets"] = [
+                    conflict_set
+                    for conflict_set in projection.get("conflict_sets", [])
+                    if str(conflict_set.get("resolution_outcome") or "") == "resolved"
+                    and str(conflict_set.get("chosen_current_id") or "") in visible_ids
+                ]
             if not visible_ids:
                 filtered["abstention"] = {
                     "applied": False,
@@ -6422,8 +6433,8 @@ class MemoryStore:
         self.init()
         if not re.match(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$", timestamp):
             raise ValueError("query_at timestamp must be in ISO 8601 UTC form like 2024-01-01T00:00:00Z")
-        if current_resolution not in {"all", "abstained"}:
-            raise ValueError("query_at current_resolution must be 'all' or 'abstained'")
+        if current_resolution not in {"all", "abstained", "selected"}:
+            raise ValueError("query_at current_resolution must be 'all', 'abstained', or 'selected'")
         if current_resolution == "abstained" and not include_abstained_current:
             raise ValueError("query_at current_resolution='abstained' requires include_abstained_current=True")
 

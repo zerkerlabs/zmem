@@ -50,6 +50,7 @@ def _build_temporal_context(retrieval: dict[str, Any]) -> dict[str, Any] | None:
 
     for key in (
         "selected_temporal_graph",
+        "abstained_temporal_graph",
         "injected_temporal_graph",
         "withheld_temporal_graph",
         "budget_dropped_temporal_graph",
