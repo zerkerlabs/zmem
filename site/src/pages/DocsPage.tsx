@@ -30,7 +30,7 @@ const primaryGuides = [
   },
   {
     label: 'Agent setup',
-    title: 'Connect Codex, Claude Code, Cursor, and MCP tools',
+    title: 'Connect Codex, Claude Code, Cursor, Hermes, and MCP tools',
     href: `${docsBase}/agents`,
     detail: 'Give agents a simple memory API without making every chat invent its own continuity layer.',
     command: 'zmem agent pack --summary-only',

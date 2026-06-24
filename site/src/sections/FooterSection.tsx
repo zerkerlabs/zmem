@@ -44,8 +44,8 @@ export default function FooterSection() {
               <span className="font-heading text-xl font-bold text-zlime">ZMem</span>
             </div>
             <p className="mt-3 text-sm leading-relaxed text-zmuted">
-              ZMem gives agents memory with an authority layer. Start local, review before trust,
-              inject only admissible memory, and prove what shaped the action.
+              ZMem gives agents memory they can use, inspect, govern, prove, revoke,
+              and carry forward. Store local, review before trust, inject only admissible memory.
             </p>
             <div className="mt-4 flex items-center gap-4">
               <a

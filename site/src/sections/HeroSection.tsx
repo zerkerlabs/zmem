@@ -74,29 +74,29 @@ export default function HeroSection() {
             Governed memory for agents that act
           </p>
 
-          <KineticHeadline text="Decide what your agents can remember and use." delay={0.5} />
+          <KineticHeadline text="Give agents memory you can trust." delay={0.5} />
 
           <p
             className="mx-auto mt-6 max-w-[640px] text-[17px] leading-relaxed text-[#D8D8D8] max-sm:hidden"
             style={{ animation: 'fadeSlideUp 0.6s 0.8s ease-out forwards', opacity: 0, textShadow: '0 4px 18px rgba(0,0,0,0.9)' }}
           >
-            ZMem is a local-first memory system and authority gate for AI agents.
-            Agents can propose facts, request approved memory, hand off governed state,
-            and leave receipts showing what shaped each action.
+            ZMem is a local-first memory system for AI agents. It stores project memory,
+            reviews agent-proposed facts, gates what enters context, explains why memory
+            shaped an action, and carries verified state across agents and machines.
           </p>
 
           <p
             className="mx-auto mt-6 max-w-[320px] text-[17px] leading-relaxed text-[#D8D8D8] sm:hidden"
             style={{ animation: 'fadeSlideUp 0.6s 0.8s ease-out forwards', opacity: 0, textShadow: '0 4px 18px rgba(0,0,0,0.9)' }}
           >
-            Local memory for agents. Review before trust.
+            Local memory for agents. Use only what is admissible.
           </p>
 
           <p
             className="mx-auto mt-4 hidden max-w-[600px] text-[14px] leading-relaxed text-[#AFAFAF] sm:block"
             style={{ animation: 'fadeSlideUp 0.6s 0.9s ease-out forwards', opacity: 0, textShadow: '0 4px 18px rgba(0,0,0,0.9)' }}
           >
-            Local memory. Review queue. Policy-gated injection. Revocation. Receipts.
+            Store locally. Review before trust. Inject only admissible memory. Revoke what goes bad.
           </p>
 
           <div
@@ -113,7 +113,7 @@ export default function HeroSection() {
               onClick={() => scrollTo('#memory-loop')}
               className="rounded-full border border-zline bg-transparent px-8 py-3.5 text-cta text-zink transition-all duration-150 hover:border-zlime hover:text-zlime"
             >
-              See the memory gate
+              See admissible memory
             </button>
             <a
               href="https://github.com/zerkerlabs/zmem"

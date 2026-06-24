@@ -42,6 +42,7 @@ const consolePanels = [
       ['Codex', 'installed'],
       ['Claude Code', 'installed'],
       ['Cursor', 'exported'],
+      ['Hermes', 'pack ready'],
       ['Generic MCP', 'pack ready'],
     ],
   },

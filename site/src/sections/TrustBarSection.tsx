@@ -3,6 +3,7 @@ const pills = [
   { label: 'Claude Code' },
   { label: 'Cursor' },
   { label: 'OpenClaw' },
+  { label: 'Hermes' },
   { label: 'Generic MCP' },
   { label: 'CLI' },
 ];

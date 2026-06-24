@@ -54,9 +54,10 @@ export default function MemoryLoopSection() {
           Retrieval is not permission.
         </h2>
 
-        <p className="section-desc mt-6 max-w-[600px] text-[17px] leading-relaxed text-zmuted">
-          ZMem gives agents a native local memory system, then gates what becomes trusted enough
-          to shape action. Proposed, reviewed, injected, withheld, revoked, verified.
+        <p className="section-desc mt-6 max-w-[640px] text-[17px] leading-relaxed text-zmuted">
+          Agents can already retrieve context. ZMem makes memory admissible:
+          source, scope, status, authority, review, and a receipt for why it was
+          allowed to shape action.
         </p>
 
         <div
