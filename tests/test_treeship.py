@@ -9,6 +9,7 @@ from zerker_memory.treeship import (
     TREESHIP_STATEMENT_KIND,
     TREESHIP_STATEMENT_SCHEMA,
     TREESHIP_STATEMENT_SCHEMA_VERSION,
+    attest_treeship_payload_digest,
     build_treeship_publish_command,
     publish_treeship_statement,
     treeship_cli_status,
@@ -272,6 +273,48 @@ class TreeshipAdapterTest(unittest.TestCase):
                 "--payload",
                 '{"ok":true}',
             ],
+        )
+
+    def test_attest_treeship_payload_digest_uses_compact_digest_payload(self):
+        with patch("zerker_memory.treeship.shutil.which", return_value="/usr/local/bin/treeship"):
+            with patch("zerker_memory.treeship.subprocess.run") as run:
+                run.return_value.returncode = 0
+                run.return_value.stdout = (
+                    '{"id":"art_write","kind":"memory.write","signed":"2026-06-24T05:27:53Z","status":"ok","system":"system://zmem"}'
+                )
+                run.return_value.stderr = ""
+
+                result = attest_treeship_payload_digest(
+                    "sha256:abc123",
+                    kind="memory.write",
+                    subject="wr_123",
+                    config_path=Path("/tmp/treeship-config.json"),
+                )
+
+        self.assertEqual(result["status"], "signed")
+        self.assertEqual(result["artifact_id"], "art_write")
+        self.assertEqual(result["signed_at"], "2026-06-24T05:27:53Z")
+        run.assert_called_once_with(
+            [
+                "treeship",
+                "attest",
+                "receipt",
+                "--config",
+                "/tmp/treeship-config.json",
+                "--system",
+                "system://zmem",
+                "--kind",
+                "memory.write",
+                "--payload-digest",
+                "sha256:abc123",
+                "--format",
+                "json",
+                "--subject",
+                "wr_123",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
         )
 
 

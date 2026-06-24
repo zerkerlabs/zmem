@@ -14,12 +14,14 @@ ZMem already emits several local-first proof artifacts:
 - Handoffs: `zmem handoff` packages a verified snapshot, latest receipt bundle, handoff manifest, and Treeship-ready statement for cross-agent or cross-machine restore.
 - Launch proof packs: `zmem release-pack` and `zmem launch-proof` package clean-shell verification commands, public-verify logs, result receipts, launch assets, operator packets, and return-packet verification.
 - Treeship bridge: `zmem export --format treeship` produces a verified statement from a receipt bundle, and `zmem treeship publish` signs it through Treeship as `system://zmem` / `kind=memory.proof`.
+- Optional write attestation: when `ZMEM_TREESHIP_AUTO_SIGN=1` is enabled, each memory write asks Treeship to attest the compact `sha256:<receipt_hash>` digest as `system://zmem` / `kind=memory.write`, then stores only the returned artifact id, signed timestamp, digest, and status with the write receipt. This avoids duplicating raw memory content while making the receipt externally attributable.
 
 ## Treeship Contract ZMem Needs
 
 Treeship should support proofing memory systems without owning memory semantics.
 
 - Receipt CLI: `treeship attest receipt --system <system-uri> --kind <kind> --payload-file <path>` is the current target. Treeship `v0.12.0` published this surface; ZMem keeps an inline `--payload` fallback for older customer CLIs.
+- Digest-only receipt CLI: `treeship attest receipt --system <system-uri> --kind <kind> --payload-digest sha256:<hex>` is the write-time path for compact memory-write attestations.
 - Boundary proof payloads: ZMem should move toward the `treeship.boundary.v1` profile in [`BOUNDARY_PROOF_SCHEMA.md`](BOUNDARY_PROOF_SCHEMA.md), which separates proven fields from asserted/policy-derived fields.
 - Provider-neutral identity: examples should use `system://<provider>` and `memory://<provider>/<namespace>/<key>` instead of ZMem-only naming.
 - Safe defaults: Treeship should sign proof payloads, payload digests, summaries, and provider URIs by default; it should not require raw prompts, raw memories, embeddings, or private recall traces.

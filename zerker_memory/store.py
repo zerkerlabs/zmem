@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 import re
 import sqlite3
 import time
@@ -661,6 +662,15 @@ def default_environment_hash() -> str:
     return digest_uri(DEFAULT_ENVIRONMENT_HASH_INPUT)
 
 
+def _env_flag(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _env_path(name: str) -> Path | None:
+    value = os.environ.get(name, "").strip()
+    return Path(value).expanduser() if value else None
+
+
 def query_terms(value: str) -> list[str]:
     return [term.lower() for term in re.findall(r"[A-Za-z0-9_]+", value) if len(term) > 2]
 
@@ -1021,6 +1031,49 @@ def _apply_baseline_ranking(memories: list[MemoryRecord], retrieval: dict[str, A
         "temporal_fusion_signal_applied": temporal_fusion_signal_applied,
     }
     return ordered_memories
+
+
+def _annotate_hybrid_semantic_ranking(retrieval: dict[str, Any]) -> None:
+    hybrid = retrieval.get("hybrid", {}) if isinstance(retrieval.get("hybrid"), dict) else {}
+    candidates = retrieval.get("candidates", [])
+    if not hybrid.get("applied") or not isinstance(candidates, list):
+        return
+    if not any(isinstance(candidate.get("semantic_backfill_score"), (int, float)) for candidate in candidates):
+        return
+
+    promoted_ids = []
+    outranked_ids = []
+    for candidate in candidates:
+        pre_hybrid_rank = candidate.get("pre_hybrid_rank")
+        hybrid_semantic_rank = candidate.get("rank")
+        rank_delta = None
+        promoted_by_semantic_backfill = False
+        outranked_by_semantic_backfill = False
+        outranked_reason = None
+        if isinstance(pre_hybrid_rank, int) and isinstance(hybrid_semantic_rank, int):
+            rank_delta = hybrid_semantic_rank - pre_hybrid_rank
+            promoted_by_semantic_backfill = hybrid_semantic_rank < pre_hybrid_rank
+            outranked_by_semantic_backfill = hybrid_semantic_rank > pre_hybrid_rank
+            if promoted_by_semantic_backfill:
+                promoted_ids.append(candidate["memory_id"])
+            if outranked_by_semantic_backfill:
+                outranked_ids.append(candidate["memory_id"])
+                outranked_reason = "hybrid-semantic-backfill-ranked-lower"
+        candidate["hybrid_semantic_rank"] = hybrid_semantic_rank if isinstance(hybrid_semantic_rank, int) else None
+        candidate["hybrid_rank_delta"] = rank_delta
+        candidate["hybrid_promoted_by_semantic_backfill"] = promoted_by_semantic_backfill
+        candidate["hybrid_outranked_by_semantic_backfill"] = outranked_by_semantic_backfill
+        candidate["hybrid_outranked_reason"] = outranked_reason
+        candidate.setdefault("features", {})["hybrid_semantic_rank"] = candidate["hybrid_semantic_rank"]
+        candidate["features"]["hybrid_rank_delta"] = rank_delta
+        candidate["features"]["hybrid_promoted_by_semantic_backfill"] = promoted_by_semantic_backfill
+        candidate["features"]["hybrid_outranked_by_semantic_backfill"] = outranked_by_semantic_backfill
+        candidate["features"]["hybrid_outranked_reason"] = outranked_reason
+
+    fusion = hybrid.get("fusion")
+    if isinstance(fusion, dict):
+        fusion["promoted_candidate_ids"] = promoted_ids
+        fusion["outranked_candidate_ids"] = outranked_ids
 
 
 def _fts_candidate_window_limit(limit: int) -> int:
@@ -1672,6 +1725,10 @@ def _ranking_payload(
             "multi_hop_fusion_score",
             "multi_hop_fusion_sources",
             "multi_hop_fusion_source_count",
+            "multi_hop_rank_delta",
+            "multi_hop_promoted_by_fusion",
+            "multi_hop_outranked_by_fusion",
+            "multi_hop_outranked_reason",
             "observation_seq",
             "temporal_support_candidate",
             "temporal_support_kind",
@@ -1824,8 +1881,12 @@ def _temporal_support_fusion_source_rankings(
         source_rankings["temporal_mutation_anchor"] = mutation_anchor_ids
     if len(update_pair_ids) > 1 and current_support_ids:
         source_rankings["temporal_update_pair"] = update_pair_ids
+    if selection_reason == "history-query-terms" and len(relation_update_pair_ids) > 1 and current_support_ids:
+        source_rankings["temporal_history_relation_pair"] = relation_update_pair_ids
     if selection_reason == "update-history-query-terms" and len(relation_update_pair_ids) > 1 and current_support_ids:
         source_rankings["temporal_update_relation_pair"] = relation_update_pair_ids
+    if selection_reason == "earliest-history-query-terms" and len(relation_update_pair_ids) > 1 and current_support_ids:
+        source_rankings["temporal_earliest_relation_pair"] = relation_update_pair_ids
     if len(source_rankings) <= 1:
         return {}
     return source_rankings
@@ -1858,8 +1919,12 @@ def _temporal_fusion_signal(selection: dict[str, Any]) -> str | None:
         )
         if str(memory_id)
     ]
+    if selection_reason == "history-query-terms" and len(relation_update_pair_ids) > 1 and current_support_ids:
+        return "temporal_history_relation_pair_rrf_score_v1"
     if selection_reason == "update-history-query-terms" and len(relation_update_pair_ids) > 1 and current_support_ids:
         return "temporal_update_relation_pair_rrf_score_v1"
+    if selection_reason == "earliest-history-query-terms" and len(relation_update_pair_ids) > 1 and current_support_ids:
+        return "temporal_earliest_relation_pair_rrf_score_v1"
     support_ids = (
         list(selection.get("selected_target_support_ids", []))
         + list(selection.get("selected_relation_support_ids", []))
@@ -1875,8 +1940,12 @@ def _temporal_fusion_basis(signal: str | None) -> str | None:
         return "mutation_anchor"
     if signal == "temporal_update_pair_rrf_score_v1":
         return "update_pair"
+    if signal == "temporal_history_relation_pair_rrf_score_v1":
+        return "history_relation_pair"
     if signal == "temporal_update_relation_pair_rrf_score_v1":
         return "update_relation_pair"
+    if signal == "temporal_earliest_relation_pair_rrf_score_v1":
+        return "earliest_relation_pair"
     if signal == "temporal_support_rrf_score_v1":
         return "support_chain"
     return None
@@ -1888,9 +1957,11 @@ def _packing_priority(
     candidate: dict[str, Any] | None,
     candidate_count: int,
     prefer_temporal_fusion_rank: bool = False,
+    prefer_multi_hop_fusion_rank: bool = False,
 ) -> int:
     candidate = candidate or {}
     features = candidate.get("features", {})
+    multi_hop_fusion_rank = candidate.get("multi_hop_fusion_rank", features.get("multi_hop_fusion_rank"))
     temporal_fusion_rank = candidate.get("temporal_fusion_rank", features.get("temporal_fusion_rank"))
     temporal_injection_rank = candidate.get("temporal_injection_rank", features.get("temporal_injection_rank"))
     temporal_selection_rank = candidate.get("temporal_selection_rank", features.get("temporal_selection_rank"))
@@ -1901,6 +1972,8 @@ def _packing_priority(
         and temporal_fusion_rank > 0
     ):
         rank = temporal_fusion_rank
+    elif isinstance(multi_hop_fusion_rank, int) and multi_hop_fusion_rank > 0 and prefer_multi_hop_fusion_rank:
+        rank = multi_hop_fusion_rank
     elif (
         candidate.get("selected_by_temporal_strategy", features.get("selected_by_temporal_strategy", False))
         and isinstance(temporal_injection_rank, int)
@@ -5291,7 +5364,20 @@ def pack_memory_context(
         .get("signal")
         or ""
     )
-    prefer_temporal_fusion_rank = temporal_fusion_signal == "temporal_update_relation_pair_rrf_score_v1"
+    multi_hop_fusion_applied = bool(
+        ((retrieval.get("multi_hop") or {}) if isinstance(retrieval.get("multi_hop"), dict) else {})
+        .get("fusion", {})
+        .get("applied")
+    )
+    hybrid_semantic_applied = bool(
+        ((retrieval.get("hybrid") or {}) if isinstance(retrieval.get("hybrid"), dict) else {}).get("applied")
+    )
+    prefer_temporal_fusion_rank = temporal_fusion_signal in {
+        "temporal_history_relation_pair_rrf_score_v1",
+        "temporal_update_relation_pair_rrf_score_v1",
+        "temporal_earliest_relation_pair_rrf_score_v1",
+    }
+    prefer_multi_hop_fusion_rank = multi_hop_fusion_applied and not prefer_temporal_fusion_rank
     if max_tokens is not None and max_tokens < 0:
         raise ValueError("context budget cannot be negative")
 
@@ -5299,6 +5385,8 @@ def pack_memory_context(
     candidate_count = len(retrieval.get("candidates", []))
     for memory in authorized:
         candidate = candidate_by_id.get(memory.id)
+        hybrid_semantic_rank = candidate.get("hybrid_semantic_rank") if candidate else None
+        multi_hop_fusion_rank = candidate.get("multi_hop_fusion_rank") if candidate else None
         temporal_fusion_rank = candidate.get("temporal_fusion_rank") if candidate else None
         temporal_injection_rank = candidate.get("temporal_injection_rank") if candidate else None
         temporal_selection_rank = candidate.get("temporal_selection_rank") if candidate else None
@@ -5311,6 +5399,17 @@ def pack_memory_context(
         ):
             packing_rank = temporal_fusion_rank
             packing_rank_basis = "temporal_fusion_rank"
+        elif prefer_multi_hop_fusion_rank and isinstance(multi_hop_fusion_rank, int) and multi_hop_fusion_rank > 0:
+            packing_rank = multi_hop_fusion_rank
+            packing_rank_basis = "multi_hop_fusion_rank"
+        elif (
+            hybrid_semantic_applied
+            and isinstance(hybrid_semantic_rank, int)
+            and hybrid_semantic_rank > 0
+            and not selected_by_temporal_strategy
+        ):
+            packing_rank = hybrid_semantic_rank
+            packing_rank_basis = "hybrid_semantic_rank"
         elif selected_by_temporal_strategy and isinstance(temporal_injection_rank, int) and temporal_injection_rank > 0:
             packing_rank = temporal_injection_rank
             packing_rank_basis = "temporal_injection_rank"
@@ -5328,6 +5427,14 @@ def pack_memory_context(
                 "packing_rank_basis": packing_rank_basis,
                 "approx_tokens": approx_memory_tokens(memory),
                 "selected_by_temporal_strategy": selected_by_temporal_strategy,
+                "hybrid_semantic_rank": hybrid_semantic_rank if isinstance(hybrid_semantic_rank, int) else None,
+                "hybrid_outranked_by_semantic_backfill": (
+                    bool(candidate.get("hybrid_outranked_by_semantic_backfill")) if candidate else False
+                ),
+                "hybrid_outranked_reason": candidate.get("hybrid_outranked_reason") if candidate else None,
+                "multi_hop_fusion_rank": multi_hop_fusion_rank if isinstance(multi_hop_fusion_rank, int) else None,
+                "multi_hop_outranked_by_fusion": bool(candidate.get("multi_hop_outranked_by_fusion")) if candidate else False,
+                "multi_hop_outranked_reason": candidate.get("multi_hop_outranked_reason") if candidate else None,
                 "temporal_fusion_rank": temporal_fusion_rank if isinstance(temporal_fusion_rank, int) else None,
                 "temporal_selection_rank": temporal_selection_rank if isinstance(temporal_selection_rank, int) else None,
                 "temporal_injection_rank": temporal_injection_rank if isinstance(temporal_injection_rank, int) else None,
@@ -5337,6 +5444,7 @@ def pack_memory_context(
                     candidate=candidate,
                     candidate_count=candidate_count,
                     prefer_temporal_fusion_rank=prefer_temporal_fusion_rank,
+                    prefer_multi_hop_fusion_rank=prefer_multi_hop_fusion_rank,
                 ),
             }
         )
@@ -5460,6 +5568,12 @@ def pack_memory_context(
                     "packing_rank_basis": entry["packing_rank_basis"],
                     "packing_priority": entry["priority"],
                     "selected_by_temporal_strategy": entry["selected_by_temporal_strategy"],
+                    "hybrid_semantic_rank": entry["hybrid_semantic_rank"],
+                    "hybrid_outranked_by_semantic_backfill": entry["hybrid_outranked_by_semantic_backfill"],
+                    "hybrid_outranked_reason": entry["hybrid_outranked_reason"],
+                    "multi_hop_fusion_rank": entry["multi_hop_fusion_rank"],
+                    "multi_hop_outranked_by_fusion": entry["multi_hop_outranked_by_fusion"],
+                    "multi_hop_outranked_reason": entry["multi_hop_outranked_reason"],
                     "temporal_fusion_rank": entry["temporal_fusion_rank"],
                     "temporal_selection_rank": entry["temporal_selection_rank"],
                     "temporal_injection_rank": entry["temporal_injection_rank"],
@@ -5483,7 +5597,15 @@ def pack_memory_context(
         "priority_model": (
             "temporal_fusion_rank_score_authority_current_v1"
             if prefer_temporal_fusion_rank
-            else "temporal_selection_rank_score_authority_current_v1"
+            else (
+                "multi_hop_fusion_rank_score_authority_current_v1"
+                if prefer_multi_hop_fusion_rank
+                else (
+                    "hybrid_semantic_rank_score_authority_current_v1"
+                    if any(entry["packing_rank_basis"] == "hybrid_semantic_rank" for entry in authorized_entries)
+                    else "temporal_selection_rank_score_authority_current_v1"
+                )
+            )
         ),
         "reservation": reservation,
         "candidate_priorities": [
@@ -5495,6 +5617,12 @@ def pack_memory_context(
                 "approx_tokens": entry["approx_tokens"],
                 "packing_priority": entry["priority"],
                 "selected_by_temporal_strategy": entry["selected_by_temporal_strategy"],
+                "hybrid_semantic_rank": entry["hybrid_semantic_rank"],
+                "hybrid_outranked_by_semantic_backfill": entry["hybrid_outranked_by_semantic_backfill"],
+                "hybrid_outranked_reason": entry["hybrid_outranked_reason"],
+                "multi_hop_fusion_rank": entry["multi_hop_fusion_rank"],
+                "multi_hop_outranked_by_fusion": entry["multi_hop_outranked_by_fusion"],
+                "multi_hop_outranked_reason": entry["multi_hop_outranked_reason"],
                 "temporal_fusion_rank": entry["temporal_fusion_rank"],
                 "temporal_selection_rank": entry["temporal_selection_rank"],
                 "temporal_injection_rank": entry["temporal_injection_rank"],
@@ -5633,9 +5761,20 @@ class MemoryRecord:
 
 
 class MemoryStore:
-    def __init__(self, db_path: Path | None = None, *, policy_path: Path | None = None):
+    def __init__(
+        self,
+        db_path: Path | None = None,
+        *,
+        policy_path: Path | None = None,
+        treeship_auto_sign: bool | None = None,
+        treeship_config_path: Path | None = None,
+        treeship_strict: bool | None = None,
+    ):
         self.db_path = db_path or default_db_path()
         self.policy_path = policy_path
+        self.treeship_auto_sign = _env_flag("ZMEM_TREESHIP_AUTO_SIGN") if treeship_auto_sign is None else treeship_auto_sign
+        self.treeship_config_path = treeship_config_path or _env_path("ZMEM_TREESHIP_CONFIG")
+        self.treeship_strict = _env_flag("ZMEM_TREESHIP_STRICT") if treeship_strict is None else treeship_strict
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.conn = sqlite3.connect(self.db_path)
         self.conn.row_factory = sqlite3.Row
@@ -6176,16 +6315,117 @@ class MemoryStore:
             "abstention": abstention,
         }
 
+    @staticmethod
+    def _filter_temporal_projection(
+        projection: dict[str, Any],
+        *,
+        include_abstained_current: bool,
+        current_resolution: str,
+    ) -> dict[str, Any]:
+        filtered = dict(projection)
+        if current_resolution == "abstained":
+            visible_ids = {
+                str(memory_id)
+                for memory_id in projection.get("abstained_current_memory_ids", [])
+                if str(memory_id)
+            }
+            filtered["entries"] = [
+                entry
+                for entry in projection.get("entries", [])
+                if str(entry.get("memory", {}).get("id") or "") in visible_ids
+            ]
+            filtered["temporal_graph"] = {
+                memory_id: envelope
+                for memory_id, envelope in projection.get("temporal_graph", {}).items()
+                if memory_id in visible_ids
+            }
+            for key in (
+                "history_memory_ids",
+                "current_memory_ids",
+                "resolved_current_memory_ids",
+                "dropped_current_memory_ids",
+                "abstained_current_memory_ids",
+                "future_memory_ids",
+                "superseded_memory_ids",
+                "unlearned_memory_ids",
+                "learned_memory_ids",
+            ):
+                filtered[key] = [
+                    memory_id
+                    for memory_id in projection.get(key, [])
+                    if memory_id in visible_ids
+                ]
+            filtered["conflict_sets"] = [
+                conflict_set
+                for conflict_set in projection.get("conflict_sets", [])
+                if str(conflict_set.get("resolution_outcome") or "") == "abstained"
+                and any(
+                    str(memory_id) in visible_ids
+                    for memory_id in conflict_set.get("abstained_current_ids", [])
+                )
+            ]
+            if not visible_ids:
+                filtered["abstention"] = {
+                    "applied": False,
+                    "reason": None,
+                    "abstained_ids": [],
+                    "conflict_reasons": [],
+                }
+            return filtered
+
+        if include_abstained_current:
+            return projection
+        hidden_ids = {
+            str(memory_id)
+            for memory_id in projection.get("abstained_current_memory_ids", [])
+            if str(memory_id)
+        }
+        if not hidden_ids:
+            return projection
+
+        filtered["entries"] = [
+            entry
+            for entry in projection.get("entries", [])
+            if str(entry.get("memory", {}).get("id") or "") not in hidden_ids
+        ]
+        filtered["temporal_graph"] = {
+            memory_id: envelope
+            for memory_id, envelope in projection.get("temporal_graph", {}).items()
+            if memory_id not in hidden_ids
+        }
+        for key in (
+            "history_memory_ids",
+            "current_memory_ids",
+            "resolved_current_memory_ids",
+            "dropped_current_memory_ids",
+            "future_memory_ids",
+            "superseded_memory_ids",
+            "unlearned_memory_ids",
+            "learned_memory_ids",
+        ):
+            filtered[key] = [
+                memory_id
+                for memory_id in projection.get(key, [])
+                if memory_id not in hidden_ids
+            ]
+        return filtered
+
     def query_at(
         self,
         timestamp: str,
         *,
         scope: str | None = None,
         search_query: str | None = None,
+        include_abstained_current: bool = True,
+        current_resolution: str = "all",
     ) -> dict[str, Any]:
         self.init()
         if not re.match(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$", timestamp):
             raise ValueError("query_at timestamp must be in ISO 8601 UTC form like 2024-01-01T00:00:00Z")
+        if current_resolution not in {"all", "abstained"}:
+            raise ValueError("query_at current_resolution must be 'all' or 'abstained'")
+        if current_resolution == "abstained" and not include_abstained_current:
+            raise ValueError("query_at current_resolution='abstained' requires include_abstained_current=True")
 
         params: list[Any] = []
         where_sql = ""
@@ -6231,11 +6471,18 @@ class MemoryStore:
             memories = [memory for memory in memories if memory.id in expanded_ids]
 
         projection = self._project_temporal_state(memories, timestamp=timestamp)
+        projection = self._filter_temporal_projection(
+            projection,
+            include_abstained_current=include_abstained_current,
+            current_resolution=current_resolution,
+        )
         return {
             "schema": TEMPORAL_QUERY_SCHEMA,
             "query_at": timestamp,
             "scope": scope,
             "search_query": search_query,
+            "include_abstained_current": include_abstained_current,
+            "current_resolution": current_resolution,
             **projection,
         }
 
@@ -6821,6 +7068,7 @@ class MemoryStore:
             "semantic_candidate_ids": [],
             "introduced_candidate_ids": [],
             "selected_candidate_ids": [],
+            "selection_exclusions": [],
             "fusion": None,
             "confidence": {
                 "minimum_score": HYBRID_SEMANTIC_BACKFILL_MIN_SCORE,
@@ -7261,6 +7509,18 @@ class MemoryStore:
                             for item in lexical_infos
                             if item["memory"].id not in kept_lexical_id_set
                         ]
+                        hybrid["selection_exclusions"] = [
+                            {
+                                "memory_id": item["memory"].id,
+                                "reason": "hybrid-semantic-backfill-replaced-weak-lexical-hit",
+                                "pre_hybrid_rank": item["pre_hybrid_rank"],
+                                "semantic_backfill_score": round(float(item["semantic_score"]), 6),
+                                "semantic_backfill_term_overlap": int(item["semantic_term_overlap"]),
+                                "structured_fact_candidate": bool(item["structured_fact"]),
+                            }
+                            for item in lexical_infos
+                            if item["memory"].id not in kept_lexical_id_set
+                        ]
                         hybrid["introduced_candidate_ids"] = [row["id"] for row in introduced_rows]
                         hybrid["selected_candidate_ids"] = [row["id"] for row in rows]
                         hybrid["fusion"] = _reciprocal_rank_fusion(
@@ -7584,6 +7844,8 @@ class MemoryStore:
         candidate_metadata: dict[str, dict[str, Any]] = {}
         introduced_ids = []
         duplicate_ids = []
+        promoted_ids = []
+        outranked_ids = []
         multi_hop_fusion_by_id = {
             str(item["memory_id"]): item
             for item in (
@@ -7609,13 +7871,28 @@ class MemoryStore:
             if item["duplicate_count"]:
                 duplicate_ids.append(memory.id)
             fusion_item = multi_hop_fusion_by_id.get(memory.id, {})
+            pre_multi_hop_rank = item["pre_multi_hop_rank"]
+            fusion_rank = fusion_item.get("fusion_rank")
+            rank_delta = None
+            promoted_by_fusion = False
+            outranked_by_fusion = False
+            outranked_reason = None
+            if isinstance(pre_multi_hop_rank, int) and isinstance(fusion_rank, int):
+                rank_delta = fusion_rank - pre_multi_hop_rank
+                promoted_by_fusion = fusion_rank < pre_multi_hop_rank
+                outranked_by_fusion = fusion_rank > pre_multi_hop_rank
+                if promoted_by_fusion:
+                    promoted_ids.append(memory.id)
+                if outranked_by_fusion:
+                    outranked_ids.append(memory.id)
+                    outranked_reason = "multi-hop-fusion-ranked-lower"
             candidate_metadata[memory.id] = {
-                "pre_multi_hop_rank": item["pre_multi_hop_rank"],
+                "pre_multi_hop_rank": pre_multi_hop_rank,
                 "multi_hop_rank": rank,
                 "introduced_by_subquery_id": item["introduced_by_subquery_id"],
                 "multi_hop_subquery_ids": item["subquery_ids"],
                 "multi_hop_duplicate_count": item["duplicate_count"],
-                "multi_hop_fusion_rank": fusion_item.get("fusion_rank"),
+                "multi_hop_fusion_rank": fusion_rank,
                 "multi_hop_fusion_score": fusion_item.get("score"),
                 "multi_hop_fusion_sources": [
                     contribution.get("source")
@@ -7623,15 +7900,22 @@ class MemoryStore:
                     if contribution.get("source")
                 ],
                 "multi_hop_fusion_source_count": len(fusion_item.get("source_contributions", [])),
+                "multi_hop_rank_delta": rank_delta,
+                "multi_hop_promoted_by_fusion": promoted_by_fusion,
+                "multi_hop_outranked_by_fusion": outranked_by_fusion,
+                "multi_hop_outranked_reason": outranked_reason,
                 "observation_seq": observation_seq_by_id.get(memory.id, 0),
             }
             rank_transitions.append(
                 {
                     "memory_id": memory.id,
-                    "pre_multi_hop_rank": item["pre_multi_hop_rank"],
+                    "pre_multi_hop_rank": pre_multi_hop_rank,
                     "multi_hop_rank": rank,
                     "introduced_by_subquery_id": item["introduced_by_subquery_id"],
-                    "multi_hop_fusion_rank": fusion_item.get("fusion_rank"),
+                    "multi_hop_fusion_rank": fusion_rank,
+                    "multi_hop_rank_delta": rank_delta,
+                    "multi_hop_promoted_by_fusion": promoted_by_fusion,
+                    "multi_hop_outranked_by_fusion": outranked_by_fusion,
                 }
             )
 
@@ -7673,6 +7957,8 @@ class MemoryStore:
                 "merged_candidate_count": len(memories),
                 "introduced_candidate_ids": introduced_ids,
                 "duplicate_candidate_ids": duplicate_ids,
+                "promoted_candidate_ids": promoted_ids,
+                "outranked_candidate_ids": outranked_ids,
             },
             "rank_transitions": rank_transitions,
             "disabled_reason": disabled_reason,
@@ -7739,6 +8025,7 @@ class MemoryStore:
         ranking["update_history_support"] = parent["update_history_support"]
         ranking["semantic_rescue"] = parent["semantic_rescue"]
         ranking["hybrid"] = parent["hybrid"]
+        _annotate_hybrid_semantic_ranking(ranking)
         ranking["fusion_query"] = fusion_query
         ranking["fusion_query_basis"] = fusion_query_basis
         model_query = (
@@ -7771,6 +8058,7 @@ class MemoryStore:
         temporal = resolve_temporal_lifecycle(memories, ranking)
         if ranking.get("temporal", {}).get("fusion", {}).get("applied"):
             memories = _apply_baseline_ranking(memories, ranking)
+            _annotate_hybrid_semantic_ranking(ranking)
             memory_by_id = {memory.id: memory for memory in memories}
             current_ids = {
                 str(memory_id)
@@ -7894,6 +8182,7 @@ class MemoryStore:
         return [self._memory_write_receipt_from_row(row) for row in rows]
 
     def _memory_write_receipt_from_row(self, row: sqlite3.Row) -> dict[str, Any]:
+        treeship_statement = json.loads(row["treeship_statement_json"])
         receipt = {
             "receipt_schema": row["receipt_schema"],
             "hash_alg": row["hash_alg"],
@@ -7908,10 +8197,12 @@ class MemoryStore:
             "environment_hash": row["environment_hash"],
             "event_hash": row["event_hash"],
             "merkle_root": row["merkle_root"],
-            "treeship_statement": json.loads(row["treeship_statement_json"]),
+            "treeship_statement": treeship_statement,
             "created_at": row["created_at"],
             "receipt_hash": row["receipt_hash"],
         }
+        if isinstance(treeship_statement.get("attestation"), dict):
+            receipt["treeship_attestation"] = treeship_statement["attestation"]
         return receipt
 
     def reject(self, memory_id: str, *, actor_id: str = "human", reason: str | None = None) -> MemoryRecord:
@@ -8236,6 +8527,11 @@ class MemoryStore:
             temporal_metadata["selected_temporal_graph"] = {
                 memory_id: temporal_graph[memory_id]
                 for memory_id in temporal_metadata.get("selected_ids", [])
+                if memory_id in temporal_graph
+            }
+            temporal_metadata["abstained_temporal_graph"] = {
+                memory_id: temporal_graph[memory_id]
+                for memory_id in temporal_projection["abstained_current_memory_ids"]
                 if memory_id in temporal_graph
             }
             temporal_metadata["injected_temporal_graph"] = {
@@ -8889,6 +9185,224 @@ class MemoryStore:
         try:
             self._validate_snapshot(snapshot)
         except (KeyError, ValueError) as exc:
+            result["ok"] = False
+            result["error"] = str(exc)
+        return result
+
+    def verify_memory_write_receipt(
+        self,
+        receipt: dict[str, Any],
+        *,
+        prior_receipt: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        treeship_statement = receipt.get("treeship_statement")
+        statement_object = treeship_statement.get("object", {}) if isinstance(treeship_statement, dict) else {}
+        statement_evidence = treeship_statement.get("evidence", {}) if isinstance(treeship_statement, dict) else {}
+        statement_source = treeship_statement.get("source", {}) if isinstance(treeship_statement, dict) else {}
+        source_receipt = statement_source.get("receipt", {}) if isinstance(statement_source, dict) else {}
+        statement_attestation = treeship_statement.get("attestation") if isinstance(treeship_statement, dict) else None
+        receipt_attestation = receipt.get("treeship_attestation")
+        result = {
+            "ok": True,
+            "receipt_schema": receipt.get("receipt_schema"),
+            "receipt_id": receipt.get("receipt_id"),
+            "memory_id": receipt.get("memory_id"),
+            "receipt_hash": receipt.get("receipt_hash"),
+            "computed_receipt_hash": None,
+            "content_digest": receipt.get("content_digest"),
+            "computed_content_digest": statement_object.get("content_digest") if isinstance(statement_object, dict) else None,
+            "merkle_root": receipt.get("merkle_root"),
+            "treeship_statement_kind": treeship_statement.get("kind") if isinstance(treeship_statement, dict) else None,
+            "treeship_statement_verified": False,
+            "treeship_attestation_verified": False,
+            "prior_receipt_id": statement_source.get("prior_receipt_id") if isinstance(statement_source, dict) else None,
+            "prior_receipt_hash": statement_source.get("prior_receipt_hash") if isinstance(statement_source, dict) else None,
+            "semantic_truth_guaranteed": False,
+        }
+        try:
+            if receipt.get("receipt_schema") != WRITE_RECEIPT_SCHEMA:
+                raise ValueError("unsupported write receipt schema")
+            if receipt.get("hash_alg") != HASH_ALG:
+                raise ValueError("unsupported write receipt hash algorithm")
+            if receipt.get("merkle_alg") != MERKLE_ALG:
+                raise ValueError("unsupported write receipt merkle algorithm")
+            if not isinstance(receipt.get("receipt_hash"), str):
+                raise ValueError("write receipt missing receipt_hash")
+            if not isinstance(treeship_statement, dict):
+                raise ValueError("write receipt missing treeship_statement")
+            if not isinstance(statement_object, dict):
+                raise ValueError("write receipt missing treeship object")
+            if not isinstance(statement_evidence, dict):
+                raise ValueError("write receipt missing treeship evidence")
+            if not isinstance(statement_source, dict):
+                raise ValueError("write receipt missing treeship source")
+            if not isinstance(source_receipt, dict):
+                raise ValueError("write receipt missing treeship source receipt")
+
+            stripped_statement = receipt.get("treeship_statement")
+            if isinstance(stripped_statement, dict):
+                stripped_statement = json.loads(stable_json(stripped_statement))
+                stripped_statement.pop("attestation", None)
+            canonical_receipt_without_hash = json.loads(stable_json(source_receipt))
+            canonical_receipt_without_hash["treeship_statement"] = stripped_statement
+            computed_receipt_hash = sha256_text(stable_json(canonical_receipt_without_hash))
+            result["computed_receipt_hash"] = computed_receipt_hash
+
+            if computed_receipt_hash != receipt["receipt_hash"]:
+                raise ValueError("write receipt_hash mismatch")
+
+            kind = treeship_statement.get("kind")
+            if kind not in {"zerker.memory.write_provenance", "zerker.memory.mutation_receipt"}:
+                raise ValueError("unsupported write receipt treeship kind")
+            expected_predicate = (
+                "memory.write.provenance.generated"
+                if kind == "zerker.memory.write_provenance"
+                else "memory.mutation.receipt.generated"
+            )
+            if treeship_statement.get("predicate") != expected_predicate:
+                raise ValueError("write receipt treeship predicate mismatch")
+            if treeship_statement.get("created_at") != receipt.get("created_at"):
+                raise ValueError("write receipt treeship created_at mismatch")
+
+            subject = treeship_statement.get("subject")
+            if not isinstance(subject, dict):
+                raise ValueError("write receipt missing treeship subject")
+            if subject.get("id") != receipt.get("receipt_id"):
+                raise ValueError("write receipt treeship subject id mismatch")
+            if subject.get("memory_id") != receipt.get("memory_id"):
+                raise ValueError("write receipt treeship subject memory_id mismatch")
+
+            for key in (
+                "actor_uri",
+                "session_id",
+                "parent_action_id",
+                "source_uri",
+                "content_digest",
+                "environment_hash",
+            ):
+                if statement_object.get(key) != receipt.get(key):
+                    raise ValueError(f"write receipt treeship {key} mismatch")
+            if statement_object.get("semantic_truth_guaranteed") is True:
+                raise ValueError("write receipt semantic_truth_guaranteed must not be true")
+
+            if statement_evidence.get("hash_alg") != HASH_ALG:
+                raise ValueError("write receipt treeship hash algorithm mismatch")
+            if statement_evidence.get("merkle_alg") != MERKLE_ALG:
+                raise ValueError("write receipt treeship merkle algorithm mismatch")
+            if statement_evidence.get("event_hash") != receipt.get("event_hash"):
+                raise ValueError("write receipt treeship event_hash mismatch")
+            if statement_evidence.get("merkle_root") != receipt.get("merkle_root"):
+                raise ValueError("write receipt treeship merkle_root mismatch")
+
+            if statement_source.get("system") != "zerker-memory":
+                raise ValueError("write receipt treeship source system mismatch")
+            for key in (
+                "receipt_schema",
+                "hash_alg",
+                "merkle_alg",
+                "receipt_id",
+                "memory_id",
+                "actor_uri",
+                "session_id",
+                "parent_action_id",
+                "source_uri",
+                "content_digest",
+                "environment_hash",
+                "event_hash",
+                "merkle_root",
+                "created_at",
+            ):
+                if source_receipt.get(key) != receipt.get(key):
+                    raise ValueError(f"write receipt source {key} mismatch")
+            if "receipt_hash" in source_receipt:
+                raise ValueError("write receipt source receipt must not include receipt_hash")
+
+            if isinstance(statement_attestation, dict):
+                if not isinstance(receipt_attestation, dict):
+                    raise ValueError("write receipt top-level attestation missing")
+                if receipt_attestation != statement_attestation:
+                    raise ValueError("write receipt attestation mismatch")
+                if statement_attestation.get("payload_digest") != f"{HASH_ALG}:{receipt['receipt_hash']}":
+                    raise ValueError("write receipt attestation payload_digest mismatch")
+                result["treeship_attestation_verified"] = True
+            elif receipt_attestation is not None:
+                raise ValueError("write receipt top-level attestation missing statement copy")
+
+            if prior_receipt is not None:
+                if prior_receipt.get("memory_id") != receipt.get("memory_id"):
+                    raise ValueError("prior receipt memory_id mismatch")
+                if statement_source.get("prior_receipt_id") != prior_receipt.get("receipt_id"):
+                    raise ValueError("prior_receipt_id mismatch")
+                if statement_source.get("prior_receipt_hash") != prior_receipt.get("receipt_hash"):
+                    raise ValueError("prior_receipt_hash mismatch")
+                if statement_evidence.get("prior_merkle_root") != prior_receipt.get("merkle_root"):
+                    raise ValueError("prior_merkle_root mismatch")
+            elif statement_source.get("prior_receipt_id") is not None or statement_source.get("prior_receipt_hash") is not None:
+                raise ValueError("write receipt unexpectedly links to a prior receipt")
+
+            if kind == "zerker.memory.mutation_receipt" and statement_evidence.get("new_merkle_root") != receipt.get("merkle_root"):
+                raise ValueError("write receipt treeship new_merkle_root mismatch")
+
+            result["treeship_statement_verified"] = True
+        except Exception as exc:
+            result["ok"] = False
+            result["error"] = str(exc)
+        return result
+
+    def verify_memory_write_receipt_chain(self, receipts: list[dict[str, Any]]) -> dict[str, Any]:
+        result = {
+            "ok": True,
+            "schema": "zerker.memory_write_receipt_chain_verification.v1",
+            "memory_id": None,
+            "receipt_count": 0,
+            "verified_transition_count": 0,
+            "semantic_truth_guaranteed": False,
+            "attestation_artifacts": [],
+            "receipts": [],
+        }
+        try:
+            if not isinstance(receipts, list) or not receipts:
+                raise ValueError("write receipt chain is empty")
+            result["receipt_count"] = len(receipts)
+
+            prior_receipt = None
+            for index, receipt in enumerate(receipts):
+                if not isinstance(receipt, dict):
+                    raise ValueError(f"write receipt at index {index} is invalid")
+                memory_id = receipt.get("memory_id")
+                if result["memory_id"] is None:
+                    result["memory_id"] = memory_id
+                elif memory_id != result["memory_id"]:
+                    raise ValueError("write receipt chain memory_id mismatch")
+
+                verification = self.verify_memory_write_receipt(receipt, prior_receipt=prior_receipt)
+                result["receipts"].append(
+                    {
+                        "receipt_id": receipt.get("receipt_id"),
+                        "receipt_hash": receipt.get("receipt_hash"),
+                        "verification": verification,
+                    }
+                )
+                if not verification["ok"]:
+                    raise ValueError(
+                        f"receipt {receipt.get('receipt_id') or index} verification failed: {verification['error']}"
+                    )
+
+                attestation = receipt.get("treeship_attestation")
+                if isinstance(attestation, dict):
+                    result["attestation_artifacts"].append(
+                        {
+                            "receipt_id": receipt.get("receipt_id"),
+                            "artifact_id": attestation.get("artifact_id"),
+                            "status": attestation.get("status"),
+                            "signed_at": attestation.get("signed_at"),
+                        }
+                    )
+
+                if prior_receipt is not None:
+                    result["verified_transition_count"] += 1
+                prior_receipt = receipt
+        except Exception as exc:
             result["ok"] = False
             result["error"] = str(exc)
         return result
@@ -9589,6 +10103,10 @@ class MemoryStore:
         receipt = dict(receipt_without_hash)
         receipt["treeship_statement"] = treeship_statement
         receipt["receipt_hash"] = sha256_text(stable_json(receipt))
+        treeship_attestation = self._maybe_attest_write_receipt(receipt)
+        if treeship_attestation is not None:
+            treeship_statement["attestation"] = treeship_attestation
+            receipt["treeship_attestation"] = treeship_attestation
         self.conn.execute(
             """
             INSERT INTO memory_write_receipts (
@@ -9617,6 +10135,48 @@ class MemoryStore:
             ),
         )
         return receipt
+
+    def _maybe_attest_write_receipt(self, receipt: dict[str, Any]) -> dict[str, Any] | None:
+        if not self.treeship_auto_sign:
+            return None
+        payload_digest = f"{HASH_ALG}:{receipt['receipt_hash']}"
+        try:
+            from .treeship import attest_treeship_payload_digest
+
+            attestation = attest_treeship_payload_digest(
+                payload_digest,
+                system_uri="system://zmem",
+                kind="memory.write",
+                subject=receipt["receipt_id"],
+                config_path=self.treeship_config_path,
+            )
+        except Exception as exc:  # pragma: no cover - defensive around external CLI boundaries
+            if self.treeship_strict:
+                raise RuntimeError(f"Treeship write receipt attestation failed: {exc}") from exc
+            attestation = {
+                "schema": "zerker.memory.treeship_attestation.v1",
+                "system": "system://zmem",
+                "kind": "memory.write",
+                "payload_digest": payload_digest,
+                "subject": receipt["receipt_id"],
+                "status": "failed",
+                "artifact_id": None,
+                "signed_at": None,
+                "error": str(exc),
+            }
+        if self.treeship_strict and attestation.get("status") != "signed":
+            raise RuntimeError(attestation.get("error") or "Treeship write receipt attestation failed")
+        return {
+            "schema": attestation.get("schema", "zerker.memory.treeship_attestation.v1"),
+            "status": attestation.get("status"),
+            "system": attestation.get("system", "system://zmem"),
+            "kind": attestation.get("kind", "memory.write"),
+            "subject": attestation.get("subject", receipt["receipt_id"]),
+            "payload_digest": attestation.get("payload_digest", payload_digest),
+            "artifact_id": attestation.get("artifact_id"),
+            "signed_at": attestation.get("signed_at"),
+            "error": attestation.get("error"),
+        }
 
     @staticmethod
     def _default_trust(source_kind: str) -> float:

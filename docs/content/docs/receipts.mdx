@@ -35,7 +35,19 @@ zmem treeship publish <action-id> --dry-run --command-template "treeship prove {
 
 The Treeship export is a portable statement derived from a verified receipt bundle. It records enough evidence to make the proof shareable without turning local memory into a hosted dependency.
 
+## Write Attestation
+
+For deployments that want every write to be signed as it happens, initialize Treeship locally and enable automatic write attestation:
+
+```bash
+export ZMEM_TREESHIP_AUTO_SIGN=1
+export ZMEM_TREESHIP_CONFIG=/path/to/treeship/config.json
+```
+
+Each memory write still stores the local ZMem receipt and Merkle lineage. When signing is enabled, ZMem asks Treeship to attest only the compact `sha256:<receipt_hash>` digest as `system://zmem` / `kind=memory.write`, then stores the returned artifact id and signed timestamp with the write receipt. Raw memory content is not duplicated into the Treeship attestation.
+
+Set `ZMEM_TREESHIP_STRICT=1` when an environment should fail the write if Treeship signing fails.
+
 ## Provenance Direction
 
 The next security demo should make write provenance vivid: inject a poisoned memory, let an agent act on it in a later session, then walk the receipt chain back to the source session and tool call that introduced the belief.
-

@@ -3,6 +3,7 @@ from __future__ import annotations
 import shlex
 import shutil
 import subprocess
+import json
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -14,6 +15,7 @@ TREESHIP_STATEMENT_SCHEMA = "com.zerker.memory.treeship.statement"
 TREESHIP_STATEMENT_SCHEMA_VERSION = "0.1.0"
 TREESHIP_STATEMENT_KIND = "zerker.memory.action_receipt"
 DEFAULT_TREESHIP_COMMAND_TEMPLATE = "treeship attest receipt --system system://zmem --kind memory.proof --payload-file {statement}"
+DEFAULT_TREESHIP_RECEIPT_COMMAND = "treeship"
 
 
 _FIELD_ALIASES = {
@@ -184,6 +186,84 @@ def publish_treeship_statement(
             "command": _redact_inline_payload(fallback_argv),
             "exit_code": fallback_completed.returncode if fallback_completed is not None else None,
         }
+    return result
+
+
+def attest_treeship_payload_digest(
+    payload_digest: str,
+    *,
+    system_uri: str = "system://zmem",
+    kind: str = "memory.write",
+    subject: str | None = None,
+    config_path: Path | None = None,
+    command: str | None = None,
+) -> dict[str, Any]:
+    """Ask Treeship to sign a compact digest-backed receipt.
+
+    This intentionally sends only a digest to Treeship. ZMem keeps the raw
+    memory/provenance receipt locally, and the Treeship artifact binds to the
+    receipt hash without duplicating private memory payloads into another store.
+    """
+
+    executable_name = command or DEFAULT_TREESHIP_RECEIPT_COMMAND
+    executable = shutil.which(executable_name)
+    result: dict[str, Any] = {
+        "schema": "zerker.memory.treeship_attestation.v1",
+        "system": system_uri,
+        "kind": kind,
+        "payload_digest": payload_digest,
+        "subject": subject,
+        "command": executable_name,
+        "resolved_executable": executable,
+        "status": "unavailable" if executable is None else "pending",
+        "artifact_id": None,
+        "signed_at": None,
+        "raw": None,
+    }
+    if executable is None:
+        result["error"] = f"Treeship CLI not found: {executable_name}"
+        return result
+
+    argv = [
+        executable_name,
+        "attest",
+        "receipt",
+        "--system",
+        system_uri,
+        "--kind",
+        kind,
+        "--payload-digest",
+        payload_digest,
+        "--format",
+        "json",
+    ]
+    if config_path is not None:
+        argv[3:3] = ["--config", str(config_path)]
+    if subject:
+        argv.extend(["--subject", subject])
+    completed = subprocess.run(argv, capture_output=True, text=True, check=False)
+    result.update(
+        {
+            "command_argv": argv,
+            "exit_code": completed.returncode,
+            "stdout": completed.stdout,
+            "stderr": completed.stderr,
+        }
+    )
+    if completed.returncode != 0:
+        result["status"] = "failed"
+        result["error"] = completed.stderr.strip() or completed.stdout.strip() or "Treeship attestation failed"
+        return result
+
+    payload: dict[str, Any] = {}
+    try:
+        payload = json.loads(completed.stdout or "{}")
+    except json.JSONDecodeError:
+        payload = {"stdout": completed.stdout}
+    result["raw"] = payload
+    result["status"] = "signed" if payload.get("status") in {None, "ok"} else str(payload.get("status"))
+    result["artifact_id"] = payload.get("id") or payload.get("artifact_id")
+    result["signed_at"] = payload.get("signed") or payload.get("signed_at")
     return result
 
 

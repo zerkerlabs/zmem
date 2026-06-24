@@ -466,6 +466,8 @@ zmem handoff --summary-only
 
 `zmem treeship doctor` checks whether a local Treeship CLI is reachable. `zmem treeship publish` exports a verified statement first, then signs it as a Treeship receipt with `system://zmem` and `kind=memory.proof`. Pass `--command-template` only when you need to override that default.
 
+For write-time signing, set `ZMEM_TREESHIP_AUTO_SIGN=1` after `treeship init`. ZMem will ask Treeship to attest the compact write-receipt digest as `system://zmem` / `kind=memory.write` and store the returned artifact metadata with the write receipt. Set `ZMEM_TREESHIP_STRICT=1` when unsigned writes should fail instead of falling back to local-only receipts.
+
 The command receives `ZERKER_MEMORY_CONTEXT`, `ZERKER_ACTION_ID`, `ZERKER_MEMORY_DB`, and `ZERKER_MEMORY_MERKLE_ROOT`.
 
 ## Local Review Console

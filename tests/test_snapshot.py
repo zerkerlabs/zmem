@@ -2,6 +2,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from zerker_memory.exporter import export_bundle, export_snapshot
 from zerker_memory.store import MemoryStore, merkle_root, sha256_text, stable_json
@@ -159,6 +160,62 @@ class SnapshotTest(unittest.TestCase):
             mutation_receipt["treeship_statement"]["evidence"]["new_merkle_root"],
             mutation_receipt["merkle_root"],
         )
+
+    def test_snapshot_restore_preserves_attested_ordered_write_receipt_chain(self):
+        store = MemoryStore(Path(self.tmp.name) / "attested-memory.sqlite", treeship_auto_sign=True)
+        signed_provenance = mock.Mock(
+            returncode=0,
+            stdout='{"id":"art_write_1","kind":"memory.write","signed":"2026-06-24T05:27:53Z","status":"ok","system":"system://zmem"}',
+            stderr="",
+        )
+        signed_mutation = mock.Mock(
+            returncode=0,
+            stdout='{"id":"art_write_2","kind":"memory.write","signed":"2026-06-24T05:27:54Z","status":"ok","system":"system://zmem"}',
+            stderr="",
+        )
+        with mock.patch("zerker_memory.treeship.shutil.which", return_value="/usr/local/bin/treeship"):
+            with mock.patch("zerker_memory.treeship.subprocess.run", side_effect=[signed_provenance, signed_mutation]) as run:
+                memory = store.remember(
+                    "Production deploys require approval",
+                    memory_type="policy",
+                    scope="project",
+                    source_kind="agent",
+                    actor_id="codex",
+                    actor_uri="agent://codex/session-a",
+                    session_id="session://alpha",
+                    source_uri="conversation://session-a/message-17",
+                    parent_action_id="act_prompt_injection",
+                    environment_hash="sha256:env_fixture",
+                )
+                store.promote(memory.id, actor_id="reviewer")
+
+        snapshot = store.snapshot()
+        snapshot_receipts = [receipt for receipt in snapshot["write_receipts"] if receipt["memory_id"] == memory.id]
+        self.assertEqual(len(snapshot_receipts), 2)
+        self.assertEqual([receipt["treeship_attestation"]["artifact_id"] for receipt in snapshot_receipts], ["art_write_1", "art_write_2"])
+        for receipt in snapshot_receipts:
+            self.assertEqual(receipt["treeship_attestation"]["payload_digest"], f"sha256:{receipt['receipt_hash']}")
+            self.assertEqual(receipt["treeship_statement"]["attestation"], receipt["treeship_attestation"])
+
+        restored = MemoryStore(Path(self.tmp.name) / "restored-attested.sqlite")
+        result = restored.restore_snapshot(snapshot)
+
+        self.assertTrue(result["ok"])
+        restored_receipts = restored.memory_write_receipts(memory.id)
+        self.assertEqual([receipt["receipt_id"] for receipt in restored_receipts], [receipt["receipt_id"] for receipt in snapshot_receipts])
+        self.assertEqual(restored.memory_write_receipt(memory.id)["receipt_id"], snapshot_receipts[0]["receipt_id"])
+        for expected, actual in zip(snapshot_receipts, restored_receipts):
+            self.assertEqual(actual["treeship_attestation"], expected["treeship_attestation"])
+            self.assertEqual(actual["treeship_statement"]["attestation"], expected["treeship_attestation"])
+            self.assertEqual(actual["treeship_attestation"]["payload_digest"], f"sha256:{actual['receipt_hash']}")
+        self.assertEqual(run.call_count, 2)
+
+        snapshot_verification = store.verify_memory_write_receipt_chain(snapshot_receipts)
+        restored_verification = restored.verify_memory_write_receipt_chain(restored_receipts)
+        self.assertTrue(snapshot_verification["ok"])
+        self.assertTrue(restored_verification["ok"])
+        self.assertEqual(snapshot_verification["attestation_artifacts"], restored_verification["attestation_artifacts"])
+        self.assertFalse(restored_verification["semantic_truth_guaranteed"])
 
     def test_export_snapshot_writes_hashed_artifact(self):
         self.store.remember(
