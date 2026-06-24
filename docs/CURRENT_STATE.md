@@ -2,6 +2,23 @@
 
 This is the short orchestration dashboard for Zerker Memory. Every autonomous build run should update this file after it updates `docs/BUILD_LOG.md`.
 
+## Identity Workspaces
+`2026-06-24T03:03:39Z`
+
+- `zmem workspace sources --summary-only` now explains read-only claim-conflict outcomes instead of only listing them.
+- Merge previews and the terminal summary now show a `resolution_basis` for each conflict, indicating whether the local winner came from higher authority, higher trust, fresher `updated_at`, fresher `created_at`, or an exact tie that forced abstention.
+- Each conflicting claim line now includes workspace id, source kind, created/updated timestamps, receipt id, and a proof-root prefix so multi-agent source lineage is visible without opening raw JSON.
+- Verified `python3 -m unittest tests.test_workspaces -q` (`Ran 8 tests`), required `python3 -m unittest tests.test_store tests.test_cli_onboarding -q` (`Ran 304 tests`), and `python3 -m zerker_memory eval` (`11/11`).
+- This slice stayed read-only and local-first: no memory write path, SQLite schema, Hub dependency, or dashboard surface changed.
+
+## Temporal Runtime Context
+`2026-06-24T02:59:31Z`
+
+- `zerker.memory_context.v1` payloads now preserve the existing receipt-side temporal subset envelopes instead of flattening runtime context down to only `memories`, `withheld`, and `budget_dropped` lists.
+- `runner.build_context()` now carries `temporal.selection_strategy`, `selection_reason`, selected/current/history/superseded ids, current-conflict summaries, and the existing `selected_temporal_graph`, `injected_temporal_graph`, `withheld_temporal_graph`, and `budget_dropped_temporal_graph` subsets into the generated context JSON.
+- Locked with focused runner fixtures for `Alice` vs `Alice Chen` history disambiguation and withheld-plus-budget-dropped omitted subsets, then verified with full `python3 -m unittest tests.test_store -q` (`Ran 191 tests`), full `python3 -m unittest tests.test_runner -q` (`Ran 82 tests`), and `python3 -m zerker_memory eval` (`11/11`).
+- This slice stayed schema-free and runtime-only: no `MemoryStore` temporal projection logic changed, no SQLite migration landed, and no external graph dependency was introduced.
+
 ## Lifecycle Compaction
 `2026-06-24T00:56:48Z`
 
@@ -214,14 +231,15 @@ This is the short orchestration dashboard for Zerker Memory. Every autonomous bu
 - No SQLite schema changed in this slice; the new temporal surface is a derived local projection over existing receipts/events, and explicit same-subject update/restatement edges are still only receipt-time retrieval logic outside `query_at`.
 
 ## Trust Ledger
-`2026-06-23T23:02:26Z`
+`2026-06-24T03:05:29Z`
 
 - `promote()`, `reject()`, root `revoke()`, and `forget()` still append durable mutation receipts in addition to the original source-provenance write receipt; lifecycle checkpoint/snapshot events still expose derived receipt envelopes; and `restore_snapshot()` still returns its own explicit rollback/export receipt without appending a new event to the restored chain.
 - Ordered write-receipt access remains split intentionally: `memory_write_receipt(memory_id)` stays pinned to the original provenance anchor, while `memory_write_receipts(memory_id)` exposes the full event-ordered chain for independent verification and snapshot export.
 - `MemoryStore.verify_lifecycle_receipt(receipt, *, source_snapshot=None)` now gives the lifecycle receipt family a shared local verifier: it recomputes `receipt_hash`, `content_digest`, and embedded Treeship statement consistency, and when a snapshot is supplied it also verifies snapshot hash/root/count linkage for rollback/export or persisted session snapshot receipts.
 - `restore_snapshot(snapshot, *, actor_id=\"snapshot_restore\")` still returns a deterministic `zerker.lifecycle_receipt.v1` payload with actor identity, snapshot hash, payload content digest, prior/new Merkle roots, optional `treeship_artifact_id: null`, and an embedded `zerker.memory.mutation_receipt` statement. The restored store Merkle root still matches the imported snapshot Merkle root exactly because this receipt is derived, not event-appended.
-- Lifecycle receipt verification proves provenance, integrity, and snapshot-lineage consistency only; it does not guarantee semantic truth of the restored or snapshotted memories. No Treeship CLI or hosted service is required to verify it locally.
-- Verified with focused lifecycle receipt verification tests, full `python3 -m unittest tests.test_snapshot -q` (`Ran 20 tests`), full `python3 -m unittest tests.test_store -q` (`Ran 190 tests`), and `python3 -m zerker_memory eval` (`11/11`).
+- `zmem --db ... restore --handoff-dir ... --summary-only` now verifies that returned rollback/export receipt against the source snapshot and surfaces receipt verification status, receipt id/hash, snapshot hash, prior/new Merkle roots, and optional Treeship artifact id in the terminal summary.
+- Lifecycle receipt verification and the new restore summary prove provenance, integrity, and snapshot-lineage consistency only; they do not guarantee semantic truth of the restored or snapshotted memories. No Treeship CLI or hosted service is required to verify them locally.
+- Verified with focused restore lifecycle/store CLI tests plus `python3 scripts/release_smoke.py --summary-only` and `python3 -m zerker_memory status --summary-only`, both still green.
 
 ## Benchmark Scoring Workflow
 `2026-06-22T22:59:00Z`
@@ -296,6 +314,15 @@ This is the short orchestration dashboard for Zerker Memory. Every autonomous bu
 - Mapped the current temporal surface in [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/temporal-kg.log.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/temporal-kg.log.md): existing behavior derives temporal state from `created_at`, `updated_at`, `expires_at`, `status`, and `parents_json`; explicit `valid_from`/`valid_to`/`learned_at`/`superseded_at`/`unlearned_at` fields and `query_at(timestamp)` are still unbuilt.
 - Verified `python3 -m unittest tests.test_store.MemoryStoreTest.test_temporal_contract_current_vs_history_keeps_identity_disambiguation -q` and `python3 -m unittest tests.test_store -q`; no runtime behavior or schema changed.
 - Next safe temporal slice is a failing `query_at(timestamp)` contract on the same fixture, followed by the smallest local-store point-in-time API.
+
+## Consolidation
+`2026-06-23T23:31:00Z`
+
+- Added the first L4 append-only local summary ledger in [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/consolidation.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/consolidation.py), with focused coverage in [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_consolidation.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_consolidation.py) and updated operator notes in [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONSOLIDATION_FIXTURE.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONSOLIDATION_FIXTURE.md).
+- Consolidation now has five local-first layers: ordered levels and reversible lineage, an append-only job ledger, a deterministic recall planner, a deterministic local summary materializer, and an append-only summary ledger keyed by emitted `summary_id`.
+- The summary-ledger contract stays auditable and reversible: it only accepts completed jobs whose `job_id`, `output_summary_ids`, levels, ordered `source_child_ids`, `source_child_digests`, `content_digest`, and `hosted_llm: false` summarizer metadata still match the emitted `zerker.consolidation_summary.v1` payload.
+- Verified `python3 -m unittest tests.test_consolidation.ConsolidationFixtureTest.test_summary_records_persist_in_append_only_local_ledger tests.test_consolidation.ConsolidationFixtureTest.test_summary_ledger_rejects_mismatch_with_completed_job_output_ids -q` (`Ran 2 tests`) and `python3 -m unittest tests.test_consolidation -q` (`Ran 13 tests`).
+- Next safe consolidation slice is store-backed candidate sourcing or a store-visible/read-only surface for persisted summaries, still without widening into hosted summarization.
 
 ## Consolidation
 `2026-06-23T18:57:35Z`

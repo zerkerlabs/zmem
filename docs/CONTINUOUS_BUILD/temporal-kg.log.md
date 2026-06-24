@@ -1,5 +1,16 @@
 # Temporal KG Lane Log
 
+## 2026-06-24T02:59:31Z - L1 temporal-kg - Codex L1 worker
+
+- Scope: carried the existing bi-temporal receipt subsets through `runner.build_context()` so runtime memory context preserves current/history and omitted-memory envelopes without any store/schema change.
+- Files touched: `zerker_memory/runner.py`, `tests/test_runner.py`, `docs/CONTINUOUS_BUILD/temporal-kg.log.md`, `docs/CURRENT_STATE.md`, `docs/BUILD_LOG.md`, `docs/SWARM_OPERATION_TRACKER.md`.
+- Behavior changed: generated `zerker.memory_context.v1` payloads now include `temporal` metadata with `selection_strategy`, `selection_reason`, selected/current/history/superseded ids, current-conflict summaries, and the existing `selected_temporal_graph`, `injected_temporal_graph`, `withheld_temporal_graph`, and `budget_dropped_temporal_graph` subset envelopes from the stored receipt.
+- Focused fixtures: one `Alice` vs `Alice Chen` history fixture proves runtime context keeps the superseded/current pair and leaves an unrelated `Alice` fact out of the selected temporal envelope; one omitted-subset fixture proves a denied `Status page owner is Alice Chen.` fact stays `current` in `withheld_temporal_graph` while `Incident owner was Alex.` remains injected superseded history and `Incident owner is Priya.` stays visible as a budget-dropped current envelope.
+- Tests: `python3 -m unittest tests.test_runner.RunnerTest.test_build_context_preserves_current_vs_history_temporal_envelopes tests.test_runner.RunnerTest.test_build_context_preserves_temporal_omitted_subset_envelopes tests.test_runner.RunnerTest.test_build_context_separates_instructional_and_recall_memory_and_surfaces_budget_receipts -q` passed (`Ran 3 tests`); `python3 -m unittest tests.test_store -q` passed (`Ran 191 tests`); `python3 -m unittest tests.test_runner -q` passed (`Ran 82 tests`); `python3 -m zerker_memory eval` passed (`11/11`).
+- Artifacts/receipts: none.
+- Blockers: contradiction/abstention metadata is now forwarded into runtime context, but there is still no focused runner fixture proving a no-injection current-conflict snapshot survives into `temporal.conflict_sets` / `temporal.abstention`.
+- Next safe slice: add one bounded runner-context contradiction fixture for competing current claims, or stop before any schema/query-surface work until a stricter `query_at(timestamp, status=...)` contract is needed.
+
 ## 2026-06-23T22:54:22Z - L1 temporal-kg - Codex L1 worker
 
 - Scope: added receipt-visible temporal subset envelopes for omitted memories so `inject(...)` preserves current-vs-history metadata for `withheld` and `budget_dropped` facts without any schema change.

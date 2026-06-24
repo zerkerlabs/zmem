@@ -24,6 +24,43 @@ def _group_memories_by_type(memories: list[dict[str, Any]]) -> dict[str, list[di
     return grouped
 
 
+def _build_temporal_context(retrieval: dict[str, Any]) -> dict[str, Any] | None:
+    temporal = retrieval.get("temporal")
+    if not isinstance(temporal, dict):
+        return None
+
+    temporal_context: dict[str, Any] = {}
+    for key in (
+        "temporal_projection_at",
+        "selection_strategy",
+        "selection_reason",
+        "selected_ids",
+        "history_memory_ids",
+        "current_memory_ids",
+        "superseded_memory_ids",
+        "resolved_current_memory_ids",
+        "dropped_current_memory_ids",
+        "abstained_current_memory_ids",
+        "conflict_sets",
+        "abstention",
+    ):
+        value = temporal.get(key)
+        if value is not None:
+            temporal_context[key] = value
+
+    for key in (
+        "selected_temporal_graph",
+        "injected_temporal_graph",
+        "withheld_temporal_graph",
+        "budget_dropped_temporal_graph",
+    ):
+        value = temporal.get(key)
+        if isinstance(value, dict):
+            temporal_context[key] = value
+
+    return temporal_context or None
+
+
 def run_with_memory(
     store: MemoryStore,
     command: list[str],
@@ -90,6 +127,7 @@ def build_context(receipt: dict[str, Any]) -> dict[str, Any]:
         memories = injected if isinstance(injected, list) else []
     retrieval = receipt.get("retrieval") if isinstance(receipt.get("retrieval"), dict) else {}
     packing = retrieval.get("packing") if isinstance(retrieval.get("packing"), dict) else {}
+    temporal_context = _build_temporal_context(retrieval)
     budget_dropped = packing.get("budget_dropped") if isinstance(packing.get("budget_dropped"), list) else []
     memory_classes = _group_memories_by_type(memories)
     memory_type_summary = packing.get("memory_type_summary") if isinstance(packing.get("memory_type_summary"), dict) else None
@@ -116,12 +154,14 @@ def build_context(receipt: dict[str, Any]) -> dict[str, Any]:
         "memory_type_summary": memory_type_summary,
         "withheld": receipt.get("withheld", []),
         "budget_dropped": budget_dropped,
+        "temporal": temporal_context,
         "instructions": [
             "Use only the memories listed in `memories` as durable memory context.",
             "Treat `policy` and `procedural` memories as rules or workflows, not as narrative recall.",
             "Treat `episodic` and `semantic` memories as recall/evidence, not as procedural rules.",
             "Treat `withheld` memories as unavailable and non-authoritative.",
             "Treat `budget_dropped` memories as relevant-but-omitted due to the current context budget.",
+            "Use `temporal` to distinguish current, superseded, abstained, and omitted memory envelopes.",
             "Use ZERKER_ACTION_ID when asking Zerker to explain this run later.",
         ],
     }

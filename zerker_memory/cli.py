@@ -4669,6 +4669,9 @@ def run_release_pack(
 
 
 def render_restore_summary(result: dict) -> str:
+    restore_receipt = result["restore"]["receipt"]
+    restore_verify = result.get("restore_verify") or {}
+    restore_evidence = ((restore_receipt.get("treeship_statement") or {}).get("evidence") or {})
     lines = [
         "Zerker Memory restore",
         "",
@@ -4691,6 +4694,13 @@ def render_restore_summary(result: dict) -> str:
         [
             f"Restored memories: {result['restore']['memory_count']}",
             f"Restored receipts: {result['restore']['receipt_count']}",
+            f"Restore receipt verify: {'ok' if restore_verify.get('ok') else 'failed'}",
+            f"Restore receipt id: {restore_receipt['receipt_id']}",
+            f"Restore receipt hash: {restore_receipt['receipt_hash']}",
+            f"Snapshot hash: {result['restore']['snapshot_hash']}",
+            f"Root transition: {restore_evidence.get('prior_merkle_root')} -> {restore_receipt['merkle_root']}",
+            f"Treeship artifact: {restore_receipt.get('treeship_artifact_id') or 'none'}",
+            "Semantic truth: not guaranteed",
         ]
     )
     if result.get("next_steps"):
@@ -5652,6 +5662,10 @@ def restore_handoff_package(store: MemoryStore, *, handoff_dir: Path) -> dict:
             raise ValueError(bundle_verify.get("error", "handoff bundle verification failed"))
 
     restore_result = store.restore_snapshot(snapshot_payload)
+    restore_verify = store.verify_lifecycle_receipt(
+        restore_result["receipt"],
+        source_snapshot=snapshot_payload,
+    )
     next_steps = [
         f"zmem --db {store.db_path} status --summary-only --skip-eval",
         f"zmem --db {store.db_path} ui",
@@ -5679,6 +5693,7 @@ def restore_handoff_package(store: MemoryStore, *, handoff_dir: Path) -> dict:
         "bundle_verify": bundle_verify,
         "treeship_path": str(discovered["treeship_path"]) if discovered.get("treeship_path") is not None else None,
         "restore": restore_result,
+        "restore_verify": restore_verify,
         "next_steps": next_steps,
     }
 
@@ -5835,15 +5850,22 @@ def render_workspace_sources_summary(report: dict[str, Any]) -> str:
         agent_id = str(claim.get("agent_id") or "unknown")
         session_id = str(claim.get("chat_session_id") or "unknown-session")
         source_uri = str(claim.get("source_uri") or "unknown-source")
+        workspace_id = str(claim.get("workspace_id") or "unknown-workspace")
+        source_kind = str(claim.get("source_kind") or "unknown")
         trust_status = str(claim.get("trust_status") or "unknown")
         authority = str(claim.get("authority") or "none")
         trust = claim.get("trust")
         trust_text = f"{float(trust):.2f}" if isinstance(trust, (int, float)) else "unknown"
+        updated_at = str(claim.get("updated_at") or "unknown")
+        created_at = str(claim.get("created_at") or "unknown")
         proof_lineage = claim.get("proof_lineage") or {}
         receipt_id = str(proof_lineage.get("receipt_id") or "unknown-receipt")
+        merkle_root = str(proof_lineage.get("merkle_root") or "unknown-root")
+        merkle_root_short = merkle_root[:12]
         return (
             f"{agent_id} @ {session_id} via {source_uri} "
-            f"[status={trust_status} authority={authority} trust={trust_text} receipt={receipt_id}]"
+            f"[workspace={workspace_id} kind={source_kind} status={trust_status} authority={authority} trust={trust_text} "
+            f"updated={updated_at} created={created_at} receipt={receipt_id} root={merkle_root_short}]"
         )
 
     lines = [
@@ -5873,6 +5895,7 @@ def render_workspace_sources_summary(report: dict[str, Any]) -> str:
         for conflict in claim_conflicts[:5]:
             merge_preview = conflict.get("merge_preview") or {}
             outcome = str(merge_preview.get("resolution_outcome") or "unknown")
+            resolution_basis = merge_preview.get("resolution_basis") or {}
             subject_key = str(conflict.get("entity_key") or conflict.get("subject_key") or "unknown entity")
             relation = str(conflict.get("relation") or "is")
             values = [
@@ -5889,6 +5912,7 @@ def render_workspace_sources_summary(report: dict[str, Any]) -> str:
                     f"  - unresolved exact tie: {subject_key} {relation} [{value_summary}] from {agent_summary}"
                 )
                 lines.append(f"    tie fields: {tie_fields}")
+                lines.append(f"    abstention basis: {resolution_basis.get('summary') or 'exact tie on deciding fields'}")
                 for claim in conflict.get("claims") or []:
                     claim_value = str(claim.get("value") or "unknown")
                     lines.append(f"    {claim_value}: {claim_lineage_summary(claim)}")
@@ -5897,6 +5921,12 @@ def render_workspace_sources_summary(report: dict[str, Any]) -> str:
                 lines.append(
                     f"  - resolved: {subject_key} {relation} -> {chosen_value} from {agent_summary}"
                 )
+                lines.append(f"    resolution basis: {resolution_basis.get('summary') or 'current rule preview'}")
+                chosen_memory_id = str(merge_preview.get("chosen_memory_id") or "")
+                for claim in conflict.get("claims") or []:
+                    claim_value = str(claim.get("value") or "unknown")
+                    label = "chosen" if str(claim.get("memory_id") or "") == chosen_memory_id else "other"
+                    lines.append(f"    {label} {claim_value}: {claim_lineage_summary(claim)}")
         if len(claim_conflicts) > 5:
             lines.append(f"  ... {len(claim_conflicts) - 5} more conflicts omitted")
     else:

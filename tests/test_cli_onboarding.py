@@ -869,9 +869,14 @@ class CliOnboardingTest(unittest.TestCase):
         self.assertEqual(result["schema"], "zerker.restore_handoff.v1")
         self.assertTrue(result["snapshot_verify"]["ok"])
         self.assertTrue(result["bundle_verify"]["ok"])
+        self.assertTrue(result["restore_verify"]["ok"])
+        self.assertFalse(result["restore_verify"]["semantic_truth_guaranteed"])
         self.assertEqual(result["restore"]["memory_count"], 1)
         self.assertEqual(result["restore"]["receipt_count"], 1)
         self.assertIn("Bundle verify: ok", summary)
+        self.assertIn("Restore receipt verify: ok", summary)
+        self.assertIn("Semantic truth: not guaranteed", summary)
+        self.assertIn("Treeship artifact: none", summary)
         self.assertIn("Restored memories: 1", summary)
 
     def test_run_prelaunch_check_flags_public_url_placeholders(self):

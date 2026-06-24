@@ -66,6 +66,16 @@ The fixture now exposes a first deterministic local summary-writer contract on t
 
 This keeps the runtime summary surface deliberately small: it produces a local-first summary payload from already-selected child evidence, but it still does not inspect the live store, persist summary records to a separate ledger, or call a hosted LLM.
 
+## Local Summary Ledger
+
+The fixture now also exposes the first append-only persistence contract for emitted summaries:
+
+- `append_consolidation_summary_record(path, job, summary)` writes a completed job's `zerker.consolidation_summary.v1` payload into a local JSONL ledger only after validating that the job and summary still agree on `job_id`, `output_summary_ids`, ordered `source_child_ids`, levels, reversibility, and `hosted_llm: false`.
+- `load_consolidation_summary_records(path)` reloads the append-only summary ledger into ordered history.
+- `latest_consolidation_summaries(path)` returns the latest ledger view keyed by `summary_id`.
+
+This keeps summary persistence reversible and auditable without widening the system boundary: it still does not inspect the live store, run a daemon, or require hosted summarization, but emitted summaries no longer have to remain purely in-memory values.
+
 ## Current Boundary
 
-The fixture in [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/consolidation.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/consolidation.py) now exposes ordered levels, reversible lineage, the local job ledger, the recall-planner contract, and a deterministic local summary materializer, still with `hosted_llm: false` and `model_id: null`. The next implementation slice should persist emitted summary records locally or add store-backed candidate sourcing on top of this contract, without adding hosted summarization as a hard dependency.
+The fixture in [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/consolidation.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/consolidation.py) now exposes ordered levels, reversible lineage, the local job ledger, the recall-planner contract, a deterministic local summary materializer, and an append-only summary ledger, still with `hosted_llm: false` and `model_id: null`. The next implementation slice should source consolidation candidates from the live store or persist these summaries into a store-backed surface, without adding hosted summarization as a hard dependency.

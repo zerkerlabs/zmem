@@ -101,6 +101,150 @@ class RunnerTest(unittest.TestCase):
         self.assertTrue(
             any("procedural" in instruction and "episodic" in instruction for instruction in context["instructions"])
         )
+        self.assertEqual(context["temporal"]["injected_temporal_graph"][policy.id]["temporal_state"], "current")
+        self.assertEqual(context["temporal"]["withheld_temporal_graph"][withheld.id]["temporal_state"], "learned")
+        self.assertEqual(context["temporal"]["budget_dropped_temporal_graph"][semantic.id]["temporal_state"], "current")
+
+    def test_build_context_preserves_current_vs_history_temporal_envelopes(self):
+        unrelated = self.store.remember(
+            "Alice owns the billing exporter.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        stale = self.store.remember(
+            "Status page owner is Alice.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        current = self.store.remember(
+            "Status page owner is Alice Chen.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            parents=[stale.id],
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-15T00:00:00Z", "2024-01-15T00:00:00Z", unrelated.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z", stale.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-02-01T00:00:00Z", "2024-02-01T00:00:00Z", current.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-15T00:00:00Z", unrelated.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-01T00:00:00Z", stale.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-02-01T00:00:00Z", current.id),
+        )
+        self.store.conn.commit()
+
+        receipt = self.store.inject("previous status page owner", agent_id="codex", risk="low", scope="project")
+        context = build_context(receipt)
+        temporal = context["temporal"]
+
+        self.assertEqual([memory["id"] for memory in context["memories"]], [stale.id, current.id])
+        self.assertEqual(temporal["selection_strategy"], "historical_preferred_v1")
+        self.assertEqual(temporal["selection_reason"], "history-query-terms")
+        self.assertEqual(temporal["selected_ids"], [stale.id, current.id])
+        self.assertEqual(temporal["history_memory_ids"], [stale.id, current.id])
+        self.assertEqual(temporal["current_memory_ids"], [current.id])
+        self.assertEqual(temporal["superseded_memory_ids"], [stale.id])
+        self.assertNotIn(unrelated.id, temporal["selected_temporal_graph"])
+        self.assertEqual(temporal["injected_temporal_graph"][stale.id]["temporal_state"], "superseded")
+        self.assertEqual(temporal["injected_temporal_graph"][stale.id]["valid_to"], "2024-02-01T00:00:00Z")
+        self.assertEqual(temporal["injected_temporal_graph"][current.id]["temporal_state"], "current")
+
+    def test_build_context_preserves_temporal_omitted_subset_envelopes(self):
+        policy_path = self.tmp_path / "policy.json"
+        policy_path.write_text('{"schema":"zerker.policy.v1","deny_labels":["secret"]}', encoding="utf-8")
+        store = MemoryStore(self.tmp_path / "temporal-policy.sqlite", policy_path=policy_path)
+        store.init()
+        withheld = store.remember(
+            "Status page owner is Alice Chen.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            labels=["secret"],
+        )
+        stale = store.remember(
+            "Incident owner was Alex.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        current = store.remember(
+            "Incident owner is Priya.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            parents=[stale.id],
+        )
+        store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-02-01T00:00:00Z", "2024-02-01T00:00:00Z", withheld.id),
+        )
+        store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z", stale.id),
+        )
+        store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-02-01T00:00:00Z", "2024-02-01T00:00:00Z", current.id),
+        )
+        store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-02-01T00:00:00Z", withheld.id),
+        )
+        store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-01T00:00:00Z", stale.id),
+        )
+        store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-02-01T00:00:00Z", current.id),
+        )
+        store.conn.commit()
+
+        withheld_receipt = store.inject(
+            "who is the status page owner",
+            agent_id="codex",
+            risk="low",
+            scope="project",
+        )
+        withheld_context = build_context(withheld_receipt)
+        withheld_temporal = withheld_context["temporal"]
+
+        self.assertEqual(withheld_receipt["withheld"][0]["memory_id"], withheld.id)
+        self.assertEqual(withheld_temporal["withheld_temporal_graph"][withheld.id]["temporal_state"], "current")
+        self.assertEqual(withheld_temporal["withheld_temporal_graph"][withheld.id]["valid_from"], "2024-02-01T00:00:00Z")
+
+        budget_receipt = store.inject(
+            "when did the incident owner change then",
+            agent_id="codex",
+            risk="low",
+            scope="project",
+            context_budget_tokens=max(approx_memory_tokens(stale), approx_memory_tokens(current)),
+        )
+        budget_context = build_context(budget_receipt)
+        budget_temporal = budget_context["temporal"]
+
+        self.assertEqual(budget_receipt["retrieval"]["packing"]["budget_dropped"][0]["memory_id"], current.id)
+        self.assertEqual(budget_temporal["injected_temporal_graph"][stale.id]["temporal_state"], "superseded")
+        self.assertEqual(budget_temporal["budget_dropped_temporal_graph"][current.id]["temporal_state"], "current")
+        self.assertEqual(budget_temporal["budget_dropped_temporal_graph"][current.id]["valid_from"], "2024-02-01T00:00:00Z")
 
     def test_history_query_context_includes_superseded_memory_when_requested(self):
         parent = self.store.remember(

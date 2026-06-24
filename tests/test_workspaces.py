@@ -155,6 +155,8 @@ class WorkspaceRegistryTest(unittest.TestCase):
             self.assertEqual(conflict["merge_preview"]["resolution_outcome"], "resolved")
             self.assertEqual(conflict["merge_preview"]["chosen_memory_id"], second.id)
             self.assertEqual(conflict["merge_preview"]["chosen_value"], "priya")
+            self.assertEqual(conflict["merge_preview"]["resolution_basis"]["field"], "updated_at")
+            self.assertEqual(conflict["merge_preview"]["resolution_basis"]["summary"], "freshest updated_at")
             self.assertEqual(conflict["claims"][0]["proof_lineage"]["treeship_statement_kind"], "zerker.memory.write_provenance")
 
     def test_workspace_source_report_surfaces_unresolved_exact_tie_claim_conflicts(self):
@@ -209,6 +211,10 @@ class WorkspaceRegistryTest(unittest.TestCase):
             self.assertIsNone(conflict["merge_preview"]["chosen_memory_id"])
             self.assertCountEqual(conflict["merge_preview"]["abstained_memory_ids"], [first.id, second.id])
             self.assertEqual(conflict["merge_preview"]["tie_fields"], ["authority", "trust", "updated_at", "created_at"])
+            self.assertEqual(
+                conflict["merge_preview"]["resolution_basis"]["summary"],
+                "exact tie on authority, trust, updated_at, created_at",
+            )
 
     def test_workspace_sources_cli_prints_read_only_lineage(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -313,11 +319,76 @@ class WorkspaceRegistryTest(unittest.TestCase):
             self.assertIn("Claim conflicts: 1", summary)
             self.assertIn("unresolved exact tie", summary)
             self.assertIn("authority, trust, updated_at, created_at", summary)
+            self.assertIn("abstention basis: exact tie on authority, trust, updated_at, created_at", summary)
             self.assertIn("alex: codex @ chat://codex/session-17", summary)
             self.assertIn("priya: openclaw @ chat://openclaw/session-22", summary)
             self.assertIn("conversation://codex/session-17/message-3", summary)
             self.assertIn("conversation://openclaw/session-22/message-9", summary)
             self.assertIn("status=active authority=medium trust=0.95", summary)
+            self.assertIn("workspace=ws_", summary)
+            self.assertIn("root=", summary)
+
+    def test_workspace_sources_cli_summary_surfaces_resolution_basis_for_resolved_conflict(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            registry_path = tmp_path / "workspaces.json"
+            root = tmp_path / "project"
+            root.mkdir()
+            register_workspace(name="Project", root=root, registry_path=registry_path)
+            store = MemoryStore(root / ".zerker" / "memory.sqlite")
+            first = store.remember(
+                "Incident owner is Alex",
+                memory_type="semantic",
+                scope="project",
+                source_kind="agent",
+                actor_uri="agent://codex/chat-17",
+                session_id="chat://codex/session-17",
+                source_uri="conversation://codex/session-17/message-3",
+                status="active",
+            )
+            second = store.remember(
+                "Incident owner is Priya",
+                memory_type="semantic",
+                scope="project",
+                source_kind="agent",
+                actor_uri="agent://openclaw/chat-22",
+                session_id="chat://openclaw/session-22",
+                source_uri="conversation://openclaw/session-22/message-9",
+                status="active",
+            )
+            store.conn.execute(
+                "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+                ("2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z", first.id),
+            )
+            store.conn.execute(
+                "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+                ("2024-02-01T00:00:00Z", "2024-02-01T00:00:00Z", second.id),
+            )
+            store.conn.commit()
+            output = io.StringIO()
+
+            with patch.dict(os.environ, {"ZMEM_WORKSPACE_REGISTRY": str(registry_path)}):
+                with redirect_stdout(output):
+                    exit_code = main(
+                        [
+                            "--db",
+                            str(root / ".zerker" / "memory.sqlite"),
+                            "--policy",
+                            str(root / ".zerker" / "policy.json"),
+                            "ws",
+                            "sources",
+                            "--limit",
+                            "5",
+                            "--summary-only",
+                        ]
+                    )
+
+            summary = output.getvalue()
+            self.assertEqual(exit_code, 0)
+            self.assertIn("resolved: incident owner is -> priya", summary)
+            self.assertIn("resolution basis: freshest updated_at", summary)
+            self.assertIn("chosen priya: openclaw @ chat://openclaw/session-22", summary)
+            self.assertIn("other alex: codex @ chat://codex/session-17", summary)
 
 
 if __name__ == "__main__":

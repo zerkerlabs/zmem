@@ -1,5 +1,15 @@
 # Identity Workspaces Lane Log
 
+## 2026-06-24T03:03:39Z - L5 identity-workspaces - Codex
+
+- Scope: extended the existing read-only workspace conflict summary so operators can see why a competing claim resolved or abstained without reading raw JSON.
+- Files touched: `zerker_memory/workspaces.py`, `zerker_memory/cli.py`, `tests/test_workspaces.py`, `docs/CONTINUOUS_BUILD/identity-workspaces.log.md`, `docs/SWARM_OPERATION_TRACKER.md`, `docs/CURRENT_STATE.md`, `docs/BUILD_LOG.md`.
+- Behavior changed: `workspace_source_report` now adds read-only `merge_preview.resolution_basis`; `zmem ws sources --summary-only` now shows whether a conflict resolved by authority, trust, `updated_at`, or `created_at`, and each conflicting claim line now includes workspace id, source kind, timestamps, receipt id, and proof-root prefix.
+- Tests: `python3 -m unittest tests.test_workspaces -q` passed; `python3 -m unittest tests.test_store tests.test_cli_onboarding -q` passed (`Ran 304 tests`); `python3 -m zerker_memory eval` passed (`11/11`).
+- Artifacts/receipts: no external artifacts; the new explanation layer is derived from existing local workspace/source reports plus existing write receipts.
+- Blockers: this still does not persist merge decisions, add explicit agent identity keys, or capture explicit tool/repo lineage fields per source receipt.
+- Next safe slice: mirror the same `resolution_basis` and per-claim lineage detail into the dashboard conflict card, or add one bounded local repo/tool descriptor to the read-only source model without touching write paths.
+
 ## 2026-06-23T10:57:00Z - L5 identity-workspaces - Codex
 
 - Scope: added a compact read-only CLI summary for `zmem workspace sources` so unresolved cross-agent claim ties are visible without reading raw JSON or opening the dashboard.

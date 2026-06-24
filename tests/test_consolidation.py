@@ -7,12 +7,15 @@ from zerker_memory.consolidation import (
     CONSOLIDATION_LINEAGE_KIND,
     CONSOLIDATION_SUMMARY_SCHEMA,
     append_consolidation_job_record,
+    append_consolidation_summary_record,
     create_consolidation_job,
     consolidation_levels,
     consolidation_lineage_fixture,
     consolidation_recall_planner_fixture,
     latest_consolidation_jobs,
+    latest_consolidation_summaries,
     load_consolidation_job_records,
+    load_consolidation_summary_records,
     materialize_consolidation_summary,
     plan_consolidation_jobs,
     source_child_ids_for_summary,
@@ -285,6 +288,63 @@ class ConsolidationFixtureTest(unittest.TestCase):
                     {"child_id": "summary:session:alpha", "content": "Alpha session summary."},
                 ],
             )
+
+    def test_summary_records_persist_in_append_only_local_ledger(self):
+        pending = create_consolidation_job(
+            scope="project:zmem/session:alpha",
+            summary_level="session",
+            source_level="turn",
+            source_child_ids=["memory:turn:101", "memory:turn:102"],
+            created_at="2026-06-23T05:00:00Z",
+            job_id="consolidation-job:summary-ledger",
+        )
+        completed, summary = materialize_consolidation_summary(
+            pending,
+            completed_at="2026-06-23T05:04:00Z",
+            source_children=[
+                {"child_id": "memory:turn:101", "content": "Ada updated the rollback owner."},
+                {"child_id": "memory:turn:102", "content": "Ben confirmed the deploy checklist."},
+            ],
+        )
+
+        with TemporaryDirectory() as tmp:
+            ledger_path = Path(tmp) / "consolidation-summaries.jsonl"
+            append_consolidation_summary_record(ledger_path, completed, summary)
+
+            records = load_consolidation_summary_records(ledger_path)
+            latest = latest_consolidation_summaries(ledger_path)
+
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0]["schema"], CONSOLIDATION_SUMMARY_SCHEMA)
+        self.assertEqual(records[0]["job_id"], completed.job_id)
+        self.assertEqual(records[0]["summary_id"], summary["summary_id"])
+        self.assertEqual(records[0]["source_child_ids"], ["memory:turn:101", "memory:turn:102"])
+        self.assertEqual(latest[summary["summary_id"]]["content_digest"], summary["content_digest"])
+
+    def test_summary_ledger_rejects_mismatch_with_completed_job_output_ids(self):
+        pending = create_consolidation_job(
+            scope="project:zmem/day:2026-06-23",
+            summary_level="day",
+            source_level="session",
+            source_child_ids=["summary:session:alpha", "summary:session:beta"],
+            created_at="2026-06-23T05:00:00Z",
+            job_id="consolidation-job:summary-ledger-mismatch",
+        )
+        completed, summary = materialize_consolidation_summary(
+            pending,
+            completed_at="2026-06-23T05:06:00Z",
+            source_children=[
+                {"child_id": "summary:session:alpha", "content": "Alpha captured rollback contacts."},
+                {"child_id": "summary:session:beta", "content": "Beta captured deploy approvals."},
+            ],
+        )
+        mismatched_summary = dict(summary)
+        mismatched_summary["summary_id"] = "summary:day:mismatch"
+
+        with TemporaryDirectory() as tmp:
+            ledger_path = Path(tmp) / "consolidation-summaries.jsonl"
+            with self.assertRaisesRegex(ValueError, "output_summary_ids"):
+                append_consolidation_summary_record(ledger_path, completed, mismatched_summary)
 
 
 if __name__ == "__main__":

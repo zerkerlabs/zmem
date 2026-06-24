@@ -49,3 +49,13 @@
 - Artifacts/receipts: summary payload contract only; no generated runtime artifacts were edited.
 - Blockers: candidate sourcing is still fixture-backed and emitted summary payloads are not yet persisted in a separate local ledger or written into the live store.
 - Next safe slice: persist emitted `zerker.consolidation_summary.v1` payloads in a local append-only summary ledger, or feed this materializer from store-backed consolidation candidates without adding hosted summarization as a hard dependency.
+
+## 2026-06-23T23:31:00Z - L4 consolidation - Codex
+
+- Scope: added the first append-only local summary ledger for emitted consolidation summaries.
+- Files touched: `zerker_memory/consolidation.py`, `tests/test_consolidation.py`, `docs/CONSOLIDATION_FIXTURE.md`, `docs/CONTINUOUS_BUILD/consolidation.log.md`, `docs/SWARM_OPERATION_TRACKER.md`, `docs/CURRENT_STATE.md`, `docs/BUILD_LOG.md`.
+- Behavior changed: consolidation can now persist completed-job `zerker.consolidation_summary.v1` payloads in a local JSONL ledger via `append_consolidation_summary_record(...)`, reload ordered history via `load_consolidation_summary_records(...)`, and read latest-by-`summary_id` views via `latest_consolidation_summaries(...)`. Ledger writes reject mismatches between the completed job and emitted summary `job_id`, `output_summary_ids`, ordered `source_child_ids`, levels, reversibility, digests, and `hosted_llm: false` metadata. No store schema, retrieval behavior, benchmark behavior, daemon, or hosted LLM dependency changed.
+- Tests: `python3 -m unittest tests.test_consolidation.ConsolidationFixtureTest.test_summary_records_persist_in_append_only_local_ledger tests.test_consolidation.ConsolidationFixtureTest.test_summary_ledger_rejects_mismatch_with_completed_job_output_ids -q` -> passed (`Ran 2 tests in 0.004s`); `python3 -m unittest tests.test_consolidation -q` -> passed (`Ran 13 tests in 0.008s`).
+- Artifacts/receipts: local summary-ledger contract only; no generated runtime artifacts were edited.
+- Blockers: candidate sourcing is still fixture-backed, and the live memory store still has no read-only surface for persisted consolidation summaries.
+- Next safe slice: source consolidation candidates from the live store or expose the persisted summary ledger through a read-only store/CLI surface without adding hosted summarization as a hard dependency.

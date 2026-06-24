@@ -491,6 +491,49 @@ def materialize_consolidation_summary(
     }
 
 
+def append_consolidation_summary_record(
+    path: Path,
+    job: ConsolidationJobRecord,
+    summary: dict[str, Any],
+) -> None:
+    _validate_summary_record(job, summary)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(summary, sort_keys=True))
+        handle.write("\n")
+
+
+def load_consolidation_summary_records(path: Path) -> list[dict[str, Any]]:
+    if not path.exists():
+        return []
+    records: list[dict[str, Any]] = []
+    with path.open("r", encoding="utf-8") as handle:
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            payload = json.loads(line)
+            summary_id = payload.get("summary_id")
+            if not isinstance(summary_id, str) or not summary_id:
+                raise ValueError("consolidation summary record requires summary_id")
+            if payload.get("schema") != CONSOLIDATION_SUMMARY_SCHEMA:
+                raise ValueError("unsupported consolidation summary record schema")
+            source_child_ids = payload.get("source_child_ids")
+            if not isinstance(source_child_ids, list) or not source_child_ids:
+                raise ValueError("consolidation summary record requires source_child_ids")
+            if len(source_child_ids) != len(set(source_child_ids)):
+                raise ValueError("consolidation summary record source_child_ids must be unique")
+            records.append(deepcopy(payload))
+    return records
+
+
+def latest_consolidation_summaries(path: Path) -> dict[str, dict[str, Any]]:
+    latest: dict[str, dict[str, Any]] = {}
+    for record in load_consolidation_summary_records(path):
+        latest[record["summary_id"]] = record
+    return latest
+
+
 def _candidate_from_dict(payload: dict[str, Any]) -> ConsolidationPlanCandidate:
     trigger = payload.get("trigger", {})
     candidate = ConsolidationPlanCandidate(
@@ -641,3 +684,44 @@ def _deterministic_summary_id(
 
 def _sha256_text(value: str) -> str:
     return f"sha256:{hashlib.sha256(value.encode('utf-8')).hexdigest()}"
+
+
+def _validate_summary_record(job: ConsolidationJobRecord, summary: dict[str, Any]) -> None:
+    _validate_job_record(job)
+    if job.status != "completed":
+        raise ValueError("consolidation summary ledger requires a completed job")
+    if summary.get("schema") != CONSOLIDATION_SUMMARY_SCHEMA:
+        raise ValueError("unsupported consolidation summary record schema")
+    summary_id = summary.get("summary_id")
+    if not isinstance(summary_id, str) or not summary_id:
+        raise ValueError("consolidation summary record requires summary_id")
+    if tuple(job.output_summary_ids) != (summary_id,):
+        raise ValueError("consolidation summary record must match completed job output_summary_ids")
+    if summary.get("job_id") != job.job_id:
+        raise ValueError("consolidation summary record must match completed job_id")
+    if summary.get("scope") != job.scope:
+        raise ValueError("consolidation summary record must match completed job scope")
+    if summary.get("summary_level") != job.summary_level:
+        raise ValueError("consolidation summary record must match completed job summary_level")
+    if summary.get("source_level") != job.source_level:
+        raise ValueError("consolidation summary record must match completed job source_level")
+    source_child_ids = summary.get("source_child_ids")
+    if source_child_ids != list(job.source_child_ids):
+        raise ValueError("consolidation summary record must match completed job source_child_ids")
+    if summary.get("source_child_count") != len(job.source_child_ids):
+        raise ValueError("consolidation summary record must match source_child_count")
+    if summary.get("lineage_kind") != job.lineage_kind:
+        raise ValueError("consolidation summary record must match completed job lineage_kind")
+    if summary.get("non_blocking") is not True:
+        raise ValueError("consolidation summary records must stay non-blocking")
+    if summary.get("reversible") is not True:
+        raise ValueError("consolidation summary records must stay reversible")
+    if summary.get("summarizer", {}).get("hosted_llm"):
+        raise ValueError("consolidation summary records cannot require a hosted LLM")
+    source_child_digests = summary.get("source_child_digests")
+    if not isinstance(source_child_digests, dict) or set(source_child_digests) != set(job.source_child_ids):
+        raise ValueError("consolidation summary record requires source_child_digests for every source child")
+    if not isinstance(summary.get("summary_text"), str) or not summary["summary_text"].strip():
+        raise ValueError("consolidation summary record requires summary_text")
+    if not isinstance(summary.get("content_digest"), str) or not summary["content_digest"].startswith("sha256:"):
+        raise ValueError("consolidation summary record requires sha256 content_digest")

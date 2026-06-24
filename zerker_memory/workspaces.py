@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from .store import MemoryRecord, _resolve_current_conflicts, now_iso, sha256_text
+from .store import MemoryRecord, _resolve_current_conflicts, authority_rank, now_iso, sha256_text
 
 
 WORKSPACE_REGISTRY_SCHEMA = "zerker.workspace_registry.v1"
@@ -220,6 +220,65 @@ def _preferred_claim_source(source_rows: list[dict[str, Any]]) -> dict[str, Any]
     return source_rows[0] if source_rows else {}
 
 
+def _claim_resolution_key(claim: dict[str, Any], field: str) -> float | int | str:
+    if field == "authority":
+        return authority_rank(str(claim.get("authority") or "none"))
+    if field == "trust":
+        trust = claim.get("trust")
+        return float(trust) if isinstance(trust, (int, float)) else float("-inf")
+    return str(claim.get(field) or "")
+
+
+def _claim_resolution_basis(
+    *,
+    claims: list[dict[str, Any]],
+    chosen_memory_id: str | None,
+    resolution_outcome: str,
+    tie_fields: list[str],
+) -> dict[str, Any]:
+    if resolution_outcome == "abstained":
+        summary = "exact tie on deciding fields"
+        if tie_fields:
+            summary = f"exact tie on {', '.join(tie_fields)}"
+        return {
+            "field": None,
+            "summary": summary,
+            "tied_fields": list(tie_fields),
+            "read_only_preview": True,
+        }
+    if not chosen_memory_id:
+        return {
+            "field": None,
+            "summary": "resolution preview unavailable",
+            "tied_fields": [],
+            "read_only_preview": True,
+        }
+
+    contenders = list(claims)
+    chosen_field: str | None = None
+    for field in ("authority", "trust", "updated_at", "created_at"):
+        if not contenders:
+            break
+        max_value = max(_claim_resolution_key(claim, field) for claim in contenders)
+        contenders = [claim for claim in contenders if _claim_resolution_key(claim, field) == max_value]
+        if len(contenders) == 1 and contenders[0].get("memory_id") == chosen_memory_id:
+            chosen_field = field
+            break
+
+    field_summary = {
+        "authority": "highest authority",
+        "trust": "highest trust",
+        "updated_at": "freshest updated_at",
+        "created_at": "freshest created_at",
+    }
+    return {
+        "field": chosen_field,
+        "summary": field_summary.get(chosen_field, "current rule preview"),
+        "tied_fields": [],
+        "read_only_preview": True,
+    }
+
+
 def _workspace_claim_conflicts(store: Any, *, source_rows_by_memory_id: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:
     if not source_rows_by_memory_id:
         return []
@@ -292,6 +351,7 @@ def _workspace_claim_conflicts(store: Any, *, source_rows_by_memory_id: dict[str
         resolution_outcome = str(
             conflict.get("resolution_outcome") or ("resolved" if chosen_memory_id else "abstained")
         )
+        tie_fields = [str(field) for field in (conflict.get("tie_fields") or []) if str(field)]
         claim_conflicts.append(
             {
                 "group_key": f"{conflict.get('subject_key')}|{conflict.get('relation')}",
@@ -310,8 +370,14 @@ def _workspace_claim_conflicts(store: Any, *, source_rows_by_memory_id: dict[str
                     "chosen_value": (conflict.get("value_by_id") or {}).get(chosen_memory_id) if chosen_memory_id else None,
                     "abstained_memory_ids": conflict.get("abstained_current_ids", []),
                     "tied_memory_ids": conflict.get("tied_current_ids", []),
-                    "tie_fields": conflict.get("tie_fields", []),
+                    "tie_fields": tie_fields,
                     "ignored_tie_breakers": conflict.get("ignored_tie_breakers", []),
+                    "resolution_basis": _claim_resolution_basis(
+                        claims=claims,
+                        chosen_memory_id=str(chosen_memory_id) if chosen_memory_id else None,
+                        resolution_outcome=resolution_outcome,
+                        tie_fields=tie_fields,
+                    ),
                     "rule_summary": (
                         "Choose the highest authority, then trust, then freshest updated_at/created_at; abstain on exact ties."
                     ),
