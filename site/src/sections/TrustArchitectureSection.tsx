@@ -6,7 +6,7 @@ import CodeBlock from '@/components/CodeBlock';
 const statusCards = [
   {
     status: 'built' as const,
-    title: 'Local Memory',
+    title: 'Native Memory',
     codeTitle: 'zmem status --summary-only',
     code: `Workspace ready: yes
 DB:        .zerker/memory.sqlite
@@ -17,7 +17,7 @@ Status:    active / rejected / revoked`,
   },
   {
     status: 'built' as const,
-    title: 'Boundary Control',
+    title: 'Authority Gate',
     codeTitle: 'zmem inject --agent codex --risk medium "task"',
     code: `Input:      agent + task + risk + scope
 Policy:     .zerker/policy.json
@@ -27,13 +27,13 @@ Explain:    zmem why <action-id>`,
   },
   {
     status: 'built' as const,
-    title: 'Receipt Layer',
-    codeTitle: 'zmem verify <action-id>',
-    code: `Memory root:  Merkle-backed
-Action root:  receipt-backed
-Local check:   zmem verify <action-id>
-Bundle:        zmem bundle verify ...
-Public URL:    optional Treeship publish`,
+    title: 'Provider Overlay',
+    codeTitle: 'zmem provider import "query" --provider mem0',
+    code: `Candidates:  external memory/search
+Import:      quarantine first
+Review:      promote / reject / revoke
+Inject:      policy-gated local context
+Proof:       zmem why <action-id>`,
   },
 ];
 
@@ -47,12 +47,12 @@ export default function TrustArchitectureSection() {
           className="section-heading max-w-[800px] font-heading font-bold text-zink"
           style={{ fontSize: 'clamp(36px, 5vw, 64px)', letterSpacing: '-0.03em', lineHeight: 1.0 }}
         >
-          Local by default. Governed at injection. Verifiable after use.
+          Use ZMem alone, or as the memory gate for your stack.
         </h2>
 
         <p className="section-desc mt-6 max-w-[640px] text-[17px] leading-relaxed text-zmuted">
-          ZMem does not treat retrieval as permission. It records the local memory state, applies policy before
-          an agent receives memory, then leaves a receipt for what shaped the action.
+          ZMem ships with its own local memory system. If you already use a recall provider,
+          ZMem can govern what crosses from candidate context into trusted agent memory.
         </p>
 
         <div className="mt-16 grid grid-cols-1 gap-5 md:grid-cols-3">

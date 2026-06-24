@@ -23,17 +23,17 @@ const cards = [
   {
     icon: Shield,
     iconColor: '#92D66F',
-    title: 'Govern',
-    description: 'Humans can inspect the queue, promote useful memory, reject noise, or revoke derived state.',
+    title: 'Review',
+    description: 'Humans or policies can promote useful memory, reject noise, quarantine risk, or revoke stale state.',
     code: 'zmem queue --scope project',
     status: 'built' as const,
   },
   {
     icon: FileCheck,
     iconColor: '#E06F62',
-    title: 'Verify',
-    description: 'Every governed action can be explained and checked against the local Merkle-backed receipt trail.',
-    code: 'zmem why <action-id> \u2192 zmem verify <action-id>',
+    title: 'Inject',
+    description: 'Only admissible memory reaches the agent. The receipt records what was injected and withheld.',
+    code: 'zmem why <action-id>',
     status: 'built' as const,
   },
 ];
@@ -51,12 +51,12 @@ export default function MemoryLoopSection() {
           className="section-heading max-w-[800px] font-heading font-bold text-zink"
           style={{ fontSize: 'clamp(36px, 5vw, 64px)', letterSpacing: '-0.03em', lineHeight: 1.0 }}
         >
-          Built for agents, governed for humans.
+          Retrieval is not permission.
         </h2>
 
         <p className="section-desc mt-6 max-w-[600px] text-[17px] leading-relaxed text-zmuted">
-          Agents get a small memory interface. Humans keep review, lineage, revocation, and receipts.
-          The point is not more context. The point is memory an agent can use responsibly.
+          ZMem gives agents a native local memory system, then gates what becomes trusted enough
+          to shape action. Proposed, reviewed, injected, withheld, revoked, verified.
         </p>
 
         <div

@@ -70,6 +70,7 @@ const consolePanels = [
 export default function AgentContinuitySection() {
   return (
     <section
+      id="handoff"
       className="bg-zsurface py-[160px]"
     >
       <div className="mx-auto max-w-[1120px] px-6">
@@ -77,12 +78,12 @@ export default function AgentContinuitySection() {
           className="section-heading text-center font-heading font-bold text-zink"
           style={{ fontSize: 'clamp(36px, 5vw, 64px)', letterSpacing: '-0.03em', lineHeight: 1.0 }}
         >
-          Let the next agent continue with the same memory.
+          Move governed memory between agents.
         </h2>
 
         <p className="section-desc mx-auto mt-6 max-w-[640px] text-center text-[17px] leading-relaxed text-zmuted">
-          Start in Codex, move to Claude Code or Cursor, and keep the same governed memory state.
-          ZMem gives the next agent the prompt, MCP config, snapshot, restore guide, and receipt bundle.
+          Start in Codex, move to Claude Code or Cursor, and keep approved memory,
+          policy, snapshots, prompts, and receipts together. Shared recall is not shared authority.
         </p>
 
         <div className="mt-12 rounded-lg border border-zline bg-[#0A0A0A] p-5">

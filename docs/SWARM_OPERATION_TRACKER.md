@@ -18,7 +18,15 @@ Primary mission brief:
 
 - `docs/BENCHMARK_RETRIEVAL_SWARM_MISSION.md`
 - Continuous frontier-gap orchestrator: `docs/ZMEM_CONTINUOUS_BUILD_ORCHESTRATOR.md`
+- Lane progress and release tracker: `docs/ZMEM_PROGRESS_TRACKER.md`
 - Lane logs: `docs/CONTINUOUS_BUILD/`
+
+Coordinator update `2026-06-24T04:40:00Z`:
+
+- Added `docs/ZMEM_PROGRESS_TRACKER.md` as the shared lane-by-lane product progress board for the current post-`v0.1.1` state.
+- The tracker records practical alpha-completion estimates, shipped checklists, remaining gaps, per-push release hygiene, and the current highest-leverage next move.
+- Current public release is `v0.1.1` at `e9c80c5`; current unpublished source diff is the L3 relation-history RRF slice in `zerker_memory/store.py`, `tests/test_store.py`, and `tests/test_runner.py`.
+- Future workers should update the tracker whenever a lane advances, a release is cut, or a public/docs/changelog claim changes.
 
 Coordinator update `2026-06-24T03:05:29Z`:
 
@@ -28,6 +36,16 @@ Coordinator update `2026-06-24T03:05:29Z`:
 - Blockers: direct `restore <snapshot>` still prints raw JSON rather than the compact receipt-aware summary, and there is still no read-only CLI/proof summary for ordered per-memory mutation receipt chains.
 - No snapshot schema, lifecycle receipt schema, Merkle lineage, or write-path storage behavior changed in this L0 run.
 - Next trust-ledger slice: expose one bounded read-only receipt-chain summary for `memory_write_receipts(memory_id)` or extend the same receipt-aware summary contract to direct snapshot restore without changing import semantics.
+
+Coordinator update `2026-06-24T04:20:24Z`:
+
+- Retrieval baseline advanced on one bounded L3 slice only: [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/store.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/store.py) now adds an explicit stale/relation-current pair into update-history relation temporal fusion and aligns packing with that fused order only for the new signal, while [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_store.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_store.py) and [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_runner.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_runner.py) now lock both the receipt order and the runtime context result under budget pressure.
+- The focused retrieval gain is quality-facing and still local-first: for prompts such as `what did the api gateway point at change from`, a longer answer-bearing current relation can now outrank a higher-authority generic `changed after ...` support anchor directly in `retrieval["candidates"]`, and the same fused order now keeps that current relation injected while the generic anchor becomes the explicit budget-dropped memory.
+- Receipts stay additive and explainable: `retrieval.temporal.fusion` now records `signal=temporal_update_relation_pair_rrf_score_v1`, `basis=update_relation_pair`, and `source_rankings.temporal_update_relation_pair`; candidate-level `temporal_fusion_sources` show the new contributor; and packing receipts now expose `packing_rank_basis=temporal_fusion_rank` plus `temporal_fusion_rank` only when that relation-pair signal is active.
+- Verification passed with `python3 -m unittest tests.test_store.MemoryStoreTest.test_update_history_relation_rrf_promotes_explicit_current_relation_over_high_authority_generic_anchor -q` (`Ran 1 test`), `python3 -m unittest tests.test_runner.RunnerTest.test_update_history_relation_context_rrf_promotes_explicit_current_relation_over_high_authority_generic_anchor -q` (`Ran 1 test`), `python3 -m unittest tests.test_store -q` (`Ran 192 tests`), `python3 -m unittest tests.test_policy -q` (`Ran 7 tests`), `python3 -m unittest tests.test_runner -q` (`Ran 83 tests`), and `python3 -m zerker_memory eval` (`11/11`). Focused stale-target scan on `zerker_memory/store.py`, `tests/test_store.py`, and `tests/test_runner.py` found no active `zerkerlabs/zerker-memory`, stale raw-installer, `rezkerlabs`, or stale GitHub repo targets.
+- Blockers: earliest/original target-history relation-support paths and future graph candidate merges still do not share this deterministic relation-pair fusion contract.
+- No Phase 1 launch-proof, installer, release-pack, prelaunch, public-site copy, or generated `.zerker/launch-proof/` artifacts were touched in this retrieval run.
+- Next retrieval slice: extend the same deterministic relation-pair fusion plus budget contract to earliest/original target-history relation current/support queries while preserving candidate-by-candidate withheld, injected, and budget-dropped visibility.
 
 Coordinator update `2026-06-24T03:03:39Z`:
 

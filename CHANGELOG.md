@@ -2,6 +2,23 @@
 
 All notable Zerker Memory alpha changes are summarized here.
 
+## Unreleased - v0.1.2 candidate
+
+### Changed
+
+- Refined the public website positioning around ZMem as governed memory for agents that act: native local memory plus an authority gate before memory influences an agent.
+- Updated homepage copy to distinguish ZMem from generic durable context/search products: search finds context; ZMem decides what becomes trusted memory.
+- Reframed proof language around lineage and memory influence, not semantic truth or unsupported cryptographic claims.
+- Verified the next L3 retrieval slice locally: update-history relation-pair RRF promotes explicit stale/current relation pairs over generic high-authority change anchors under tight context budgets.
+
+### Verification
+
+- `npm run build` in `site/`
+- `python3 -m unittest tests.test_store.MemoryStoreTest.test_update_history_relation_rrf_promotes_explicit_current_relation_over_high_authority_generic_anchor tests.test_runner.RunnerTest.test_update_history_relation_context_rrf_promotes_explicit_current_relation_over_high_authority_generic_anchor -q`
+- `python3 -m unittest tests.test_store tests.test_policy tests.test_runner -q`
+- `python3 -m zerker_memory eval`
+- `git diff --check`
+
 ## 0.1.0-alpha frontier build - ActiveGraph, LoCoMo, and compact traces
 
 ### Shipped

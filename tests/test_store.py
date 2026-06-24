@@ -5986,6 +5986,85 @@ class MemoryStoreTest(unittest.TestCase):
         self.assertEqual(temporal["selected_relation_support_ids"], [generic_anchor.id])
         self.assertEqual(temporal["selected_current_support_ids"], [generic_anchor.id])
 
+    def test_update_history_relation_rrf_promotes_explicit_current_relation_over_high_authority_generic_anchor(self):
+        stale = self.store.remember(
+            "API gateway points to staging.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.7,
+        )
+        current = self.store.remember(
+            "API gateway points to the production control plane in us-east-1.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.4,
+            authority="low",
+            parents=[stale.id],
+        )
+        generic_anchor = self.store.remember(
+            "API gateway points changed after migration.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.99,
+            authority="high",
+        )
+
+        budget = approx_memory_tokens(stale) + approx_memory_tokens(current)
+        receipt = self.store.inject(
+            "what did the api gateway point at change from",
+            agent_id="codex",
+            risk="low",
+            scope="project",
+            context_budget_tokens=budget,
+        )
+        retrieval = receipt["retrieval"]
+        temporal = retrieval["temporal"]
+
+        self.assertCountEqual(receipt["retrieved_memory_ids"], [stale.id, current.id, generic_anchor.id])
+        self.assertEqual(receipt["injected_memory_ids"], [stale.id, current.id])
+        self.assertEqual(temporal["selection_strategy"], "historical_preferred_v1")
+        self.assertEqual(temporal["selection_reason"], "update-history-query-terms")
+        self.assertEqual(temporal["selected_relation_current_id"], current.id)
+        self.assertEqual(temporal["selected_relation_support_ids"], [generic_anchor.id])
+        self.assertTrue(temporal["fusion"]["applied"])
+        self.assertEqual(temporal["fusion"]["signal"], "temporal_update_relation_pair_rrf_score_v1")
+        self.assertEqual(temporal["fusion"]["basis"], "update_relation_pair")
+        self.assertEqual(
+            temporal["fusion"]["source_rankings"],
+            {
+                "baseline": [stale.id, generic_anchor.id, current.id],
+                "temporal_selection": [stale.id, generic_anchor.id, current.id],
+                "temporal_injection": [stale.id, current.id, generic_anchor.id],
+                "temporal_update_relation_pair": [stale.id, current.id],
+            },
+        )
+        self.assertEqual(
+            [candidate["memory_id"] for candidate in retrieval["candidates"]],
+            [stale.id, current.id, generic_anchor.id],
+        )
+        candidate_by_id = {candidate["memory_id"]: candidate for candidate in retrieval["candidates"]}
+        self.assertEqual(candidate_by_id[stale.id]["temporal_fusion_rank"], 1)
+        self.assertEqual(candidate_by_id[current.id]["temporal_fusion_rank"], 2)
+        self.assertEqual(candidate_by_id[generic_anchor.id]["temporal_fusion_rank"], 3)
+        self.assertGreater(
+            candidate_by_id[current.id]["temporal_fusion_score"],
+            candidate_by_id[generic_anchor.id]["temporal_fusion_score"],
+        )
+        self.assertEqual(
+            candidate_by_id[current.id]["temporal_fusion_sources"],
+            ["baseline", "temporal_selection", "temporal_injection", "temporal_update_relation_pair"],
+        )
+        self.assertTrue(retrieval["baseline_ranking"]["temporal_fusion_signal_applied"])
+        self.assertEqual(
+            retrieval["baseline_ranking"]["temporal_fusion_signal"],
+            "temporal_update_relation_pair_rrf_score_v1",
+        )
+        self.assertEqual(retrieval["packing"]["budget_dropped"][0]["memory_id"], generic_anchor.id)
+        self.assertEqual(retrieval["packing"]["budget_dropped"][0]["reason"], "context-budget")
+
     def test_recent_history_deployment_approval_owner_wrapper_infers_owner_role_before_phrase_alias(self):
         stale = self.store.remember(
             "Deployment approver was Alex.",

@@ -1,5 +1,15 @@
 # Hybrid Retrieval Lane Log
 
+## 2026-06-24T04:20:24Z - update-history relation pair RRF packing alignment
+
+- Scope: upgraded one L3 local-first temporal retrieval slice from injection-only update-history relation support ordering to deterministic relation-pair fusion that also survives tight context budgets.
+- Files touched: `zerker_memory/store.py`, `tests/test_store.py`, `tests/test_runner.py`, `docs/CONTINUOUS_BUILD/hybrid-retrieval.log.md`, `docs/SWARM_OPERATION_TRACKER.md`, `docs/BUILD_LOG.md`, `docs/CURRENT_STATE.md`.
+- Behavior changed: update-history relation prompts such as `what did the api gateway point at change from` now add the explicit stale/relation-current pair into temporal `reciprocal_rank_fusion_v1`, so a longer answer-bearing current relation can outrank a higher-authority generic `changed after ...` support anchor in `retrieval["candidates"]`; when that new `temporal_update_relation_pair_rrf_score_v1` signal is active, packing now follows the fused order so the current relation stays injected and the generic anchor becomes the budget-dropped memory.
+- Tests: `python3 -m unittest tests.test_store.MemoryStoreTest.test_update_history_relation_rrf_promotes_explicit_current_relation_over_high_authority_generic_anchor -q` -> passed (`Ran 1 test`); `python3 -m unittest tests.test_runner.RunnerTest.test_update_history_relation_context_rrf_promotes_explicit_current_relation_over_high_authority_generic_anchor -q` -> passed (`Ran 1 test`); `python3 -m unittest tests.test_store -q` -> passed (`Ran 192 tests`); `python3 -m unittest tests.test_policy -q` -> passed (`Ran 7 tests`); `python3 -m unittest tests.test_runner -q` -> passed (`Ran 83 tests`); `python3 -m zerker_memory eval` -> passed (`11/11`); `git diff --check -- zerker_memory/store.py tests/test_store.py tests/test_runner.py` -> passed.
+- Artifacts/receipts: `retrieval.temporal.fusion` now records `signal=temporal_update_relation_pair_rrf_score_v1`, `basis=update_relation_pair`, and `source_rankings.temporal_update_relation_pair`; candidates expose the new source in `temporal_fusion_sources`; and packing receipts now surface `packing_rank_basis=temporal_fusion_rank` plus `temporal_fusion_rank` only for this relation-pair fusion path, keeping injected vs budget-dropped decisions explicit without a schema migration.
+- Blockers: this closes update-history relation current/support ordering only; earliest/original target-history relation-support paths and future graph candidate merges still rely on their current heuristics.
+- Next safe slice: extend the same deterministic relation-pair fusion plus budget contract to earliest/original target-history relation current/support queries while preserving candidate-by-candidate withheld, injected, and budget-dropped visibility.
+
 ## 2026-06-24T00:31:40Z - update-history stale/current pair RRF ordering
 
 - Scope: upgraded one L3 local-first temporal retrieval slice from packing-only `update-history` anchor preference to deterministic stale/current pair merge ordering.

@@ -2,6 +2,14 @@
 
 This is the short orchestration dashboard for Zerker Memory. Every autonomous build run should update this file after it updates `docs/BUILD_LOG.md`.
 
+## Progress Tracker
+`2026-06-24T04:20:24Z`
+
+- Added `docs/ZMEM_PROGRESS_TRACKER.md` as the canonical lane-by-lane progress board for post-`v0.1.1` work.
+- The tracker captures the current release state, practical completion estimate for each lane, shipped checklists, remaining gaps, per-push documentation hygiene, and the next measurable move.
+- Current public release is `v0.1.1` at `e9c80c5`; current unpublished source diff is the L3 update-history relation-pair RRF slice in `zerker_memory/store.py`, `tests/test_store.py`, and `tests/test_runner.py`.
+- Future automation and manual work should update the tracker whenever a lane advances or a public-facing claim changes.
+
 ## Identity Workspaces
 `2026-06-24T03:03:39Z`
 
@@ -38,14 +46,14 @@ This is the short orchestration dashboard for Zerker Memory. Every autonomous bu
 - Next highest-leverage launch step is still outside the proof lane: decide whether to publish/tag from a human-controlled environment, since the repo-local launch gate itself is complete.
 
 ## Retrieval Baseline
-`2026-06-24T00:31:40Z`
+`2026-06-24T04:20:24Z`
 
-- Plain `update-history` retrieval now adds the explicit stale/current update pair into temporal `reciprocal_rank_fusion_v1` before the final non-reranked ordering step.
-- The concrete local-first gain is that a higher-authority generic `changed after ...` anchor no longer stays ahead of the answer-bearing `changed to ...` fact for prompts like `Who did deployment approvals change from?`; the stale predecessor still stays first, the explicit current update fact now comes second, and the generic anchor falls behind them in `retrieval["candidates"]`.
-- Receipts now expose `retrieval.temporal.fusion.signal=temporal_update_pair_rrf_score_v1`, `basis=update_pair`, `source_rankings.temporal_update_pair`, and candidate `temporal_fusion_sources`; `retrieval.baseline_ranking.temporal_fusion_signal` now distinguishes update-pair ordering from the earlier support-chain and mutation-anchor paths.
-- Verified focused update-history regressions, full `python3 -m unittest tests.test_store -q` (`Ran 191 tests`), full `python3 -m unittest tests.test_policy -q` (`Ran 7 tests`), full `python3 -m unittest tests.test_runner -q` (`Ran 80 tests`), and `python3 -m zerker_memory eval` (`11/11`).
+- Update-history relation retrieval now adds the explicit stale/relation-current pair into temporal `reciprocal_rank_fusion_v1`, and that same fused order now drives context packing only when the new relation-pair signal is active.
+- The concrete local-first gain is that a higher-authority generic `changed after ...` support anchor no longer stays ahead of a longer answer-bearing current relation for prompts like `what did the api gateway point at change from`; the stale predecessor still stays first, the current relation now comes second in `retrieval["candidates"]`, and under a tight budget the generic anchor becomes the explicit budget-dropped memory instead of displacing the current relation.
+- Receipts now expose `retrieval.temporal.fusion.signal=temporal_update_relation_pair_rrf_score_v1`, `basis=update_relation_pair`, `source_rankings.temporal_update_relation_pair`, candidate `temporal_fusion_sources`, and relation-path `packing_rank_basis=temporal_fusion_rank`; `retrieval.baseline_ranking.temporal_fusion_signal` now distinguishes this relation-pair ordering from the earlier update-pair, support-chain, and mutation-anchor paths.
+- Verified focused update-history relation regressions, full `python3 -m unittest tests.test_store -q` (`Ran 192 tests`), full `python3 -m unittest tests.test_policy -q` (`Ran 7 tests`), full `python3 -m unittest tests.test_runner -q` (`Ran 83 tests`), and `python3 -m zerker_memory eval` (`11/11`).
 - No Phase 1 launch-proof, installer, release-pack, prelaunch, public-site copy, or generated `.zerker/launch-proof/` artifacts were touched in this retrieval slice.
-- Next highest-leverage retrieval slice is to extend the same deterministic temporal fusion contract to update-history relation current/support queries while keeping candidate-by-candidate withheld, injected, and budget-dropped visibility explicit.
+- Next highest-leverage retrieval slice is to extend the same deterministic relation-pair fusion plus budget contract to earliest/original target-history relation current/support queries while keeping candidate-by-candidate withheld, injected, and budget-dropped visibility explicit.
 
 ## Identity Workspaces
 `2026-06-23T10:57:00Z`

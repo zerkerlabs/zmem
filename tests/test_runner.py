@@ -2620,6 +2620,56 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(temporal["selected_relation_support_ids"], [generic_anchor.id])
         self.assertEqual(temporal["selected_current_support_ids"], [generic_anchor.id])
 
+    def test_update_history_relation_context_rrf_promotes_explicit_current_relation_over_high_authority_generic_anchor(self):
+        stale = self.store.remember(
+            "API gateway points to staging.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.7,
+        )
+        current = self.store.remember(
+            "API gateway points to the production control plane in us-east-1.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.4,
+            authority="low",
+            parents=[stale.id],
+        )
+        generic_anchor = self.store.remember(
+            "API gateway points changed after migration.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.99,
+            authority="high",
+        )
+        budget = approx_memory_tokens(stale) + approx_memory_tokens(current)
+
+        receipt = self.store.inject(
+            "what did the api gateway point at change from",
+            agent_id="codex",
+            risk="low",
+            scope="project",
+            context_budget_tokens=budget,
+        )
+        context = build_context(receipt)
+        self.assertEqual([memory["id"] for memory in context["memories"]], [stale.id, current.id])
+        retrieval = receipt["retrieval"]
+        temporal = retrieval["temporal"]
+        self.assertTrue(temporal["fusion"]["applied"])
+        self.assertEqual(temporal["fusion"]["signal"], "temporal_update_relation_pair_rrf_score_v1")
+        self.assertEqual(
+            [candidate["memory_id"] for candidate in retrieval["candidates"]],
+            [stale.id, current.id, generic_anchor.id],
+        )
+        self.assertEqual(
+            retrieval["baseline_ranking"]["temporal_fusion_signal"],
+            "temporal_update_relation_pair_rrf_score_v1",
+        )
+        self.assertEqual(retrieval["packing"]["budget_dropped"][0]["memory_id"], generic_anchor.id)
+
     def test_recent_history_deployment_approval_owner_question_context_infers_owner_role_before_phrase_alias(self):
         stale = self.store.remember(
             "Deployment approver was Alex.",

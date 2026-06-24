@@ -71,32 +71,33 @@ export default function HeroSection() {
             className="mb-6 text-eyebrow text-zlime"
             style={{ animation: 'fadeSlideUp 0.6s 0.3s ease-out forwards', opacity: 0 }}
           >
-            Open-source local memory for agents
+            Governed memory for agents that act
           </p>
 
-          <KineticHeadline text="Agent memory you can verify." delay={0.5} />
+          <KineticHeadline text="Decide what agents can remember." delay={0.5} />
 
           <p
             className="mx-auto mt-6 max-w-[640px] text-[17px] leading-relaxed text-[#D8D8D8] max-sm:hidden"
             style={{ animation: 'fadeSlideUp 0.6s 0.8s ease-out forwards', opacity: 0, textShadow: '0 4px 18px rgba(0,0,0,0.9)' }}
           >
-            Local-first memory for AI agents. Request approved memories, propose new facts,
-            and verify what actually shaped the next action.
+            ZMem is a local-first memory system and authority gate for AI agents.
+            Agents can propose facts, request approved memory, hand off governed state,
+            and leave receipts showing what shaped each action.
           </p>
 
           <p
             className="mx-auto mt-6 max-w-[320px] text-[17px] leading-relaxed text-[#D8D8D8] sm:hidden"
             style={{ animation: 'fadeSlideUp 0.6s 0.8s ease-out forwards', opacity: 0, textShadow: '0 4px 18px rgba(0,0,0,0.9)' }}
           >
-            Local memory for agents. Receipts for what shaped the work.
+            Local memory for agents. Review before trust.
           </p>
 
           <p
             className="mx-auto mt-4 hidden max-w-[600px] text-[14px] leading-relaxed text-[#AFAFAF] sm:block"
             style={{ animation: 'fadeSlideUp 0.6s 0.9s ease-out forwards', opacity: 0, textShadow: '0 4px 18px rgba(0,0,0,0.9)' }}
           >
-            Receipts show what was used, what was withheld, and the Merkle root behind the action.
-            Treeship can publish a public proof URL when needed.
+            Search finds context. ZMem decides what becomes trusted memory.
+            Local by default, portable when needed.
           </p>
 
           <div
@@ -110,10 +111,10 @@ export default function HeroSection() {
               Install ZMem
             </button>
             <button
-              onClick={() => { window.location.href = '/proof'; }}
+              onClick={() => scrollTo('#memory-loop')}
               className="rounded-full border border-zline bg-transparent px-8 py-3.5 text-cta text-zink transition-all duration-150 hover:border-zlime hover:text-zlime"
             >
-              View Proof Matrix
+              See the memory gate
             </button>
             <a
               href="https://github.com/zerkerlabs/zmem"

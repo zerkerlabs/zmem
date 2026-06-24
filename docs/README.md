@@ -6,6 +6,8 @@ The root `site/` app stays focused on the product story, install path, proof sur
 
 Benchmark operators should start with `BENCHMARK_GETTING_STARTED.md`, then use `BENCHMARK_SCORING_WORKFLOW.md` for official dataset conversion and optional scored runs.
 
+Release and automation operators should keep `ZMEM_PROGRESS_TRACKER.md` open. It is the compact lane-by-lane board for what has shipped, what remains, and which automations can pause after acceptance.
+
 ## Local Development
 
 ```bash

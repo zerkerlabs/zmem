@@ -30,12 +30,12 @@ export default function ProofOfWorkSection() {
           className="section-heading font-heading font-bold text-zink"
           style={{ fontSize: 'clamp(36px, 5vw, 64px)', letterSpacing: '-0.03em', lineHeight: 1.0 }}
         >
-          What ZMem can prove today.
+          Product surface, mapped to commands.
         </h2>
 
         <p className="section-desc mt-6 max-w-[640px] text-[17px] leading-relaxed text-zmuted">
-          ZMem is designed so memory is not a black box. The product surfaces below map to
-          local commands that create, retrieve, review, verify, and hand off agent memory.
+          The public site should stay concrete. Each surface below maps to a local command
+          or artifact in the repo, with proof framed as lineage and influence rather than semantic truth.
         </p>
 
         <Card className="mt-16 overflow-hidden p-0">

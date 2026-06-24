@@ -1773,6 +1773,7 @@ def _temporal_support_fusion_source_rankings(
     candidate_ids_in_rank_order: list[str],
     selection: dict[str, Any],
 ) -> dict[str, list[str]]:
+    selection_reason = str(selection.get("selection_reason") or "")
     support_ids = [
         str(memory_id)
         for memory_id in (
@@ -1795,9 +1796,17 @@ def _temporal_support_fusion_source_rankings(
         )
         if str(memory_id)
     ]
-    update_current_support_ids = [
+    current_support_ids = [
         str(memory_id)
         for memory_id in selection.get("selected_current_support_ids", [])
+        if str(memory_id)
+    ]
+    relation_update_pair_ids = [
+        str(memory_id)
+        for memory_id in (
+            list(selection.get("selected_superseded_ids", []))
+            + ([selection.get("selected_relation_current_id")] if selection.get("selected_relation_current_id") else [])
+        )
         if str(memory_id)
     ]
     if not selection.get("selection_exclusions") and not support_ids and not mutation_anchor_ids:
@@ -1813,14 +1822,17 @@ def _temporal_support_fusion_source_rankings(
         source_rankings["temporal_injection"] = injection_ids
     if mutation_anchor_ids:
         source_rankings["temporal_mutation_anchor"] = mutation_anchor_ids
-    if len(update_pair_ids) > 1 and update_current_support_ids:
+    if len(update_pair_ids) > 1 and current_support_ids:
         source_rankings["temporal_update_pair"] = update_pair_ids
+    if selection_reason == "update-history-query-terms" and len(relation_update_pair_ids) > 1 and current_support_ids:
+        source_rankings["temporal_update_relation_pair"] = relation_update_pair_ids
     if len(source_rankings) <= 1:
         return {}
     return source_rankings
 
 
 def _temporal_fusion_signal(selection: dict[str, Any]) -> str | None:
+    selection_reason = str(selection.get("selection_reason") or "")
     if any(str(memory_id) for memory_id in selection.get("selected_mutation_anchor_ids", [])):
         return "temporal_mutation_rrf_score_v1"
     update_pair_ids = [
@@ -1831,13 +1843,23 @@ def _temporal_fusion_signal(selection: dict[str, Any]) -> str | None:
         )
         if str(memory_id)
     ]
-    update_current_support_ids = [
+    current_support_ids = [
         str(memory_id)
         for memory_id in selection.get("selected_current_support_ids", [])
         if str(memory_id)
     ]
-    if len(update_pair_ids) > 1 and update_current_support_ids:
+    if len(update_pair_ids) > 1 and current_support_ids:
         return "temporal_update_pair_rrf_score_v1"
+    relation_update_pair_ids = [
+        str(memory_id)
+        for memory_id in (
+            list(selection.get("selected_superseded_ids", []))
+            + ([selection.get("selected_relation_current_id")] if selection.get("selected_relation_current_id") else [])
+        )
+        if str(memory_id)
+    ]
+    if selection_reason == "update-history-query-terms" and len(relation_update_pair_ids) > 1 and current_support_ids:
+        return "temporal_update_relation_pair_rrf_score_v1"
     support_ids = (
         list(selection.get("selected_target_support_ids", []))
         + list(selection.get("selected_relation_support_ids", []))
@@ -1853,6 +1875,8 @@ def _temporal_fusion_basis(signal: str | None) -> str | None:
         return "mutation_anchor"
     if signal == "temporal_update_pair_rrf_score_v1":
         return "update_pair"
+    if signal == "temporal_update_relation_pair_rrf_score_v1":
+        return "update_relation_pair"
     if signal == "temporal_support_rrf_score_v1":
         return "support_chain"
     return None
@@ -1863,11 +1887,27 @@ def _packing_priority(
     *,
     candidate: dict[str, Any] | None,
     candidate_count: int,
+    prefer_temporal_fusion_rank: bool = False,
 ) -> int:
     candidate = candidate or {}
     features = candidate.get("features", {})
+    temporal_fusion_rank = candidate.get("temporal_fusion_rank", features.get("temporal_fusion_rank"))
+    temporal_injection_rank = candidate.get("temporal_injection_rank", features.get("temporal_injection_rank"))
     temporal_selection_rank = candidate.get("temporal_selection_rank", features.get("temporal_selection_rank"))
     if (
+        prefer_temporal_fusion_rank
+        and candidate.get("selected_by_temporal_strategy", features.get("selected_by_temporal_strategy", False))
+        and isinstance(temporal_fusion_rank, int)
+        and temporal_fusion_rank > 0
+    ):
+        rank = temporal_fusion_rank
+    elif (
+        candidate.get("selected_by_temporal_strategy", features.get("selected_by_temporal_strategy", False))
+        and isinstance(temporal_injection_rank, int)
+        and temporal_injection_rank > 0
+    ):
+        rank = temporal_injection_rank
+    elif (
         candidate.get("selected_by_temporal_strategy", features.get("selected_by_temporal_strategy", False))
         and isinstance(temporal_selection_rank, int)
         and temporal_selection_rank > 0
@@ -5245,6 +5285,13 @@ def pack_memory_context(
 ) -> dict[str, Any]:
     ranks = _rank_lookup(retrieval)
     candidate_by_id = _candidate_by_id(retrieval)
+    temporal_fusion_signal = str(
+        ((retrieval.get("temporal") or {}) if isinstance(retrieval.get("temporal"), dict) else {})
+        .get("fusion", {})
+        .get("signal")
+        or ""
+    )
+    prefer_temporal_fusion_rank = temporal_fusion_signal == "temporal_update_relation_pair_rrf_score_v1"
     if max_tokens is not None and max_tokens < 0:
         raise ValueError("context budget cannot be negative")
 
@@ -5252,10 +5299,19 @@ def pack_memory_context(
     candidate_count = len(retrieval.get("candidates", []))
     for memory in authorized:
         candidate = candidate_by_id.get(memory.id)
+        temporal_fusion_rank = candidate.get("temporal_fusion_rank") if candidate else None
         temporal_injection_rank = candidate.get("temporal_injection_rank") if candidate else None
         temporal_selection_rank = candidate.get("temporal_selection_rank") if candidate else None
         selected_by_temporal_strategy = bool(candidate.get("selected_by_temporal_strategy")) if candidate else False
-        if selected_by_temporal_strategy and isinstance(temporal_injection_rank, int) and temporal_injection_rank > 0:
+        if (
+            prefer_temporal_fusion_rank
+            and selected_by_temporal_strategy
+            and isinstance(temporal_fusion_rank, int)
+            and temporal_fusion_rank > 0
+        ):
+            packing_rank = temporal_fusion_rank
+            packing_rank_basis = "temporal_fusion_rank"
+        elif selected_by_temporal_strategy and isinstance(temporal_injection_rank, int) and temporal_injection_rank > 0:
             packing_rank = temporal_injection_rank
             packing_rank_basis = "temporal_injection_rank"
         elif selected_by_temporal_strategy and isinstance(temporal_selection_rank, int) and temporal_selection_rank > 0:
@@ -5272,10 +5328,16 @@ def pack_memory_context(
                 "packing_rank_basis": packing_rank_basis,
                 "approx_tokens": approx_memory_tokens(memory),
                 "selected_by_temporal_strategy": selected_by_temporal_strategy,
+                "temporal_fusion_rank": temporal_fusion_rank if isinstance(temporal_fusion_rank, int) else None,
                 "temporal_selection_rank": temporal_selection_rank if isinstance(temporal_selection_rank, int) else None,
                 "temporal_injection_rank": temporal_injection_rank if isinstance(temporal_injection_rank, int) else None,
                 "temporal_state": candidate.get("temporal_state") if candidate else None,
-                "priority": _packing_priority(memory, candidate=candidate, candidate_count=candidate_count),
+                "priority": _packing_priority(
+                    memory,
+                    candidate=candidate,
+                    candidate_count=candidate_count,
+                    prefer_temporal_fusion_rank=prefer_temporal_fusion_rank,
+                ),
             }
         )
 
@@ -5398,6 +5460,7 @@ def pack_memory_context(
                     "packing_rank_basis": entry["packing_rank_basis"],
                     "packing_priority": entry["priority"],
                     "selected_by_temporal_strategy": entry["selected_by_temporal_strategy"],
+                    "temporal_fusion_rank": entry["temporal_fusion_rank"],
                     "temporal_selection_rank": entry["temporal_selection_rank"],
                     "temporal_injection_rank": entry["temporal_injection_rank"],
                     "temporal_state": entry["temporal_state"],
@@ -5417,7 +5480,11 @@ def pack_memory_context(
         "injected_ids": [memory.id for memory in injected],
         "budget_dropped": budget_dropped,
         "diversity_dropped": [],
-        "priority_model": "temporal_selection_rank_score_authority_current_v1",
+        "priority_model": (
+            "temporal_fusion_rank_score_authority_current_v1"
+            if prefer_temporal_fusion_rank
+            else "temporal_selection_rank_score_authority_current_v1"
+        ),
         "reservation": reservation,
         "candidate_priorities": [
             {
@@ -5428,6 +5495,7 @@ def pack_memory_context(
                 "approx_tokens": entry["approx_tokens"],
                 "packing_priority": entry["priority"],
                 "selected_by_temporal_strategy": entry["selected_by_temporal_strategy"],
+                "temporal_fusion_rank": entry["temporal_fusion_rank"],
                 "temporal_selection_rank": entry["temporal_selection_rank"],
                 "temporal_injection_rank": entry["temporal_injection_rank"],
                 "temporal_state": entry["temporal_state"],

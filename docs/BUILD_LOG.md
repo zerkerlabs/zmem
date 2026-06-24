@@ -1,3 +1,52 @@
+## 2026-06-24 - Progress Tracker Added
+
+Shipped:
+
+- Added [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/ZMEM_PROGRESS_TRACKER.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/ZMEM_PROGRESS_TRACKER.md) as the shared release and frontier progress board.
+- Linked the tracker from [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/ZMEM_CONTINUOUS_BUILD_ORCHESTRATOR.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/ZMEM_CONTINUOUS_BUILD_ORCHESTRATOR.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md), and [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md).
+- Captured the post-`v0.1.1` lane scoreboard, practical alpha-completion estimates, shipped/left checklists, per-push release hygiene, and the current unpublished L3 relation-history RRF diff.
+
+Verification:
+
+- `git diff --check -- docs/ZMEM_PROGRESS_TRACKER.md docs/ZMEM_CONTINUOUS_BUILD_ORCHESTRATOR.md docs/SWARM_OPERATION_TRACKER.md docs/CURRENT_STATE.md` -> passed
+
+Blockers:
+
+- The tracker is docs-only and does not verify or land the current unpublished retrieval source diff.
+
+Next:
+
+- Verify and checkpoint the L3 relation-history RRF diff, then update `CHANGELOG.md`, the tracker, and the hybrid retrieval lane log before any `v0.1.2` tag.
+
+## 2026-06-24 - Update-History Relation Pair Fusion Landed
+
+Shipped:
+
+- Stayed strictly on the L3 hybrid-retrieval lane and updated [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/store.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/store.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_store.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_store.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_runner.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_runner.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/hybrid-retrieval.log.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/hybrid-retrieval.log.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md), and this build log.
+- Landed one narrow retrieval slice only: update-history relation prompts now add the explicit stale/relation-current pair into temporal `reciprocal_rank_fusion_v1`, and the same fused order now drives packing only for that new relation-pair signal.
+- The concrete local-first gain is budget-visible: with prompts like `what did the api gateway point at change from`, a longer answer-bearing current relation can now outrank a higher-authority generic `changed after ...` support anchor in `retrieval["candidates"]`, stay injected under a tight budget, and leave the generic anchor as the explicit budget-dropped receipt item.
+- Kept the slice surgical: no CLI/config/provider surface changed, no hosted/network retrieval provider path changed, no `MemoryStore.search()` return shape changed, and no Phase 1 launch-proof or generated `.zerker/launch-proof/` artifact was touched.
+
+Verification:
+
+- `python3 -m unittest tests.test_store.MemoryStoreTest.test_update_history_relation_rrf_promotes_explicit_current_relation_over_high_authority_generic_anchor -q` -> passed (`Ran 1 test`)
+- `python3 -m unittest tests.test_runner.RunnerTest.test_update_history_relation_context_rrf_promotes_explicit_current_relation_over_high_authority_generic_anchor -q` -> passed (`Ran 1 test`)
+- `python3 -m unittest tests.test_store -q` -> passed (`Ran 192 tests`)
+- `python3 -m unittest tests.test_policy -q` -> passed (`Ran 7 tests`)
+- `python3 -m unittest tests.test_runner -q` -> passed (`Ran 83 tests`)
+- `python3 -m zerker_memory eval` -> passed (`11/11`)
+- `git diff --check -- zerker_memory/store.py tests/test_store.py tests/test_runner.py` -> passed
+- Focused stale-target scan on `zerker_memory/store.py`, `tests/test_store.py`, and `tests/test_runner.py` -> no active `zerkerlabs/zerker-memory`, stale raw-installer, `rezkerlabs`, or stale GitHub repo targets
+
+Blockers:
+
+- Earliest/original target-history relation-support paths still use their current ordering and packing heuristics.
+- Graph candidate merges still do not share the same deterministic fusion contract.
+
+Next:
+
+- Extend the same deterministic relation-pair fusion plus budget contract to earliest/original target-history relation current/support queries while keeping candidate-by-candidate withheld, injected, and budget-dropped visibility explicit.
+
 ## 2026-06-24 - Restore Receipt Summary Landed
 
 Shipped:

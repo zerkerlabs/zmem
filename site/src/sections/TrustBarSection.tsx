@@ -1,7 +1,8 @@
 const pills = [
-  { label: 'Local SQLite' },
-  { label: 'Agent MCP' },
-  { label: 'Merkle Receipts' },
+  { label: 'Native Local Memory' },
+  { label: 'Review Before Trust' },
+  { label: 'Policy-Gated Injection' },
+  { label: 'Receipts' },
   { label: 'Open Source' },
 ];
 

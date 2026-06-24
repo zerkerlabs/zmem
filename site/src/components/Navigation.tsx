@@ -44,9 +44,9 @@ export default function Navigation() {
   };
 
   const navLinks: NavLink[] = [
-    { label: 'Product', target: '#memory-loop' },
+    { label: 'Gate', target: '#memory-loop' },
+    { label: 'Handoff', target: '#handoff' },
     { label: 'Proof', target: '/proof' },
-    { label: 'ActiveGraph', target: '/activegraph' },
     { label: 'Install', target: '#install' },
     { label: 'Docs', target: '/docs' },
     { label: 'Changelog', target: '/changelog' },
