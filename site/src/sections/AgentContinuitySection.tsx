@@ -23,13 +23,13 @@ Config: .zerker/agents/cursor-mcp.json
 Checklist: .zerker/agents/cursor-checklist.md
 
 $ zmem agent pack --summary-only
-Manual agent pack ready
+Manual agent pack generated
 Pack: .zerker/agents/manual-agent-pack.md
 
 $ zmem handoff --summary-only
 Snapshot verify: ok
 Bundle verify: ok
-Handoff package ready
+Handoff package generated
 
 $ zmem --db .zerker/imported.sqlite restore --handoff-dir .zerker/handoff --summary-only
 Restore: ok`;
@@ -42,8 +42,8 @@ const consolePanels = [
       ['Codex', 'installed'],
       ['Claude Code', 'installed'],
       ['Cursor', 'exported'],
-      ['Hermes', 'pack ready'],
-      ['Generic MCP', 'pack ready'],
+      ['Hermes', 'manual pack'],
+      ['Generic MCP', 'manual pack'],
     ],
   },
   {

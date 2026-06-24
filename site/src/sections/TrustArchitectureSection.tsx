@@ -1,11 +1,9 @@
 import NodeNetworkBg from '@/components/NodeNetworkBg';
 import Card from '@/components/Card';
-import StatusBadge from '@/components/StatusBadge';
 import CodeBlock from '@/components/CodeBlock';
 
 const statusCards = [
   {
-    status: 'built' as const,
     title: 'Native Memory',
     codeTitle: 'zmem status --summary-only',
     code: `Workspace ready: yes
@@ -16,7 +14,6 @@ Queue:     proposed + quarantined
 Status:    active / rejected / revoked`,
   },
   {
-    status: 'built' as const,
     title: 'Authority Gate',
     codeTitle: 'zmem inject --agent codex --risk medium "task"',
     code: `Input:      agent + task + risk + scope
@@ -26,7 +23,6 @@ Withheld:   non-authorized candidates
 Explain:    zmem why <action-id>`,
   },
   {
-    status: 'built' as const,
     title: 'Provider Overlay',
     codeTitle: 'zmem provider import "query" --provider mem0',
     code: `Candidates:  external memory/search
@@ -61,9 +57,6 @@ export default function TrustArchitectureSection() {
           {statusCards.map((card) => (
             <Card key={card.title} className="trust-card p-0 overflow-hidden">
               <div className="p-6 pb-0">
-                <div className="mb-3">
-                  <StatusBadge status={card.status} />
-                </div>
                 <h3 className="font-heading text-2xl font-semibold tracking-tight text-zink">
                   {card.title}
                 </h3>

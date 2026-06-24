@@ -1,7 +1,6 @@
 import { Search, BookOpen, Shield, FileCheck } from '@/components/Icons';
 import NodeNetworkBg from '@/components/NodeNetworkBg';
 import Card from '@/components/Card';
-import StatusBadge from '@/components/StatusBadge';
 
 const cards = [
   {
@@ -10,7 +9,6 @@ const cards = [
     title: 'Request',
     description: 'Before a task, an agent asks for memory scoped by agent, risk, and project boundary.',
     code: 'zmem inject --agent codex --risk medium "task"',
-    status: 'built' as const,
   },
   {
     icon: BookOpen,
@@ -18,7 +16,6 @@ const cards = [
     title: 'Propose',
     description: 'New agent-discovered facts can enter review without becoming trusted memory automatically.',
     code: 'zmem propose "new fact" --source agent',
-    status: 'built' as const,
   },
   {
     icon: Shield,
@@ -26,7 +23,6 @@ const cards = [
     title: 'Promote',
     description: 'Humans or policies can promote useful memory, reject noise, quarantine risk, or revoke stale state.',
     code: 'zmem queue --scope project',
-    status: 'built' as const,
   },
   {
     icon: FileCheck,
@@ -34,7 +30,6 @@ const cards = [
     title: 'Inject',
     description: 'Only admissible memory reaches the agent. The receipt records what was injected and withheld.',
     code: 'zmem why <action-id>',
-    status: 'built' as const,
   },
 ];
 
@@ -77,9 +72,6 @@ export default function MemoryLoopSection() {
                 </p>
                 <div className="mt-4 overflow-hidden rounded bg-[#0A0A0A] px-3.5 py-2.5">
                   <code className="font-mono text-xs text-[#D9E3D0]">{card.code}</code>
-                </div>
-                <div className="mt-4">
-                  <StatusBadge status={card.status} />
                 </div>
               </Card>
             );

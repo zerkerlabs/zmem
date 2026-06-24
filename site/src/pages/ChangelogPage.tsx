@@ -1,36 +1,29 @@
 import Card from '@/components/Card';
-import StatusBadge from '@/components/StatusBadge';
 
 const updates = [
   {
     title: 'ActiveGraph source pack',
-    status: 'built' as const,
     detail: 'Pack manifest, behavior handlers, and entry point for cross-run ActiveGraph memory.',
   },
   {
     title: 'Compact benchmark runner',
-    status: 'built' as const,
     detail: 'Event-sourced LoCoMo runner writes trace.jsonl and scored_receipt.json, avoiding per-question receipt bundles.',
   },
   {
     title: 'Official LoCoMo FTS baseline',
-    status: 'ready' as const,
     detail: '1,986-question rule-scored run recorded at F1 0.3752 and EM 0.3721 with a public-claim receipt.',
   },
   {
     title: 'Retrieval fork-and-diff queue',
-    status: 'alpha' as const,
     detail: 'fts-multihop and pseudo-embedding-rerank are queued to test depth and reranking against the same dataset.',
   },
   {
     title: 'Causal memory receipts',
-    status: 'built' as const,
     detail: 'Memory writes can carry caused_by_event so agent memory points back to the event that produced it.',
   },
   {
-    title: 'ActiveGraph install smoke',
-    status: 'pending' as const,
-    detail: 'The source integration is present; real pack-loader smoke is still pending in a networked environment.',
+    title: 'ActiveGraph install check',
+    detail: 'The source integration includes the pack manifest and smoke path for verification in an ActiveGraph environment.',
   },
 ];
 
@@ -58,12 +51,9 @@ export default function ChangelogPage() {
           <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
             {updates.map((update) => (
               <Card key={update.title}>
-                <div className="flex items-start justify-between gap-4">
-                  <h2 className="font-heading text-2xl font-semibold tracking-tight text-zink">
-                    {update.title}
-                  </h2>
-                  <StatusBadge status={update.status} />
-                </div>
+                <h2 className="font-heading text-2xl font-semibold tracking-tight text-zink">
+                  {update.title}
+                </h2>
                 <p className="mt-4 text-sm leading-relaxed text-zmuted">{update.detail}</p>
               </Card>
             ))}

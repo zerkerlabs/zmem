@@ -1,56 +1,51 @@
 import Card from '@/components/Card';
 import CodeBlock from '@/components/CodeBlock';
-import StatusBadge from '@/components/StatusBadge';
 
 const featureRows = [
-  { feature: 'Capture source', status: 'built' as const, proof: 'zmem remember --type semantic "fact"' },
-  { feature: 'Review before trust', status: 'built' as const, proof: 'zmem queue / promote / reject / revoke' },
-  { feature: 'Inject scoped context', status: 'built' as const, proof: 'zmem inject --agent codex --risk medium "task"' },
-  { feature: 'Explain influence', status: 'built' as const, proof: 'zmem why <action-id>' },
-  { feature: 'Verify integrity', status: 'built' as const, proof: 'zmem verify <action-id>' },
-  { feature: 'Export evidence', status: 'built' as const, proof: 'zmem bundle <action-id>' },
-  { feature: 'Publish public proof', status: 'built' as const, proof: 'zmem treeship publish <action-id>' },
-  { feature: 'Hand off state', status: 'built' as const, proof: 'zmem handoff --summary-only' },
-  { feature: 'ActiveGraph memory', status: 'built' as const, proof: 'pack/pack.yaml' },
-  { feature: 'Compact benchmark trace', status: 'built' as const, proof: 'zmem-bench-locomo --dataset <file>' },
+  { feature: 'Capture source', proof: 'zmem remember --type semantic "fact"' },
+  { feature: 'Review before trust', proof: 'zmem queue / promote / reject / revoke' },
+  { feature: 'Inject scoped context', proof: 'zmem inject --agent codex --risk medium "task"' },
+  { feature: 'Explain influence', proof: 'zmem why <action-id>' },
+  { feature: 'Verify integrity', proof: 'zmem verify <action-id>' },
+  { feature: 'Export evidence', proof: 'zmem bundle <action-id>' },
+  { feature: 'Publish public proof', proof: 'zmem treeship publish <action-id>' },
+  { feature: 'Hand off state', proof: 'zmem handoff --summary-only' },
+  { feature: 'ActiveGraph memory', proof: 'pack/pack.yaml' },
+  { feature: 'Compact benchmark trace', proof: 'zmem-bench-locomo --dataset <file>' },
 ];
 
 const proofSteps = [
   {
     title: 'A memory is written with provenance',
-    status: 'built' as const,
     detail: 'Each useful memory can carry source metadata, actor context, timestamps, and content hashes.',
     command: 'zmem remember --source <uri> "fact"',
   },
   {
     title: 'An agent receives scoped context',
-    status: 'built' as const,
     detail: 'ZMem injects approved memory and records which memories were included or withheld.',
     command: 'zmem inject --agent codex --risk medium "task"',
   },
   {
     title: 'The action gets a receipt',
-    status: 'built' as const,
     detail: 'The receipt links action, memory ids, digests, policy state, and the local Merkle root.',
     command: 'zmem why <action-id>',
   },
   {
     title: 'The proof can be shared',
-    status: 'built' as const,
     detail: 'Local bundles stay private by default; Treeship publishing is optional when a public URL is useful.',
     command: 'zmem treeship publish <action-id>',
   },
 ];
 
 const benchmarkRows = [
-  { item: 'LoCoMo FTS official run', status: 'recorded', note: '1,986 questions, F1 0.3752, EM 0.3721, trace sha256 67a005bf...971d0c.' },
-  { item: 'ActiveGraph compact trace', status: 'built', note: 'Event-sourced trace.jsonl plus scored_receipt.json, without per-question bundle files.' },
-  { item: 'LoCoMo fts-multihop', status: 'next', note: 'Tests whether retrieval decomposition moves multi-hop and open-domain categories.' },
-  { item: 'LoCoMo rerank', status: 'next', note: 'Tests whether pseudo embedding rerank improves retrieval depth against the same dataset.' },
-  { item: 'LongMemEval-S', status: 'queued', note: 'Highest-priority abstention and token-efficiency benchmark after LoCoMo deltas.' },
-  { item: 'BEAM', status: 'planned', note: 'Scale benchmark for 100K to 10M token memory pressure and causal traces.' },
-  { item: 'Metrics', status: 'alpha', note: 'Accuracy, stable wins/misses, latency, tokens, abstention, and proof verification.' },
-  { item: 'Public claims', status: 'gated', note: 'Official rankings wait for primary-source methods and reproducible benchmark submissions.' },
+  { item: 'LoCoMo FTS official run', note: '1,986 questions, F1 0.3752, EM 0.3721, trace sha256 67a005bf...971d0c.' },
+  { item: 'ActiveGraph compact trace', note: 'Event-sourced trace.jsonl plus scored_receipt.json, without per-question bundle files.' },
+  { item: 'LoCoMo fts-multihop', note: 'Tests whether retrieval decomposition moves multi-hop and open-domain categories.' },
+  { item: 'LoCoMo rerank', note: 'Tests whether pseudo embedding rerank improves retrieval depth against the same dataset.' },
+  { item: 'LongMemEval-S', note: 'Highest-priority abstention and token-efficiency benchmark after LoCoMo deltas.' },
+  { item: 'BEAM', note: 'Scale benchmark for 100K to 10M token memory pressure and causal traces.' },
+  { item: 'Metrics', note: 'Accuracy, stable wins/misses, latency, tokens, abstention, and proof verification.' },
+  { item: 'Public claims', note: 'Official rankings wait for primary-source methods and reproducible benchmark submissions.' },
 ];
 
 const statusCode = `Memory store: local
@@ -138,20 +133,16 @@ export default function ProofPage() {
           </div>
 
           <Card className="mt-10 overflow-hidden p-0">
-            <div className="hidden border-b border-zline px-6 py-4 md:grid md:grid-cols-[40%_18%_42%]">
+            <div className="hidden border-b border-zline px-6 py-4 md:grid md:grid-cols-[42%_58%]">
               <span className="text-eyebrow text-zmuted">Feature</span>
-              <span className="text-eyebrow text-zmuted">Status</span>
               <span className="text-eyebrow text-zmuted">Proof command</span>
             </div>
             {featureRows.map((row) => (
               <div
                 key={row.feature}
-                className="border-b border-[rgba(42,42,42,0.55)] px-6 py-4 md:grid md:grid-cols-[40%_18%_42%] md:items-center"
+                className="border-b border-[rgba(42,42,42,0.55)] px-6 py-4 md:grid md:grid-cols-[42%_58%] md:items-center"
               >
                 <span className="text-sm text-zink">{row.feature}</span>
-                <div className="mt-2 md:mt-0">
-                  <StatusBadge status={row.status} />
-                </div>
                 <code className="mt-2 block font-mono text-[11px] text-[#D9E3D0] md:mt-0">{row.proof}</code>
               </div>
             ))}
@@ -168,12 +159,9 @@ export default function ProofPage() {
           <div className="mt-10 grid grid-cols-1 gap-5 md:grid-cols-2">
             {proofSteps.map((step) => (
               <Card key={step.title}>
-                <div className="flex items-start justify-between gap-4">
-                  <h3 className="font-heading text-2xl font-semibold tracking-tight text-zink">
-                    {step.title}
-                  </h3>
-                  <StatusBadge status={step.status} />
-                </div>
+                <h3 className="font-heading text-2xl font-semibold tracking-tight text-zink">
+                  {step.title}
+                </h3>
                 <p className="mt-4 text-sm leading-relaxed text-zmuted">{step.detail}</p>
                 <code className="mt-5 block rounded bg-[#0A0A0A] px-3.5 py-2.5 font-mono text-[11px] text-[#D9E3D0]">
                   {step.command}
@@ -213,12 +201,7 @@ export default function ProofPage() {
           <div className="mt-10 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
             {benchmarkRows.map((row) => (
               <Card key={row.item} className="p-5">
-                <div className="flex items-start justify-between gap-3">
-                  <h3 className="font-heading text-xl font-semibold tracking-tight text-zink">{row.item}</h3>
-                  <span className="rounded-full border border-zline px-2 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-zmuted">
-                    {row.status}
-                  </span>
-                </div>
+                <h3 className="font-heading text-xl font-semibold tracking-tight text-zink">{row.item}</h3>
                 <p className="mt-3 text-sm leading-relaxed text-zmuted">{row.note}</p>
               </Card>
             ))}

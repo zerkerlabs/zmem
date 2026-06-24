@@ -1,6 +1,5 @@
 import Card from '@/components/Card';
 import CodeBlock from '@/components/CodeBlock';
-import StatusBadge from '@/components/StatusBadge';
 
 const packManifest = `name: zmem
 version: "0.1.0"
@@ -35,23 +34,19 @@ ZMEM_TREESHIP_ENABLED=false`;
 const behaviorRows = [
   {
     name: 'zmem.persist',
-    status: 'built' as const,
     detail: 'Persists ActiveGraph events into ZMem with the source event id attached.',
   },
   {
     name: 'zmem.recall',
-    status: 'built' as const,
     detail: 'Injects approved memory into LLM requests, controlled by ZMEM_RETRIEVAL_MODE.',
   },
   {
     name: 'compact bench runner',
-    status: 'built' as const,
     detail: 'Writes trace.jsonl and scored_receipt.json instead of per-question bundles.',
   },
   {
-    name: 'real loader smoke',
-    status: 'pending' as const,
-    detail: 'Source-level pack is built. ActiveGraph loader install smoke waits for a networked environment.',
+    name: 'pack install check',
+    detail: 'Use the pack manifest and local smoke path to verify the integration in your ActiveGraph environment.',
   },
 ];
 
@@ -103,12 +98,9 @@ export default function ActiveGraphPage() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {behaviorRows.map((row) => (
               <Card key={row.name} className="p-5">
-                <div className="flex items-start justify-between gap-3">
-                  <h3 className="font-heading text-xl font-semibold tracking-tight text-zink">
-                    {row.name}
-                  </h3>
-                  <StatusBadge status={row.status} />
-                </div>
+                <h3 className="font-heading text-xl font-semibold tracking-tight text-zink">
+                  {row.name}
+                </h3>
                 <p className="mt-3 text-sm leading-relaxed text-zmuted">{row.detail}</p>
               </Card>
             ))}
