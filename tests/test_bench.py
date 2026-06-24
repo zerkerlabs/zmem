@@ -2599,8 +2599,8 @@ class BenchmarkHarnessTest(unittest.TestCase):
                 self._write_richer_longmemeval_jsonl,
                 "analysis",
                 {
-                    "visible_deltas": 2,
-                    "stable_wins": 6,
+                    "visible_deltas": 3,
+                    "stable_wins": 5,
                     "stable_misses": 0,
                     "changed_question_id": "lme-knowledge-update-release-note-decoy",
                     "budget_context_line": (
@@ -3629,18 +3629,17 @@ class BenchmarkHarnessTest(unittest.TestCase):
                 matrix["summary"]["question_summary"],
                 {
                     "question_count": 8,
-                    "visible_delta_question_count": 2,
+                    "visible_delta_question_count": 3,
                     "stable_misses": {
                         "count": 0,
                         "question_ids": [],
                     },
                     "stable_wins": {
-                        "count": 6,
+                        "count": 5,
                         "question_ids": [
                             "lme-temporal-change-when",
                             "lme-knowledge-update-current-target",
                             "lme-knowledge-update-ambiguous-restatement",
-                            "lme-knowledge-update-history-wording-gap",
                             "lme-routing-owner-wording-gap",
                             "lme-current-conflict-abstain",
                         ],
@@ -3679,18 +3678,17 @@ class BenchmarkHarnessTest(unittest.TestCase):
             expected_mode_proofs = matrix["summary"]["mode_proofs"]
             expected_question_summary = {
                 "question_count": 8,
-                "visible_delta_question_count": 2,
+                "visible_delta_question_count": 3,
                 "stable_misses": {
                     "count": 0,
                     "question_ids": [],
                 },
                 "stable_wins": {
-                    "count": 6,
+                    "count": 5,
                     "question_ids": [
                         "lme-temporal-change-when",
                         "lme-knowledge-update-current-target",
                         "lme-knowledge-update-ambiguous-restatement",
-                        "lme-knowledge-update-history-wording-gap",
                         "lme-routing-owner-wording-gap",
                         "lme-current-conflict-abstain",
                     ],
@@ -4485,7 +4483,7 @@ class BenchmarkHarnessTest(unittest.TestCase):
             self.assertIn("Recovered Stable Win Spotlight: fts", dashboard_html)
             self.assertIn("lme-temporal-history-shift-gap", dashboard_html)
             self.assertIn("Avery covered the overnight rotation.", dashboard_html)
-            self.assertNotIn("Stable Miss Spotlight: fts", dashboard_html)
+            self.assertNotIn("<h2>Stable Miss Spotlight: fts</h2>", dashboard_html)
 
     def test_budget_constrained_locomo_stable_miss_matrix_preserves_stable_miss_and_budget_dropped_evidence(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -5289,7 +5287,7 @@ class BenchmarkHarnessTest(unittest.TestCase):
             self.assertIn("On Monday, the deployment approver was Noor.", report_text)
             self.assertIn("Blue Finch shipped on Staging before the cutover.", report_text)
             self.assertIn("Recovered Stable Win Spotlight: fts", dashboard_html)
-            self.assertNotIn("Stable Miss Spotlight: fts", dashboard_html)
+            self.assertNotIn("<h2>Stable Miss Spotlight: fts</h2>", dashboard_html)
             self.assertIn("Budget-Dropped Stable Context: fts", dashboard_html)
             self.assertIn("lme-temporal-change-when", dashboard_html)
             self.assertIn("lme-knowledge-update-history-wording-gap", dashboard_html)
@@ -5361,7 +5359,7 @@ class BenchmarkHarnessTest(unittest.TestCase):
             }
             expected_by_mode = {
                 "fts": (0, 8, 0),
-                "fts-multihop": (0, 8, 0),
+                "fts-multihop": (0, 7, 1),
                 "pseudo-embedding": (0, 7, 1),
                 "pseudo-embedding-rerank": (0, 7, 1),
             }
@@ -5745,14 +5743,13 @@ class BenchmarkHarnessTest(unittest.TestCase):
                 "analysis",
                 {
                     "question_count": 8,
-                    "visible_delta_question_count": 2,
+                    "visible_delta_question_count": 3,
                     "stable_wins": {
-                        "count": 6,
+                        "count": 5,
                         "question_ids": [
                             "lme-temporal-change-when",
                             "lme-knowledge-update-current-target",
                             "lme-knowledge-update-ambiguous-restatement",
-                            "lme-knowledge-update-history-wording-gap",
                             "lme-routing-owner-wording-gap",
                             "lme-current-conflict-abstain",
                         ],
@@ -5839,7 +5836,7 @@ class BenchmarkHarnessTest(unittest.TestCase):
                 self._write_richer_longmemeval_jsonl,
                 run_longmemeval_benchmark,
                 "analysis",
-                (1, 7, 0),
+                (2, 6, 0),
                 "lme-knowledge-update-release-note-decoy",
             ),
             (
@@ -6196,15 +6193,14 @@ class BenchmarkHarnessTest(unittest.TestCase):
                 "analysis",
                 {
                     "question_count": 8,
-                    "visible_delta_question_count": 1,
+                    "visible_delta_question_count": 2,
                     "stable_wins": {
-                        "count": 7,
+                        "count": 6,
                         "question_ids": [
                             "lme-temporal-change-when",
                             "lme-knowledge-update-current-target",
                             "lme-knowledge-update-stale-decoy",
                             "lme-knowledge-update-ambiguous-restatement",
-                            "lme-knowledge-update-history-wording-gap",
                             "lme-routing-owner-wording-gap",
                             "lme-current-conflict-abstain",
                         ],

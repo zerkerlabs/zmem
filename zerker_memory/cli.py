@@ -299,6 +299,26 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
 
     session = sub.add_parser("session", help="Inspect persisted lifecycle checkpoints and snapshots")
     session_sub = session.add_subparsers(dest="session_command", required=True)
+    session_checkpoint = session_sub.add_parser("checkpoint", help="Write a persisted session checkpoint")
+    session_checkpoint.add_argument("--session-id", required=True)
+    session_checkpoint.add_argument("--actor-id", required=True)
+    session_checkpoint.add_argument("--scope")
+    session_checkpoint.add_argument("--summary")
+    session_checkpoint.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Print only a compact human-readable session-checkpoint result",
+    )
+    session_snapshot = session_sub.add_parser("snapshot", help="Write a persisted session snapshot")
+    session_snapshot.add_argument("--session-id", required=True)
+    session_snapshot.add_argument("--actor-id", required=True)
+    session_snapshot.add_argument("--scope")
+    session_snapshot.add_argument("--summary")
+    session_snapshot.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Print only a compact human-readable session-snapshot result",
+    )
     session_checkpoints = session_sub.add_parser("checkpoints", help="List persisted session checkpoints")
     session_checkpoints.add_argument("--session-id")
     session_checkpoints.add_argument("--scope")
@@ -316,6 +336,18 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
         "--summary-only",
         action="store_true",
         help="Print only a compact human-readable session-snapshot summary",
+    )
+    session_delete_snapshot = session_sub.add_parser(
+        "delete-snapshot",
+        help="Soft-delete a persisted session snapshot payload",
+    )
+    session_delete_snapshot.add_argument("--session-snapshot-id", required=True)
+    session_delete_snapshot.add_argument("--actor-id", required=True)
+    session_delete_snapshot.add_argument("--reason")
+    session_delete_snapshot.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Print only a compact human-readable session-snapshot soft-delete result",
     )
 
     prelaunch = sub.add_parser("prelaunch", help="Audit local alpha release readiness before publishing")
@@ -372,6 +404,11 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
 
     lineage = sub.add_parser("lineage", help="Show parents and descendants for a memory")
     lineage.add_argument("memory_id")
+    lineage.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Print only a compact human-readable lineage summary",
+    )
 
     revoke = sub.add_parser("revoke", help="Revoke a memory and all derived descendants")
     revoke.add_argument("memory_id")
@@ -510,6 +547,11 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
     bundle = sub.add_parser("bundle", help="Export or verify a verifiable receipt bundle")
     bundle.add_argument("bundle_target", help="Action ID to export, or 'verify'")
     bundle.add_argument("bundle_path", nargs="?", type=Path)
+    bundle.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Print only a compact human-readable bundle verification summary",
+    )
     bundle.add_argument("--out", type=Path)
     bundle.add_argument("--out-dir", type=Path)
 
@@ -565,6 +607,11 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
     bench_matrix.add_argument("--answerer", choices=["deterministic", "llm"], default="deterministic")
     bench_matrix.add_argument("--answerer-model", default="gpt-4o")
     bench_matrix.add_argument("--trace", action="store_true", help="Write trace.jsonl and summary.json artifacts.")
+    bench_matrix.add_argument(
+        "--compact-artifacts",
+        action="store_true",
+        help="Skip bulky per-question receipt bundle exports while preserving trace, summary, and receipt artifacts.",
+    )
     bench_matrix.add_argument(
         "--context-budget-tokens",
         type=int,
@@ -647,7 +694,7 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
     restore.add_argument(
         "--summary-only",
         action="store_true",
-        help="Print only the compact human-readable restore summary when using --handoff-dir",
+        help="Print only the compact human-readable restore summary",
     )
 
     ui = sub.add_parser("ui", help="Run the local human review console")
@@ -1056,6 +1103,32 @@ def main(argv: list[str] | None = None) -> int:
                     print_json(result)
                 return 0
         if args.command == "session":
+            if args.session_command == "checkpoint":
+                result = build_session_checkpoint_result(
+                    store,
+                    session_id=args.session_id,
+                    actor_id=args.actor_id,
+                    scope=args.scope,
+                    summary=args.summary,
+                )
+                if args.summary_only:
+                    print(render_session_checkpoint_summary(result), end="")
+                else:
+                    print_json(result)
+                return 0
+            if args.session_command == "snapshot":
+                result = build_session_snapshot_result(
+                    store,
+                    session_id=args.session_id,
+                    actor_id=args.actor_id,
+                    scope=args.scope,
+                    summary=args.summary,
+                )
+                if args.summary_only:
+                    print(render_session_snapshot_summary(result), end="")
+                else:
+                    print_json(result)
+                return 0
             if args.session_command == "checkpoints":
                 result = build_session_checkpoints_report(
                     store,
@@ -1077,6 +1150,18 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 if args.summary_only:
                     print(render_session_snapshots_summary(result), end="")
+                else:
+                    print_json(result)
+                return 0
+            if args.session_command == "delete-snapshot":
+                result = build_session_snapshot_soft_delete_result(
+                    store,
+                    session_snapshot_id=args.session_snapshot_id,
+                    actor_id=args.actor_id,
+                    reason=args.reason,
+                )
+                if args.summary_only:
+                    print(render_session_snapshot_soft_delete_summary(result), end="")
                 else:
                     print_json(result)
                 return 0
@@ -1134,7 +1219,12 @@ def main(argv: list[str] | None = None) -> int:
             print_json(store.reject(args.memory_id, reason=args.reason).to_dict())
             return 0
         if args.command == "lineage":
-            print_json(store.lineage(args.memory_id))
+            lineage = store.lineage(args.memory_id)
+            if args.summary_only:
+                verification = store.verify_memory_write_receipt_chain(lineage.get("write_receipts", []))
+                print(render_lineage_summary(lineage, chain_verification=verification), end="")
+            else:
+                print_json(lineage)
             return 0
         if args.command == "revoke":
             print_json(store.revoke(args.memory_id, reason=args.reason))
@@ -1308,10 +1398,11 @@ def main(argv: list[str] | None = None) -> int:
             if args.bundle_target == "verify":
                 if args.bundle_path is None:
                     raise ValueError("missing bundle path")
-                bundle_payload = json.loads(args.bundle_path.read_text(encoding="utf-8"))
-                result = store.verify_bundle(bundle_payload)
-                result["path"] = str(args.bundle_path)
-                print_json(result)
+                result = build_bundle_verification_result(store, bundle_path=args.bundle_path)
+                if args.summary_only:
+                    print(render_bundle_verification_summary(result), end="")
+                else:
+                    print_json(result)
                 return 0 if result["ok"] else 1
             print_json(export_bundle(store.receipt_bundle(args.bundle_target), out=args.out, out_dir=args.out_dir))
             return 0
@@ -1414,6 +1505,7 @@ def main(argv: list[str] | None = None) -> int:
                     answerer=args.answerer,
                     answerer_model=args.answerer_model,
                     write_trace=args.trace,
+                    compact_artifacts=args.compact_artifacts,
                 )
                 if args.summary_only:
                     print(render_benchmark_summary(result), end="")
@@ -1478,9 +1570,14 @@ def main(argv: list[str] | None = None) -> int:
                 return 0 if result["ok"] else 1
             if args.snapshot_path is None:
                 raise ValueError("missing snapshot path")
-            snapshot_payload = json.loads(args.snapshot_path.read_text(encoding="utf-8"))
-            print_json(store.restore_snapshot(snapshot_payload))
-            return 0
+            result = restore_snapshot_file(store, snapshot_path=args.snapshot_path)
+            summary = render_restore_summary(result)
+            if args.summary_only:
+                print(summary, end="")
+            else:
+                print(summary)
+                print_json(result)
+            return 0 if result["ok"] else 1
         if args.command == "ui":
             from .dashboard import serve
 
@@ -4711,6 +4808,232 @@ def render_restore_summary(result: dict) -> str:
     return "\n".join(lines)
 
 
+def build_bundle_verification_result(store: MemoryStore, *, bundle_path: Path) -> dict[str, Any]:
+    resolved_bundle_path = bundle_path.resolve()
+    bundle_payload = json.loads(resolved_bundle_path.read_text(encoding="utf-8"))
+    bundle_verify = store.verify_bundle(bundle_payload)
+
+    supporting_receipts = bundle_payload.get("supporting_memory_write_receipts")
+    receipt_verifications: list[dict[str, Any]] = []
+    attestation_artifacts: list[dict[str, Any]] = []
+    provenance_error: str | None = None
+    supporting_provenance_ok = True
+    verified_receipt_count = 0
+
+    if supporting_receipts is None:
+        supporting_receipts = {}
+    if not isinstance(supporting_receipts, dict):
+        supporting_provenance_ok = False
+        provenance_error = "bundle supporting_memory_write_receipts is invalid"
+        supporting_receipts = {}
+
+    for memory_id in sorted(supporting_receipts):
+        receipt = supporting_receipts[memory_id]
+        if not isinstance(receipt, dict):
+            supporting_provenance_ok = False
+            provenance_error = f"bundle supporting write receipt for {memory_id} is invalid"
+            receipt_verifications.append(
+                {
+                    "memory_id": memory_id,
+                    "ok": False,
+                    "error": provenance_error,
+                }
+            )
+            continue
+        verification = store.verify_memory_write_receipt(receipt)
+        receipt_verifications.append(
+            {
+                "memory_id": memory_id,
+                "receipt_id": receipt.get("receipt_id"),
+                "receipt_hash": receipt.get("receipt_hash"),
+                "verification": verification,
+            }
+        )
+        if verification["ok"]:
+            verified_receipt_count += 1
+        else:
+            supporting_provenance_ok = False
+            provenance_error = (
+                provenance_error
+                or f"supporting write receipt {receipt.get('receipt_id') or memory_id} verification failed"
+            )
+        attestation = receipt.get("treeship_attestation")
+        if isinstance(attestation, dict):
+            attestation_artifacts.append(
+                {
+                    "memory_id": memory_id,
+                    "receipt_id": receipt.get("receipt_id"),
+                    "artifact_id": attestation.get("artifact_id"),
+                    "status": attestation.get("status"),
+                    "signed_at": attestation.get("signed_at"),
+                }
+            )
+
+    supporting_memory_ids = bundle_payload.get("supporting_memory_ids")
+    supporting_events = bundle_payload.get("supporting_events")
+    supporting_memory_count = len(supporting_memory_ids) if isinstance(supporting_memory_ids, list) else 0
+    supporting_event_count = len(supporting_events) if isinstance(supporting_events, list) else 0
+
+    result = {
+        "ok": bundle_verify["ok"] and supporting_provenance_ok,
+        "schema": "zerker.bundle_verification_result.v1",
+        "path": str(resolved_bundle_path),
+        "action_id": bundle_payload.get("action_id"),
+        "bundle_hash": bundle_payload.get("bundle_hash"),
+        "bundle_verify": bundle_verify,
+        "supporting_memory_count": supporting_memory_count,
+        "supporting_event_count": supporting_event_count,
+        "supporting_provenance": {
+            "ok": supporting_provenance_ok,
+            "receipt_count": len(receipt_verifications),
+            "verified_receipt_count": verified_receipt_count,
+            "receipts": receipt_verifications,
+            "attestation_artifacts": attestation_artifacts,
+        },
+        "trusted_provenance_verified": bundle_verify["ok"] and supporting_provenance_ok,
+        "semantic_truth_guaranteed": False,
+    }
+    if provenance_error is not None:
+        result["supporting_provenance"]["error"] = provenance_error
+    if not result["ok"]:
+        result["error"] = bundle_verify.get("error") or provenance_error or "bundle verification failed"
+    return result
+
+
+def render_bundle_verification_summary(result: dict[str, Any]) -> str:
+    bundle_verify = dict(result.get("bundle_verify") or {})
+    supporting_provenance = dict(result.get("supporting_provenance") or {})
+    attestation_artifacts = [
+        str(item.get("artifact_id"))
+        for item in supporting_provenance.get("attestation_artifacts", [])
+        if str(item.get("artifact_id") or "")
+    ]
+    lines = [
+        "Receipt bundle verify",
+        "",
+        f"Ready: {'yes' if result.get('ok') else 'no'}",
+        f"Bundle: {result.get('path')}",
+        f"Action id: {result.get('action_id')}",
+        f"Bundle hash: {result.get('bundle_hash')}",
+        f"Supporting memories: {int(result.get('supporting_memory_count') or 0)}",
+        f"Supporting events: {int(result.get('supporting_event_count') or 0)}",
+        f"Supporting write receipts: {int(supporting_provenance.get('receipt_count') or 0)}",
+        f"Bundle verify: {'ok' if bundle_verify.get('ok') else 'failed'}",
+        (
+            "Supporting provenance verify: "
+            f"{'ok' if supporting_provenance.get('ok') else 'failed'} "
+            f"({int(supporting_provenance.get('verified_receipt_count') or 0)}/"
+            f"{int(supporting_provenance.get('receipt_count') or 0)} verified)"
+        ),
+        f"Memory tree verify: {'ok' if bundle_verify.get('memory_tree_verified') else 'failed'}",
+        f"Merkle root: {bundle_verify.get('computed_merkle_root')}",
+        f"Treeship artifacts: {', '.join(attestation_artifacts) if attestation_artifacts else 'none'}",
+        f"Trusted provenance: {'verified' if result.get('trusted_provenance_verified') else 'not verified'}",
+        "Semantic truth: not guaranteed",
+    ]
+    if bundle_verify.get("error"):
+        lines.append(f"Bundle error: {bundle_verify['error']}")
+    if supporting_provenance.get("error"):
+        lines.append(f"Provenance error: {supporting_provenance['error']}")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def restore_snapshot_file(store: MemoryStore, *, snapshot_path: Path) -> dict:
+    resolved_snapshot_path = snapshot_path.resolve()
+    snapshot_payload = json.loads(resolved_snapshot_path.read_text(encoding="utf-8"))
+    snapshot_verify = store.verify_snapshot(snapshot_payload)
+    if not snapshot_verify["ok"]:
+        raise ValueError(snapshot_verify.get("error", "snapshot verification failed"))
+
+    restore_result = store.restore_snapshot(snapshot_payload)
+    restore_verify = store.verify_lifecycle_receipt(
+        restore_result["receipt"],
+        source_snapshot=snapshot_payload,
+    )
+    return {
+        "ok": True,
+        "schema": "zerker.restore_snapshot_file.v1",
+        "source": str(resolved_snapshot_path),
+        "manifest_path": None,
+        "db_path": str(store.db_path),
+        "readme_path": None,
+        "snapshot_path": str(resolved_snapshot_path),
+        "snapshot_verify": snapshot_verify,
+        "bundle_path": None,
+        "bundle_verify": None,
+        "treeship_path": None,
+        "restore": restore_result,
+        "restore_verify": restore_verify,
+        "next_steps": [
+            f"zmem --db {store.db_path} status --summary-only --skip-eval",
+            f"zmem --db {store.db_path} ui",
+        ],
+    }
+
+
+def render_lineage_summary(
+    lineage: dict[str, Any],
+    *,
+    chain_verification: dict[str, Any] | None = None,
+) -> str:
+    memory = dict(lineage.get("memory") or {})
+    parents = list(lineage.get("parents") or [])
+    descendants = list(lineage.get("descendants") or [])
+    receipts = [
+        receipt
+        for receipt in lineage.get("write_receipts", [])
+        if isinstance(receipt, dict)
+    ]
+    if not receipts and isinstance(lineage.get("write_receipt"), dict):
+        receipts = [dict(lineage["write_receipt"])]
+    original_receipt = receipts[0] if receipts else {}
+    latest_receipt = receipts[-1] if receipts else {}
+    verification = dict(chain_verification or {})
+    attestation_artifacts = [
+        str(item.get("artifact_id"))
+        for item in verification.get("attestation_artifacts", [])
+        if str(item.get("artifact_id") or "")
+    ]
+    original_kind = str(((original_receipt.get("treeship_statement") or {}).get("kind")) or "unknown")
+    latest_kind = str(((latest_receipt.get("treeship_statement") or {}).get("kind")) or "unknown")
+    content_digest = str(
+        original_receipt.get("content_digest")
+        or latest_receipt.get("content_digest")
+        or "unknown"
+    )
+    lines = [
+        "Memory lineage",
+        "",
+        f"Memory id: {memory.get('id')}",
+        f"Status: {memory.get('status')}",
+        f"Type: {memory.get('type')}",
+        f"Scope: {memory.get('scope')}",
+        f"Parents: {len(parents)}",
+        f"Descendants: {len(descendants)}",
+        f"Content digest: {content_digest}",
+        f"Write receipts: {len(receipts)}",
+        f"Write receipt chain verify: {'ok' if verification.get('ok') else 'failed'}",
+        f"Verified transitions: {verification.get('verified_transition_count', 0)}",
+        (
+            f"Original receipt: {original_receipt.get('receipt_id')} "
+            f"({original_kind}) actor={original_receipt.get('actor_uri')} merkle_root={original_receipt.get('merkle_root')}"
+        ),
+        (
+            f"Latest receipt: {latest_receipt.get('receipt_id')} "
+            f"({latest_kind}) actor={latest_receipt.get('actor_uri')} merkle_root={latest_receipt.get('merkle_root')}"
+        ),
+        f"Root transition: {original_receipt.get('merkle_root')} -> {latest_receipt.get('merkle_root')}",
+        f"Treeship artifacts: {', '.join(attestation_artifacts) if attestation_artifacts else 'none'}",
+        f"Trusted provenance: {'verified' if verification.get('ok') else 'not verified'}",
+        "Semantic truth: not guaranteed",
+    ]
+    if verification.get("error"):
+        lines.append(f"Verification error: {verification['error']}")
+    lines.append("")
+    return "\n".join(lines)
+
+
 def render_launch_proof_summary(result: dict) -> str:
     lines = [
         "Zerker Memory launch proof",
@@ -5738,6 +6061,67 @@ def build_session_checkpoints_report(
     }
 
 
+def build_session_checkpoint_result(
+    store: MemoryStore,
+    *,
+    session_id: str,
+    actor_id: str,
+    scope: str | None = None,
+    summary: str | None = None,
+) -> dict[str, Any]:
+    checkpoint = store.checkpoint_session(
+        session_id,
+        actor_id=actor_id,
+        scope=scope,
+        summary=summary,
+    )
+    return {
+        "ok": True,
+        "schema": "zerker.session_checkpoint_result.v1",
+        "checkpoint": checkpoint,
+    }
+
+
+def build_session_snapshot_result(
+    store: MemoryStore,
+    *,
+    session_id: str,
+    actor_id: str,
+    scope: str | None = None,
+    summary: str | None = None,
+) -> dict[str, Any]:
+    session_snapshot = store.snapshot_session(
+        session_id,
+        actor_id=actor_id,
+        scope=scope,
+        summary=summary,
+    )
+    return {
+        "ok": True,
+        "schema": "zerker.session_snapshot_result.v1",
+        "session_snapshot": session_snapshot,
+    }
+
+
+def build_session_snapshot_soft_delete_result(
+    store: MemoryStore,
+    *,
+    session_snapshot_id: str,
+    actor_id: str,
+    reason: str | None = None,
+) -> dict[str, Any]:
+    session_snapshot = store.soft_delete_session_snapshot_payload(
+        session_snapshot_id,
+        actor_id=actor_id,
+        reason=reason,
+    )
+    return {
+        "ok": True,
+        "schema": "zerker.session_snapshot_soft_delete_result.v1",
+        "session_snapshot": session_snapshot,
+    }
+
+
 def build_session_snapshots_report(
     store: MemoryStore,
     *,
@@ -5766,6 +6150,72 @@ def _render_session_memory_type_counts(memory_type_summary: dict[str, Any] | Non
     counts = memory_type_summary.get("active_counts_by_type") if isinstance(memory_type_summary, dict) else {}
     ordered_types = ("policy", "procedural", "episodic", "semantic")
     return " ".join(f"{memory_type}={int(counts.get(memory_type, 0))}" for memory_type in ordered_types)
+
+
+def render_session_checkpoint_summary(result: dict[str, Any]) -> str:
+    checkpoint = result["checkpoint"]
+    snapshot = checkpoint.get("snapshot") if isinstance(checkpoint.get("snapshot"), dict) else {}
+    lines = [
+        "Session checkpoint created",
+        "",
+        f"Checkpoint id: {checkpoint['checkpoint_id']}",
+        f"Session id: {checkpoint['session_id']}",
+        f"Scope: {checkpoint.get('scope') or 'any'}",
+        f"Actor: {checkpoint['actor_id']}",
+        f"Created: {checkpoint['created_at']}",
+        f"Active memories: {checkpoint['memory_count']}",
+        f"Checkpoint root: {checkpoint['checkpoint_merkle_root']}",
+        f"Snapshot hash: {snapshot.get('snapshot_hash') or 'unknown'}",
+        f"Snapshot root: {snapshot.get('snapshot_merkle_root') or 'unknown'}",
+        f"Memory types: {_render_session_memory_type_counts(checkpoint.get('memory_type_summary'))}",
+    ]
+    if checkpoint.get("summary"):
+        lines.append(f"Summary: {checkpoint['summary']}")
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def render_session_snapshot_summary(result: dict[str, Any]) -> str:
+    session_snapshot = result["session_snapshot"]
+    lines = [
+        "Session snapshot created",
+        "",
+        f"Session snapshot id: {session_snapshot['session_snapshot_id']}",
+        f"Session id: {session_snapshot['session_id']}",
+        f"Scope: {session_snapshot.get('scope') or 'any'}",
+        f"Actor: {session_snapshot['actor_id']}",
+        f"Created: {session_snapshot['created_at']}",
+        f"Payload: {session_snapshot['payload_status']}",
+        f"Active memories: {session_snapshot['memory_count']}",
+        f"Session snapshot root: {session_snapshot['session_snapshot_merkle_root']}",
+        f"Snapshot hash: {session_snapshot['snapshot_hash']}",
+        f"Memory types: {_render_session_memory_type_counts(session_snapshot.get('memory_type_summary'))}",
+    ]
+    if session_snapshot.get("summary"):
+        lines.append(f"Summary: {session_snapshot['summary']}")
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def render_session_snapshot_soft_delete_summary(result: dict[str, Any]) -> str:
+    session_snapshot = result["session_snapshot"]
+    retention = session_snapshot.get("retention") if isinstance(session_snapshot.get("retention"), dict) else {}
+    lines = [
+        "Session snapshot payload soft-deleted",
+        "",
+        f"Session snapshot id: {session_snapshot['session_snapshot_id']}",
+        f"Session id: {session_snapshot['session_id']}",
+        f"Scope: {session_snapshot.get('scope') or 'any'}",
+        f"Deleted by: {retention.get('deleted_by') or 'unknown'}",
+        f"Deleted at: {retention.get('deleted_at') or 'unknown'}",
+        f"Reason: {retention.get('deleted_reason') or 'unspecified'}",
+        f"Payload: {session_snapshot['payload_status']}",
+        f"Snapshot hash: {session_snapshot['snapshot_hash']}",
+        f"Session snapshot root: {session_snapshot['session_snapshot_merkle_root']}",
+        f"Soft-delete root: {retention.get('soft_delete_merkle_root') or 'unknown'}",
+        f"Memory types: {_render_session_memory_type_counts(session_snapshot.get('memory_type_summary'))}",
+    ]
+    if session_snapshot.get("summary"):
+        lines.append(f"Summary: {session_snapshot['summary']}")
+    return "\n".join(lines).rstrip() + "\n"
 
 
 def render_session_checkpoints_summary(report: dict[str, Any]) -> str:
@@ -5845,6 +6295,14 @@ def render_workspace_sources_summary(report: dict[str, Any]) -> str:
     workspace_id = str(workspace.get("id") or report.get("workspace_id") or "none")
     connected_agents = list(report.get("connected_agents") or [])
     claim_conflicts = list(report.get("claim_conflicts") or [])
+    sources = list(report.get("sources") or [])
+
+    def source_identity_summary(identity: dict[str, Any] | None, *, fallback_workspace_id: str | None = None) -> str:
+        source_identity = identity or {}
+        tool = str(source_identity.get("tool") or "unknown")
+        repo_name = str(source_identity.get("repo_name") or "unknown")
+        source_workspace_id = str(source_identity.get("workspace_id") or fallback_workspace_id or "unknown")
+        return f"tool={tool} repo={repo_name} workspace={source_workspace_id}"
 
     def claim_lineage_summary(claim: dict[str, Any]) -> str:
         agent_id = str(claim.get("agent_id") or "unknown")
@@ -5859,13 +6317,16 @@ def render_workspace_sources_summary(report: dict[str, Any]) -> str:
         updated_at = str(claim.get("updated_at") or "unknown")
         created_at = str(claim.get("created_at") or "unknown")
         proof_lineage = claim.get("proof_lineage") or {}
+        source_identity = claim.get("source_identity") or {}
         receipt_id = str(proof_lineage.get("receipt_id") or "unknown-receipt")
+        treeship_artifact_id = str(proof_lineage.get("treeship_artifact_id") or "none")
         merkle_root = str(proof_lineage.get("merkle_root") or "unknown-root")
         merkle_root_short = merkle_root[:12]
         return (
             f"{agent_id} @ {session_id} via {source_uri} "
-            f"[workspace={workspace_id} kind={source_kind} status={trust_status} authority={authority} trust={trust_text} "
-            f"updated={updated_at} created={created_at} receipt={receipt_id} root={merkle_root_short}]"
+            f"[{source_identity_summary(source_identity, fallback_workspace_id=workspace_id)} "
+            f"kind={source_kind} status={trust_status} authority={authority} trust={trust_text} "
+            f"updated={updated_at} created={created_at} receipt={receipt_id} artifact={treeship_artifact_id} root={merkle_root_short}]"
         )
 
     lines = [
@@ -5885,11 +6346,37 @@ def render_workspace_sources_summary(report: dict[str, Any]) -> str:
             session_count = len(agent.get("chat_session_ids") or [])
             memory_count = int(agent.get("memory_count") or 0)
             last_seen_at = agent.get("last_seen_at") or "unknown"
+            latest_proof_lineage = agent.get("latest_proof_lineage") or {}
+            tool = str(agent.get("tool") or agent.get("agent_id") or "unknown")
+            repo_name = str(agent.get("repo_name") or "unknown")
+            agent_workspace_id = str(agent.get("workspace_id") or workspace_id or "unknown")
+            treeship_artifact_id = str(latest_proof_lineage.get("treeship_artifact_id") or "none")
             lines.append(
-                f"  {agent.get('agent_id', 'unknown')}: {memory_count} receipts, {session_count} sessions, last seen {last_seen_at}"
+                f"  {agent.get('agent_id', 'unknown')}: {memory_count} receipts, {session_count} sessions, "
+                f"last seen {last_seen_at} tool={tool} repo={repo_name} workspace={agent_workspace_id} "
+                f"latest_artifact={treeship_artifact_id}"
             )
     else:
         lines.append("  none")
+    lines.extend(["", "Recent sources:"])
+    if sources:
+        for source in sources[:5]:
+            proof_lineage = source.get("proof_lineage") or {}
+            treeship_artifact_id = str(proof_lineage.get("treeship_artifact_id") or "none")
+            receipt_id = str(proof_lineage.get("receipt_id") or "unknown-receipt")
+            merkle_root = str(proof_lineage.get("merkle_root") or "unknown-root")
+            lines.append(
+                "  "
+                f"{source.get('agent_id', 'unknown')} @ {source.get('chat_session_id') or 'unknown-session'} "
+                f"via {source.get('source_uri') or 'unknown-source'} "
+                f"[{source_identity_summary(source.get('source_identity'), fallback_workspace_id=source.get('workspace_id'))} "
+                f"kind={source.get('source_kind') or 'unknown'} status={source.get('trust_status') or 'unknown'} "
+                f"receipt={receipt_id} artifact={treeship_artifact_id} root={merkle_root[:12]}]"
+            )
+        if len(sources) > 5:
+            lines.append(f"  ... {len(sources) - 5} more sources omitted")
+    else:
+        lines.append("  none in inspected receipts")
     lines.extend(["", "Claim conflicts:"])
     if claim_conflicts:
         for conflict in claim_conflicts[:5]:

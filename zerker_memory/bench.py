@@ -568,6 +568,7 @@ def run_locomo_benchmark(
     answerer: str = "deterministic",
     answerer_model: str = "gpt-4o",
     write_trace: bool = False,
+    compact_artifacts: bool = False,
 ) -> dict[str, Any]:
     _validate_provider_benchmark_gate(retrieval_mode, retrieval_provider_config_path, allow_network_providers)
     dataset = _validate_local_dataset_path(dataset, benchmark_name="locomo")
@@ -625,6 +626,7 @@ def run_locomo_benchmark(
         "retrieval_config": retrieval_config,
         "retrieval_provider_config": retrieval_provider_config,
         "retrieval_reproducibility": _benchmark_retrieval_reproducibility(retrieval_mode),
+        "receipt_bundles_omitted": compact_artifacts,
         "prompt_hashes": {
             "answerer": sha256_text("locomo local scaffold deterministic answerer"),
             "judge": sha256_text("locomo provisional exact-match local judge"),
@@ -642,6 +644,7 @@ def run_locomo_benchmark(
             f"{_context_budget_command_arg(context_budget_tokens)}"
             f"{_provider_config_command_arg(retrieval_provider_config_path)}"
             f"{_allow_network_command_arg(allow_network_providers)}"
+            f"{' --compact-artifacts' if compact_artifacts else ''}"
         ),
         "created_at": _now_iso(),
     }
@@ -669,13 +672,20 @@ def run_locomo_benchmark(
                 allow_network_providers=allow_network_providers,
                 answerer=answerer,
                 answerer_model=answerer_model,
+                write_receipt_bundle=not compact_artifacts,
             )
         )
-        receipt_hashes.append(question_records[-1]["receipt_bundle_hash"])
+        if question_records[-1].get("receipt_bundle_hash"):
+            receipt_hashes.append(question_records[-1]["receipt_bundle_hash"])
 
-    after_snapshot = store.snapshot()
-    after_snapshot_path = snapshots_dir / "after.snapshot.json"
-    _write_json(after_snapshot_path, after_snapshot)
+    snapshot_paths = {"before": before_snapshot_path}
+    if compact_artifacts:
+        after_snapshot_path = None
+    else:
+        after_snapshot = store.snapshot()
+        after_snapshot_path = snapshots_dir / "after.snapshot.json"
+        _write_json(after_snapshot_path, after_snapshot)
+        snapshot_paths["after"] = after_snapshot_path
 
     summary = _summarize_questions(question_records)
     summary["scoring"] = "provisional-local"
@@ -688,12 +698,11 @@ def run_locomo_benchmark(
         "benchmark_run": _file_hash(manifest_path),
         "questions": {record["question_id"]: _file_hash(run_dir / record["question_path"]) for record in question_records},
         "receipt_bundles": {
-            record["action_id"]: _file_hash(run_dir / record["receipt_bundle_path"]) for record in question_records
+            record["action_id"]: _file_hash(run_dir / record["receipt_bundle_path"])
+            for record in question_records
+            if record.get("receipt_bundle_path")
         },
-        "snapshots": {
-            "before": _file_hash(before_snapshot_path),
-            "after": _file_hash(after_snapshot_path),
-        },
+        "snapshots": {name: _file_hash(path) for name, path in snapshot_paths.items()},
         "report": _file_hash(report_path),
     }
     aggregate_root = merkle_root(_artifact_hash_list(artifact_hashes))
@@ -715,6 +724,8 @@ def run_locomo_benchmark(
         "retrieval_config": retrieval_config,
         "retrieval_provider_config": retrieval_provider_config,
         "retrieval_reproducibility": _benchmark_retrieval_reproducibility(retrieval_mode),
+        "receipt_bundles_omitted": compact_artifacts,
+        "final_snapshot_omitted": compact_artifacts,
         "summary": summary,
         "question_count": len(question_records),
         "questions": question_records,
@@ -723,6 +734,8 @@ def run_locomo_benchmark(
             "merkle_alg": "binary-sha256-v1",
             "artifact_hashes": artifact_hashes,
             "per_question_receipt_bundle_hashes": receipt_hashes,
+            "receipt_bundles_omitted": compact_artifacts,
+            "final_snapshot_omitted": compact_artifacts,
             "aggregate_result_hash": sha256_text(stable_json(summary)),
             "aggregate_merkle_root": aggregate_root,
             "local_verification": "ok",
@@ -734,8 +747,8 @@ def run_locomo_benchmark(
             "result": "benchmark-result.json",
             "report": "report.md",
             "snapshots": {
-                "before": "snapshots/before.snapshot.json",
-                "after": "snapshots/after.snapshot.json",
+                name: str(path.relative_to(run_dir))
+                for name, path in snapshot_paths.items()
             },
         },
     }
@@ -776,6 +789,7 @@ def run_benchmark_matrix(
     answerer: str = "deterministic",
     answerer_model: str = "gpt-4o",
     write_trace: bool = False,
+    compact_artifacts: bool = False,
 ) -> dict[str, Any]:
     if benchmark not in ("synthetic", "longmemeval", "locomo"):
         raise ValueError(f"unsupported benchmark matrix: {benchmark}")
@@ -841,6 +855,7 @@ def run_benchmark_matrix(
                 answerer=answerer,
                 answerer_model=answerer_model,
                 write_trace=write_trace,
+                compact_artifacts=compact_artifacts,
             )
         mode_results.append(mode_result)
         result_paths.append(Path(mode_result["result_path"]))
@@ -1702,6 +1717,7 @@ def verify_benchmark_result(result_json: Path) -> dict[str, Any]:
     add_check("result_hash", _result_hash(result) == result.get("result_hash"), str(result.get("result_hash")))
 
     proof = result.get("proof", {})
+    receipt_bundles_omitted = bool(proof.get("receipt_bundles_omitted")) if isinstance(proof, dict) else False
     artifact_hashes = proof.get("artifact_hashes", {}) if isinstance(proof, dict) else {}
     try:
         recomputed_hashes = _recompute_artifact_hashes(run_dir, result)
@@ -1751,7 +1767,13 @@ def verify_benchmark_result(result_json: Path) -> dict[str, Any]:
 
             bundle_rel_path = question.get("receipt_bundle_path")
             if not bundle_rel_path:
-                add_check(f"bundle:{action_id}", False, "missing receipt_bundle_path")
+                add_check(
+                    f"bundle:{action_id}",
+                    receipt_bundles_omitted,
+                    "receipt bundle omitted by compact artifacts mode"
+                    if receipt_bundles_omitted
+                    else "missing receipt_bundle_path",
+                )
                 continue
             bundle_path = run_dir / bundle_rel_path
             try:
@@ -4421,6 +4443,7 @@ def _run_locomo_question(
     allow_network_providers: bool = False,
     answerer: str = "deterministic",
     answerer_model: str = "gpt-4o",
+    write_receipt_bundle: bool = True,
 ) -> dict[str, Any]:
     scope = f"bench:locomo:{question['sample_id']}"
     created_memories = _remember_benchmark_history_once(
@@ -4470,9 +4493,14 @@ def _run_locomo_question(
     supporting_injected = support_status["injected_ids"]
     recall_at_k = 1.0 if not expected_supporting_ids else len(supporting_retrieved) / len(expected_supporting_ids)
     precision_at_k = 1.0 if not retrieved_ids else len(supporting_retrieved) / len(retrieved_ids)
-    bundle = store.receipt_bundle(receipt["action_id"])
-    bundle_path = receipts_dir / f"{receipt['action_id']}.bundle.json"
-    bundle_artifact = export_bundle(bundle, out=bundle_path)
+    bundle: dict[str, Any] = {"receipt": receipt, "supporting_memories": []}
+    bundle_path: Path | None = None
+    bundle_hash: str | None = None
+    if write_receipt_bundle:
+        bundle = store.receipt_bundle(receipt["action_id"])
+        bundle_path = receipts_dir / f"{receipt['action_id']}.bundle.json"
+        bundle_artifact = export_bundle(bundle, out=bundle_path)
+        bundle_hash = bundle_artifact["sha256"]
     retrieval_proof = _retrieval_proof_block(
         retrieval_mode=retrieval_mode,
         retrieval_config_hash=retrieval_config_hash,
@@ -4543,13 +4571,14 @@ def _run_locomo_question(
             "available_context_tokens": packing.get("available_tokens"),
         },
         "action_id": receipt["action_id"],
-        "receipt_bundle_path": f"receipts/{bundle_path.name}",
-        "receipt_bundle_hash": bundle_artifact["sha256"],
+        "receipt_bundle_path": f"receipts/{bundle_path.name}" if bundle_path else None,
+        "receipt_bundle_hash": bundle_hash,
         "retrieval_proof": retrieval_proof,
         "proof": {
             "receipt_merkle_root": receipt["merkle_root"],
             "memory_tree_root": receipt.get("memory_tree", {}).get("root"),
-            "bundle_hash": bundle_artifact["sha256"],
+            "bundle_hash": bundle_hash,
+            "receipt_bundle_omitted": not write_receipt_bundle,
             "retrieval": retrieval_proof,
         },
     }
@@ -4569,8 +4598,8 @@ def _run_locomo_question(
         "action_id": receipt["action_id"],
         "question_path": f"questions/{question_path.name}",
         "question_hash": record["question_hash"],
-        "receipt_bundle_path": f"receipts/{bundle_path.name}",
-        "receipt_bundle_hash": bundle_artifact["sha256"],
+        "receipt_bundle_path": f"receipts/{bundle_path.name}" if bundle_path else None,
+        "receipt_bundle_hash": bundle_hash,
         "retrieved_memory_ids": retrieved_ids,
         "candidate_memory_ids": retrieved_ids,
         "injected_memory_ids": injected_ids,
@@ -4654,9 +4683,23 @@ def _candidate_rank_hash(retrieval: dict[str, Any]) -> str:
 
 
 def _summarize_questions(records: list[dict[str, Any]]) -> dict[str, Any]:
+    def metric(record: dict[str, Any], name: str, default: int | float = 0) -> Any:
+        if name in record:
+            return record[name]
+        metrics = record.get("metrics", {})
+        if isinstance(metrics, dict):
+            return metrics.get(name, default)
+        return default
+
+    def is_correct(record: dict[str, Any]) -> bool:
+        if "correct" in record:
+            return bool(record["correct"])
+        judge = record.get("judge", {})
+        return bool(judge.get("correct")) if isinstance(judge, dict) else False
+
     count = len(records)
-    latencies = sorted(record["retrieval_latency_ms"] for record in records)
-    total_tokens = sum(record["total_tokens"] for record in records)
+    latencies = sorted(float(metric(record, "retrieval_latency_ms", 0.0) or 0.0) for record in records)
+    total_tokens = sum(int(metric(record, "total_tokens", 0) or 0) for record in records)
     token_efficiency = {
         "mean_tokens_per_query": total_tokens / count if count else 0.0,
         "mean_tokens_per_ingest": 0.0,
@@ -4668,7 +4711,7 @@ def _summarize_questions(records: list[dict[str, Any]]) -> dict[str, Any]:
     for record in records:
         outcome_reason = str(record.get("outcome_reason", "unknown"))
         outcome_reason_counts[outcome_reason] = outcome_reason_counts.get(outcome_reason, 0) + 1
-        if not record["correct"]:
+        if not is_correct(record):
             failure_reason_counts[outcome_reason] = failure_reason_counts.get(outcome_reason, 0) + 1
         category = record["category"]
         category_summary = category_summaries.setdefault(
@@ -4697,19 +4740,19 @@ def _summarize_questions(records: list[dict[str, Any]]) -> dict[str, Any]:
         category_summary["outcome_reason_counts"][outcome_reason] = (
             category_summary["outcome_reason_counts"].get(outcome_reason, 0) + 1
         )
-        if record["correct"]:
+        if is_correct(record):
             category_summary["passed"] += 1
         else:
             category_summary["failed"] += 1
             category_summary["failure_reason_counts"][outcome_reason] = (
                 category_summary["failure_reason_counts"].get(outcome_reason, 0) + 1
             )
-        category_summary["retrieved_memory_count"] += record["retrieved_count"]
-        category_summary["injected_memory_count"] += record["injected_count"]
-        category_summary["withheld_memory_count"] += record["withheld_count"]
-        category_summary["budget_dropped_memory_count"] += record.get("budget_dropped_count", 0)
-        category_summary["total_tokens"] += record["total_tokens"]
-        category_summary["_latencies"].append(record["retrieval_latency_ms"])
+        category_summary["retrieved_memory_count"] += int(metric(record, "retrieved_count", 0) or 0)
+        category_summary["injected_memory_count"] += int(metric(record, "injected_count", 0) or 0)
+        category_summary["withheld_memory_count"] += int(metric(record, "withheld_count", 0) or 0)
+        category_summary["budget_dropped_memory_count"] += int(metric(record, "budget_dropped_count", 0) or 0)
+        category_summary["total_tokens"] += int(metric(record, "total_tokens", 0) or 0)
+        category_summary["_latencies"].append(float(metric(record, "retrieval_latency_ms", 0.0) or 0.0))
     for category_summary in category_summaries.values():
         category_summary["accuracy"] = category_summary["passed"] / category_summary["question_count"]
         category_latencies = sorted(category_summary.pop("_latencies", []))
@@ -4717,15 +4760,15 @@ def _summarize_questions(records: list[dict[str, Any]]) -> dict[str, Any]:
         category_summary["p95_retrieval_latency_ms"] = _percentile(category_latencies, 95)
         category_summary["p99_retrieval_latency_ms"] = _percentile(category_latencies, 99)
     return {
-        "accuracy": sum(1 for record in records if record["correct"]) / count if count else 0.0,
-        "passed": sum(1 for record in records if record["correct"]),
-        "failed": sum(1 for record in records if not record["correct"]),
+        "accuracy": sum(1 for record in records if is_correct(record)) / count if count else 0.0,
+        "passed": sum(1 for record in records if is_correct(record)),
+        "failed": sum(1 for record in records if not is_correct(record)),
         "question_count": count,
         "category_summaries": category_summaries,
-        "retrieved_memory_count": sum(record["retrieved_count"] for record in records),
-        "injected_memory_count": sum(record["injected_count"] for record in records),
-        "withheld_memory_count": sum(record["withheld_count"] for record in records),
-        "budget_dropped_memory_count": sum(int(record.get("budget_dropped_count", 0) or 0) for record in records),
+        "retrieved_memory_count": sum(int(metric(record, "retrieved_count", 0) or 0) for record in records),
+        "injected_memory_count": sum(int(metric(record, "injected_count", 0) or 0) for record in records),
+        "withheld_memory_count": sum(int(metric(record, "withheld_count", 0) or 0) for record in records),
+        "budget_dropped_memory_count": sum(int(metric(record, "budget_dropped_count", 0) or 0) for record in records),
         "p50_retrieval_latency_ms": _percentile(latencies, 50),
         "p95_retrieval_latency_ms": _percentile(latencies, 95),
         "p99_retrieval_latency_ms": _percentile(latencies, 99),
@@ -4803,6 +4846,20 @@ def _format_support_status(status: Any) -> str:
 
 
 def _render_report_text(manifest: dict[str, Any], summary: dict[str, Any], records: list[dict[str, Any]]) -> str:
+    def record_correct(record: dict[str, Any]) -> bool:
+        if "correct" in record:
+            return bool(record["correct"])
+        judge = record.get("judge", {})
+        return bool(judge.get("correct")) if isinstance(judge, dict) else False
+
+    def record_score(record: dict[str, Any]) -> float:
+        if "score" in record:
+            return float(record["score"])
+        judge = record.get("judge", {})
+        if isinstance(judge, dict):
+            return float(judge.get("score", 0.0) or 0.0)
+        return 0.0
+
     benchmark_name = str(manifest.get("benchmark", "benchmark"))
     provider_config = manifest.get("retrieval_provider_config")
     category_summaries = summary.get("category_summaries", {})
@@ -4881,13 +4938,13 @@ def _render_report_text(manifest: dict[str, Any], summary: dict[str, Any], recor
             )
     lines.extend(["## Questions", ""])
     for record in records:
-        status = "pass" if record["correct"] else "fail"
+        status = "pass" if record_correct(record) else "fail"
         lines.extend(
             [
                 f"### {record['question_id']}",
                 "",
                 f"- Category: `{record['category']}`",
-                f"- Score: `{record['score']:.1f}`",
+                f"- Score: `{record_score(record):.1f}`",
                 f"- Status: `{status}`",
                 f"- Query: `{record.get('retrieval_query', 'n/a')}`",
                 f"- Should abstain: `{str(bool(record.get('should_abstain', False))).lower()}`",
@@ -4908,11 +4965,11 @@ def _render_report_text(manifest: dict[str, Any], summary: dict[str, Any], recor
                 f"- Context budget tokens: `{record.get('metrics', {}).get('context_budget_tokens', 'none')}`",
                 f"- Packed / available context tokens: `{record.get('metrics', {}).get('packed_context_tokens', 'n/a')}` / `{record.get('metrics', {}).get('available_context_tokens', 'n/a')}`",
                 f"- Question hash: `{record.get('question_hash', 'n/a')}`",
-                f"- Receipt bundle: `{record['receipt_bundle_path']}`",
+                f"- Receipt bundle: `{record.get('receipt_bundle_path')}`",
                 f"- Receipt bundle hash: `{record.get('receipt_bundle_hash', 'n/a')}`",
                 f"- Receipt Merkle root: `{record.get('receipt_merkle_root', 'n/a')}`",
                 f"- Memory tree root: `{record.get('memory_tree_root', 'n/a')}`",
-                f"- Question proof: `{record['question_path']}`",
+                f"- Question proof: `{record.get('question_path', 'n/a')}`",
                 "",
             ]
         )
@@ -7031,7 +7088,9 @@ def _recompute_artifact_hashes(run_dir: Path, result: dict[str, Any]) -> dict[st
         "benchmark_run": _file_hash(run_dir / paths["benchmark_run"]),
         "questions": {question["question_id"]: _file_hash(run_dir / question["question_path"]) for question in questions},
         "receipt_bundles": {
-            question["action_id"]: _file_hash(run_dir / question["receipt_bundle_path"]) for question in questions
+            question["action_id"]: _file_hash(run_dir / question["receipt_bundle_path"])
+            for question in questions
+            if question.get("receipt_bundle_path")
         },
         "snapshots": {
             name: _file_hash(run_dir / rel_path)

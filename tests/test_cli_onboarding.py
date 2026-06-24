@@ -1,9 +1,11 @@
+import io
 import json
 import os
 import subprocess
 import tarfile
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
@@ -22,8 +24,11 @@ from zerker_memory.cli import (
     build_agent_config_preset,
     build_agent_server_snippet,
     build_parser,
+    build_session_checkpoint_result,
     build_retrieval_provider_readiness_report,
     build_session_checkpoints_report,
+    build_session_snapshot_soft_delete_result,
+    build_session_snapshot_result,
     build_session_snapshots_report,
     build_status_report,
     build_status_next_steps,
@@ -37,6 +42,7 @@ from zerker_memory.cli import (
     install_agent_preset,
     install_codex_mcp_server,
     install_json_mcp_server,
+    main,
     manual_agent_presets,
     maybe_reexec_with_supported_python,
     parse_agent_config_specs,
@@ -53,7 +59,10 @@ from zerker_memory.cli import (
     render_public_verify_summary,
     render_return_packet_summary,
     render_release_pack_summary,
+    render_session_checkpoint_summary,
     render_session_checkpoints_summary,
+    render_session_snapshot_soft_delete_summary,
+    render_session_snapshot_summary,
     render_session_snapshots_summary,
     render_prelaunch_summary,
     render_retrieval_provider_readiness_summary,
@@ -247,6 +256,100 @@ class CliOnboardingTest(unittest.TestCase):
         self.assertEqual(args.scope, "project:alpha")
         self.assertTrue(args.summary_only)
 
+    def test_build_parser_parses_session_checkpoint_write_summary_only(self):
+        args = build_parser().parse_args(
+            [
+                "session",
+                "checkpoint",
+                "--session-id",
+                "session://alpha",
+                "--actor-id",
+                "codex",
+                "--scope",
+                "project:alpha",
+                "--summary",
+                "handoff before context compaction",
+                "--summary-only",
+            ]
+        )
+
+        self.assertEqual(args.command, "session")
+        self.assertEqual(args.session_command, "checkpoint")
+        self.assertEqual(args.session_id, "session://alpha")
+        self.assertEqual(args.actor_id, "codex")
+        self.assertEqual(args.scope, "project:alpha")
+        self.assertEqual(args.summary, "handoff before context compaction")
+        self.assertTrue(args.summary_only)
+
+    def test_build_parser_parses_session_snapshot_write_summary_only(self):
+        args = build_parser().parse_args(
+            [
+                "session",
+                "snapshot",
+                "--session-id",
+                "session://alpha",
+                "--actor-id",
+                "codex",
+                "--scope",
+                "project:alpha",
+                "--summary",
+                "freeze before context compaction",
+                "--summary-only",
+            ]
+        )
+
+        self.assertEqual(args.command, "session")
+        self.assertEqual(args.session_command, "snapshot")
+        self.assertEqual(args.session_id, "session://alpha")
+        self.assertEqual(args.actor_id, "codex")
+        self.assertEqual(args.scope, "project:alpha")
+        self.assertEqual(args.summary, "freeze before context compaction")
+        self.assertTrue(args.summary_only)
+
+    def test_build_parser_parses_session_delete_snapshot_summary_only(self):
+        args = build_parser().parse_args(
+            [
+                "session",
+                "delete-snapshot",
+                "--session-snapshot-id",
+                "ssn_abc123",
+                "--actor-id",
+                "reviewer",
+                "--reason",
+                "retention window expired",
+                "--summary-only",
+            ]
+        )
+
+        self.assertEqual(args.command, "session")
+        self.assertEqual(args.session_command, "delete-snapshot")
+        self.assertEqual(args.session_snapshot_id, "ssn_abc123")
+        self.assertEqual(args.actor_id, "reviewer")
+        self.assertEqual(args.reason, "retention window expired")
+        self.assertTrue(args.summary_only)
+
+    def test_build_parser_parses_bundle_verify_summary_only(self):
+        args = build_parser().parse_args(
+            [
+                "bundle",
+                "verify",
+                "/tmp/receipt.bundle.json",
+                "--summary-only",
+            ]
+        )
+
+        self.assertEqual(args.command, "bundle")
+        self.assertEqual(args.bundle_target, "verify")
+        self.assertEqual(str(args.bundle_path), "/tmp/receipt.bundle.json")
+        self.assertTrue(args.summary_only)
+
+    def test_lineage_parser_accepts_summary_only(self):
+        args = build_parser().parse_args(["lineage", "mem_123", "--summary-only"])
+
+        self.assertEqual(args.command, "lineage")
+        self.assertEqual(args.memory_id, "mem_123")
+        self.assertTrue(args.summary_only)
+
     def test_agent_export_config_path_uses_project_local_default(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -319,6 +422,92 @@ class CliOnboardingTest(unittest.TestCase):
         self.assertIn("policy=1 procedural=1 episodic=0 semantic=1", summary)
         self.assertIn("handoff before context compaction", summary)
 
+    def test_session_checkpoint_summary_surfaces_written_checkpoint_root_and_counts(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = MemoryStore(Path(tmpdir) / "memory.sqlite")
+            store.init()
+            store.remember(
+                "Production deploys require approval",
+                memory_type="policy",
+                scope="project:alpha",
+                source_kind="human",
+            )
+            store.remember(
+                "Use the release checklist before tagging",
+                memory_type="procedural",
+                scope="project:alpha",
+                source_kind="human",
+            )
+            store.remember(
+                "Deploy target is Render",
+                memory_type="semantic",
+                scope="project:alpha",
+                source_kind="human",
+            )
+
+            result = build_session_checkpoint_result(
+                store,
+                session_id="session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="handoff before context compaction",
+            )
+            summary = render_session_checkpoint_summary(result)
+
+        checkpoint = result["checkpoint"]
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["schema"], "zerker.session_checkpoint_result.v1")
+        self.assertEqual(checkpoint["session_id"], "session://alpha")
+        self.assertIn("Session checkpoint created", summary)
+        self.assertIn(f"Checkpoint id: {checkpoint['checkpoint_id']}", summary)
+        self.assertIn(f"Checkpoint root: {checkpoint['checkpoint_merkle_root']}", summary)
+        self.assertIn("policy=1 procedural=1 episodic=0 semantic=1", summary)
+        self.assertIn("handoff before context compaction", summary)
+
+    def test_session_snapshot_summary_surfaces_written_snapshot_root_and_counts(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = MemoryStore(Path(tmpdir) / "memory.sqlite")
+            store.init()
+            store.remember(
+                "Production deploys require approval",
+                memory_type="policy",
+                scope="project:alpha",
+                source_kind="human",
+            )
+            store.remember(
+                "Use the release checklist before tagging",
+                memory_type="procedural",
+                scope="project:alpha",
+                source_kind="human",
+            )
+            store.remember(
+                "Deploy target is Render",
+                memory_type="semantic",
+                scope="project:alpha",
+                source_kind="human",
+            )
+
+            result = build_session_snapshot_result(
+                store,
+                session_id="session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="freeze before context compaction",
+            )
+            summary = render_session_snapshot_summary(result)
+
+        session_snapshot = result["session_snapshot"]
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["schema"], "zerker.session_snapshot_result.v1")
+        self.assertEqual(session_snapshot["session_id"], "session://alpha")
+        self.assertEqual(session_snapshot["payload_status"], "available")
+        self.assertIn("Session snapshot created", summary)
+        self.assertIn(f"Session snapshot id: {session_snapshot['session_snapshot_id']}", summary)
+        self.assertIn(f"Session snapshot root: {session_snapshot['session_snapshot_merkle_root']}", summary)
+        self.assertIn(f"Snapshot hash: {session_snapshot['snapshot_hash']}", summary)
+        self.assertIn("policy=1 procedural=1 episodic=0 semantic=1", summary)
+        self.assertIn("freeze before context compaction", summary)
+
     def test_session_snapshots_summary_surfaces_soft_deleted_retention_state(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             store = MemoryStore(Path(tmpdir) / "memory.sqlite")
@@ -364,6 +553,44 @@ class CliOnboardingTest(unittest.TestCase):
         self.assertIn("deleted_by=reviewer", summary)
         self.assertIn("deleted_reason=retention window expired", summary)
         self.assertIn("payload=available", summary)
+
+    def test_session_snapshot_soft_delete_summary_surfaces_retention_roots(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = MemoryStore(Path(tmpdir) / "memory.sqlite")
+            store.init()
+            store.remember(
+                "Production deploy target is Render",
+                memory_type="semantic",
+                scope="project:alpha",
+                source_kind="human",
+            )
+            session_snapshot = store.snapshot_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="freeze before context compaction",
+            )
+
+            result = build_session_snapshot_soft_delete_result(
+                store,
+                session_snapshot_id=session_snapshot["session_snapshot_id"],
+                actor_id="reviewer",
+                reason="retention window expired",
+            )
+            summary = render_session_snapshot_soft_delete_summary(result)
+
+        deleted = result["session_snapshot"]
+        retention = deleted["retention"]
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["schema"], "zerker.session_snapshot_soft_delete_result.v1")
+        self.assertEqual(deleted["payload_status"], "soft_deleted")
+        self.assertIn("Session snapshot payload soft-deleted", summary)
+        self.assertIn(f"Session snapshot id: {deleted['session_snapshot_id']}", summary)
+        self.assertIn("Deleted by: reviewer", summary)
+        self.assertIn("Reason: retention window expired", summary)
+        self.assertIn(f"Snapshot hash: {deleted['snapshot_hash']}", summary)
+        self.assertIn(f"Soft-delete root: {retention['soft_delete_merkle_root']}", summary)
+        self.assertIn('"payload_status": "soft_deleted"', json.dumps(deleted, sort_keys=True))
 
     def test_agent_pack_path_uses_project_local_default(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -551,6 +778,14 @@ class CliOnboardingTest(unittest.TestCase):
         self.assertEqual(str(args.handoff_dir), "/tmp/handoff")
         self.assertTrue(args.summary_only)
         self.assertIsNone(args.snapshot_path)
+
+    def test_restore_parser_accepts_snapshot_path_and_summary_only(self):
+        args = build_parser().parse_args(["restore", "/tmp/handoff.snapshot.json", "--summary-only"])
+
+        self.assertEqual(args.command, "restore")
+        self.assertEqual(str(args.snapshot_path), "/tmp/handoff.snapshot.json")
+        self.assertTrue(args.summary_only)
+        self.assertIsNone(args.handoff_dir)
 
     def test_create_handoff_package_exports_snapshot_and_latest_bundle(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -878,6 +1113,141 @@ class CliOnboardingTest(unittest.TestCase):
         self.assertIn("Semantic truth: not guaranteed", summary)
         self.assertIn("Treeship artifact: none", summary)
         self.assertIn("Restored memories: 1", summary)
+
+    def test_restore_snapshot_summary_only_verifies_and_restores_snapshot(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            source_store = MemoryStore(work / ".zerker" / "source.sqlite")
+            source_store.remember(
+                "Production deploys require approval",
+                memory_type="policy",
+                scope="project",
+                source_kind="human",
+            )
+            source_store.inject("deploy service to production", agent_id="codex", risk="high", scope="project")
+            snapshot_path = work / ".zerker" / "snapshot.json"
+            snapshot_path.parent.mkdir(parents=True, exist_ok=True)
+            snapshot_path.write_text(json.dumps(source_store.snapshot()), encoding="utf-8")
+            db_path = work / ".zerker" / "restored.sqlite"
+
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = main(["--db", str(db_path), "restore", str(snapshot_path), "--summary-only"])
+
+            summary = output.getvalue()
+            restored_store = MemoryStore(db_path)
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(restored_store.stats()["memory_count"], 1)
+        self.assertIn("Zerker Memory restore", summary)
+        self.assertIn(f"Source: {snapshot_path.resolve()}", summary)
+        self.assertIn(f"Snapshot: {snapshot_path.resolve()}", summary)
+        self.assertIn("Snapshot verify: ok", summary)
+        self.assertIn("Restore receipt verify: ok", summary)
+        self.assertIn("Treeship artifact: none", summary)
+        self.assertIn("Semantic truth: not guaranteed", summary)
+
+    def test_lineage_summary_only_surfaces_verified_write_receipt_chain(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "memory.sqlite"
+            store = MemoryStore(db_path, treeship_auto_sign=True)
+            store.init()
+            signed_provenance = subprocess.CompletedProcess(
+                args=["treeship"],
+                returncode=0,
+                stdout='{"id":"art_write_1","kind":"memory.write","signed":"2026-06-24T05:27:53Z","status":"ok","system":"system://zmem"}',
+                stderr="",
+            )
+            signed_mutation = subprocess.CompletedProcess(
+                args=["treeship"],
+                returncode=0,
+                stdout='{"id":"art_write_2","kind":"memory.write","signed":"2026-06-24T05:27:54Z","status":"ok","system":"system://zmem"}',
+                stderr="",
+            )
+            with patch("zerker_memory.treeship.shutil.which", return_value="/usr/local/bin/treeship"):
+                with patch("zerker_memory.treeship.subprocess.run", side_effect=[signed_provenance, signed_mutation]):
+                    memory = store.remember(
+                        "Production deploys require approval",
+                        memory_type="policy",
+                        scope="project",
+                        source_kind="agent",
+                        actor_id="codex",
+                        actor_uri="agent://codex/session-a",
+                        session_id="session://alpha",
+                        source_uri="conversation://session-a/message-17",
+                        parent_action_id="act_prompt_injection",
+                        environment_hash="sha256:env_fixture",
+                    )
+                    store.promote(memory.id, actor_id="reviewer")
+
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = main(["--db", str(db_path), "lineage", memory.id, "--summary-only"])
+
+            summary = output.getvalue()
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("Memory lineage", summary)
+        self.assertIn(f"Memory id: {memory.id}", summary)
+        self.assertIn(f"Content digest: sha256:{memory.content_hash}", summary)
+        self.assertIn("Write receipt chain verify: ok", summary)
+        self.assertIn("Verified transitions: 1", summary)
+        self.assertIn("Treeship artifacts: art_write_1, art_write_2", summary)
+        self.assertIn("agent://codex/session-a", summary)
+        self.assertIn("actor=actor://reviewer", summary)
+        self.assertIn("Trusted provenance: verified", summary)
+        self.assertIn("Semantic truth: not guaranteed", summary)
+
+    def test_bundle_verify_summary_only_surfaces_verified_supporting_provenance(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "memory.sqlite"
+            store = MemoryStore(db_path, treeship_auto_sign=True)
+            store.init()
+            signed_provenance = subprocess.CompletedProcess(
+                args=["treeship"],
+                returncode=0,
+                stdout='{"id":"art_write_1","kind":"memory.write","signed":"2026-06-24T05:27:53Z","status":"ok","system":"system://zmem"}',
+                stderr="",
+            )
+            with patch("zerker_memory.treeship.shutil.which", return_value="/usr/local/bin/treeship"):
+                with patch("zerker_memory.treeship.subprocess.run", return_value=signed_provenance):
+                    store.remember(
+                        "Production deploys require approval",
+                        memory_type="policy",
+                        scope="project",
+                        source_kind="agent",
+                        actor_id="codex",
+                        actor_uri="agent://codex/session-a",
+                        session_id="session://alpha",
+                        source_uri="conversation://session-a/message-17",
+                        parent_action_id="act_prompt_injection",
+                        environment_hash="sha256:env_fixture",
+                        status="active",
+                    )
+
+            receipt = store.inject("deploy service to production", agent_id="codex", risk="high", scope="project")
+            bundle_path = Path(tmp) / "receipt.bundle.json"
+            bundle_path.write_text(json.dumps(store.receipt_bundle(receipt["action_id"])), encoding="utf-8")
+
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = main(["--db", str(db_path), "bundle", "verify", str(bundle_path), "--summary-only"])
+
+            summary = output.getvalue()
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("Receipt bundle verify", summary)
+        self.assertIn(f"Bundle: {bundle_path.resolve()}", summary)
+        self.assertIn(f"Action id: {receipt['action_id']}", summary)
+        self.assertIn("Bundle verify: ok", summary)
+        self.assertIn("Supporting memories: 1", summary)
+        self.assertIn("Supporting events: 1", summary)
+        self.assertIn("Supporting write receipts: 1", summary)
+        self.assertIn("Supporting provenance verify: ok", summary)
+        self.assertIn("Memory tree verify: ok", summary)
+        self.assertIn("Treeship artifacts: art_write_1", summary)
+        self.assertIn("Trusted provenance: verified", summary)
+        self.assertIn("Semantic truth: not guaranteed", summary)
 
     def test_run_prelaunch_check_flags_public_url_placeholders(self):
         with tempfile.TemporaryDirectory() as tmp:
