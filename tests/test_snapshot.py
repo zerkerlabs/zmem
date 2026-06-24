@@ -208,6 +208,50 @@ class SnapshotTest(unittest.TestCase):
         self.assertEqual(receipt["treeship_statement"]["evidence"]["new_merkle_root"], snapshot["merkle_root"])
         self.assertEqual(receipt["treeship_statement"]["evidence"]["snapshot_hash"], snapshot["snapshot_hash"])
 
+    def test_verify_lifecycle_receipt_accepts_restore_snapshot_receipt_with_source_snapshot(self):
+        self.store.remember(
+            "Portable snapshots must preserve memory provenance",
+            memory_type="policy",
+            scope="project",
+            source_kind="human",
+        )
+        snapshot = self.store.snapshot()
+
+        restored = MemoryStore(Path(self.tmp.name) / "restored-with-verified-receipt.sqlite")
+        result = restored.restore_snapshot(snapshot)
+
+        verification = restored.verify_lifecycle_receipt(result["receipt"], source_snapshot=snapshot)
+
+        self.assertTrue(verification["ok"])
+        self.assertEqual(verification["mutation"], "restore_snapshot")
+        self.assertEqual(verification["computed_receipt_hash"], result["receipt"]["receipt_hash"])
+        self.assertEqual(verification["computed_content_digest"], result["receipt"]["content_digest"])
+        self.assertTrue(verification["treeship_statement_verified"])
+        self.assertTrue(verification["source_snapshot_verified"])
+        self.assertFalse(verification["semantic_truth_guaranteed"])
+
+    def test_verify_lifecycle_receipt_reports_tampered_restore_receipt(self):
+        self.store.remember(
+            "Portable snapshots must preserve memory provenance",
+            memory_type="policy",
+            scope="project",
+            source_kind="human",
+        )
+        snapshot = self.store.snapshot()
+
+        restored = MemoryStore(Path(self.tmp.name) / "restored-with-tampered-receipt.sqlite")
+        result = restored.restore_snapshot(snapshot)
+        tampered = json.loads(json.dumps(result["receipt"]))
+        tampered["source_payload"]["memory_count"] += 1
+        tampered_without_hash = dict(tampered)
+        tampered_without_hash.pop("receipt_hash", None)
+        tampered["receipt_hash"] = sha256_text(stable_json(tampered_without_hash))
+
+        verification = restored.verify_lifecycle_receipt(tampered, source_snapshot=snapshot)
+
+        self.assertFalse(verification["ok"])
+        self.assertEqual(verification["error"], "lifecycle content_digest mismatch")
+
     def test_restore_snapshot_round_trips_to_empty_store(self):
         memory = self.store.remember(
             "Production deploys require approval",

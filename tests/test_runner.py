@@ -2363,6 +2363,68 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(temporal["selected_update_current_id"], current.id)
         self.assertEqual(temporal["selected_current_support_ids"], [generic_anchor.id])
 
+    def test_update_history_context_rrf_promotes_explicit_current_over_high_authority_generic_anchor(self):
+        stale = self.store.remember(
+            "Deployment approver was Alex.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.7,
+        )
+        current = self.store.remember(
+            "Deployment approver changed to Priya.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.6,
+        )
+        generic_anchor = self.store.remember(
+            "Deployment approver changed after CAB review.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.99,
+            authority="high",
+        )
+        context_path = self.tmp_path / "update-history-current-anchor-rrf-context.json"
+
+        receipt = run_with_memory(
+            self.store,
+            ["python3", "-c", "import os, pathlib; assert pathlib.Path(os.environ['ZERKER_MEMORY_CONTEXT']).exists()"],
+            task="Who did deployment approvals change from?",
+            agent_id="codex",
+            risk="low",
+            scope="project",
+            context_path=context_path,
+        )
+
+        self.assertEqual(receipt["exit_code"], 0)
+        context = json.loads(context_path.read_text())
+        self.assertEqual(
+            [memory["id"] for memory in context["memories"]],
+            [stale.id, current.id, generic_anchor.id],
+        )
+        retrieval = receipt["memory_receipt"]["retrieval"]
+        temporal = retrieval["temporal"]
+        self.assertTrue(temporal["fusion"]["applied"])
+        self.assertEqual(temporal["fusion"]["signal"], "temporal_update_pair_rrf_score_v1")
+        self.assertEqual(temporal["fusion"]["basis"], "update_pair")
+        self.assertEqual(
+            [candidate["memory_id"] for candidate in retrieval["candidates"]],
+            [stale.id, current.id, generic_anchor.id],
+        )
+        candidate_by_id = {candidate["memory_id"]: candidate for candidate in retrieval["candidates"]}
+        self.assertEqual(candidate_by_id[current.id]["temporal_fusion_rank"], 2)
+        self.assertEqual(candidate_by_id[generic_anchor.id]["temporal_fusion_rank"], 3)
+        self.assertEqual(
+            candidate_by_id[current.id]["temporal_fusion_sources"],
+            ["baseline", "temporal_selection", "temporal_injection", "temporal_update_pair"],
+        )
+        self.assertEqual(
+            retrieval["baseline_ranking"]["temporal_fusion_signal"],
+            "temporal_update_pair_rrf_score_v1",
+        )
+
     def test_update_history_relation_context_prefers_plain_current_relation_before_generic_anchor(self):
         stale = self.store.remember(
             "API gateway points to staging.",

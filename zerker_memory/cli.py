@@ -297,6 +297,27 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
         help="Print only a compact human-readable workspace-source summary",
     )
 
+    session = sub.add_parser("session", help="Inspect persisted lifecycle checkpoints and snapshots")
+    session_sub = session.add_subparsers(dest="session_command", required=True)
+    session_checkpoints = session_sub.add_parser("checkpoints", help="List persisted session checkpoints")
+    session_checkpoints.add_argument("--session-id")
+    session_checkpoints.add_argument("--scope")
+    session_checkpoints.add_argument("--limit", type=int, default=10)
+    session_checkpoints.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Print only a compact human-readable session-checkpoint summary",
+    )
+    session_snapshots = session_sub.add_parser("snapshots", help="List persisted session snapshots and retention state")
+    session_snapshots.add_argument("--session-id")
+    session_snapshots.add_argument("--scope")
+    session_snapshots.add_argument("--limit", type=int, default=10)
+    session_snapshots.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Print only a compact human-readable session-snapshot summary",
+    )
+
     prelaunch = sub.add_parser("prelaunch", help="Audit local alpha release readiness before publishing")
     prelaunch.add_argument(
         "--allow-placeholders",
@@ -1031,6 +1052,31 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 if args.summary_only:
                     print(render_workspace_sources_summary(result), end="")
+                else:
+                    print_json(result)
+                return 0
+        if args.command == "session":
+            if args.session_command == "checkpoints":
+                result = build_session_checkpoints_report(
+                    store,
+                    session_id=args.session_id,
+                    scope=args.scope,
+                    limit=args.limit,
+                )
+                if args.summary_only:
+                    print(render_session_checkpoints_summary(result), end="")
+                else:
+                    print_json(result)
+                return 0
+            if args.session_command == "snapshots":
+                result = build_session_snapshots_report(
+                    store,
+                    session_id=args.session_id,
+                    scope=args.scope,
+                    limit=args.limit,
+                )
+                if args.summary_only:
+                    print(render_session_snapshots_summary(result), end="")
                 else:
                     print_json(result)
                 return 0
@@ -5655,6 +5701,125 @@ def transcript_command(command: str, payload: object) -> str:
         lines.append(payload.rstrip())
     else:
         lines.append(json.dumps(payload, indent=2, sort_keys=True))
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def build_session_checkpoints_report(
+    store: MemoryStore,
+    *,
+    session_id: str | None = None,
+    scope: str | None = None,
+    limit: int = 10,
+) -> dict[str, Any]:
+    checkpoints = store.session_checkpoints(session_id=session_id, scope=scope, limit=limit)
+    return {
+        "ok": True,
+        "schema": "zerker.session_checkpoints_report.v1",
+        "session_id": session_id,
+        "scope": scope,
+        "limit": limit,
+        "count": len(checkpoints),
+        "checkpoints": checkpoints,
+    }
+
+
+def build_session_snapshots_report(
+    store: MemoryStore,
+    *,
+    session_id: str | None = None,
+    scope: str | None = None,
+    limit: int = 10,
+) -> dict[str, Any]:
+    snapshots = store.session_snapshots(session_id=session_id, scope=scope, limit=limit)
+    payload_status_counts = {"available": 0, "soft_deleted": 0}
+    for snapshot in snapshots:
+        status = str(snapshot.get("payload_status") or "available")
+        payload_status_counts[status] = payload_status_counts.get(status, 0) + 1
+    return {
+        "ok": True,
+        "schema": "zerker.session_snapshots_report.v1",
+        "session_id": session_id,
+        "scope": scope,
+        "limit": limit,
+        "count": len(snapshots),
+        "payload_status_counts": payload_status_counts,
+        "snapshots": snapshots,
+    }
+
+
+def _render_session_memory_type_counts(memory_type_summary: dict[str, Any] | None) -> str:
+    counts = memory_type_summary.get("active_counts_by_type") if isinstance(memory_type_summary, dict) else {}
+    ordered_types = ("policy", "procedural", "episodic", "semantic")
+    return " ".join(f"{memory_type}={int(counts.get(memory_type, 0))}" for memory_type in ordered_types)
+
+
+def render_session_checkpoints_summary(report: dict[str, Any]) -> str:
+    checkpoints = list(report.get("checkpoints") or [])
+    latest_root = checkpoints[0]["checkpoint_merkle_root"] if checkpoints else "none"
+    lines = [
+        "Session checkpoints",
+        "",
+        f"Session filter: {report.get('session_id') or 'any'}",
+        f"Scope filter: {report.get('scope') or 'any'}",
+        f"Returned: {report.get('count', 0)}",
+        f"Latest checkpoint root: {latest_root}",
+        "",
+        "Entries:",
+    ]
+    if not checkpoints:
+        lines.append("  none")
+    for checkpoint in checkpoints:
+        lines.append(
+            "  "
+            f"{checkpoint['checkpoint_id']}: session={checkpoint['session_id']} "
+            f"scope={checkpoint.get('scope') or 'any'} created={checkpoint['created_at']} "
+            f"active={checkpoint['memory_count']} root={checkpoint['checkpoint_merkle_root']}"
+        )
+        lines.append(f"    memory types: {_render_session_memory_type_counts(checkpoint.get('memory_type_summary'))}")
+        if checkpoint.get("summary"):
+            lines.append(f"    summary: {checkpoint['summary']}")
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def render_session_snapshots_summary(report: dict[str, Any]) -> str:
+    snapshots = list(report.get("snapshots") or [])
+    payload_status_counts = report.get("payload_status_counts") or {}
+    latest_root = snapshots[0]["session_snapshot_merkle_root"] if snapshots else "none"
+    lines = [
+        "Session snapshots",
+        "",
+        f"Session filter: {report.get('session_id') or 'any'}",
+        f"Scope filter: {report.get('scope') or 'any'}",
+        f"Returned: {report.get('count', 0)}",
+        "Payloads: "
+        f"{int(payload_status_counts.get('available', 0))} available, "
+        f"{int(payload_status_counts.get('soft_deleted', 0))} soft-deleted",
+        f"Latest session snapshot root: {latest_root}",
+        "",
+        "Entries:",
+    ]
+    if not snapshots:
+        lines.append("  none")
+    for snapshot in snapshots:
+        lines.append(
+            "  "
+            f"{snapshot['session_snapshot_id']}: session={snapshot['session_id']} "
+            f"scope={snapshot.get('scope') or 'any'} created={snapshot['created_at']} "
+            f"payload={snapshot['payload_status']} root={snapshot['session_snapshot_merkle_root']} "
+            f"snapshot_hash={snapshot['snapshot_hash']}"
+        )
+        lines.append(f"    memory types: {_render_session_memory_type_counts(snapshot.get('memory_type_summary'))}")
+        if snapshot.get("summary"):
+            lines.append(f"    summary: {snapshot['summary']}")
+        retention = snapshot.get("retention")
+        if isinstance(retention, dict):
+            lines.append(
+                "    retention: "
+                f"deleted_by={retention.get('deleted_by') or 'unknown'} "
+                f"deleted_reason={retention.get('deleted_reason') or 'unspecified'} "
+                f"deleted_at={retention.get('deleted_at') or 'unknown'} "
+                f"root={retention.get('soft_delete_merkle_root') or 'unknown'}"
+            )
     return "\n".join(lines).rstrip() + "\n"
 
 

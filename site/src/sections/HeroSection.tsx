@@ -1,232 +1,21 @@
-import { useEffect, useRef, useCallback } from 'react';
-import * as THREE from 'three';
-import { gsap } from 'gsap';
-import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import { useCallback } from 'react';
+import { Github } from '@/components/Icons';
+import NodeNetworkBg from '@/components/NodeNetworkBg';
 import { useLenisInstance } from '@/hooks/useLenis';
-import { Github } from 'lucide-react';
 
-gsap.registerPlugin(ScrollTrigger);
-
-/* ─────────── 3D Wireframe Landscape ─────────── */
 function WireframeLandscape() {
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-
-    let disposed = false;
-    let renderer: THREE.WebGLRenderer | null = null;
-    let terrainGeometry: THREE.BufferGeometry | null = null;
-    let terrainMaterial: THREE.LineBasicMaterial | null = null;
-    let gridGeometry: THREE.BufferGeometry | null = null;
-    let gridMaterial: THREE.LineBasicMaterial | null = null;
-    let timeline: gsap.core.Timeline | null = null;
-    let onResize: (() => void) | null = null;
-    let resizeObserver: ResizeObserver | null = null;
-
-    try {
-      const isMobile = window.innerWidth < 768;
-      const dpr = isMobile ? 0.5 : Math.min(window.devicePixelRatio, 1.25);
-
-      const scene = new THREE.Scene();
-      const camera = new THREE.PerspectiveCamera(
-        60, Math.max(container.clientWidth, 1) / Math.max(container.clientHeight, 1), 0.1, 1000
-      );
-      camera.position.set(20, 12, 20);
-      camera.lookAt(100, 0, 100);
-
-      renderer = new THREE.WebGLRenderer({
-        alpha: false,
-        antialias: !isMobile,
-        powerPreference: 'low-power',
-      });
-      renderer.setPixelRatio(dpr);
-      renderer.setSize(Math.max(container.clientWidth, 1), Math.max(container.clientHeight, 1));
-      renderer.setClearColor(0x030303, 1);
-      renderer.domElement.style.width = '100%';
-      renderer.domElement.style.height = '100%';
-      renderer.domElement.style.display = 'block';
-      container.appendChild(renderer.domElement);
-
-      // Terrain
-      const worldWidth = 200;
-      const worldDepth = 200;
-      const heightmap = new Uint8Array(worldWidth * worldDepth);
-
-      const setHeight = (x: number, z: number, val: number) => {
-        const cx = Math.max(0, Math.min(worldWidth - 1, Math.floor(x)));
-        const cz = Math.max(0, Math.min(worldDepth - 1, Math.floor(z)));
-        const idx = cz * worldWidth + cx;
-        if (heightmap[idx] < val) heightmap[idx] = val;
-      };
-
-      const baseMountain = (xc: number, zc: number, radius: number, peakHeight: number) => {
-        for (let i = Math.floor(xc - radius); i <= xc + radius; i++) {
-          for (let k = Math.floor(zc - radius); k <= zc + radius; k++) {
-            const dist = Math.sqrt((i - xc) ** 2 + (k - zc) ** 2);
-            if (dist < radius) {
-              const h = peakHeight * Math.pow(1 - dist / radius, 2);
-              setHeight(i, k, h);
-            }
-          }
-        }
-      };
-
-      const addRidge = (x1: number, z1: number, x2: number, z2: number, width: number, height: number) => {
-        const dx = x2 - x1;
-        const dz = z2 - z1;
-        const len = Math.sqrt(dx * dx + dz * dz);
-        const steps = Math.ceil(len * 2);
-        for (let s = 0; s <= steps; s++) {
-          const t = s / steps;
-          const cx = x1 + dx * t;
-          const cz = z1 + dz * t;
-          const currentH = height * (1 - 2 * Math.abs(t - 0.5));
-          for (let w = -width; w <= width; w++) {
-            const distF = Math.abs(w) / width;
-            const h = currentH * Math.pow(1 - distF, 2);
-            if (h > 0) {
-              const px = cx + w * (-dz / (len || 1));
-              const pz = cz + w * (dx / (len || 1));
-              setHeight(px, pz, h);
-            }
-          }
-        }
-      };
-
-      baseMountain(80, 70, 45, 30);
-      baseMountain(120, 110, 40, 28);
-      baseMountain(50, 140, 35, 25);
-      addRidge(80, 70, 120, 110, 12, 15);
-      addRidge(120, 110, 160, 90, 10, 12);
-      addRidge(80, 70, 50, 140, 14, 10);
-
-      const vertices: number[] = [];
-      const colors: number[] = [];
-      const colorTop = new THREE.Color(0xffffff);
-      const colorBottom = new THREE.Color(0x444444);
-
-      for (let z = 0; z < worldDepth; z += 2) {
-        for (let x = 0; x < worldWidth - 1; x += 2) {
-          const h1 = heightmap[z * worldWidth + x] / 255 * 40;
-          const h2 = heightmap[z * worldWidth + (x + 1)] / 255 * 40;
-          vertices.push(x - worldWidth / 2, h1, z - worldDepth / 2);
-          vertices.push(x + 1 - worldWidth / 2, h2, z - worldDepth / 2);
-          colors.push(colorTop.r, colorTop.g, colorTop.b);
-          const c2 = colorBottom.clone().lerp(colorTop, Math.min(h2 / 40, 1));
-          colors.push(c2.r, c2.g, c2.b);
-        }
-      }
-      for (let x = 0; x < worldWidth; x += 2) {
-        for (let z = 0; z < worldDepth - 1; z += 2) {
-          const h1 = heightmap[z * worldWidth + x] / 255 * 40;
-          const h2 = heightmap[(z + 1) * worldWidth + x] / 255 * 40;
-          vertices.push(x - worldWidth / 2, h1, z - worldDepth / 2);
-          vertices.push(x - worldWidth / 2, h2, z + 1 - worldDepth / 2);
-          colors.push(colorTop.r, colorTop.g, colorTop.b);
-          const c2 = colorBottom.clone().lerp(colorTop, Math.min(h2 / 40, 1));
-          colors.push(c2.r, c2.g, c2.b);
-        }
-      }
-
-      terrainGeometry = new THREE.BufferGeometry();
-      terrainGeometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-      terrainGeometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-
-      terrainMaterial = new THREE.LineBasicMaterial({
-        vertexColors: true,
-        color: 0xffffff,
-        transparent: true,
-        opacity: 0.92,
-      });
-      const terrain = new THREE.LineSegments(terrainGeometry, terrainMaterial);
-      scene.add(terrain);
-
-      // Grid plane
-      const gridVertices: number[] = [];
-      for (let x = -120; x <= 120; x += 2) {
-        gridVertices.push(x, -1, -120, x, -1, 120);
-      }
-      for (let z = -120; z <= 120; z += 2) {
-        gridVertices.push(-120, -1, z, 120, -1, z);
-      }
-      gridGeometry = new THREE.BufferGeometry();
-      gridGeometry.setAttribute('position', new THREE.Float32BufferAttribute(gridVertices, 3));
-      gridMaterial = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.05 });
-      scene.add(new THREE.LineSegments(gridGeometry, gridMaterial));
-
-      // Camera state for GSAP
-      const camState = { x: 20, y: 12, z: 20, lx: 100, ly: 0, lz: 100 };
-
-      const renderScene = () => {
-        if (disposed || !renderer) return;
-        camera.position.set(camState.x, camState.y, camState.z);
-        camera.lookAt(camState.lx, camState.ly, camState.lz);
-        renderer.render(scene, camera);
-      };
-
-      ScrollTrigger.getById('hero-wireframe-camera')?.kill();
-      timeline = gsap.timeline({
-        scrollTrigger: {
-          id: 'hero-wireframe-camera',
-          trigger: '#hero',
-          start: 'top top',
-          end: '+=200%',
-          pin: true,
-          scrub: 1,
-          onUpdate: renderScene,
-          onRefresh: renderScene,
-        },
-      });
-
-      timeline.to(camState, { x: -30, y: 8, z: -10, lx: 50, ly: 5, lz: 50, ease: 'none', onUpdate: renderScene }, 0);
-      timeline.to('#hero-content', { opacity: 0, y: -50, ease: 'none' }, 0);
-      renderScene();
-
-      onResize = () => {
-        if (disposed || !renderer) return;
-        const w = Math.max(container.clientWidth, 1);
-        const h = Math.max(container.clientHeight, 1);
-        camera.aspect = w / h;
-        camera.updateProjectionMatrix();
-        renderer.setSize(w, h);
-        renderScene();
-      };
-      if (typeof ResizeObserver !== 'undefined') {
-        resizeObserver = new ResizeObserver(() => onResize?.());
-        resizeObserver.observe(container);
-      }
-      window.addEventListener('resize', onResize);
-    } catch (err) {
-      console.warn('3D scene init failed:', err);
-    }
-
-    return () => {
-      disposed = true;
-      resizeObserver?.disconnect();
-      if (onResize) window.removeEventListener('resize', onResize);
-      timeline?.kill();
-      if (renderer?.domElement?.parentNode) {
-        renderer.domElement.parentNode.removeChild(renderer.domElement);
-      }
-      terrainGeometry?.dispose();
-      terrainMaterial?.dispose();
-      gridGeometry?.dispose();
-      gridMaterial?.dispose();
-      renderer?.dispose();
-    };
-  }, []);
-
   return (
-    <div
-      ref={containerRef}
-      style={{ position: 'absolute', inset: 0, zIndex: 0, background: 'radial-gradient(ellipse at center, #0a0a0a 0%, #030303 100%)' }}
-    />
+    <div className="absolute inset-0 overflow-hidden bg-[#030303]">
+      <NodeNetworkBg seed={11} />
+      <div className="absolute inset-x-[-10%] bottom-[-18%] h-[58%] opacity-55">
+        <div className="h-full w-full bg-[linear-gradient(rgba(255,255,255,0.12)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.12)_1px,transparent_1px)] bg-[length:42px_42px] [transform:perspective(520px)_rotateX(62deg)] [transform-origin:50%_100%]" />
+      </div>
+      <div className="absolute left-1/2 top-[28%] h-[42vw] max-h-[480px] w-[72vw] max-w-[860px] -translate-x-1/2 rounded-[50%] border border-white/10 bg-[radial-gradient(ellipse_at_center,rgba(146,214,111,0.18),rgba(255,255,255,0.08)_32%,transparent_68%)] blur-[1px]" />
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(12,12,12,0.06)_0%,rgba(3,3,3,0.44)_55%,rgba(3,3,3,0.88)_100%)]" />
+    </div>
   );
 }
 
-/* ─────────── Kinetic Headline ─────────── */
 function KineticHeadline({ text, delay = 0.5 }: { text: string; delay?: number }) {
   const words = text.split(' ');
 
@@ -255,7 +44,6 @@ function KineticHeadline({ text, delay = 0.5 }: { text: string; delay?: number }
   );
 }
 
-/* ─────────── Hero Section ─────────── */
 export default function HeroSection() {
   const lenis = useLenisInstance();
 
@@ -280,7 +68,7 @@ export default function HeroSection() {
       >
         <div className="max-w-[900px]">
           <p
-            className="text-eyebrow text-zlime mb-6"
+            className="mb-6 text-eyebrow text-zlime"
             style={{ animation: 'fadeSlideUp 0.6s 0.3s ease-out forwards', opacity: 0 }}
           >
             Open-source local memory for agents
@@ -317,7 +105,7 @@ export default function HeroSection() {
           >
             <button
               onClick={() => scrollTo('#install')}
-              className="rounded-full bg-zlime px-8 py-3.5 text-cta text-[#030303] transition-all duration-150 hover:bg-[#7BC45A] hover:scale-[1.03] hover:shadow-[0_0_24px_rgba(146,214,111,0.3)]"
+              className="rounded-full bg-zlime px-8 py-3.5 text-cta text-[#030303] transition-all duration-150 hover:scale-[1.03] hover:bg-[#7BC45A] hover:shadow-[0_0_24px_rgba(146,214,111,0.3)]"
             >
               Install ZMem
             </button>

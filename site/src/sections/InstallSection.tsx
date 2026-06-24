@@ -1,9 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { gsap } from 'gsap';
-import { ScrollTrigger } from 'gsap/ScrollTrigger';
-import { Copy, Check } from 'lucide-react';
-
-gsap.registerPlugin(ScrollTrigger);
+import { useState } from 'react';
+import { Copy, Check } from '@/components/Icons';
 
 const quickSteps = [
   {
@@ -27,7 +23,6 @@ const quickSteps = [
 ];
 
 export default function InstallSection() {
-  const sectionRef = useRef<HTMLElement>(null);
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {
@@ -36,39 +31,8 @@ export default function InstallSection() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  useEffect(() => {
-    const el = sectionRef.current;
-    if (!el) return;
-
-    const heading = el.querySelector('.section-heading');
-    const desc = el.querySelector('.section-desc');
-    const cmdBlock = el.querySelector('.cmd-block');
-    const steps = el.querySelectorAll('.quick-step');
-
-    if (heading) {
-      gsap.fromTo(heading, { opacity: 0, y: 40 },
-        { opacity: 1, y: 0, duration: 0.8, ease: 'power3.out',
-          scrollTrigger: { trigger: heading, start: 'top 80%' } });
-    }
-    if (desc) {
-      gsap.fromTo(desc, { opacity: 0, y: 20 },
-        { opacity: 1, y: 0, duration: 0.6, ease: 'power2.out', delay: 0.2,
-          scrollTrigger: { trigger: desc, start: 'top 80%' } });
-    }
-    if (cmdBlock) {
-      gsap.fromTo(cmdBlock, { opacity: 0, y: 20 },
-        { opacity: 1, y: 0, duration: 0.6, ease: 'power2.out', delay: 0.2,
-          scrollTrigger: { trigger: cmdBlock, start: 'top 80%' } });
-    }
-    if (steps.length) {
-      gsap.fromTo(steps, { opacity: 0, y: 30 },
-        { opacity: 1, y: 0, stagger: 0.15, duration: 0.6, ease: 'power3.out',
-          scrollTrigger: { trigger: steps[0], start: 'top 75%' } });
-    }
-  }, []);
-
   return (
-    <section ref={sectionRef} id="install" className="bg-[#050505] py-[160px]">
+    <section id="install" className="bg-[#050505] py-[160px]">
       <div className="mx-auto max-w-[1120px] px-6">
         <h2
           className="section-heading text-center font-heading font-bold text-zink"

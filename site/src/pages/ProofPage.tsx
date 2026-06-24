@@ -11,6 +11,8 @@ const featureRows = [
   { feature: 'Export evidence', status: 'built' as const, proof: 'zmem bundle <action-id>' },
   { feature: 'Publish public proof', status: 'built' as const, proof: 'zmem treeship publish <action-id>' },
   { feature: 'Hand off state', status: 'built' as const, proof: 'zmem handoff --summary-only' },
+  { feature: 'ActiveGraph memory', status: 'built' as const, proof: 'pack/pack.yaml' },
+  { feature: 'Compact benchmark trace', status: 'built' as const, proof: 'zmem-bench-locomo --dataset <file>' },
 ];
 
 const proofSteps = [
@@ -41,11 +43,13 @@ const proofSteps = [
 ];
 
 const benchmarkRows = [
-  { item: 'Synthetic matrix', status: 'verified', note: 'Current local matrix verifies with mode result hashes and aggregate Merkle roots.' },
-  { item: 'LongMemEval scaffold', status: 'alpha', note: 'Local JSON/JSONL adapter with provisional deterministic scoring and proof artifacts.' },
-  { item: 'LoCoMo scaffold', status: 'alpha', note: 'Local conversation-memory scaffold with comparison/report proof-hop coverage.' },
+  { item: 'LoCoMo FTS official run', status: 'recorded', note: '1,986 questions, F1 0.3752, EM 0.3721, trace sha256 67a005bf...971d0c.' },
+  { item: 'ActiveGraph compact trace', status: 'built', note: 'Event-sourced trace.jsonl plus scored_receipt.json, without per-question bundle files.' },
+  { item: 'LoCoMo fts-multihop', status: 'next', note: 'Tests whether retrieval decomposition moves multi-hop and open-domain categories.' },
+  { item: 'LoCoMo rerank', status: 'next', note: 'Tests whether pseudo embedding rerank improves retrieval depth against the same dataset.' },
+  { item: 'LongMemEval-S', status: 'queued', note: 'Highest-priority abstention and token-efficiency benchmark after LoCoMo deltas.' },
+  { item: 'BEAM', status: 'planned', note: 'Scale benchmark for 100K to 10M token memory pressure and causal traces.' },
   { item: 'Metrics', status: 'alpha', note: 'Accuracy, stable wins/misses, latency, tokens, abstention, and proof verification.' },
-  { item: 'Rendered reports', status: 'alpha', note: 'Matrix reports, dashboards, and public pages surface hashes and proof roots.' },
   { item: 'Public claims', status: 'gated', note: 'Official rankings wait for primary-source methods and reproducible benchmark submissions.' },
 ];
 
@@ -67,6 +71,22 @@ $ zmem verify <action-id>
 
 $ zmem treeship publish <action-id>
 # optional public proof URL`;
+
+const locomoNextRuns = `zmem bench run locomo \\
+  --dataset data/locomo/locomo_official_zmem.json \\
+  --split default \\
+  --out .zerker/bench/locomo-official-v1 \\
+  --seed 42 \\
+  --run-id fts-multihop \\
+  --retrieval-mode fts-multihop
+
+zmem bench run locomo \\
+  --dataset data/locomo/locomo_official_zmem.json \\
+  --split default \\
+  --out .zerker/bench/locomo-official-v1 \\
+  --seed 42 \\
+  --run-id pseudo-embedding-rerank \\
+  --retrieval-mode pseudo-embedding-rerank`;
 
 export default function ProofPage() {
   return (
@@ -202,6 +222,20 @@ export default function ProofPage() {
                 <p className="mt-3 text-sm leading-relaxed text-zmuted">{row.note}</p>
               </Card>
             ))}
+          </div>
+          <div className="mt-10 grid grid-cols-1 gap-8 lg:grid-cols-[0.9fr_1.1fr]">
+            <Card>
+              <p className="text-eyebrow text-zmuted">Next run order</p>
+              <h3 className="mt-3 font-heading text-3xl font-semibold tracking-tight text-zink">
+                Depth first, then rerank.
+              </h3>
+              <p className="mt-4 text-sm leading-relaxed text-zmuted">
+                The FTS baseline says retrieval depth is the bottleneck. Run fts-multihop first,
+                then pseudo embedding rerank, so the delta explains whether decomposition or
+                reranking moves the weak categories.
+              </p>
+            </Card>
+            <CodeBlock code={locomoNextRuns} title="next LoCoMo runs" />
           </div>
         </div>
       </section>

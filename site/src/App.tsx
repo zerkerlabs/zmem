@@ -10,6 +10,9 @@ import ProofOfWorkSection from '@/sections/ProofOfWorkSection';
 import FooterSection from '@/sections/FooterSection';
 import ProofPage from '@/pages/ProofPage';
 import DocsPage from '@/pages/DocsPage';
+import ActiveGraphPage from '@/pages/ActiveGraphPage';
+import ActiveGraphBlogPage from '@/pages/ActiveGraphBlogPage';
+import ChangelogPage from '@/pages/ChangelogPage';
 
 function HomePage() {
   return (
@@ -26,13 +29,29 @@ function HomePage() {
 }
 
 function App() {
-  const isProofPage = window.location.pathname === '/proof';
-  const isDocsPage = window.location.pathname === '/docs';
+  const path = window.location.pathname;
+  const isProofPage = path === '/proof';
+  const isDocsPage = path === '/docs';
+  const isActiveGraphPage = path === '/activegraph';
+  const isActiveGraphBlogPage = path === '/blog/activegraph-memory';
+  const isChangelogPage = path === '/changelog';
 
   return (
     <LenisProvider>
       <Navigation />
-      {isProofPage ? <ProofPage /> : isDocsPage ? <DocsPage /> : <HomePage />}
+      {isProofPage ? (
+        <ProofPage />
+      ) : isDocsPage ? (
+        <DocsPage />
+      ) : isActiveGraphPage ? (
+        <ActiveGraphPage />
+      ) : isActiveGraphBlogPage ? (
+        <ActiveGraphBlogPage />
+      ) : isChangelogPage ? (
+        <ChangelogPage />
+      ) : (
+        <HomePage />
+      )}
       <FooterSection />
     </LenisProvider>
   );

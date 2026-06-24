@@ -27,35 +27,113 @@ This result says retrieval depth is the immediate bottleneck. The next runs comp
 
 ## Next LoCoMo Runs
 
+Run the same dataset through stronger modes with `bench matrix --mode`. This keeps the run shape comparable to the FTS baseline while writing matrix comparison artifacts.
+
 Run multihop first:
 
 ```bash
-zmem bench run locomo \
+zmem bench matrix locomo \
   --dataset data/locomo/locomo_official_zmem.json \
-  --split default \
-  --out .zerker/bench/locomo-official-v1 \
-  --seed 42 \
-  --run-id fts-multihop \
-  --retrieval-mode fts-multihop
+  --out .zerker/bench \
+  --run-id locomo-official-v1 \
+  --mode fts-multihop \
+  --seed 42
 ```
 
-Then run hybrid/rerank:
+Then run dense/rerank modes:
 
 ```bash
-zmem bench run locomo \
+zmem bench matrix locomo \
   --dataset data/locomo/locomo_official_zmem.json \
-  --split default \
-  --out .zerker/bench/locomo-official-v1 \
-  --seed 42 \
-  --run-id pseudo-embedding-rerank \
-  --retrieval-mode pseudo-embedding-rerank
+  --out .zerker/bench \
+  --run-id locomo-official-v1 \
+  --mode pseudo-embedding \
+  --seed 42
+
+zmem bench matrix locomo \
+  --dataset data/locomo/locomo_official_zmem.json \
+  --out .zerker/bench \
+  --run-id locomo-official-v1 \
+  --mode pseudo-embedding-rerank \
+  --seed 42
+
+zmem bench matrix locomo \
+  --dataset data/locomo/locomo_official_zmem.json \
+  --out .zerker/bench \
+  --run-id locomo-official-v1 \
+  --mode zmem-retrieval \
+  --seed 42
 ```
 
 Why this order:
 
 - `fts-multihop` tests whether query decomposition moves the weakest multi-hop and open-domain categories.
+- `pseudo-embedding` separates dense recall from reranking.
 - `pseudo-embedding-rerank` tests whether reranking improves retrieval depth against the same fixed dataset and seed.
+- `zmem-retrieval` is the stable alias for the strongest current local retrieval mode. It currently resolves to the concrete rerank mode in the stored result.
 - The same `--out`, `--seed`, and dataset keep the comparison clean.
+
+Render and verify after the modes finish:
+
+```bash
+zmem bench report .zerker/bench/locomo-official-v1 --summary-only
+zmem bench dashboard .zerker/bench/locomo-official-v1
+zmem bench public-page .zerker/bench/locomo-official-v1
+zmem bench verify .zerker/bench/locomo-official-v1/benchmark-matrix.json --summary-only
+```
+
+## Category Deltas
+
+The harness already writes per-category summaries and comparison rows. Use the rendered report/dashboard to answer:
+
+- does `fts-multihop` improve multi-hop,
+- does it preserve temporal,
+- does rerank improve open-domain,
+- does any mode improve adversarial abstention.
+
+There is not a category-filter CLI yet. If full runs are too expensive, add category filtering before running many category-only sweeps.
+
+## Token Budget Sweep
+
+Use the same mode and dataset at a few budgets to separate "retrieval found the wrong thing" from "retrieval found the right thing but packing dropped it."
+
+```bash
+zmem bench matrix locomo \
+  --dataset data/locomo/locomo_official_zmem.json \
+  --out .zerker/bench \
+  --run-id locomo-official-v1-budget-384 \
+  --mode fts-multihop \
+  --seed 42 \
+  --context-budget-tokens 384
+
+zmem bench matrix locomo \
+  --dataset data/locomo/locomo_official_zmem.json \
+  --out .zerker/bench \
+  --run-id locomo-official-v1-budget-768 \
+  --mode fts-multihop \
+  --seed 42 \
+  --context-budget-tokens 768
+```
+
+Add the same sweep for `pseudo-embedding-rerank` only if multihop shows signal or budget-dropped context appears in the reports.
+
+## ActiveGraph Compact Trace
+
+Use ActiveGraph for storage-safe trace runs and use-case proof. It writes `trace.jsonl` and `scored_receipt.json` instead of per-question receipt bundles.
+
+Smoke first:
+
+```bash
+zmem-bench-locomo \
+  --dataset data/locomo/locomo_official_zmem.json \
+  --out .zerker/bench/activegraph-locomo-smoke \
+  --run-id activegraph-smoke-fts-multihop \
+  --retrieval-mode fts-multihop \
+  --split default \
+  --limit 5
+```
+
+Then use it for longer compact traces after the standard matrix identifies the modes worth preserving.
 
 ## Synthetic Matrix
 
@@ -108,6 +186,7 @@ Next benchmark priorities:
 
 - LongMemEval-S: abstention and token-efficiency benchmark.
 - LoCoMo `fts-multihop`: decomposition delta against the recorded FTS baseline.
+- LoCoMo `pseudo-embedding`: dense-recall delta against the same baseline.
 - LoCoMo `pseudo-embedding-rerank`: reranking delta against the same baseline.
 - BEAM: scale benchmark for 100K to 10M token memory pressure and causal traces.
 

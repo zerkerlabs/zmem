@@ -8,6 +8,7 @@
     "memory-lifecycle",
     "receipts",
     "handoff",
-    "benchmarks"
+    "benchmarks",
+    "activegraph"
   ]
 }

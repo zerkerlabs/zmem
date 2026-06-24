@@ -1,11 +1,6 @@
-import { useEffect, useRef } from 'react';
-import { gsap } from 'gsap';
-import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import NodeNetworkBg from '@/components/NodeNetworkBg';
 import Card from '@/components/Card';
 import StatusBadge from '@/components/StatusBadge';
-
-gsap.registerPlugin(ScrollTrigger);
 
 const tableRows = [
   { feature: 'Local memory store', status: 'built' as const, shipped: 'Private SQLite state per workspace', proof: 'zmem status --summary-only' },
@@ -19,39 +14,15 @@ const tableRows = [
   { feature: 'Merkle verification', status: 'built' as const, shipped: 'Tamper-evident local proof roots', proof: 'zmem verify <action-id>' },
   { feature: 'Portable handoff', status: 'built' as const, shipped: 'Move memory state between sessions or machines', proof: 'zmem handoff --summary-only' },
   { feature: 'Treeship export', status: 'built' as const, shipped: 'Optional public proof URL', proof: 'zmem treeship publish <action-id>' },
-  { feature: 'Benchmark evidence', status: 'alpha' as const, shipped: 'Synthetic and long-memory adapters', proof: 'zmem bench ...' },
+  { feature: 'ActiveGraph pack', status: 'built' as const, shipped: 'Cross-run memory with causal event ids', proof: 'pack/pack.yaml' },
+  { feature: 'Compact benchmark traces', status: 'built' as const, shipped: 'trace.jsonl plus scored_receipt.json', proof: 'zmem-bench-locomo --dataset <file>' },
+  { feature: 'LoCoMo FTS baseline', status: 'ready' as const, shipped: '1,986 questions scored with public receipt', proof: '.zerker/bench/locomo-official-v1/fts' },
+  { feature: 'Benchmark evidence', status: 'alpha' as const, shipped: 'LongMemEval, LoCoMo, and BEAM queue', proof: 'zmem bench run locomo ...' },
 ];
 
 export default function ProofOfWorkSection() {
-  const sectionRef = useRef<HTMLElement>(null);
-
-  useEffect(() => {
-    const el = sectionRef.current;
-    if (!el) return;
-
-    const heading = el.querySelector('.section-heading');
-    const desc = el.querySelector('.section-desc');
-    const rows = el.querySelectorAll('.proof-row');
-
-    if (heading) {
-      gsap.fromTo(heading, { opacity: 0, y: 40 },
-        { opacity: 1, y: 0, duration: 0.8, ease: 'power3.out',
-          scrollTrigger: { trigger: heading, start: 'top 80%' } });
-    }
-    if (desc) {
-      gsap.fromTo(desc, { opacity: 0, y: 20 },
-        { opacity: 1, y: 0, duration: 0.6, ease: 'power2.out', delay: 0.2,
-          scrollTrigger: { trigger: desc, start: 'top 80%' } });
-    }
-    if (rows.length) {
-      gsap.fromTo(rows, { opacity: 0, x: -20 },
-        { opacity: 1, x: 0, stagger: 0.05, duration: 0.4, ease: 'power2.out',
-          scrollTrigger: { trigger: rows[0], start: 'top 75%' } });
-    }
-  }, []);
-
   return (
-    <section ref={sectionRef} id="proof" className="relative overflow-hidden py-[160px]">
+    <section id="proof" className="relative overflow-hidden py-[160px]">
       <NodeNetworkBg seed={999} />
 
       <div className="relative z-[1] mx-auto max-w-[1120px] px-6">

@@ -23,6 +23,8 @@ from zerker_memory.cli import (
     build_agent_server_snippet,
     build_parser,
     build_retrieval_provider_readiness_report,
+    build_session_checkpoints_report,
+    build_session_snapshots_report,
     build_status_report,
     build_status_next_steps,
     build_mcp_config,
@@ -51,6 +53,8 @@ from zerker_memory.cli import (
     render_public_verify_summary,
     render_return_packet_summary,
     render_release_pack_summary,
+    render_session_checkpoints_summary,
+    render_session_snapshots_summary,
     render_prelaunch_summary,
     render_retrieval_provider_readiness_summary,
     render_restore_summary,
@@ -232,6 +236,17 @@ class CliOnboardingTest(unittest.TestCase):
     def test_agent_doctor_presets_include_supported_default_targets(self):
         self.assertEqual(agent_doctor_presets(), agent_presets())
 
+    def test_build_parser_parses_session_snapshot_summary_only(self):
+        args = build_parser().parse_args(
+            ["session", "snapshots", "--session-id", "session://alpha", "--scope", "project:alpha", "--summary-only"]
+        )
+
+        self.assertEqual(args.command, "session")
+        self.assertEqual(args.session_command, "snapshots")
+        self.assertEqual(args.session_id, "session://alpha")
+        self.assertEqual(args.scope, "project:alpha")
+        self.assertTrue(args.summary_only)
+
     def test_agent_export_config_path_uses_project_local_default(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -257,6 +272,98 @@ class CliOnboardingTest(unittest.TestCase):
                 root / ".zerker" / "agents" / "cursor-checklist.md",
             )
             self.assertIsNone(agent_checklist_path("codex", cwd=root))
+
+    def test_session_checkpoints_summary_surfaces_checkpoint_root_and_memory_type_counts(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = MemoryStore(Path(tmpdir) / "memory.sqlite")
+            store.init()
+            store.remember(
+                "Production deploys require approval",
+                memory_type="policy",
+                scope="project:alpha",
+                source_kind="human",
+            )
+            store.remember(
+                "Use the release checklist before tagging",
+                memory_type="procedural",
+                scope="project:alpha",
+                source_kind="human",
+            )
+            store.remember(
+                "Deploy target is Render",
+                memory_type="semantic",
+                scope="project:alpha",
+                source_kind="human",
+            )
+            checkpoint = store.checkpoint_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="handoff before context compaction",
+            )
+
+            report = build_session_checkpoints_report(
+                store,
+                session_id="session://alpha",
+                scope="project:alpha",
+                limit=10,
+            )
+            summary = render_session_checkpoints_summary(report)
+
+        self.assertTrue(report["ok"])
+        self.assertEqual(report["count"], 1)
+        self.assertEqual(report["checkpoints"][0]["checkpoint_id"], checkpoint["checkpoint_id"])
+        self.assertIn("Session checkpoints", summary)
+        self.assertIn("Session filter: session://alpha", summary)
+        self.assertIn(f"Latest checkpoint root: {checkpoint['checkpoint_merkle_root']}", summary)
+        self.assertIn("policy=1 procedural=1 episodic=0 semantic=1", summary)
+        self.assertIn("handoff before context compaction", summary)
+
+    def test_session_snapshots_summary_surfaces_soft_deleted_retention_state(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = MemoryStore(Path(tmpdir) / "memory.sqlite")
+            store.init()
+            store.remember(
+                "Production deploy target is Render",
+                memory_type="semantic",
+                scope="project:alpha",
+                source_kind="human",
+            )
+            available = store.snapshot_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="available snapshot",
+            )
+            deleted = store.snapshot_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="soft deleted snapshot",
+            )
+            store.soft_delete_session_snapshot_payload(
+                deleted["session_snapshot_id"],
+                actor_id="reviewer",
+                reason="retention window expired",
+            )
+
+            report = build_session_snapshots_report(
+                store,
+                session_id="session://alpha",
+                scope="project:alpha",
+                limit=10,
+            )
+            summary = render_session_snapshots_summary(report)
+
+        self.assertTrue(report["ok"])
+        self.assertEqual(report["count"], 2)
+        self.assertIn("Session snapshots", summary)
+        self.assertIn("Payloads: 1 available, 1 soft-deleted", summary)
+        self.assertIn(f"Latest session snapshot root: {deleted['session_snapshot_merkle_root']}", summary)
+        self.assertIn("payload=soft_deleted", summary)
+        self.assertIn("deleted_by=reviewer", summary)
+        self.assertIn("deleted_reason=retention window expired", summary)
+        self.assertIn("payload=available", summary)
 
     def test_agent_pack_path_uses_project_local_default(self):
         with tempfile.TemporaryDirectory() as tmp:

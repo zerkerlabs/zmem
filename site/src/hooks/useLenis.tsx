@@ -1,9 +1,5 @@
 import { useEffect, useState, createContext, useContext } from 'react';
 import Lenis from 'lenis';
-import { gsap } from 'gsap';
-import { ScrollTrigger } from 'gsap/ScrollTrigger';
-
-gsap.registerPlugin(ScrollTrigger);
 
 const LenisContext = createContext<Lenis | null>(null);
 
@@ -23,14 +19,15 @@ export function LenisProvider({ children }: { children: React.ReactNode }) {
 
     setLenis(instance);
 
-    instance.on('scroll', ScrollTrigger.update);
-
-    gsap.ticker.add((time) => {
-      instance.raf(time * 1000);
-    });
-    gsap.ticker.lagSmoothing(0);
+    let frame = 0;
+    const raf = (time: number) => {
+      instance.raf(time);
+      frame = requestAnimationFrame(raf);
+    };
+    frame = requestAnimationFrame(raf);
 
     return () => {
+      cancelAnimationFrame(frame);
       instance.destroy();
       setLenis(null);
     };

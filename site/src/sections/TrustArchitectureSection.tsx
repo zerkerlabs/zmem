@@ -1,12 +1,7 @@
-import { useEffect, useRef } from 'react';
-import { gsap } from 'gsap';
-import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import NodeNetworkBg from '@/components/NodeNetworkBg';
 import Card from '@/components/Card';
 import StatusBadge from '@/components/StatusBadge';
 import CodeBlock from '@/components/CodeBlock';
-
-gsap.registerPlugin(ScrollTrigger);
 
 const statusCards = [
   {
@@ -43,35 +38,8 @@ Public URL:    optional Treeship publish`,
 ];
 
 export default function TrustArchitectureSection() {
-  const sectionRef = useRef<HTMLElement>(null);
-
-  useEffect(() => {
-    const el = sectionRef.current;
-    if (!el) return;
-
-    const heading = el.querySelector('.section-heading');
-    const desc = el.querySelector('.section-desc');
-    const cards = el.querySelectorAll('.trust-card');
-
-    if (heading) {
-      gsap.fromTo(heading, { opacity: 0, y: 40 },
-        { opacity: 1, y: 0, duration: 0.8, ease: 'power3.out',
-          scrollTrigger: { trigger: heading, start: 'top 80%' } });
-    }
-    if (desc) {
-      gsap.fromTo(desc, { opacity: 0, y: 20 },
-        { opacity: 1, y: 0, duration: 0.6, ease: 'power2.out', delay: 0.2,
-          scrollTrigger: { trigger: desc, start: 'top 80%' } });
-    }
-    if (cards.length) {
-      gsap.fromTo(cards, { opacity: 0, y: 40, scale: 0.95 },
-        { opacity: 1, y: 0, scale: 1, stagger: 0.2, duration: 0.8, ease: 'power3.out',
-          scrollTrigger: { trigger: cards[0], start: 'top 75%' } });
-    }
-  }, []);
-
   return (
-    <section ref={sectionRef} className="relative overflow-hidden py-[160px]">
+    <section className="relative overflow-hidden py-[160px]">
       <NodeNetworkBg seed={123} />
 
       <div className="relative z-[1] mx-auto max-w-[1120px] px-6">

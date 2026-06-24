@@ -1,0 +1,92 @@
+---
+title: ActiveGraph
+description: Use ZMem with ActiveGraph for cross-session memory and compact benchmark traces.
+---
+
+ActiveGraph gives agents an event chain. ZMem uses that chain to persist memory across runs, recall approved context before LLM calls, and produce compact benchmark traces.
+
+## What Is Built
+
+- `pack/pack.yaml` defines the ZMem ActiveGraph pack.
+- `zerker_memory.integrations.activegraph` implements the source-level behaviors.
+- `zerker_memory.bench.activegraph_runner` provides the compact event-sourced benchmark runner.
+- `activegraph.packs` points to the ZMem pack entry point.
+
+## Behaviors
+
+### `zmem.persist`
+
+Fires on:
+
+- `object.created`
+- `patch.applied`
+- `llm.responded`
+- `tool.responded`
+- `policy.created`
+- `relation.created`
+
+It maps events into ZMem memory types, calls the real store, and attaches `caused_by_event` so the memory points back to the ActiveGraph event that produced it. The default scope is `ag:{session_id}`.
+
+When `ZMEM_TREESHIP_ENABLED=true`, the behavior can emit a Treeship memory-write artifact.
+
+### `zmem.recall`
+
+Fires on `llm.requested`.
+
+It calls ZMem injection with:
+
+```bash
+ZMEM_RETRIEVAL_MODE=fts
+```
+
+The retrieval mode can be changed at runtime, which lets operators fork-and-diff FTS, multihop, semantic, hybrid, or rerank paths without changing code.
+
+When `ZMEM_TREESHIP_ENABLED=true`, the behavior can emit a Treeship memory-read artifact.
+
+## Pack Manifest
+
+```yaml
+name: zmem
+version: "0.1.0"
+description: "Cross-session memory and bench runner for ActiveGraph agents"
+entry_point: zerker_memory.integrations.activegraph
+behaviors:
+  - zmem.persist
+  - zmem.recall
+  - zmem.bench.question_started
+  - zmem.bench.memory_retrieved
+  - zmem.bench.answer_generated
+  - zmem.bench.question_completed
+config:
+  ZMEM_RETRIEVAL_MODE:
+    default: "fts"
+    description: "Retrieval mode: fts, semantic, or hybrid"
+  ZMEM_TREESHIP_ENABLED:
+    default: "false"
+    description: "Emit Treeship attestation artifacts on memory ops"
+```
+
+## Compact Benchmark Runner
+
+The ActiveGraph runner exists to avoid per-question receipt bundles during large runs. Instead of writing a large bundle for every question, it writes one compact JSON line per question:
+
+```json
+{
+  "question_id": "locomo_0421",
+  "retrieval_mode": "fts-multihop",
+  "retrieved_count": 6,
+  "receipt_id": "rec_...",
+  "trace_sha256": "sha256:...",
+  "ag_event_id": "evt_...",
+  "ag_run_id": "run_...",
+  "line_hash": "sha256:..."
+}
+```
+
+After the run, `score_trace()` writes `scored_receipt.json` with aggregate accuracy, mean F1, per-category scores, the aggregate Merkle root over line hashes, and the reproducibility claim.
+
+## Current Boundary
+
+The integration is built at source level and covered by local tests. A real `activegraph pack add zmem` loader/install smoke still needs a networked environment.
+
+Do not claim a public ActiveGraph integration release until that loader smoke passes.

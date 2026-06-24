@@ -22,11 +22,11 @@ Current official LoCoMo local baseline:
 
 Next comparison queue:
 
-- Run LongMemEval-S next. It directly tests abstention and token efficiency, which are the current gaps surfaced by LoCoMo adversarial scoring.
-- Run the same official LoCoMo setup with semantic/hybrid modes by changing `ZMEM_RETRIEVAL_MODE` / retrieval mode and comparing against the existing FTS trace SHA.
-- Optionally run `pseudo-embedding` alone to separate dense recall from reranking.
+- Run LoCoMo `fts-multihop` next with `bench matrix --mode`; it directly tests the largest weakness from the FTS baseline.
+- Then run `pseudo-embedding`, `pseudo-embedding-rerank`, and `zmem-retrieval` under the same `locomo-official-v1` matrix run id.
+- Run LongMemEval-S after the first LoCoMo mode deltas. It directly tests abstention and token efficiency, which are the current gaps surfaced by LoCoMo adversarial scoring.
 - Add BEAM as the scale benchmark for 100K -> 10M token contexts. Treat it as a planned runner until dataset source, command, hashes, and receipt bundle are pinned.
-- Isolate multi-hop, open-domain, and adversarial category slices; if the harness cannot filter categories yet, add that filter before more long full-run sweeps.
+- Read multi-hop, temporal, open-domain, and adversarial deltas from the existing category summaries and dashboard first; if full runs are too expensive, add category filtering before more category-only sweeps.
 - Add a deterministic answerer abstention threshold for `retrieved_count == 0` or low-confidence retrieval, then verify on LoCoMo adversarial and LongMemEval-S.
 
 ## 1. Convert Official Files
@@ -54,6 +54,47 @@ The converters write ZMem-shaped JSON records. They do not download datasets and
 Use this when you want a no-network retrieval/proof check:
 
 ```bash
+zmem bench matrix locomo \
+  --dataset data/locomo/locomo_official_zmem.json \
+  --out .zerker/bench \
+  --run-id locomo-official-v1 \
+  --mode fts-multihop \
+  --seed 42
+
+zmem bench matrix locomo \
+  --dataset data/locomo/locomo_official_zmem.json \
+  --out .zerker/bench \
+  --run-id locomo-official-v1 \
+  --mode pseudo-embedding \
+  --seed 42
+
+zmem bench matrix locomo \
+  --dataset data/locomo/locomo_official_zmem.json \
+  --out .zerker/bench \
+  --run-id locomo-official-v1 \
+  --mode pseudo-embedding-rerank \
+  --seed 42
+
+zmem bench matrix locomo \
+  --dataset data/locomo/locomo_official_zmem.json \
+  --out .zerker/bench \
+  --run-id locomo-official-v1 \
+  --mode zmem-retrieval \
+  --seed 42
+```
+
+Then render the comparison:
+
+```bash
+zmem bench report .zerker/bench/locomo-official-v1 --summary-only
+zmem bench dashboard .zerker/bench/locomo-official-v1
+zmem bench public-page .zerker/bench/locomo-official-v1
+zmem bench verify .zerker/bench/locomo-official-v1/benchmark-matrix.json --summary-only
+```
+
+For LongMemEval:
+
+```bash
 zmem bench matrix longmemeval \
   --dataset data/longmemeval/longmemeval_oracle_zmem.json \
   --out .zerker/bench \
@@ -78,6 +119,20 @@ zmem bench public-page .zerker/bench/longmemeval-local-v1
 ```
 
 The `zmem-retrieval` mode is a stable alias for the strongest current local retrieval mode in the harness. The stored result still records the concrete mode.
+
+For compact ActiveGraph traces, smoke first:
+
+```bash
+zmem-bench-locomo \
+  --dataset data/locomo/locomo_official_zmem.json \
+  --out .zerker/bench/activegraph-locomo-smoke \
+  --run-id activegraph-smoke-fts-multihop \
+  --retrieval-mode fts-multihop \
+  --split default \
+  --limit 5
+```
+
+Use ActiveGraph for long storage-safe traces after the matrix identifies which modes are worth preserving. It writes compact `trace.jsonl` and `scored_receipt.json` instead of per-question receipt bundles.
 
 ## 3. Inspect Evidence Cheaply
 

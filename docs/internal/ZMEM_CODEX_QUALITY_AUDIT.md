@@ -6,17 +6,17 @@ Canonical ledger for the ZMem Codex CTO quality loop. Keep this file factual and
 
 ## Current CTO Readout
 
-Scope audited: repo-local ZMem product behavior across capture, governance, retrieval, policy, receipts, handoff, workspaces, consolidation, providers, MCP, CLI, dashboard, behavior-tree memory, and benchmark evidence.
+Scope audited: repo-local ZMem product behavior across capture, governance, retrieval, policy, receipts, handoff, workspaces, consolidation, providers, MCP, CLI, dashboard, behavior-tree memory, benchmark evidence, and the launch-readiness evidence boundary.
 
-Pass: 16 capability rows.
+Pass: 15 capability rows.
 
 Fail: 0 capability rows.
 
-Fixed: 0 in this pass.
+Fixed: 1 launch-readiness boundary regression: `release-pack` / `release_smoke.py --summary-only` no longer wipes valid public verify logs, launch assets, or return-packet evidence.
 
-Retest pass: not applicable; no fixes were required.
+Retest pass: launch evidence preservation, public verify, launch assets, return packet, prelaunch, status, release smoke, and fast CTO smoke all passed.
 
-Blocked: strict public publish remains blocked by external clean-shell public verify logs and launch assets, not by core memory behavior.
+Blocked: 1 capability row. The broad `python3 -m unittest discover -s tests -q` CTO gate did not complete within the live-run window and was interrupted twice inside benchmark matrix verification paths. Focused benchmark coverage and the isolated slow benchmark test passed, but the all-tests gate is currently not a usable fast executive gate.
 
 Top P0/P1 risks: none found in this baseline.
 
@@ -24,29 +24,38 @@ Product ambiguities: scope guarantee granularity, deletion versus revocation sem
 
 Evidence commands:
 
-- `python3 -m unittest discover -s tests -q` passed, `Ran 641 tests in 277.273s`.
+- `python3 -m unittest discover -s tests -q` was attempted twice and manually interrupted after exceeding the practical live-run window; both interrupts were inside benchmark matrix verification paths:
+  - `tests/test_bench.py::test_cli_richer_same_adapter_matrix_comparison_reopen_preserves_mode_summaries_from_another_cwd`, interrupted in `MemoryStore.memory_write_receipt()`.
+  - `tests/test_bench.py::test_local_dataset_matrix_artifacts_store_relative_paths_and_reopen_from_another_cwd`, interrupted while recomputing/verifying bundle hashes through `verify_benchmark_matrix()`.
 - `python3 -m zerker_memory eval` passed `11/11`.
-- `python3 -m zerker_memory status --summary-only` reported workspace ready, doctor ok, memory proof ready, release packet ready, manual pack ready, and strict publish blocked only on `launch_assets` plus `public_verify_evidence`.
+- `python3 -m zerker_memory status --summary-only` reported workspace ready, doctor ok, memory proof ready, release packet ready, manual pack ready, and strict publish ready.
 - `python3 -m unittest tests.test_policy tests.test_mcp tests.test_snapshot tests.test_workspaces tests.test_consolidation tests.test_retrieval_providers tests.test_adapters tests.test_doctor tests.test_exporter -q` passed, `Ran 72 tests`.
 - `python3 -m zerker_memory --help` confirmed the expected CLI surfaces are registered.
 - `python3 -m zerker_memory bench --help` confirmed benchmark artifact commands are registered.
 - `python3 -m zerker_memory cto-smoke` passed `6/6` fast CTO checks covering all seeded audit rows.
 - `python3 -m unittest tests.test_store.MemoryStoreTest.test_scope_search_inject_isolates_project_thread_and_session_values tests.test_store.MemoryStoreTest.test_forget_hides_memory_without_deleting_audit_event -q` passed.
+- `python3 -m unittest tests.test_bench.BenchmarkHarnessTest.test_cli_richer_same_adapter_matrix_comparison_reopen_preserves_mode_summaries_from_another_cwd -q` passed, `Ran 1 test in 50.377s`.
+- `python3 -m unittest tests.test_release_smoke -q` passed, `Ran 43 tests`.
+- `python3 -m unittest tests.test_cli_onboarding.CliOnboardingTest.test_verify_return_packet_archive_accepts_venv_pth_for_packaged_requirement tests.test_cli_onboarding.CliOnboardingTest.test_release_pack_preserves_ready_public_verify_logs_and_launch_assets tests.test_cli_onboarding.CliOnboardingTest.test_verify_launch_assets_reports_ready_storyboard -q` passed, `Ran 3 tests`.
 - `python3 -m zerker_memory verify-operator-packet .zerker/launch-proof/public-verify-operator-packet.tar.gz --summary-only` reported `Ready: yes`.
-- `python3 -m zerker_memory verify-public-verify --summary-only` reported `Ready: no`, `0/6` logs captured.
-- `python3 -m zerker_memory verify-launch-assets --summary-only` reported `Ready: no`, `0/8` assets captured.
-- `python3 -m zerker_memory verify-return-packet .zerker/launch-proof/public-verify-return-packet.tar.gz --summary-only` reported `Ready: no` because public verify logs and launch assets are missing.
-- `python3 -m zerker_memory prelaunch --summary-only` reported blockers only on `launch_assets` and `public_verify_evidence`.
-- `/Users/zzo/.pyenv/versions/3.10.15/bin/python scripts/release_smoke.py --summary-only` passed after rerun; it confirms the operator packet is ready and the only publish blockers are still external evidence.
+- `python3 -m zerker_memory verify-public-verify --summary-only` reported `Ready: yes`, `6/6` logs captured.
+- `python3 -m zerker_memory verify-launch-assets --summary-only` reported `Ready: yes`, `8/8` assets captured.
+- `python3 -m zerker_memory verify-return-packet .zerker/launch-proof/public-verify-return-packet.tar.gz --summary-only` reported `Ready: yes`, `6/6` logs and `8/8` assets packed.
+- `python3 -m zerker_memory prelaunch --summary-only` reported `Ready to publish: yes`.
+- `/Users/zzo/.pyenv/versions/3.10.15/bin/python scripts/release_smoke.py --summary-only` passed and confirmed strict publish ready.
 
 Artifacts updated:
 
 - `docs/internal/ZMEM_CODEX_QUALITY_AUDIT.md`
 - `docs/internal/ZMEM_LIFECYCLE_SEMANTICS.md`
+- `zerker_memory/cli.py`
+- `tests/test_cli_onboarding.py`
+- `install.sh`
 
 Next evals:
 
 - Keep `python3 -m zerker_memory cto-smoke` green as the fast one-command health gate for all seeded audit rows.
+- Split the broad all-tests gate into fast executive slices plus an explicit benchmark-heavy gate, or optimize benchmark matrix verification so `python3 -m unittest discover -s tests -q` completes predictably again.
 - Extend the new scope-leak fixture beyond exact scope strings if/when user/project/workspace/thread/session become separate first-class fields.
 - Close the lifecycle proof gap by adding mutation receipts for `revoke()` and `forget()`.
 - Add a public-claim fixture that verifies benchmark pages cannot claim official rankings without pinned artifacts.
@@ -54,9 +63,9 @@ Next evals:
 Next engineering slices:
 
 - No P0/P1 fix is required from this baseline.
+- Treat the benchmark all-suite runtime issue as an L6 eval-infrastructure blocker before relying on full discovery as the CTO gate.
 - Route frontier capability work back to `docs/ZMEM_CONTINUOUS_BUILD_ORCHESTRATOR.md`; the CTO loop should only audit and prioritize unless a P0/P1 appears.
-- Route clean-shell proof, launch assets, public copy, and alpha-tag work back to the launch/public-readiness track.
-- External launch evidence still requires a networked clean shell and screenshot/GIF capture pass; local verification cannot honestly complete it.
+- Route future public copy and alpha-tag work back to the launch/public-readiness track.
 
 ## Status Legend
 
@@ -90,14 +99,14 @@ Next engineering slices:
 | ZQA-006 | Policy-gated injection | As an agent, I only receive memory that is allowed for the task risk and authority context. | govern, retrieve | status, trust, authority, labels, task risk | Runner, MCP, CLI | `zerker_memory/policy.py`, `zerker_memory/runner.py`, `zerker_memory/store.py` | Candidate memories are filtered through symbolic policy before influencing action. | `tests.test_policy`, `tests.test_runner`, `tests.test_store`, eval policy scenarios. | Focused suite passed; eval reported authorized policy injection and quarantined policy withholding. | pass | none | Security | No fix required. | None recorded. |
 | ZQA-007 | Why/explainability | As a user, I can inspect why memory was or was not used. | explain, verify | action id, memory ids, policy decision | CLI, dashboard | `zerker_memory/cli.py`, `zerker_memory/dashboard.py`, `zerker_memory/store.py` | Explanations show injected, withheld, and relevant receipt-visible decisions without claiming semantic truth. | Full suite plus eval, CLI help, dashboard tests. | Full suite passed; eval action receipts include injected/withheld memory and `why` next-step coverage. | pass | none | UX | No fix required. | None recorded. |
 | ZQA-008 | Receipts and Merkle lineage | As a user/team, I can verify what memory influenced an action and how memory state changed. | verify, store, update | event log, receipt chain, memory id | CLI, store API, Treeship/export | `zerker_memory/store.py`, `zerker_memory/treeship.py`, `zerker_memory/exporter.py` | Receipts prove provenance, mutation lineage, integrity, and influence; they do not assert truth. | `tests.test_snapshot`, `tests.test_exporter`, `tests.test_treeship`, eval Treeship export. | Focused suite passed; eval exported Treeship proof statement; status reported memory proof ready. | pass | none | Security | No fix required. | None recorded. |
-| ZQA-009 | Snapshot/restore/handoff | As a user, I can transfer or restore governed memory state across machines or agents. | sync, persist, verify | workspace, agent, snapshot root | CLI, agent pack, exporter | `zerker_memory/cli.py`, `zerker_memory/exporter.py`, `zerker_memory/workspaces.py` | Handoff artifacts preserve memory, policy, proof lineage, and enough metadata to restore/verify state. | `tests.test_snapshot`, `tests.test_cli_onboarding`, status summary. | Full suite passed; eval restored snapshot; status reported handoff ok and manual pack ready. | pass | none | Engineering | No fix required. | Strict publish handback remains externally blocked by missing public verify logs/assets. |
+| ZQA-009 | Snapshot/restore/handoff | As a user, I can transfer or restore governed memory state across machines or agents. | sync, persist, verify | workspace, agent, snapshot root | CLI, agent pack, exporter | `zerker_memory/cli.py`, `zerker_memory/exporter.py`, `zerker_memory/workspaces.py` | Handoff artifacts preserve memory, policy, proof lineage, and enough metadata to restore/verify state. | `tests.test_snapshot`, `tests.test_cli_onboarding`, status summary, return-packet verification. | Focused handoff/return-packet tests passed; eval restored snapshot; status reported handoff ok, manual pack ready, and return packet ok. | pass | none | Engineering | Launch evidence preservation fix landed after `release-pack` was found to reset valid evidence. Retest passed via `verify-return-packet` and `release_smoke.py --summary-only`. | None recorded. |
 | ZQA-010 | Workspace/source identity | As a multi-agent user, I can see which agent/session/workspace produced memory. | scope, sync, verify | agent id, chat/session id, workspace id, source URI | CLI, workspace registry, dashboard | `zerker_memory/workspaces.py`, `zerker_memory/cli.py`, `zerker_memory/dashboard.py` | Source identity is visible and prevents silent cross-workspace confusion. | `tests.test_workspaces`, `tests.test_dashboard`, status summary. | Focused suite passed; status reported current workspace, matched workspace, agent handoff targets, and source registry state. | pass | none | Product | No fix required. | Exact guaranteed scope boundaries beyond workspace/source remain open. |
 | ZQA-011 | Consolidation/dedupe | As a long-running agent, I can compress or dedupe memory without losing reversibility or provenance. | summarize, update | source-child lineage, summary id | Consolidation module, tests | `zerker_memory/consolidation.py`, `tests/test_consolidation.py` | Consolidation keeps source child ids and avoids irreversible lossy replacement. | `tests.test_consolidation` and full suite. | Focused suite passed; fixture has ordered levels, reversible lineage, and no hosted summarizer dependency. | pass | none | Evals | No fix required. | Runtime consolidation job behavior remains roadmap work, not a failing shipped path. |
 | ZQA-012 | Provider governance | As a builder, I can use external memory providers as candidate recall without bypassing ZMem governance. | capture, govern, retrieve | provider, source, trust status | Provider config/imports | `zerker_memory/providers.py`, `zerker_memory/retrieval_providers.py`, `templates/policy.example.json` | External candidates are quarantined or governed before action influence. | `tests.test_adapters`, `tests.test_retrieval_providers`, `tests.test_mcp`, eval provider quarantine. | Focused suite passed; hosted providers are disabled by default; eval quarantined provider candidate. | pass | none | Security | No fix required. | None recorded. |
 | ZQA-013 | MCP integration | As an agent client, I can connect to ZMem through MCP and use memory safely. | capture, retrieve, explain | client, workspace, source | MCP server, examples, agent setup | `zerker_memory/mcp.py`, `zerker_memory/mcp_smoke.py`, `examples/mcp_smoke.py`, `AGENT_INTEGRATION.md` | MCP exposes memory operations consistent with CLI/store policy and proof behavior. | `tests.test_mcp`, `tests.test_cli_onboarding`, CLI help. | Focused suite passed; CLI exposes `mcp`; status reports agent MCP handoff targets ok. | pass | none | Engineering | No fix required. | None recorded. |
-| ZQA-014 | CLI onboarding/status/doctor | As a user, I can install, inspect readiness, and diagnose issues from the CLI. | UX, verify | local workspace, agent config | CLI, installer, doctor | `zerker_memory/cli.py`, `zerker_memory/doctor.py`, `install.sh`, `tests/test_cli_onboarding.py`, `tests/test_doctor.py` | First-run commands produce clear setup state and actionable errors. | Full suite, `python3 -m zerker_memory --help`, `python3 -m zerker_memory status --summary-only`. | Full suite passed; status reported workspace ready and doctor ok. Some temp install tests printed sandbox registry warnings but still passed. | pass | none | UX | No fix required. | Strict publish readiness is external-evidence blocked, not CLI failure. |
+| ZQA-014 | CLI onboarding/status/doctor | As a user, I can install, inspect readiness, and diagnose issues from the CLI. | UX, verify | local workspace, agent config | CLI, installer, doctor | `zerker_memory/cli.py`, `zerker_memory/doctor.py`, `install.sh`, `tests/test_cli_onboarding.py`, `tests/test_doctor.py` | First-run commands produce clear setup state and actionable errors. | Focused CLI/onboarding tests, `python3 -m zerker_memory --help`, `python3 -m zerker_memory status --summary-only`, release smoke. | Focused tests passed; status reported workspace ready, doctor ok, and strict publish ready. Release smoke passed after evidence preservation fix. | pass | none | UX | Fixed launcher/evidence preservation edge: valid public verify logs/assets now survive `release-pack` and summary-only smoke. | None recorded. |
 | ZQA-015 | Dashboard review console | As a user, I can inspect and act on memory state through the local console. | govern, explain, verify | memory id, action id, launch proof | Dashboard | `zerker_memory/dashboard.py`, `tests/test_dashboard.py` | Dashboard actions align with CLI/store behavior and do not obscure trust/proof boundaries. | `tests.test_dashboard` and full suite. | Full suite passed; dashboard tests cover proof inspector, workspace sources, benchmark state, onboarding, release readiness, handoff/restore, return packet, and launch assets. | pass | none | UX | No fix required. | Visual browser QA was not run in this baseline. |
-| ZQA-016 | Benchmark evidence | As a builder, I can reproduce local benchmark evidence without overclaiming. | benchmark, verify | dataset, run id, artifact hash | CLI bench, scripts, docs | `zerker_memory/bench.py`, `scripts/bench/**`, `tests/test_bench.py`, `tests/test_bench_scripts.py`, `docs/BENCHMARK_*` | Benchmark commands produce auditable artifacts, hashes, and claim boundaries. | Full suite, `tests.test_bench`, `tests.test_bench_scripts`, `python3 -m zerker_memory bench --help`. | Full suite passed; benchmark CLI exposes list/run/matrix/report/dashboard/public-page/verify/compare/compare-matrices. | pass | none | Evals | No fix required. | Official/public benchmark claims still need pinned datasets, commands, hashes, and receipt bundles. |
+| ZQA-016 | Benchmark evidence | As a builder, I can reproduce local benchmark evidence without overclaiming. | benchmark, verify | dataset, run id, artifact hash | CLI bench, scripts, docs | `zerker_memory/bench.py`, `scripts/bench/**`, `tests/test_bench.py`, `tests/test_bench_scripts.py`, `docs/BENCHMARK_*` | Benchmark commands produce auditable artifacts, hashes, and claim boundaries without making public superiority claims from unpinned evidence. | Focused benchmark tests, `python3 -m zerker_memory bench --help`, broad suite attempt. | Benchmark CLI exposes list/run/matrix/report/dashboard/public-page/verify/compare/compare-matrices; isolated slow matrix comparison test passed in 50.377s. Broad `unittest discover` did not complete in the live-run window and was interrupted in benchmark matrix verification. | blocked | P2 | Evals | Do not fix inside CTO loop unless prioritized by L6. Need a fast benchmark health gate or optimized verification path before using full discovery as the executive gate. | Official/public benchmark claims still need pinned datasets, commands, hashes, and receipt bundles. |
 
 ## Memory Correctness Matrix
 
@@ -110,8 +119,8 @@ Next engineering slices:
 | Dedupe avoids merging distinct facts | ZQA-011 | Consolidation fixture tests passed. | Add distinct-but-similar dedupe fixture once runtime dedupe exists. |
 | Updates preserve provenance and prior state | ZQA-003, ZQA-008 | Snapshot tests cover promote mutation write receipts; eval revocation scenario passed. | None for current shipped path. |
 | Forgetting/revocation is observable | ZQA-003, ZQA-008 | Revocation and lineage behavior passed in eval/full suite; forget is now covered by CTO smoke and focused store test; lifecycle matrix added. | Add mutation receipts for `revoke()` and `forget()`. |
-| Persistence survives restart and handoff/restore | ZQA-001, ZQA-009 | Snapshot restore eval passed; snapshot/handoff tests passed; status reports handoff ok. | Strict publish return packet waits on external evidence. |
-| Benchmark claims are reproducible before public use | ZQA-016 | Benchmark tests passed and CLI verification surfaces exist. | Official/public claims need pinned dataset artifacts and proof bundles. |
+| Persistence survives restart and handoff/restore | ZQA-001, ZQA-009 | Snapshot restore eval passed; snapshot/handoff tests passed; status reports handoff ok; return packet verification reports ready with `6/6` logs and `8/8` assets. | None for launch handback; broader persistence remains covered by snapshot/handoff tests. |
+| Benchmark claims are reproducible before public use | ZQA-016 | Benchmark CLI verification surfaces exist; isolated slow matrix comparison test passed. | Broad all-tests discovery is not currently a reliable live CTO gate because benchmark matrix verification can exceed the practical run window; official/public claims still need pinned dataset artifacts and proof bundles. |
 
 ## Baseline Run Log
 
@@ -119,6 +128,7 @@ Add newest entries at the top.
 
 | Date/time | Operator | Scope | Commands/artifacts | Result | Notes |
 | --- | --- | --- | --- | --- | --- |
+| 2026-06-23 | Codex | CTO loop re-anchor after launch-readiness repair | `python3 -m zerker_memory cto-smoke`; `status --summary-only`; `prelaunch --summary-only`; `verify-public-verify`; `verify-launch-assets`; `verify-return-packet`; `/Users/zzo/.pyenv/versions/3.10.15/bin/python scripts/release_smoke.py --summary-only`; focused launch evidence tests; isolated benchmark matrix comparison test; `python3 -m unittest discover -s tests -q` attempted twice | pass with one blocked broad gate | Fast CTO smoke passed `6/6`. Launch/readiness evidence is now green: public verify `6/6`, launch assets `8/8`, return packet ready, prelaunch ready, strict publish ready. Broad all-tests discovery was interrupted twice after exceeding the practical live-run window inside benchmark matrix verification, so ZQA-016 is blocked for executive-gate usability until L6 provides a faster/optimized benchmark gate. |
 | 2026-06-23 | Codex | First CTO baseline across all seeded audit rows | `python3 -m unittest discover -s tests -q`; `python3 -m zerker_memory eval`; `python3 -m zerker_memory status --summary-only`; focused 72-test governance/proof/provider/MCP batch; CLI and bench help | pass | No P0/P1 found. Strict publish remains externally blocked by clean-shell logs and launch assets. |
 | 2026-06-23 | Codex | Fast CTO smoke, scope fixture, lifecycle semantics, and local launch-gate refresh | `python3 -m zerker_memory cto-smoke`; focused store scope/forget tests; `verify-operator-packet`; `verify-public-verify`; `verify-launch-assets`; `verify-return-packet`; `prelaunch`; release smoke | pass with external blockers | Fast CTO smoke passed. Scope/forget tests passed. Release smoke passed. Operator packet is ready. Strict publish remains externally blocked on `0/6` clean-shell logs and `0/8` launch assets. |
 | 2026-06-22 | Codex | Set up CTO quality loop artifacts | Created `docs/internal/ZMEM_CODEX_CTO_LOOP.md` and this audit ledger | setup | First baseline completed on 2026-06-23. |

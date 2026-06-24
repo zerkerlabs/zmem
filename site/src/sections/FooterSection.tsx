@@ -1,4 +1,4 @@
-import { Github, Twitter } from 'lucide-react';
+import { Github, Twitter } from '@/components/Icons';
 
 const footerColumns = [
   {

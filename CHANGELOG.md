@@ -2,6 +2,24 @@
 
 All notable Zerker Memory alpha changes are summarized here.
 
+## 0.1.0-alpha frontier build - ActiveGraph, LoCoMo, and compact traces
+
+### Shipped
+
+- Added the ActiveGraph source integration pack with `zmem.persist`, `zmem.recall`, and compact benchmark behaviors.
+- Added `pack/pack.yaml` and the `activegraph.packs` entry point so the ZMem pack has a stable manifest.
+- Added ActiveGraph memory writes with causal event pointers through `caused_by_event`.
+- Added a compact event-sourced LoCoMo runner that writes `trace.jsonl` and `scored_receipt.json` instead of per-question receipt bundles.
+- Recorded the official LoCoMo FTS baseline under `.zerker/bench/locomo-official-v1/fts/`: 1,986 questions, F1 `0.3752394031509457`, EM `0.37210473313192344`, trace SHA `67a005bf87b4bafcd2d7ce1cf8bfff97d7f430788afd0472511f738594971d0c`.
+- Added next-run guidance for `fts-multihop` and `pseudo-embedding-rerank` so retrieval depth and reranking can be compared against the same LoCoMo dataset.
+- Added the frontier benchmark queue: LongMemEval-S for abstention and token efficiency, plus BEAM for scale and causal-memory stress.
+
+### Current Boundary
+
+- The ActiveGraph integration is built at source level and covered by local tests.
+- A real `activegraph pack add zmem` loader/install smoke still needs a networked environment.
+- Public benchmark claims remain scoped to the recorded rule-based token F1/EM receipts until official benchmark submission rules are satisfied.
+
 ## 0.1.0-alpha - Local-first proof memory MVP
 
 ### Positioning

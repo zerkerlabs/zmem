@@ -14,6 +14,8 @@ It gives agents memory that survives restarts, can be inspected before it influe
 
 ## Must Ship For Public Alpha
 
+Current verified status as of `2026-06-24T00:08:53Z`: all repo-local proof gates below pass, including packaged clean-shell evidence, `8/8` launch assets, return-packet verification, and `prelaunch --summary-only`.
+
 - Public GitHub repo exists at `zerkerlabs/zmem`.
 - `zmem.sh` points to the launch site.
 - README, QUICKSTART, install script, release checklist, and proof pack all use `zerkerlabs/zmem`.

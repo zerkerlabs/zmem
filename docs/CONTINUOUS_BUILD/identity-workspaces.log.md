@@ -1,5 +1,15 @@
 # Identity Workspaces Lane Log
 
+## 2026-06-23T10:57:00Z - L5 identity-workspaces - Codex
+
+- Scope: added a compact read-only CLI summary for `zmem workspace sources` so unresolved cross-agent claim ties are visible without reading raw JSON or opening the dashboard.
+- Files touched: `zerker_memory/cli.py`, `tests/test_workspaces.py`, `docs/CONTINUOUS_BUILD/identity-workspaces.log.md`, `docs/SWARM_OPERATION_TRACKER.md`, `docs/CURRENT_STATE.md`, `docs/BUILD_LOG.md`.
+- Behavior changed: `zmem ws sources --summary-only` now prints workspace id, connected agents, inspected source receipts, the local conflict rule, and top claim conflicts; exact-tie conflicts are called out as unresolved abstentions with the tie fields shown explicitly.
+- Tests: `python3 -m unittest tests.test_workspaces -q` passed; `python3 -m unittest tests.test_dashboard.DashboardTest.test_build_workspace_sources_state_is_dashboard_ready -q` passed; `python3 -m unittest tests.test_store -q` passed; `python3 -m zerker_memory eval` passed. Required broad verification `python3 -m unittest tests.test_store tests.test_cli_onboarding -q` failed on unrelated pre-existing `tests.test_cli_onboarding.CliOnboardingTest.test_run_launch_proof_writes_transcript_and_artifacts`.
+- Artifacts/receipts: no external artifacts; the summary is derived from the existing local workspace-source report and existing write receipts.
+- Blockers: the broader CLI suite still has an unrelated launch-proof script-string mismatch, and this slice still does not persist merge decisions or add explicit agent identity keys.
+- Next safe slice: add one compact source-lineage detail line per conflicting claim so the summary can show why a tie abstained without widening into write-path changes.
+
 ## 2026-06-23T03:00:22Z - L5 identity-workspaces - Codex
 
 - Scope: extended the existing read-only workspace source-lineage report into a read-only claim-conflict view so multi-agent setups can see when connected agents or sessions wrote competing claims about the same entity and how the local merge preview resolves or abstains.

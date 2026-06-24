@@ -1787,6 +1787,19 @@ def _temporal_support_fusion_source_rankings(
         for memory_id in selection.get("selected_mutation_anchor_ids", [])
         if str(memory_id)
     ]
+    update_pair_ids = [
+        str(memory_id)
+        for memory_id in (
+            list(selection.get("selected_superseded_ids", []))
+            + ([selection.get("selected_update_current_id")] if selection.get("selected_update_current_id") else [])
+        )
+        if str(memory_id)
+    ]
+    update_current_support_ids = [
+        str(memory_id)
+        for memory_id in selection.get("selected_current_support_ids", [])
+        if str(memory_id)
+    ]
     if not selection.get("selection_exclusions") and not support_ids and not mutation_anchor_ids:
         return {}
     source_rankings: dict[str, list[str]] = {
@@ -1800,6 +1813,8 @@ def _temporal_support_fusion_source_rankings(
         source_rankings["temporal_injection"] = injection_ids
     if mutation_anchor_ids:
         source_rankings["temporal_mutation_anchor"] = mutation_anchor_ids
+    if len(update_pair_ids) > 1 and update_current_support_ids:
+        source_rankings["temporal_update_pair"] = update_pair_ids
     if len(source_rankings) <= 1:
         return {}
     return source_rankings
@@ -1808,6 +1823,21 @@ def _temporal_support_fusion_source_rankings(
 def _temporal_fusion_signal(selection: dict[str, Any]) -> str | None:
     if any(str(memory_id) for memory_id in selection.get("selected_mutation_anchor_ids", [])):
         return "temporal_mutation_rrf_score_v1"
+    update_pair_ids = [
+        str(memory_id)
+        for memory_id in (
+            list(selection.get("selected_superseded_ids", []))
+            + ([selection.get("selected_update_current_id")] if selection.get("selected_update_current_id") else [])
+        )
+        if str(memory_id)
+    ]
+    update_current_support_ids = [
+        str(memory_id)
+        for memory_id in selection.get("selected_current_support_ids", [])
+        if str(memory_id)
+    ]
+    if len(update_pair_ids) > 1 and update_current_support_ids:
+        return "temporal_update_pair_rrf_score_v1"
     support_ids = (
         list(selection.get("selected_target_support_ids", []))
         + list(selection.get("selected_relation_support_ids", []))
@@ -1815,6 +1845,16 @@ def _temporal_fusion_signal(selection: dict[str, Any]) -> str | None:
     )
     if selection.get("selection_exclusions") or any(str(memory_id) for memory_id in support_ids):
         return "temporal_support_rrf_score_v1"
+    return None
+
+
+def _temporal_fusion_basis(signal: str | None) -> str | None:
+    if signal == "temporal_mutation_rrf_score_v1":
+        return "mutation_anchor"
+    if signal == "temporal_update_pair_rrf_score_v1":
+        return "update_pair"
+    if signal == "temporal_support_rrf_score_v1":
+        return "support_chain"
     return None
 
 
@@ -5124,9 +5164,7 @@ def resolve_temporal_lifecycle(
                 **temporal_fusion,
                 "applied": True,
                 "signal": temporal_fusion_signal,
-                "basis": "mutation_anchor"
-                if temporal_fusion_signal == "temporal_mutation_rrf_score_v1"
-                else "support_chain",
+                "basis": _temporal_fusion_basis(temporal_fusion_signal),
                 "selection_exclusion_ids": [
                     str(item["memory_id"])
                     for item in selection["selection_exclusions"]
@@ -5148,13 +5186,7 @@ def resolve_temporal_lifecycle(
                     else "no-fusion-candidates"
                 ),
                 "signal": temporal_fusion_signal,
-                "basis": "mutation_anchor"
-                if temporal_fusion_signal == "temporal_mutation_rrf_score_v1"
-                else (
-                    "support_chain"
-                    if temporal_fusion_signal == "temporal_support_rrf_score_v1"
-                    else None
-                ),
+                "basis": _temporal_fusion_basis(temporal_fusion_signal),
                 "source_rankings": temporal_fusion_source_rankings,
                 "selection_exclusion_ids": [
                     str(item["memory_id"])
@@ -8112,6 +8144,16 @@ class MemoryStore:
         temporal_graph = temporal_projection["temporal_graph"]
         temporal_metadata = retrieval.get("temporal")
         if isinstance(temporal_metadata, dict):
+            withheld_ids = [
+                str(item["memory_id"])
+                for item in withheld
+                if str(item.get("memory_id"))
+            ]
+            budget_dropped_ids = [
+                str(item["memory_id"])
+                for item in packing["metadata"]["budget_dropped"]
+                if str(item.get("memory_id"))
+            ]
             temporal_metadata["temporal_projection_at"] = receipt_created_at
             temporal_metadata["temporal_graph"] = temporal_graph
             temporal_metadata["history_memory_ids"] = temporal_projection["history_memory_ids"]
@@ -8132,6 +8174,16 @@ class MemoryStore:
                 memory.id: temporal_graph[memory.id]
                 for memory in injected
                 if memory.id in temporal_graph
+            }
+            temporal_metadata["withheld_temporal_graph"] = {
+                memory_id: temporal_graph[memory_id]
+                for memory_id in withheld_ids
+                if memory_id in temporal_graph
+            }
+            temporal_metadata["budget_dropped_temporal_graph"] = {
+                memory_id: temporal_graph[memory_id]
+                for memory_id in budget_dropped_ids
+                if memory_id in temporal_graph
             }
         memory_tree = self.memory_tree(candidates, scope="retrieved")
         injected_memory_proofs = {
@@ -8768,6 +8820,138 @@ class MemoryStore:
         }
         try:
             self._validate_snapshot(snapshot)
+        except (KeyError, ValueError) as exc:
+            result["ok"] = False
+            result["error"] = str(exc)
+        return result
+
+    def verify_lifecycle_receipt(
+        self,
+        receipt: dict[str, Any],
+        *,
+        source_snapshot: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        source_payload = receipt.get("source_payload")
+        treeship_statement = receipt.get("treeship_statement")
+        statement_object = treeship_statement.get("object", {}) if isinstance(treeship_statement, dict) else {}
+        statement_evidence = treeship_statement.get("evidence", {}) if isinstance(treeship_statement, dict) else {}
+        result = {
+            "ok": True,
+            "receipt_schema": receipt.get("receipt_schema"),
+            "receipt_id": receipt.get("receipt_id"),
+            "mutation": receipt.get("mutation"),
+            "receipt_hash": receipt.get("receipt_hash"),
+            "computed_receipt_hash": None,
+            "content_digest": receipt.get("content_digest"),
+            "computed_content_digest": None,
+            "merkle_root": receipt.get("merkle_root"),
+            "treeship_statement_kind": treeship_statement.get("kind") if isinstance(treeship_statement, dict) else None,
+            "treeship_statement_verified": False,
+            "semantic_truth_guaranteed": statement_object.get("semantic_truth_guaranteed") if isinstance(statement_object, dict) else None,
+            "source_snapshot_hash": source_snapshot.get("snapshot_hash") if isinstance(source_snapshot, dict) else None,
+            "source_snapshot_verified": None,
+        }
+        try:
+            if receipt.get("receipt_schema") != LIFECYCLE_RECEIPT_SCHEMA:
+                raise ValueError("unsupported lifecycle receipt schema")
+            if receipt.get("hash_alg") != HASH_ALG:
+                raise ValueError("unsupported lifecycle receipt hash algorithm")
+            if receipt.get("merkle_alg") != MERKLE_ALG:
+                raise ValueError("unsupported lifecycle receipt merkle algorithm")
+            if not isinstance(receipt.get("receipt_hash"), str):
+                raise ValueError("lifecycle receipt missing receipt_hash")
+            if not isinstance(source_payload, dict):
+                raise ValueError("lifecycle receipt missing source_payload")
+            if not isinstance(treeship_statement, dict):
+                raise ValueError("lifecycle receipt missing treeship_statement")
+
+            receipt_without_hash = dict(receipt)
+            receipt_without_hash.pop("receipt_hash", None)
+            computed_receipt_hash = sha256_text(stable_json(receipt_without_hash))
+            result["computed_receipt_hash"] = computed_receipt_hash
+
+            computed_content_digest = digest_uri(stable_json(source_payload))
+            result["computed_content_digest"] = computed_content_digest
+
+            if computed_receipt_hash != receipt["receipt_hash"]:
+                raise ValueError("lifecycle receipt_hash mismatch")
+            if computed_content_digest != receipt.get("content_digest"):
+                raise ValueError("lifecycle content_digest mismatch")
+            if treeship_statement.get("kind") != "zerker.memory.mutation_receipt":
+                raise ValueError("lifecycle treeship kind mismatch")
+            if treeship_statement.get("predicate") != "memory.mutation.receipt.generated":
+                raise ValueError("lifecycle treeship predicate mismatch")
+            if treeship_statement.get("created_at") != receipt.get("created_at"):
+                raise ValueError("lifecycle treeship created_at mismatch")
+            if not isinstance(statement_object, dict):
+                raise ValueError("lifecycle receipt missing treeship object")
+            if not isinstance(statement_evidence, dict):
+                raise ValueError("lifecycle receipt missing treeship evidence")
+            if statement_object.get("mutation") != receipt.get("mutation"):
+                raise ValueError("lifecycle treeship mutation mismatch")
+            if statement_object.get("content_digest") != computed_content_digest:
+                raise ValueError("lifecycle treeship content_digest mismatch")
+            if statement_object.get("semantic_truth_guaranteed") is not False:
+                raise ValueError("lifecycle semantic_truth_guaranteed must be false")
+            if statement_evidence.get("hash_alg") != HASH_ALG:
+                raise ValueError("lifecycle treeship hash algorithm mismatch")
+            if statement_evidence.get("merkle_alg") != MERKLE_ALG:
+                raise ValueError("lifecycle treeship merkle algorithm mismatch")
+            if statement_evidence.get("new_merkle_root") != receipt.get("merkle_root"):
+                raise ValueError("lifecycle treeship new_merkle_root mismatch")
+            if statement_evidence.get("payload_digest") != computed_content_digest:
+                raise ValueError("lifecycle treeship payload_digest mismatch")
+
+            statement_source = treeship_statement.get("source")
+            if not isinstance(statement_source, dict):
+                raise ValueError("lifecycle receipt missing treeship source")
+            if statement_source.get("system") != "zerker-memory":
+                raise ValueError("lifecycle treeship source system mismatch")
+            if statement_source.get("treeship_artifact_id") != receipt.get("treeship_artifact_id"):
+                raise ValueError("lifecycle treeship artifact mismatch")
+            expected_source_receipt = dict(receipt)
+            expected_source_receipt.pop("treeship_statement", None)
+            expected_source_receipt.pop("receipt_hash", None)
+            if statement_source.get("receipt") != expected_source_receipt:
+                raise ValueError("lifecycle treeship source receipt mismatch")
+
+            if source_snapshot is not None:
+                snapshot_verification = self.verify_snapshot(source_snapshot)
+                result["source_snapshot_verified"] = snapshot_verification["ok"]
+                if not snapshot_verification["ok"]:
+                    raise ValueError(f"source snapshot invalid: {snapshot_verification['error']}")
+                if source_payload.get("snapshot_hash") != source_snapshot.get("snapshot_hash"):
+                    raise ValueError("lifecycle snapshot_hash mismatch")
+                if statement_evidence.get("snapshot_hash") != source_snapshot.get("snapshot_hash"):
+                    raise ValueError("lifecycle treeship snapshot_hash mismatch")
+                if statement_object.get("snapshot_hash") != source_snapshot.get("snapshot_hash"):
+                    raise ValueError("lifecycle treeship object snapshot_hash mismatch")
+                if "snapshot_merkle_root" in source_payload and source_payload.get("snapshot_merkle_root") != source_snapshot.get("merkle_root"):
+                    raise ValueError("lifecycle snapshot_merkle_root mismatch")
+                if "snapshot_merkle_root" in statement_object and statement_object.get("snapshot_merkle_root") != source_snapshot.get("merkle_root"):
+                    raise ValueError("lifecycle treeship object snapshot_merkle_root mismatch")
+                if "snapshot_memory_count" in source_payload and source_payload.get("snapshot_memory_count") != source_snapshot.get("memory_count"):
+                    raise ValueError("lifecycle snapshot_memory_count mismatch")
+                if "snapshot_event_count" in source_payload and source_payload.get("snapshot_event_count") != source_snapshot.get("event_count"):
+                    raise ValueError("lifecycle snapshot_event_count mismatch")
+                if "snapshot_receipt_count" in source_payload and source_payload.get("snapshot_receipt_count") != source_snapshot.get("receipt_count"):
+                    raise ValueError("lifecycle snapshot_receipt_count mismatch")
+                if "snapshot_write_receipt_count" in source_payload and source_payload.get("snapshot_write_receipt_count") != source_snapshot.get("write_receipt_count"):
+                    raise ValueError("lifecycle snapshot_write_receipt_count mismatch")
+                if receipt.get("mutation") == "restore_snapshot":
+                    if source_payload.get("snapshot_merkle_root") != source_snapshot.get("merkle_root"):
+                        raise ValueError("lifecycle snapshot_merkle_root mismatch")
+                    if source_payload.get("memory_count") != source_snapshot.get("memory_count"):
+                        raise ValueError("lifecycle memory_count mismatch")
+                    if source_payload.get("event_count") != source_snapshot.get("event_count"):
+                        raise ValueError("lifecycle event_count mismatch")
+                    if source_payload.get("receipt_count") != source_snapshot.get("receipt_count"):
+                        raise ValueError("lifecycle receipt_count mismatch")
+                    if source_payload.get("write_receipt_count") != source_snapshot.get("write_receipt_count"):
+                        raise ValueError("lifecycle write_receipt_count mismatch")
+                    if statement_evidence.get("source_snapshot_verified") is not True:
+                        raise ValueError("lifecycle treeship source_snapshot_verified mismatch")
+            result["treeship_statement_verified"] = True
         except (KeyError, ValueError) as exc:
             result["ok"] = False
             result["error"] = str(exc)

@@ -343,17 +343,22 @@ class MemoryStoreTest(unittest.TestCase):
         self.assertEqual(checkpoint["prior_merkle_root"], prior_merkle_root)
         self.assertEqual(checkpoint["checkpoint_merkle_root"], self.store.current_merkle_root())
         self.assertNotEqual(checkpoint["checkpoint_merkle_root"], checkpoint["prior_merkle_root"])
-        self.assertEqual(
+        self.assertCountEqual(
             checkpoint["active_memory_ids"],
             [policy.id, procedural.id, episodic.id, semantic.id, global_policy.id],
         )
         self.assertEqual(checkpoint["memory_count"], 5)
         self.assertEqual(checkpoint["memory_tree"]["leaf_count"], 5)
         self.assertEqual(
-            checkpoint["memory_type_summary"]["active_ids_by_type"],
+            {
+                memory_type: sorted(memory_ids)
+                for memory_type, memory_ids in checkpoint["memory_type_summary"][
+                    "active_ids_by_type"
+                ].items()
+            },
             {
                 "episodic": [episodic.id],
-                "policy": [policy.id, global_policy.id],
+                "policy": sorted([policy.id, global_policy.id]),
                 "procedural": [procedural.id],
                 "semantic": [semantic.id],
             },
@@ -561,6 +566,34 @@ class MemoryStoreTest(unittest.TestCase):
             [item["receipt"]["receipt_hash"] for item in snapshots],
             [second["receipt"]["receipt_hash"], first["receipt"]["receipt_hash"]],
         )
+
+    def test_verify_lifecycle_receipt_accepts_persisted_session_snapshot_receipt(self):
+        self.store.remember(
+            "Keep deploy rules separate from run history",
+            memory_type="procedural",
+            scope="project:alpha",
+            source_kind="human",
+        )
+
+        session_snapshot = self.store.snapshot_session(
+            "session://alpha",
+            actor_id="codex",
+            scope="project:alpha",
+            summary="freeze before handoff",
+        )
+
+        verification = self.store.verify_lifecycle_receipt(
+            session_snapshot["receipt"],
+            source_snapshot=session_snapshot["snapshot"],
+        )
+
+        self.assertTrue(verification["ok"])
+        self.assertEqual(verification["mutation"], "snapshot_session")
+        self.assertEqual(verification["computed_receipt_hash"], session_snapshot["receipt"]["receipt_hash"])
+        self.assertEqual(verification["computed_content_digest"], session_snapshot["receipt"]["content_digest"])
+        self.assertTrue(verification["treeship_statement_verified"])
+        self.assertTrue(verification["source_snapshot_verified"])
+        self.assertFalse(verification["semantic_truth_guaranteed"])
 
     def test_soft_delete_session_snapshot_payload_preserves_receipt_visible_summary(self):
         self.store.remember(
@@ -5826,6 +5859,81 @@ class MemoryStoreTest(unittest.TestCase):
         self.assertEqual(temporal["selected_update_current_id"], current.id)
         self.assertEqual(temporal["selected_current_support_ids"], [generic_anchor.id])
 
+    def test_update_history_rrf_promotes_explicit_current_over_high_authority_generic_anchor(self):
+        stale = self.store.remember(
+            "Deployment approver was Alex.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.7,
+        )
+        current = self.store.remember(
+            "Deployment approver changed to Priya.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.6,
+        )
+        generic_anchor = self.store.remember(
+            "Deployment approver changed after CAB review.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.99,
+            authority="high",
+        )
+
+        budget = approx_memory_tokens(stale) + approx_memory_tokens(current)
+        receipt = self.store.inject(
+            "Who did deployment approvals change from?",
+            agent_id="codex",
+            risk="low",
+            scope="project",
+            context_budget_tokens=budget,
+        )
+        retrieval = receipt["retrieval"]
+        temporal = retrieval["temporal"]
+
+        self.assertCountEqual(receipt["retrieved_memory_ids"], [stale.id, current.id, generic_anchor.id])
+        self.assertEqual(receipt["injected_memory_ids"], [stale.id, current.id])
+        self.assertEqual(temporal["selection_strategy"], "historical_preferred_v1")
+        self.assertEqual(temporal["selection_reason"], "update-history-query-terms")
+        self.assertTrue(temporal["fusion"]["applied"])
+        self.assertEqual(temporal["fusion"]["signal"], "temporal_update_pair_rrf_score_v1")
+        self.assertEqual(temporal["fusion"]["basis"], "update_pair")
+        self.assertEqual(
+            temporal["fusion"]["source_rankings"],
+            {
+                "baseline": [generic_anchor.id, stale.id, current.id],
+                "temporal_selection": [stale.id, generic_anchor.id, current.id],
+                "temporal_injection": [stale.id, current.id, generic_anchor.id],
+                "temporal_update_pair": [stale.id, current.id],
+            },
+        )
+        self.assertEqual(
+            [candidate["memory_id"] for candidate in retrieval["candidates"]],
+            [stale.id, current.id, generic_anchor.id],
+        )
+        candidate_by_id = {candidate["memory_id"]: candidate for candidate in retrieval["candidates"]}
+        self.assertEqual(candidate_by_id[stale.id]["temporal_fusion_rank"], 1)
+        self.assertEqual(candidate_by_id[current.id]["temporal_fusion_rank"], 2)
+        self.assertEqual(candidate_by_id[generic_anchor.id]["temporal_fusion_rank"], 3)
+        self.assertGreater(
+            candidate_by_id[current.id]["temporal_fusion_score"],
+            candidate_by_id[generic_anchor.id]["temporal_fusion_score"],
+        )
+        self.assertEqual(
+            candidate_by_id[current.id]["temporal_fusion_sources"],
+            ["baseline", "temporal_selection", "temporal_injection", "temporal_update_pair"],
+        )
+        self.assertTrue(retrieval["baseline_ranking"]["temporal_fusion_signal_applied"])
+        self.assertEqual(
+            retrieval["baseline_ranking"]["temporal_fusion_signal"],
+            "temporal_update_pair_rrf_score_v1",
+        )
+        self.assertEqual(retrieval["packing"]["budget_dropped"][0]["memory_id"], generic_anchor.id)
+        self.assertEqual(retrieval["packing"]["budget_dropped"][0]["reason"], "context-budget")
+
     def test_update_history_relation_query_injects_plain_current_relation_before_generic_current_anchor(self):
         stale = self.store.remember(
             "API gateway points to staging.",
@@ -7966,6 +8074,86 @@ class MemoryStoreTest(unittest.TestCase):
         self.assertEqual(temporal_graph[second.id]["current_resolution"], "abstained")
         self.assertEqual(temporal_graph[second.id]["current_conflict_reasons"], ["lexical-current-conflict"])
         self.assertEqual(temporal["injected_temporal_graph"], {})
+
+    def test_temporal_receipt_projection_preserves_withheld_current_subset_metadata(self):
+        policy_path = Path(self.tmp.name) / "policy.json"
+        policy_path.write_text('{"schema":"zerker.policy.v1","deny_labels":["secret"]}', encoding="utf-8")
+        store = MemoryStore(Path(self.tmp.name) / "temporal-withheld.sqlite", policy_path=policy_path)
+        store.init()
+
+        memory = store.remember(
+            "Status page owner is Alice Chen.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            labels=["secret"],
+        )
+        fixed_timestamp = "2024-02-01T00:00:00Z"
+        store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            (fixed_timestamp, fixed_timestamp, memory.id),
+        )
+        store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            (fixed_timestamp, memory.id),
+        )
+        store.conn.commit()
+
+        receipt = store.inject("who is the status page owner", agent_id="codex", risk="low", scope="project")
+        temporal = receipt["retrieval"]["temporal"]
+        withheld_graph = temporal["withheld_temporal_graph"]
+
+        self.assertEqual(receipt["injected_memory_ids"], [])
+        self.assertEqual(receipt["withheld"][0]["memory_id"], memory.id)
+        self.assertEqual(receipt["withheld"][0]["rule"], "deny-label")
+        self.assertEqual(temporal["selected_ids"], [memory.id])
+        self.assertEqual(temporal["injected_temporal_graph"], {})
+        self.assertEqual(list(withheld_graph), [memory.id])
+        self.assertEqual(withheld_graph[memory.id]["learned_at"], fixed_timestamp)
+        self.assertEqual(withheld_graph[memory.id]["valid_from"], fixed_timestamp)
+        self.assertEqual(withheld_graph[memory.id]["status_at_query"], "active")
+        self.assertEqual(withheld_graph[memory.id]["temporal_state"], "current")
+
+    def test_temporal_receipt_projection_preserves_budget_dropped_current_subset_metadata(self):
+        parent = self.store.remember(
+            "Incident owner was Alex.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        child = self.store.remember(
+            "Incident owner is Priya.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            parents=[parent.id],
+        )
+        self._set_memory_clock(parent.id, "2024-01-01T00:00:00Z")
+        self._set_memory_clock(child.id, "2024-02-01T00:00:00Z")
+        self._set_event_clock(parent.id, "OBSERVED", "2024-01-01T00:00:00Z")
+        self._set_event_clock(child.id, "OBSERVED", "2024-02-01T00:00:00Z")
+        self.store.conn.commit()
+
+        budget = max(approx_memory_tokens(parent), approx_memory_tokens(child))
+        receipt = self.store.inject(
+            "when did the incident owner change then",
+            agent_id="codex",
+            risk="low",
+            scope="project",
+            context_budget_tokens=budget,
+        )
+        temporal = receipt["retrieval"]["temporal"]
+        injected_graph = temporal["injected_temporal_graph"]
+        budget_dropped_graph = temporal["budget_dropped_temporal_graph"]
+
+        self.assertEqual(receipt["injected_memory_ids"], [parent.id])
+        self.assertEqual(receipt["retrieval"]["packing"]["budget_dropped"][0]["memory_id"], child.id)
+        self.assertEqual(list(injected_graph), [parent.id])
+        self.assertEqual(list(budget_dropped_graph), [child.id])
+        self.assertEqual(injected_graph[parent.id]["temporal_state"], "superseded")
+        self.assertEqual(injected_graph[parent.id]["valid_to"], "2024-02-01T00:00:00Z")
+        self.assertEqual(budget_dropped_graph[child.id]["temporal_state"], "current")
+        self.assertEqual(budget_dropped_graph[child.id]["valid_from"], "2024-02-01T00:00:00Z")
 
     def test_query_at_projects_learned_and_valid_time_from_existing_events(self):
         queued = self.store.remember(

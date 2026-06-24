@@ -1,12 +1,7 @@
-import { useEffect, useRef } from 'react';
-import { gsap } from 'gsap';
-import { ScrollTrigger } from 'gsap/ScrollTrigger';
-import { Search, BookOpen, Shield, FileCheck } from 'lucide-react';
+import { Search, BookOpen, Shield, FileCheck } from '@/components/Icons';
 import NodeNetworkBg from '@/components/NodeNetworkBg';
 import Card from '@/components/Card';
 import StatusBadge from '@/components/StatusBadge';
-
-gsap.registerPlugin(ScrollTrigger);
 
 const cards = [
   {
@@ -44,49 +39,8 @@ const cards = [
 ];
 
 export default function MemoryLoopSection() {
-  const sectionRef = useRef<HTMLElement>(null);
-
-  useEffect(() => {
-    const el = sectionRef.current;
-    if (!el) return;
-
-    const heading = el.querySelector('.section-heading');
-    const desc = el.querySelector('.section-desc');
-    const cardEls = el.querySelectorAll('.loop-card');
-
-    if (heading) {
-      gsap.fromTo(heading,
-        { opacity: 0, y: 40 },
-        { opacity: 1, y: 0, duration: 0.8, ease: 'power3.out',
-          scrollTrigger: { trigger: heading, start: 'top 80%' } }
-      );
-    }
-
-    if (desc) {
-      gsap.fromTo(desc,
-        { opacity: 0, y: 20 },
-        { opacity: 1, y: 0, duration: 0.6, ease: 'power2.out', delay: 0.2,
-          scrollTrigger: { trigger: desc, start: 'top 80%' } }
-      );
-    }
-
-    if (cardEls.length) {
-      gsap.fromTo(cardEls,
-        { opacity: 0, y: 30, rotateX: 5 },
-        {
-          opacity: 1, y: 0, rotateX: 0,
-          stagger: 0.15,
-          duration: 0.7,
-          ease: 'power3.out',
-          scrollTrigger: { trigger: cardEls[0], start: 'top 75%' },
-        }
-      );
-    }
-  }, []);
-
   return (
     <section
-      ref={sectionRef}
       id="memory-loop"
       className="relative overflow-hidden py-[160px]"
     >

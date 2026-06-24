@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useLenisInstance } from '@/hooks/useLenis';
-import { Menu, X } from 'lucide-react';
+import { Menu, X } from '@/components/Icons';
 
 type NavLink = {
   label: string;
@@ -46,8 +46,10 @@ export default function Navigation() {
   const navLinks: NavLink[] = [
     { label: 'Product', target: '#memory-loop' },
     { label: 'Proof', target: '/proof' },
+    { label: 'ActiveGraph', target: '/activegraph' },
     { label: 'Install', target: '#install' },
     { label: 'Docs', target: '/docs' },
+    { label: 'Changelog', target: '/changelog' },
   ];
 
   return (

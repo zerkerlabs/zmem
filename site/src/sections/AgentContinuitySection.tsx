@@ -1,9 +1,4 @@
-import { useEffect, useRef } from 'react';
-import { gsap } from 'gsap';
-import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import CodeBlock from '@/components/CodeBlock';
-
-gsap.registerPlugin(ScrollTrigger);
 
 const steps = [
   {
@@ -73,48 +68,8 @@ const consolePanels = [
 ];
 
 export default function AgentContinuitySection() {
-  const sectionRef = useRef<HTMLElement>(null);
-
-  useEffect(() => {
-    const el = sectionRef.current;
-    if (!el) return;
-
-    const heading = el.querySelector('.section-heading');
-    const desc = el.querySelector('.section-desc');
-    const stepEls = el.querySelectorAll('.step-card');
-    const terminal = el.querySelector('.terminal-block');
-    const consoleEls = el.querySelectorAll('.console-panel');
-
-    if (heading) {
-      gsap.fromTo(heading, { opacity: 0, y: 40 },
-        { opacity: 1, y: 0, duration: 0.8, ease: 'power3.out',
-          scrollTrigger: { trigger: heading, start: 'top 80%' } });
-    }
-    if (desc) {
-      gsap.fromTo(desc, { opacity: 0, y: 20 },
-        { opacity: 1, y: 0, duration: 0.6, ease: 'power2.out', delay: 0.2,
-          scrollTrigger: { trigger: desc, start: 'top 80%' } });
-    }
-    if (stepEls.length) {
-      gsap.fromTo(stepEls, { opacity: 0, x: -30 },
-        { opacity: 1, x: 0, stagger: 0.2, duration: 0.7, ease: 'power3.out',
-          scrollTrigger: { trigger: stepEls[0], start: 'top 75%' } });
-    }
-    if (terminal) {
-      gsap.fromTo(terminal, { opacity: 0, y: 30 },
-        { opacity: 1, y: 0, duration: 0.8, ease: 'power3.out', delay: 0.3,
-          scrollTrigger: { trigger: terminal, start: 'top 75%' } });
-    }
-    if (consoleEls.length) {
-      gsap.fromTo(consoleEls, { opacity: 0, y: 24 },
-        { opacity: 1, y: 0, stagger: 0.12, duration: 0.6, ease: 'power3.out',
-          scrollTrigger: { trigger: consoleEls[0], start: 'top 78%' } });
-    }
-  }, []);
-
   return (
     <section
-      ref={sectionRef}
       className="bg-zsurface py-[160px]"
     >
       <div className="mx-auto max-w-[1120px] px-6">

@@ -10,11 +10,13 @@ npm run dev
 const guides = [
   'Install',
   'Agents',
+  'ActiveGraph',
   'Memory lifecycle',
   'Receipts',
   'Handoff',
   'Benchmarks',
   'Builders',
+  'Changelog',
   'Proof model',
 ];
 
@@ -32,7 +34,7 @@ export default function DocsPage() {
           </h1>
           <p className="mt-6 max-w-[680px] text-[17px] leading-relaxed text-zmuted">
             Learn how to install ZMem, connect agent tools, operate memory across sessions,
-            verify receipts, restore handoffs, and measure retrieval quality.
+            use ActiveGraph, verify receipts, restore handoffs, and measure retrieval quality.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
             <a
@@ -64,6 +66,47 @@ export default function DocsPage() {
             </p>
           </Card>
           <CodeBlock code={docsRun} title="fumadocs" />
+        </div>
+      </section>
+
+      <section className="border-y border-zline py-16">
+        <div className="mx-auto grid max-w-[1120px] grid-cols-1 gap-5 px-6 md:grid-cols-3">
+          <Card className="p-5">
+            <p className="text-eyebrow text-zlime">New</p>
+            <h2 className="mt-3 font-heading text-2xl font-semibold tracking-tight text-zink">
+              ActiveGraph
+            </h2>
+            <p className="mt-3 text-sm leading-relaxed text-zmuted">
+              Cross-run memory behaviors, causal event ids, and compact benchmark traces.
+            </p>
+            <a href="/activegraph" className="mt-5 inline-block text-sm font-semibold text-zlime">
+              Open integration
+            </a>
+          </Card>
+          <Card className="p-5">
+            <p className="text-eyebrow text-zlime">New</p>
+            <h2 className="mt-3 font-heading text-2xl font-semibold tracking-tight text-zink">
+              Benchmark queue
+            </h2>
+            <p className="mt-3 text-sm leading-relaxed text-zmuted">
+              FTS baseline is recorded. Multihop and rerank runs are next.
+            </p>
+            <a href="/proof" className="mt-5 inline-block text-sm font-semibold text-zlime">
+              Open proof page
+            </a>
+          </Card>
+          <Card className="p-5">
+            <p className="text-eyebrow text-zlime">Updated</p>
+            <h2 className="mt-3 font-heading text-2xl font-semibold tracking-tight text-zink">
+              Changelog
+            </h2>
+            <p className="mt-3 text-sm leading-relaxed text-zmuted">
+              Current feature status, shipped pieces, and pending loader smoke.
+            </p>
+            <a href="/changelog" className="mt-5 inline-block text-sm font-semibold text-zlime">
+              See updates
+            </a>
+          </Card>
         </div>
       </section>
 

@@ -2,6 +2,115 @@
 
 This is the short orchestration dashboard for Zerker Memory. Every autonomous build run should update this file after it updates `docs/BUILD_LOG.md`.
 
+## Lifecycle Compaction
+`2026-06-24T00:56:48Z`
+
+- `zmem session checkpoints` and `zmem session snapshots` now provide the first read-only CLI lifecycle/session inspection surface on top of the existing persisted store receipts.
+- The `--summary-only` views surface checkpoint roots, session snapshot roots/hashes, active memory-type counts, payload availability, and soft-delete retention tombstones without changing any lifecycle write path.
+- Verified the focused lifecycle CLI/store/runner cluster, full `python3 -m unittest tests.test_cli_onboarding tests.test_store tests.test_runner -q` (`Ran 384 tests`), and `python3 -m zerker_memory eval` (`11/11`).
+- This slice stayed bounded: no CLI write surface for `checkpoint_session`/`snapshot_session`, no `start_session`/`end_session` command surface, and no automatic retention-pruning policy yet.
+
+## Launch Oversight
+`2026-06-24T00:08:53Z`
+
+- Current phase remains `Phase 1 - Public Alpha Launch Gate`, and this bounded pass stayed on launch/readiness oversight only.
+- Reverified `gstack check` (missing on `PATH`), `bash scripts/gstack_check.sh`, `git status --short -uno`, `git remote -v`, `gh auth status`, `python3 --version`, `python3 scripts/release_smoke.py --summary-only`, `python3 -m zerker_memory status --summary-only`, `python3 -m zerker_memory verify-operator-packet .zerker/launch-proof/public-verify-operator-packet.tar.gz --summary-only`, `python3 -m zerker_memory verify-public-verify --summary-only`, `python3 -m zerker_memory verify-launch-assets --summary-only`, `python3 -m zerker_memory verify-return-packet .zerker/launch-proof/public-verify-return-packet.tar.gz --summary-only`, and `python3 -m zerker_memory prelaunch --summary-only`.
+- `release_smoke` still auto-reexecs under `/Users/zzo/.pyenv/versions/3.10.15/bin/python` from the shell default `python3 3.9.6`, and this rerun stayed aligned with the direct `status --summary-only` snapshot.
+- The authoritative current verifier set is fully green: workspace ready `yes`, doctor `ok`, memory proof ready `yes`, release packet ready `yes`, strict publish ready `yes`, manual pack ready `yes`, operator packet `Ready: yes`, public verify `Ready: yes` with `6/6` logs, launch assets `Ready: yes` with `8/8` assets, return packet `Ready: yes`, and `prelaunch --summary-only` `Ready to publish: yes`.
+- `.zerker/launch-proof/public-verify-result.json` is `ok`, `.zerker/launch-proof/public-verify-logs/` is populated, `.zerker/launch-proof/assets/` is populated, `origin` still targets `https://github.com/zerkerlabs/zmem.git`, `gh auth status` still fails because the active `rezker1` token is invalid, `python3 --version` is still `3.9.6`, `git status --short -uno` still shows the same broader non-launch dirty tree, and the focused stale-target scan across `README.md`, `QUICKSTART.md`, `install.sh`, `scripts/release_smoke.py`, `docs/ZMEM_LAUNCH_LIST.md`, `docs/LAUNCH_READINESS_NOW.md`, `docs/CURRENT_STATE.md`, `docs/SWARM_OPERATION_TRACKER.md`, and `docs/ZMEM_CONTINUOUS_BUILD_ORCHESTRATOR.md` again found no non-historical stale public repo, raw-installer, or `rezkerlabs` targets in active launch surfaces; only historical tracker text still contains older target strings.
+- Next highest-leverage launch step is still outside the proof lane: decide whether to publish/tag from a human-controlled environment, since the repo-local launch gate itself is complete.
+
+## Retrieval Baseline
+`2026-06-24T00:31:40Z`
+
+- Plain `update-history` retrieval now adds the explicit stale/current update pair into temporal `reciprocal_rank_fusion_v1` before the final non-reranked ordering step.
+- The concrete local-first gain is that a higher-authority generic `changed after ...` anchor no longer stays ahead of the answer-bearing `changed to ...` fact for prompts like `Who did deployment approvals change from?`; the stale predecessor still stays first, the explicit current update fact now comes second, and the generic anchor falls behind them in `retrieval["candidates"]`.
+- Receipts now expose `retrieval.temporal.fusion.signal=temporal_update_pair_rrf_score_v1`, `basis=update_pair`, `source_rankings.temporal_update_pair`, and candidate `temporal_fusion_sources`; `retrieval.baseline_ranking.temporal_fusion_signal` now distinguishes update-pair ordering from the earlier support-chain and mutation-anchor paths.
+- Verified focused update-history regressions, full `python3 -m unittest tests.test_store -q` (`Ran 191 tests`), full `python3 -m unittest tests.test_policy -q` (`Ran 7 tests`), full `python3 -m unittest tests.test_runner -q` (`Ran 80 tests`), and `python3 -m zerker_memory eval` (`11/11`).
+- No Phase 1 launch-proof, installer, release-pack, prelaunch, public-site copy, or generated `.zerker/launch-proof/` artifacts were touched in this retrieval slice.
+- Next highest-leverage retrieval slice is to extend the same deterministic temporal fusion contract to update-history relation current/support queries while keeping candidate-by-candidate withheld, injected, and budget-dropped visibility explicit.
+
+## Identity Workspaces
+`2026-06-23T10:57:00Z`
+
+- `zmem workspace sources` now has a read-only `--summary-only` mode that turns the existing JSON source-lineage report into a compact terminal summary for multi-agent memory inspection.
+- The summary shows workspace id, connected agents, inspected receipt count, the current local merge rule, and top claim conflicts; unresolved exact ties are surfaced as explicit abstentions with `authority`, `trust`, `updated_at`, and `created_at` tie fields.
+- Verified `python3 -m unittest tests.test_workspaces -q` (`Ran 7 tests`), `python3 -m unittest tests.test_dashboard.DashboardTest.test_build_workspace_sources_state_is_dashboard_ready -q` (`Ran 1 test`), full `python3 -m unittest tests.test_store -q` (`Ran 177 tests`), and `python3 -m zerker_memory eval` (`11/11`).
+- Required broad verification `python3 -m unittest tests.test_store tests.test_cli_onboarding -q` still fails on unrelated `tests.test_cli_onboarding.CliOnboardingTest.test_run_launch_proof_writes_transcript_and_artifacts`, which expects literal `zmem ...` launch-proof script lines while the current dirty tree emits `$ZMEM_CMD ...`.
+- Next highest-leverage L5 step is to add one more read-only claim detail line per conflict so the CLI summary can explain which source lineage caused an abstention without adding Hub or write-path dependencies.
+
+## Temporal Query Projection
+`2026-06-23T22:54:22Z`
+
+- The shared temporal projection behind `query_at(...)`, `inject(...)`, and persisted `why(...)` receipts now preserves omitted-memory envelopes as well as injected/current-history envelopes, still without any schema change.
+- `retrieval.temporal` now adds `withheld_temporal_graph` and `budget_dropped_temporal_graph` beside `selected_temporal_graph` and `injected_temporal_graph`, so denied or budget-trimmed memories keep their `learned_at`, `valid_from`, `valid_to`, `superseded_at`, `unlearned_at`, `status_at_query`, `temporal_state`, and current-conflict metadata in the stored receipt.
+- Locked with two focused fixtures: a deny-label `Status page owner is Alice Chen.` fact now remains visible as a withheld current envelope, and a tight-budget chronology query now preserves `Incident owner was Alex.` as injected superseded history while `Incident owner is Priya.` remains visible as a budget-dropped current envelope.
+- Verified the focused omitted-subset projection tests, full `python3 -m unittest tests.test_store -q` (`Ran 189 tests`), full `python3 -m unittest tests.test_runner -q` (`Ran 79 tests`), and `python3 -m zerker_memory eval` (`11/11`).
+- This slice stayed schema-free and local-store-only: no SQLite columns, no external graph dependency, and no runner-context redesign or new `query_at(...)` filter surface landed yet.
+
+## Website And Docs
+`2026-06-23T04:41:53Z`
+
+- Documented the current ActiveGraph integration on the public website with dedicated `/activegraph` and `/blog/activegraph-memory` pages.
+- Added `/changelog` and updated the home/proof/docs pages so the shipped ActiveGraph pack, compact benchmark traces, official LoCoMo FTS baseline, and next LoCoMo fork-and-diff commands are visible to users.
+- Added `docs/content/docs/activegraph.mdx` and registered it in the docs nav.
+- Updated `docs/content/docs/benchmarks.mdx` with the official LoCoMo FTS baseline, the exact `fts-multihop` and `pseudo-embedding-rerank` commands, and the LongMemEval-S / BEAM frontier queue.
+- Updated `CHANGELOG.md` with the ActiveGraph, compact trace, LoCoMo baseline, retrieval queue, and current loader-smoke boundary.
+- Current product boundary stayed explicit: ActiveGraph is built as a source-level integration pack; real external pack-loader/install smoke is still pending in a networked environment.
+- Verification: `pnpm --dir docs build` passed and `git diff --check` passed; `site/` production build was attempted but hung silently inside `tsc -b && vite build` until interrupted with no emitted diagnostic.
+
+## Benchmark Harness
+`2026-06-23T04:22:30Z`
+
+- `2026-06-23T05:45:49Z` execution update: the official LoCoMo `fts-multihop` matrix run was attempted but failed with `sqlite3.OperationalError: attempt to write a readonly database` after the shared target was archived during active work. Partial artifacts are under `.zerker/bench/locomo-official-v1/fts-multihop.incomplete-20260623T053720Z/` with `226` questions/receipts, and a second partial archive exists at `.zerker/bench/locomo-official-v1/fts-multihop.incomplete-20260623Tcompact-switch/`. `zmem-benchmark-harness-swarm` is now paused to prevent more shared-target overlap. ActiveGraph compact smoke passed for `fts-multihop` with `5` trace lines, `0` bundle files, aggregate Merkle root `b827f09a31af1863b4f2317fd7def02eacaa9e188e1aaf12bde63a7e7806f6d5`, and trace SHA `3916c59c2eb25f9906c57c2088bd2d812c70815a17f4fbab3bc4018d8a24fec5`.
+- Current benchmark decision: do not run `pseudo-embedding`, `pseudo-embedding-rerank`, `zmem-retrieval`, LongMemEval-S, or ActiveGraph long traces until the `fts-multihop` measurement is completed in either an isolated conventional output path or a full compact ActiveGraph trace path.
+- `2026-06-23T05:23:09Z` live run: started official LoCoMo `fts-multihop` matrix measurement with `python3 -m zerker_memory bench matrix locomo --dataset data/locomo/locomo_official_zmem.json --out .zerker/bench --run-id locomo-official-v1 --mode fts-multihop --seed 42 --summary-only`. Artifact target is `.zerker/bench/locomo-official-v1/fts-multihop/`. Do not start `pseudo-embedding`, `pseudo-embedding-rerank`, or `zmem-retrieval` until this mode completes and its category deltas are inspected.
+- `2026-06-23T04:59:30Z` operator update: next benchmark should be `zmem bench matrix locomo --mode fts-multihop` against `data/locomo/locomo_official_zmem.json`, same `locomo-official-v1` run id and seed `42`, followed by `pseudo-embedding`, `pseudo-embedding-rerank`, and `zmem-retrieval`. Use the existing report/dashboard category summaries for the first category ablation; add category filtering only if full runs are too expensive. Use ActiveGraph for compact trace smoke/long storage-safe traces after the matrix identifies modes worth preserving.
+- Completed and scored the full official LoCoMo FTS baseline under `.zerker/bench/locomo-official-v1/fts/` with 1,986 questions, per-conversation eval scope, and trace SHA `67a005bf87b4bafcd2d7ce1cf8bfff97d7f430788afd0472511f738594971d0c`.
+- Public scored receipt result: overall F1 `0.3752394031509457`, EM `0.37210473313192344`; single-hop `0.6049` F1, multi-hop `0.0758` F1, temporal `0.6293` F1, open-domain `0.1369` F1, adversarial abstention `0.0` F1.
+- Token efficiency in `scored_receipt.json`: mean query tokens `693.289`, total run tokens `1,376,872`, mean ingest tokens `0.0`.
+- Receipt boundary: `scored_receipt.json` has `public_benchmark_claim: true` for the explicit no-LLM-judge token-F1/EM claim; `receipt.json` remains the broader provisional harness receipt with `public_benchmark_claim: false`.
+- Product priority from this baseline: retrieval depth and abstention are the bottlenecks. Keep temporal work steady, but prioritize L6 LongMemEval-S abstention evidence, L3 multi-hop/query decomposition/hybrid fusion, L3 open-domain semantic recall, and L6 category-sliced benchmark comparison before widening ingestion.
+- Updated frontier benchmark queue: run LongMemEval-S next because it directly tests abstention and token efficiency; run LoCoMo semantic/hybrid fork-and-diff against the existing FTS trace SHA using `ZMEM_RETRIEVAL_MODE`; add BEAM scale benchmarking as the causal/event-chain stress test for 100K -> 10M token contexts; then run category-sliced multi-hop/open-domain/adversarial probes if the harness supports it, or add that filter as the next L6 harness task.
+- Fastest product slice: add a deterministic answerer abstention threshold so `retrieved_count == 0` or low confidence returns a supported abstention instead of a wrong/empty answer; verify on LoCoMo adversarial and LongMemEval-S before tuning larger retrieval architecture.
+
+## ActiveGraph Integration
+`2026-06-23T04:18:41Z`
+
+- Added the first source-level ActiveGraph pack surface: `pack/pack.yaml`, `zerker_memory.integrations.activegraph`, `zerker_memory.pack:ZMemPack`, and the `activegraph.packs` entry point.
+- Cross-session ActiveGraph memory now has two pack behaviors: `zmem.persist` maps ActiveGraph events into ZMem memories with `ag:{session_id}` scope and `caused_by_event`, while `zmem.recall` injects approved memories on `llm.requested` with `ZMEM_RETRIEVAL_MODE` selecting `fts`, `semantic`, or `hybrid`.
+- Added compact event-sourced LoCoMo runner support through `zerker_memory.bench.activegraph_runner` and `zmem-bench-locomo`; the smoke path writes `activegraph.sqlite`, `memory.sqlite`, `trace.jsonl`, and `scored_receipt.json` without per-question receipt bundle files.
+- Extended write receipts so ActiveGraph-caused writes carry the originating event id in the Treeship statement object.
+- Verified focused pack, receipt, and CLI-surface checks: `python3 -m py_compile ...` with `PYTHONPYCACHEPREFIX=/private/tmp/zmem-pycache`, `python3 -m unittest tests.test_activegraph_pack -q` (`Ran 3 tests`), targeted write-receipt store tests plus ActiveGraph tests (`Ran 7 tests`), `python3 -m zerker_memory.bench.activegraph_runner --help`, and `python3 -m zerker_memory eval` (`11/11`).
+- Note: a broad `tests.test_activegraph_pack tests.test_store tests.test_bench` run was intentionally interrupted after it reached an unrelated slow benchmark comparison test; the targeted receipt and ActiveGraph checks passed.
+
+## Retrieval Baseline
+`2026-06-23T08:03:19Z`
+
+- Baseline hybrid ordering now honors candidate `semantic_backfill_score` even when embedding and reranking are both explicitly disabled.
+- The concrete gain is config-stable and budget-visible: for direct current queries like `what is the deploy target`, baseline-only local configs now keep the stronger semantic state fact above the weaker lexical update/support anchor instead of regressing to lexical order and injecting the wrong memory under one-slot budgets.
+- Receipts now show `retrieval.baseline_ranking.hybrid_semantic_signal` and `hybrid_semantic_signal_applied` whenever that non-reranked semantic ordering path is active, while candidate-level `semantic_backfill_score` remains visible for audit.
+- Verified focused baseline-only store/runner regression tests, full `python3 -m unittest tests.test_store -q` (`Ran 175 tests`), full `python3 -m unittest tests.test_policy -q` (`Ran 7 tests`), full `python3 -m unittest tests.test_runner -q` (`Ran 78 tests`), and `python3 -m zerker_memory eval` (`11/11`).
+- No Phase 1 launch-proof, installer, release-pack, prelaunch, public-site copy, or generated `.zerker/launch-proof/` artifacts were touched in this retrieval slice.
+- Next highest-leverage L3 step is to add receipt-visible hybrid semantic margin/exclusion metadata for baseline-only configs so outranked lexical anchors are explicit candidate-by-candidate without enabling reranking.
+
+## Temporal Query Projection
+`2026-06-23T06:53:18Z`
+
+- `MemoryStore.query_at(...)` now applies explicit same-subject update supersession, not just parent lineage, so point-in-time snapshots can demote older facts without a stored parent edge.
+- The deterministic tiebreaker stays local and schema-free: when `valid_from` timestamps match, `query_at` uses existing event sequence order to choose the current update memory.
+- Locked with a focused fixture where `Deploy target is Staging.` and `Deploy target changed to Production.` share the same timestamp; the snapshot now keeps only the update memory current and preserves the older fact as superseded history.
+- This slice did not add SQLite columns or receipt-surface query metadata; same-provenance restatement supersession and direct `inject`/`why` temporal envelopes are still deferred.
+
+## Launch Oversight
+`2026-06-23T03:47:12Z`
+
+- Current phase remains `Phase 1 - Public Alpha Launch Gate`, and this bounded pass stayed on launch/readiness oversight only.
+- Reverified `bash scripts/gstack_check.sh`, `git remote -v`, `gh auth status`, `python3 --version`, `python3 scripts/release_smoke.py --summary-only`, `python3 -m zerker_memory status --summary-only`, `python3 -m zerker_memory verify-operator-packet .zerker/launch-proof/public-verify-operator-packet.tar.gz --summary-only`, `python3 -m zerker_memory verify-public-verify --summary-only`, `python3 -m zerker_memory verify-launch-assets --summary-only`, `python3 -m zerker_memory verify-return-packet .zerker/launch-proof/public-verify-return-packet.tar.gz --summary-only`, and `python3 -m zerker_memory prelaunch --summary-only`.
+- The authoritative current `status --summary-only` snapshot is unchanged: workspace ready `yes`, doctor `ok`, memory proof ready `yes`, release packet ready `yes`, strict publish ready `no`, manual pack ready `yes`, operator packet `Ready: yes`, public verify `0/6`, launch assets `0/8`, and return packet pending only on `launch_assets` plus `public_verify_evidence`.
+- `origin` still targets `https://github.com/zerkerlabs/zmem.git`, `gh auth status` still fails because the active `rezker1` token is invalid, `python3 --version` is still `3.9.6`, `release_smoke.py` still auto-reexecs under `/Users/zzo/.pyenv/versions/3.10.15/bin/python`, and the focused stale-target scan across active launch entrypoints plus supporting scripts, tests, `zerker_memory`, `README.md`, `QUICKSTART.md`, and coordinator docs again found no non-historical stale public repo, raw-installer, `rezkerlabs`, or stale GitHub repo targets.
+- Next highest-leverage launch step is still external: forward `.zerker/launch-proof/CLEAN_SHELL_OPERATOR_PROMPT.md`, `.zerker/launch-proof/CLEAN_SHELL_PUBLIC_VERIFY.md`, and `.zerker/launch-proof/public-verify-operator-packet.tar.gz` to a networked operator with valid GitHub auth, then accept handback only after `verify-public-verify`, `verify-launch-assets`, `verify-return-packet`, and `prelaunch` all report ready.
+
 ## Identity Workspaces
 `2026-06-23T03:00:22Z`
 
@@ -105,12 +214,14 @@ This is the short orchestration dashboard for Zerker Memory. Every autonomous bu
 - No SQLite schema changed in this slice; the new temporal surface is a derived local projection over existing receipts/events, and explicit same-subject update/restatement edges are still only receipt-time retrieval logic outside `query_at`.
 
 ## Trust Ledger
-`2026-06-22T22:54:56Z`
+`2026-06-23T23:02:26Z`
 
-- `promote()` now emits a durable mutation receipt in addition to the original source-provenance write receipt.
-- Ordered receipt-chain access now exists in the store: `memory_write_receipt(memory_id)` remains the original provenance anchor, while `memory_write_receipts(memory_id)` exposes the full event-ordered chain for independent verification and snapshot export.
-- The promote mutation receipt records actor identity, content digest, prior receipt link, prior/new Merkle roots, and event hash in its embedded Treeship statement. This verifies provenance and integrity only; it does not guarantee semantic truth of the promoted memory.
-- Verified with `python3 -m unittest tests.test_snapshot -q`, `python3 -m unittest tests.test_store -q`, `python3 -m zerker_memory eval`, `python3 scripts/release_smoke.py --summary-only`, and `python3 -m zerker_memory status --summary-only`.
+- `promote()`, `reject()`, root `revoke()`, and `forget()` still append durable mutation receipts in addition to the original source-provenance write receipt; lifecycle checkpoint/snapshot events still expose derived receipt envelopes; and `restore_snapshot()` still returns its own explicit rollback/export receipt without appending a new event to the restored chain.
+- Ordered write-receipt access remains split intentionally: `memory_write_receipt(memory_id)` stays pinned to the original provenance anchor, while `memory_write_receipts(memory_id)` exposes the full event-ordered chain for independent verification and snapshot export.
+- `MemoryStore.verify_lifecycle_receipt(receipt, *, source_snapshot=None)` now gives the lifecycle receipt family a shared local verifier: it recomputes `receipt_hash`, `content_digest`, and embedded Treeship statement consistency, and when a snapshot is supplied it also verifies snapshot hash/root/count linkage for rollback/export or persisted session snapshot receipts.
+- `restore_snapshot(snapshot, *, actor_id=\"snapshot_restore\")` still returns a deterministic `zerker.lifecycle_receipt.v1` payload with actor identity, snapshot hash, payload content digest, prior/new Merkle roots, optional `treeship_artifact_id: null`, and an embedded `zerker.memory.mutation_receipt` statement. The restored store Merkle root still matches the imported snapshot Merkle root exactly because this receipt is derived, not event-appended.
+- Lifecycle receipt verification proves provenance, integrity, and snapshot-lineage consistency only; it does not guarantee semantic truth of the restored or snapshotted memories. No Treeship CLI or hosted service is required to verify it locally.
+- Verified with focused lifecycle receipt verification tests, full `python3 -m unittest tests.test_snapshot -q` (`Ran 20 tests`), full `python3 -m unittest tests.test_store -q` (`Ran 190 tests`), and `python3 -m zerker_memory eval` (`11/11`).
 
 ## Benchmark Scoring Workflow
 `2026-06-22T22:59:00Z`
@@ -187,12 +298,13 @@ This is the short orchestration dashboard for Zerker Memory. Every autonomous bu
 - Next safe temporal slice is a failing `query_at(timestamp)` contract on the same fixture, followed by the smallest local-store point-in-time API.
 
 ## Consolidation
-`2026-06-23T02:54:23Z`
+`2026-06-23T18:57:35Z`
 
-- Added the first L4 local consolidation job ledger contract in [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/consolidation.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/consolidation.py), with focused coverage in [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_consolidation.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_consolidation.py) and updated operator notes in [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONSOLIDATION_FIXTURE.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONSOLIDATION_FIXTURE.md).
-- Consolidation jobs are now modeled as local append-only records with `pending`/`running`/`completed` terminal states, non-blocking local execution, reversible lineage, unique `source_child_ids`, and required completed-job `output_summary_ids`.
-- Verified `python3 -m unittest tests.test_consolidation -q` (`Ran 6 tests`); no retrieval, store schema, benchmark, daemon, CLI command, or hosted summarization behavior changed.
-- Next safe consolidation slice is a recall-planner fixture that decides when to queue turn/session/day/week/profile-project jobs against the ledger.
+- Added the first L4 deterministic local summary materializer in [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/consolidation.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/consolidation.py), with focused coverage in [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_consolidation.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_consolidation.py) and updated operator notes in [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONSOLIDATION_FIXTURE.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONSOLIDATION_FIXTURE.md).
+- Consolidation now has four local-first layers: ordered levels and reversible lineage, an append-only job ledger, a deterministic recall planner, and a runtime helper that turns a `pending` or `running` job plus ordered child content into a `completed` job and a `zerker.consolidation_summary.v1` payload.
+- The summary payload stays auditable and reversible: it records deterministic `summary_id`, ordered `source_child_ids`, per-child `sha256:` digests, summary `content_digest`, inherited summarizer metadata, and completed-job `output_summary_ids`, with no hosted model dependency.
+- Verified `python3 -m unittest tests.test_consolidation.ConsolidationFixtureTest.test_materialize_consolidation_summary_completes_job_with_reversible_summary_payload tests.test_consolidation.ConsolidationFixtureTest.test_materialize_consolidation_summary_rejects_source_child_mismatch -q` (`Ran 2 tests`) and `python3 -m unittest tests.test_consolidation -q` (`Ran 11 tests`).
+- Next safe consolidation slice is a local append-only summary ledger or store-backed candidate sourcing on top of this materializer, still without widening into hosted summarization.
 
 ## Consolidation
 `2026-06-22T18:49:38Z`
@@ -4230,6 +4342,14 @@ This is the short orchestration dashboard for Zerker Memory. Every autonomous bu
 - Reconfirmed the concrete Phase 1 gap is unchanged: operator packet `Ready: yes`, public verify still `0/6` logs, launch assets still `0/8`, return packet still not ready, and strict publish still blocked only on `public_verify_evidence` plus `launch_assets`.
 - Re-scanned active launch surfaces for stale public targets; no non-historical `zerkerlabs/zerker-memory` or stale raw installer matches were found across `README.md`, `QUICKSTART.md`, `install.sh`, `scripts/`, `tests/`, `zerker_memory/`, `docs/`, `landing/`, `llms.txt`, and `site/` outside historical state/log files.
 - Exact next blocked step remains unchanged: hand `.zerker/launch-proof/CLEAN_SHELL_OPERATOR_PROMPT.md`, `.zerker/launch-proof/CLEAN_SHELL_PUBLIC_VERIFY.md`, and `.zerker/launch-proof/public-verify-operator-packet.tar.gz` to a networked operator with valid GitHub auth, then accept handback only after `verify-public-verify`, `verify-launch-assets`, and `verify-return-packet` all report ready.
+
+`2026-06-23 - Session Checkpoint Root Contract`
+
+- Current lifecycle state advanced on one bounded L2 slice only: [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/store.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/store.py) now provides store-level `checkpoint_session` and `session_checkpoints` contracts that persist `SESSION_CHECKPOINTED` events with a `zerker.session_checkpoint.v1` payload and read them back as receipt-shaped checkpoint records.
+- Those checkpoint records now expose the concrete continuity anchors that were still missing in L2: `prior_merkle_root`, `checkpoint_merkle_root`, `snapshot.snapshot_hash`, `snapshot.snapshot_merkle_root`, `memory_tree.root`, and `memory_type_summary.active_ids_by_type` / `active_counts_by_type`, so a session handoff can point at explicit checkpoint state without flattening procedural rules into episodic recall.
+- The slice stayed surgical: no CLI surface, no handoff or snapshot artifact behavior change, and no generated `.zerker/launch-proof/` artifacts were edited by hand.
+- Focused verification passed with `python3 -m unittest tests.test_store.MemoryStoreTest.test_checkpoint_session_emits_receipt_visible_roots_and_memory_type_summary -q`, `python3 -m unittest tests.test_store.MemoryStoreTest.test_session_checkpoints_reads_back_persisted_checkpoint_events -q`, and `python3 -m zerker_memory eval`.
+- The requested broader verification is currently blocked outside this slice: `python3 -m unittest tests.test_cli_onboarding tests.test_store tests.test_runner -q` failed on the dirty `zerker_memory/cli.py` finalize-script literal mismatch in `test_run_launch_proof_writes_transcript_and_artifacts` and on the separate revoke mutation-receipt gap in `test_revoke_persists_root_mutation_receipt_without_overwriting_original_write_provenance`.
 
 `2026-06-08 - Launch Gate Still Blocked Only On External Proof Evidence`
 

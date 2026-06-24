@@ -39,6 +39,15 @@ The frontier report does not change the product thesis. It changes the order of 
 4. Router before graph sprawl: direct, parallel decomposition, chain-of-query, and temporal override should exist before a large graph extractor.
 5. Profiles after evidence: profile/character consolidation is promising, but it should follow measurable raw episodic retrieval and conflict/temporal behavior.
 
+Current frontier benchmark TODO, from the official LoCoMo FTS baseline:
+
+1. Finish LoCoMo `fts-multihop` first. A conventional run against the shared `locomo-official-v1` target failed on 2026-06-23 after the active mode directory was archived during the run, so keep `zmem-benchmark-harness-swarm` paused while manual full benchmark runs are active.
+2. Use either an isolated conventional output path or a full ActiveGraph compact trace path for the next `fts-multihop` attempt. Do not launch `pseudo-embedding`, `pseudo-embedding-rerank`, or `zmem-retrieval` until `fts-multihop` category deltas are available.
+3. After `fts-multihop`, run LoCoMo `pseudo-embedding`, `pseudo-embedding-rerank`, and `zmem-retrieval` against the same dataset/seed, then inspect multi-hop, temporal, open-domain, and adversarial abstention deltas.
+4. Run LongMemEval-S next because it directly tests abstention and token efficiency.
+5. Add BEAM as the scale/collapse benchmark for 100K -> 10M token contexts; do not treat it as implemented until runner, dataset source, command, hashes, and receipts are pinned.
+6. Add the fastest answerer fix: deterministic abstention when `retrieved_count == 0` or retrieval confidence is below threshold, then verify on LoCoMo adversarial and LongMemEval-S.
+
 Score projections, competitor comparisons, and "official benchmark" language stay internal until reproduced with pinned datasets, commands, hashes, and receipt bundles.
 
 ## Non-Negotiables
