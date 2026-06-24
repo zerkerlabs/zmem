@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="ZMem">
+  <rect width="64" height="64" rx="14" fill="#030303"/>
+  <path d="M32 8 56 32 32 56 8 32 32 8Z" fill="none" stroke="#92D66F" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M32 18 46 32 32 46 18 32 32 18Z" fill="rgba(146,214,111,0.12)" stroke="#92D66F" stroke-width="2" stroke-linejoin="round"/>
+</svg>

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180" role="img" aria-label="ZMem">
+  <rect width="180" height="180" rx="40" fill="#030303"/>
+  <path d="M90 24 156 90 90 156 24 90 90 24Z" fill="none" stroke="#92D66F" stroke-width="16" stroke-linejoin="round"/>
+  <path d="M90 52 128 90 90 128 52 90 90 52Z" fill="rgba(146,214,111,0.12)" stroke="#92D66F" stroke-width="6" stroke-linejoin="round"/>
+</svg>
