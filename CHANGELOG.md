@@ -8,6 +8,7 @@ All notable Zerker Memory alpha changes are summarized here.
 
 - Refined the public website positioning around ZMem as governed memory for agents that act: native local memory plus an authority gate before memory influences an agent.
 - Updated homepage copy to distinguish ZMem from generic durable context/search products: search finds context; ZMem decides what becomes trusted memory.
+- Locked the homepage/nav/footer structure around the launch sequence: hero, agent stack band, memory gate, native memory and authority gate, handoff, proof, and install.
 - Reframed proof language around lineage and memory influence, not semantic truth or unsupported cryptographic claims.
 - Verified the next L3 retrieval slice locally: update-history relation-pair RRF promotes explicit stale/current relation pairs over generic high-authority change anchors under tight context budgets.
 

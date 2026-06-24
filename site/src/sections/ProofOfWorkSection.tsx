@@ -30,12 +30,13 @@ export default function ProofOfWorkSection() {
           className="section-heading font-heading font-bold text-zink"
           style={{ fontSize: 'clamp(36px, 5vw, 64px)', letterSpacing: '-0.03em', lineHeight: 1.0 }}
         >
-          Product surface, mapped to commands.
+          Verify what influenced the agent.
         </h2>
 
         <p className="section-desc mt-6 max-w-[640px] text-[17px] leading-relaxed text-zmuted">
-          The public site should stay concrete. Each surface below maps to a local command
-          or artifact in the repo, with proof framed as lineage and influence rather than semantic truth.
+          ZMem records what was injected, withheld, promoted, revoked, restored, or handed off.
+          Receipts prove memory state transitions and influence, not semantic truth. Each surface
+          below maps to a local command or artifact in the repo.
         </p>
 
         <Card className="mt-16 overflow-hidden p-0">
@@ -64,7 +65,7 @@ export default function ProofOfWorkSection() {
         </Card>
 
         <p className="mt-6 text-sm text-zdim">
-          For the deeper receipt model, see{' '}
+          Memory transitions should leave receipts. For the deeper model, see{' '}
           <a href="/proof" className="text-zlime transition-colors hover:text-zink">how ZMem proof works</a>.
         </p>
       </div>

@@ -23,7 +23,7 @@ const cards = [
   {
     icon: Shield,
     iconColor: '#92D66F',
-    title: 'Review',
+    title: 'Promote',
     description: 'Humans or policies can promote useful memory, reject noise, quarantine risk, or revoke stale state.',
     code: 'zmem queue --scope project',
     status: 'built' as const,

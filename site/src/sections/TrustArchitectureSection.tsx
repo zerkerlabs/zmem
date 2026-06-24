@@ -51,8 +51,10 @@ export default function TrustArchitectureSection() {
         </h2>
 
         <p className="section-desc mt-6 max-w-[640px] text-[17px] leading-relaxed text-zmuted">
-          ZMem ships with its own local memory system. If you already use a recall provider,
-          ZMem can govern what crosses from candidate context into trusted agent memory.
+          ZMem ships with its own local memory system: typed memories, lifecycle states,
+          review queues, policy-gated injection, lineage, revocation, snapshots, restore,
+          and receipts. If you already use a memory or retrieval provider, ZMem can govern
+          what crosses from candidate context into trusted agent memory.
         </p>
 
         <div className="mt-16 grid grid-cols-1 gap-5 md:grid-cols-3">

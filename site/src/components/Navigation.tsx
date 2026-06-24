@@ -44,12 +44,12 @@ export default function Navigation() {
   };
 
   const navLinks: NavLink[] = [
-    { label: 'Gate', target: '#memory-loop' },
+    { label: 'How it works', target: '#memory-loop' },
+    { label: 'Agents', target: '#agents' },
     { label: 'Handoff', target: '#handoff' },
     { label: 'Proof', target: '/proof' },
-    { label: 'Install', target: '#install' },
     { label: 'Docs', target: '/docs' },
-    { label: 'Changelog', target: '/changelog' },
+    { label: 'Install', target: '#install' },
   ];
 
   return (

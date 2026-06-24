@@ -70,7 +70,7 @@ const consolePanels = [
 export default function AgentContinuitySection() {
   return (
     <section
-      id="handoff"
+      id="agents"
       className="bg-zsurface py-[160px]"
     >
       <div className="mx-auto max-w-[1120px] px-6">
@@ -82,8 +82,9 @@ export default function AgentContinuitySection() {
         </h2>
 
         <p className="section-desc mx-auto mt-6 max-w-[640px] text-center text-[17px] leading-relaxed text-zmuted">
-          Start in Codex, move to Claude Code or Cursor, and keep approved memory,
-          policy, snapshots, prompts, and receipts together. Shared recall is not shared authority.
+          Package approved memory, policy, prompts, snapshots, and receipts so the next
+          agent starts from governed state instead of a pasted transcript. Shared recall
+          is not shared authority.
         </p>
 
         <div className="mt-12 rounded-lg border border-zline bg-[#0A0A0A] p-5">
@@ -122,7 +123,7 @@ export default function AgentContinuitySection() {
           </div>
         </div>
 
-        <div className="mt-16 grid grid-cols-1 gap-10 md:grid-cols-2">
+        <div id="handoff" className="mt-16 grid grid-cols-1 gap-10 md:grid-cols-2">
           {/* Left: Steps */}
           <div className="relative flex flex-col gap-6">
             {/* Vertical connecting line */}

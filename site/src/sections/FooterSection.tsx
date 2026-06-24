@@ -4,10 +4,10 @@ const footerColumns = [
   {
     heading: 'Product',
     links: [
-      { label: 'Features', href: '/#memory-loop' },
+      { label: 'Memory Gate', href: '/#memory-loop' },
+      { label: 'Handoff', href: '/#handoff' },
       { label: 'Install', href: '/#install' },
-      { label: 'Proof Matrix', href: '/proof' },
-      { label: 'Agent Pack', href: '/#memory-loop' },
+      { label: 'Proof', href: '/proof' },
     ],
   },
   {
@@ -15,13 +15,18 @@ const footerColumns = [
     links: [
       { label: 'Documentation', href: '/docs' },
       { label: 'GitHub', href: 'https://github.com/zerkerlabs/zmem', external: true },
-      { label: 'CLI Reference', href: null },
-      { label: 'MCP Tools', href: null },
+      { label: 'ActiveGraph', href: '/activegraph' },
+      { label: 'Changelog', href: '/changelog' },
     ],
   },
   {
-    heading: 'Company',
-    links: ['About', 'Blog', 'Status'],
+    heading: 'Topics',
+    links: [
+      { label: 'Providers', href: '/docs' },
+      { label: 'Benchmarks', href: '/proof' },
+      { label: 'Recovery Memory', href: '/docs' },
+      { label: 'Zerker Labs', href: 'https://github.com/zerkerlabs', external: true },
+    ],
   },
 ];
 
@@ -39,7 +44,8 @@ export default function FooterSection() {
               <span className="font-heading text-xl font-bold text-zlime">ZMem</span>
             </div>
             <p className="mt-3 text-sm leading-relaxed text-zmuted">
-              Local agent memory. Governed injection. Portable proof.
+              ZMem gives agents memory with an authority layer. Start local, review before trust,
+              inject only admissible memory, and prove what shaped the action.
             </p>
             <div className="mt-4 flex items-center gap-4">
               <a

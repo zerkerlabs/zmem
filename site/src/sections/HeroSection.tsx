@@ -74,7 +74,7 @@ export default function HeroSection() {
             Governed memory for agents that act
           </p>
 
-          <KineticHeadline text="Decide what agents can remember." delay={0.5} />
+          <KineticHeadline text="Decide what your agents can remember and use." delay={0.5} />
 
           <p
             className="mx-auto mt-6 max-w-[640px] text-[17px] leading-relaxed text-[#D8D8D8] max-sm:hidden"
@@ -96,8 +96,7 @@ export default function HeroSection() {
             className="mx-auto mt-4 hidden max-w-[600px] text-[14px] leading-relaxed text-[#AFAFAF] sm:block"
             style={{ animation: 'fadeSlideUp 0.6s 0.9s ease-out forwards', opacity: 0, textShadow: '0 4px 18px rgba(0,0,0,0.9)' }}
           >
-            Search finds context. ZMem decides what becomes trusted memory.
-            Local by default, portable when needed.
+            Local memory. Review queue. Policy-gated injection. Revocation. Receipts.
           </p>
 
           <div
