@@ -22,9 +22,9 @@ const footerColumns = [
   {
     heading: 'Topics',
     links: [
-      { label: 'Providers', href: '/docs' },
-      { label: 'Benchmarks', href: '/proof' },
-      { label: 'Recovery Memory', href: '/docs' },
+      { label: 'Builder API', href: 'https://docs.zmem.sh/docs/builders', external: true },
+      { label: 'Benchmarks', href: 'https://docs.zmem.sh/docs/benchmarks', external: true },
+      { label: 'Receipts', href: 'https://docs.zmem.sh/docs/receipts', external: true },
       { label: 'Zerker Labs', href: 'https://github.com/zerkerlabs', external: true },
     ],
   },
