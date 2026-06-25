@@ -117,11 +117,15 @@ class DashboardTest(unittest.TestCase):
         self.assertEqual(state["schema"], "zerker.workspace_sources.v1")
         self.assertEqual(state["workspace_id"], registered["workspace"]["id"])
         self.assertEqual(state["connected_agents"][0]["agent_id"], "codex")
+        self.assertEqual(state["connected_agents"][0]["tool"], "codex")
+        self.assertEqual(state["connected_agents"][0]["repo_name"], "project")
         self.assertEqual({source["source_uri"] for source in state["sources"]}, {
             "conversation://codex/session-5/message-2",
             "conversation://openclaw/session-8/message-4",
         })
         self.assertEqual({source["trust_status"] for source in state["sources"]}, {"active"})
+        self.assertEqual({source["source_identity"]["repo_name"] for source in state["sources"]}, {"project"})
+        self.assertEqual({source["source_identity"]["source_scheme"] for source in state["sources"]}, {"conversation"})
         self.assertTrue(all("merkle_root" in source["proof_lineage"] for source in state["sources"]))
         self.assertEqual(state["claim_conflict_count"], 1)
         self.assertEqual(state["claim_conflicts"][0]["merge_preview"]["chosen_memory_id"], second.id)

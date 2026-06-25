@@ -212,6 +212,39 @@ def _agent_id_from_actor_uri(actor_uri: str) -> str:
     return actor_uri
 
 
+def _uri_scheme(value: str | None) -> str | None:
+    if not value or "://" not in value:
+        return None
+    scheme, _ = value.split("://", 1)
+    return scheme or None
+
+
+def _source_identity_descriptor(
+    *,
+    agent_id: str,
+    session_id: str | None,
+    source_uri: str | None,
+    workspace: dict[str, Any] | None,
+    workspace_id: str | None,
+) -> dict[str, Any]:
+    workspace_root = None
+    repo_name = None
+    if isinstance(workspace, dict):
+        workspace_root = workspace.get("root")
+        if workspace_root:
+            repo_name = Path(str(workspace_root)).name or None
+    return {
+        "tool": agent_id,
+        "session_scheme": _uri_scheme(session_id),
+        "source_scheme": _uri_scheme(source_uri),
+        "workspace_id": workspace_id,
+        "workspace_root": workspace_root,
+        "repo_root": workspace_root,
+        "repo_name": repo_name,
+        "read_only_preview": True,
+    }
+
+
 def _preferred_claim_source(source_rows: list[dict[str, Any]]) -> dict[str, Any]:
     for source in source_rows:
         proof_lineage = source.get("proof_lineage") or {}
@@ -342,6 +375,7 @@ def _workspace_claim_conflicts(store: Any, *, source_rows_by_memory_id: dict[str
                     "authority": memory.authority,
                     "source_uri": source.get("source_uri"),
                     "parent_action_id": source.get("parent_action_id"),
+                    "source_identity": source.get("source_identity"),
                     "created_at": memory.created_at,
                     "updated_at": memory.updated_at,
                     "proof_lineage": source.get("proof_lineage"),
@@ -404,6 +438,8 @@ def workspace_source_report(
     )
     workspace = workspace_profile.get("matched") or workspace_profile.get("current")
     workspace_id = workspace.get("id") if isinstance(workspace, dict) else None
+    workspace_root = workspace.get("root") if isinstance(workspace, dict) else None
+    repo_name = Path(str(workspace_root)).name if workspace_root else None
     rows = store.conn.execute(
         """
         SELECT
@@ -436,6 +472,7 @@ def workspace_source_report(
         actor_uri = row["actor_uri"]
         agent_id = _agent_id_from_actor_uri(actor_uri)
         treeship_statement = json.loads(row["treeship_statement_json"])
+        treeship_attestation = treeship_statement.get("attestation")
         proof_lineage = {
             "receipt_id": row["receipt_id"],
             "memory_id": row["memory_id"],
@@ -443,7 +480,26 @@ def workspace_source_report(
             "merkle_root": row["merkle_root"],
             "receipt_hash": row["receipt_hash"],
             "treeship_statement_kind": treeship_statement.get("kind"),
+            "treeship_attestation_status": (
+                treeship_attestation.get("status") if isinstance(treeship_attestation, dict) else None
+            ),
+            "treeship_artifact_id": (
+                treeship_attestation.get("artifact_id") if isinstance(treeship_attestation, dict) else None
+            ),
+            "treeship_payload_digest": (
+                treeship_attestation.get("payload_digest") if isinstance(treeship_attestation, dict) else None
+            ),
+            "treeship_signed_at": (
+                treeship_attestation.get("signed_at") if isinstance(treeship_attestation, dict) else None
+            ),
         }
+        source_identity = _source_identity_descriptor(
+            agent_id=agent_id,
+            session_id=row["session_id"],
+            source_uri=row["source_uri"],
+            workspace=workspace if isinstance(workspace, dict) else None,
+            workspace_id=workspace_id,
+        )
         source = {
             "agent_id": agent_id,
             "actor_uri": actor_uri,
@@ -456,6 +512,7 @@ def workspace_source_report(
             "trust_status": row["memory_status"],
             "source_uri": row["source_uri"],
             "parent_action_id": row["parent_action_id"],
+            "source_identity": source_identity,
             "proof_lineage": proof_lineage,
             "created_at": row["created_at"],
         }
@@ -465,8 +522,12 @@ def workspace_source_report(
             agent_id,
             {
                 "agent_id": agent_id,
+                "tool": agent_id,
                 "actor_uri": actor_uri,
                 "workspace_id": workspace_id,
+                "workspace_root": workspace_root,
+                "repo_root": workspace_root,
+                "repo_name": repo_name,
                 "memory_count": 0,
                 "chat_session_ids": [],
                 "source_uris": [],

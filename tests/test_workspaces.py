@@ -92,14 +92,69 @@ class WorkspaceRegistryTest(unittest.TestCase):
             self.assertEqual(report["connected_agent_count"], 1)
             self.assertEqual(report["chat_session_count"], 1)
             self.assertEqual(report["connected_agents"][0]["agent_id"], "codex")
+            self.assertEqual(report["connected_agents"][0]["tool"], "codex")
+            self.assertEqual(report["connected_agents"][0]["repo_name"], "project")
             self.assertEqual(report["connected_agents"][0]["chat_session_ids"], ["chat://codex/session-17"])
             self.assertEqual(report["sources"][0]["memory_id"], memory.id)
             self.assertEqual(report["sources"][0]["source_uri"], "conversation://codex/session-17/message-3")
+            self.assertEqual(report["sources"][0]["source_identity"]["tool"], "codex")
+            self.assertEqual(report["sources"][0]["source_identity"]["session_scheme"], "chat")
+            self.assertEqual(report["sources"][0]["source_identity"]["source_scheme"], "conversation")
+            self.assertEqual(report["sources"][0]["source_identity"]["repo_name"], "project")
+            self.assertEqual(report["sources"][0]["source_identity"]["repo_root"], str(root.resolve()))
             self.assertEqual(report["sources"][0]["proof_lineage"]["memory_id"], memory.id)
             self.assertEqual(
                 report["sources"][0]["proof_lineage"]["treeship_statement_kind"],
                 "zerker.memory.write_provenance",
             )
+            self.assertIsNone(report["sources"][0]["proof_lineage"]["treeship_artifact_id"])
+
+    def test_workspace_source_report_surfaces_optional_treeship_attestation_lineage(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            registry_path = tmp_path / "workspaces.json"
+            root = tmp_path / "project"
+            root.mkdir()
+            register_workspace(name="Project", root=root, registry_path=registry_path)
+            store = MemoryStore(root / ".zerker" / "memory.sqlite")
+            memory = store.remember(
+                "Release dashboard lives in the product repo",
+                memory_type="semantic",
+                scope="project",
+                source_kind="agent",
+                actor_uri="agent://codex/chat-17",
+                session_id="chat://codex/session-17",
+                source_uri="conversation://codex/session-17/message-3",
+            )
+            row = store.conn.execute(
+                "SELECT receipt_id, treeship_statement_json FROM memory_write_receipts WHERE memory_id = ?",
+                (memory.id,),
+            ).fetchone()
+            treeship_statement = json.loads(row["treeship_statement_json"])
+            treeship_statement["attestation"] = {
+                "schema": "zerker.memory.treeship_attestation.v1",
+                "status": "signed",
+                "payload_digest": "sha256:abc123",
+                "artifact_id": "ts_artifact_123",
+                "signed_at": "2026-06-24T09:10:11Z",
+            }
+            store.conn.execute(
+                "UPDATE memory_write_receipts SET treeship_statement_json = ? WHERE receipt_id = ?",
+                (json.dumps(treeship_statement, sort_keys=True), row["receipt_id"]),
+            )
+            store.conn.commit()
+
+            report = workspace_source_report(
+                store,
+                db_path=root / ".zerker" / "memory.sqlite",
+                policy_path=root / ".zerker" / "policy.json",
+                registry_path=registry_path,
+            )
+
+            self.assertEqual(report["sources"][0]["proof_lineage"]["treeship_attestation_status"], "signed")
+            self.assertEqual(report["sources"][0]["proof_lineage"]["treeship_artifact_id"], "ts_artifact_123")
+            self.assertEqual(report["sources"][0]["proof_lineage"]["treeship_payload_digest"], "sha256:abc123")
+            self.assertEqual(report["sources"][0]["proof_lineage"]["treeship_signed_at"], "2026-06-24T09:10:11Z")
 
     def test_workspace_source_report_surfaces_cross_agent_claim_conflicts(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -157,6 +212,10 @@ class WorkspaceRegistryTest(unittest.TestCase):
             self.assertEqual(conflict["merge_preview"]["chosen_value"], "priya")
             self.assertEqual(conflict["merge_preview"]["resolution_basis"]["field"], "updated_at")
             self.assertEqual(conflict["merge_preview"]["resolution_basis"]["summary"], "freshest updated_at")
+            claims_by_id = {claim["memory_id"]: claim for claim in conflict["claims"]}
+            self.assertEqual(claims_by_id[first.id]["source_identity"]["tool"], "codex")
+            self.assertEqual(claims_by_id[second.id]["source_identity"]["tool"], "openclaw")
+            self.assertEqual(claims_by_id[first.id]["source_identity"]["repo_name"], "project")
             self.assertEqual(conflict["claims"][0]["proof_lineage"]["treeship_statement_kind"], "zerker.memory.write_provenance")
 
     def test_workspace_source_report_surfaces_unresolved_exact_tie_claim_conflicts(self):
@@ -327,6 +386,8 @@ class WorkspaceRegistryTest(unittest.TestCase):
             self.assertIn("status=active authority=medium trust=0.95", summary)
             self.assertIn("workspace=ws_", summary)
             self.assertIn("root=", summary)
+            self.assertIn("tool=codex repo=project", summary)
+            self.assertIn("tool=openclaw repo=project", summary)
 
     def test_workspace_sources_cli_summary_surfaces_resolution_basis_for_resolved_conflict(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -389,6 +450,70 @@ class WorkspaceRegistryTest(unittest.TestCase):
             self.assertIn("resolution basis: freshest updated_at", summary)
             self.assertIn("chosen priya: openclaw @ chat://openclaw/session-22", summary)
             self.assertIn("other alex: codex @ chat://codex/session-17", summary)
+            self.assertIn("tool=openclaw repo=project", summary)
+            self.assertIn("tool=codex repo=project", summary)
+
+    def test_workspace_sources_cli_summary_surfaces_recent_source_identity_and_treeship_artifact(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            registry_path = tmp_path / "workspaces.json"
+            root = tmp_path / "project"
+            root.mkdir()
+            register_workspace(name="Project", root=root, registry_path=registry_path)
+            store = MemoryStore(root / ".zerker" / "memory.sqlite")
+            memory = store.remember(
+                "Release dashboard lives in the product repo",
+                memory_type="semantic",
+                scope="project",
+                source_kind="agent",
+                actor_uri="agent://codex/chat-17",
+                session_id="chat://codex/session-17",
+                source_uri="conversation://codex/session-17/message-3",
+                status="active",
+            )
+            row = store.conn.execute(
+                "SELECT receipt_id, treeship_statement_json FROM memory_write_receipts WHERE memory_id = ?",
+                (memory.id,),
+            ).fetchone()
+            treeship_statement = json.loads(row["treeship_statement_json"])
+            treeship_statement["attestation"] = {
+                "schema": "zerker.memory.treeship_attestation.v1",
+                "status": "signed",
+                "payload_digest": "sha256:abc123",
+                "artifact_id": "ts_artifact_123",
+                "signed_at": "2026-06-24T09:10:11Z",
+            }
+            store.conn.execute(
+                "UPDATE memory_write_receipts SET treeship_statement_json = ? WHERE receipt_id = ?",
+                (json.dumps(treeship_statement, sort_keys=True), row["receipt_id"]),
+            )
+            store.conn.commit()
+            output = io.StringIO()
+
+            with patch.dict(os.environ, {"ZMEM_WORKSPACE_REGISTRY": str(registry_path)}):
+                with redirect_stdout(output):
+                    exit_code = main(
+                        [
+                            "--db",
+                            str(root / ".zerker" / "memory.sqlite"),
+                            "--policy",
+                            str(root / ".zerker" / "policy.json"),
+                            "ws",
+                            "sources",
+                            "--limit",
+                            "5",
+                            "--summary-only",
+                        ]
+                    )
+
+            summary = output.getvalue()
+            self.assertEqual(exit_code, 0)
+            self.assertIn("Recent sources:", summary)
+            self.assertIn("tool=codex repo=project", summary)
+            self.assertIn("workspace=ws_", summary)
+            self.assertIn("latest_artifact=ts_artifact_123", summary)
+            self.assertIn("artifact=ts_artifact_123", summary)
+            self.assertIn("conversation://codex/session-17/message-3", summary)
 
 
 if __name__ == "__main__":
