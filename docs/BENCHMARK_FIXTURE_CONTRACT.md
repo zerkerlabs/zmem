@@ -48,7 +48,7 @@ History items may be strings or objects. Object text is read from the first avai
 `supporting_facts` may contain zero-based integer indexes into `history`, or content-like items matched against normalized history text. If `should_abstain` is true, the expected answer becomes the local abstention string:
 
 ```text
-I do not have grounded approved memory for that.
+I don't know
 ```
 
 ## LoCoMo-Style Records

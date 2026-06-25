@@ -679,7 +679,7 @@ class BenchmarkHarnessTest(unittest.TestCase):
             self.assertTrue(question["deltas"][0]["outcome_reason_changed"])
             self.assertEqual(
                 question["deltas"][0]["baseline_final_answer"],
-                "I do not have grounded approved memory for that.",
+                "I don't know",
             )
             self.assertEqual(
                 question["deltas"][0]["final_answer"],
@@ -2915,7 +2915,7 @@ class BenchmarkHarnessTest(unittest.TestCase):
                 run["correct"] = False
                 run["score"] = 0.0
                 run["outcome_reason"] = "false_abstention_missing_injection"
-                run["final_answer"] = "I do not have grounded approved memory for that."
+                run["final_answer"] = "I don't know"
                 run["injected_memory_ids"] = []
             matrix_path.write_text(json.dumps(matrix, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
@@ -2954,7 +2954,7 @@ class BenchmarkHarnessTest(unittest.TestCase):
                 run["correct"] = False
                 run["score"] = 0.0
                 run["outcome_reason"] = "false_abstention_missing_injection"
-                run["final_answer"] = "I do not have grounded approved memory for that."
+                run["final_answer"] = "I don't know"
                 run["injected_memory_ids"] = []
                 run["injected_memories"] = []
             matrix_path.write_text(json.dumps(matrix, indent=2, sort_keys=True) + "\n", encoding="utf-8")

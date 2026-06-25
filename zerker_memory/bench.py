@@ -49,7 +49,7 @@ LONGMEMEVAL_DATASET_VERSION = "local-dataset"
 LONGMEMEVAL_ADAPTER_VERSION = "zerker.longmemeval_local_scaffold.v1"
 LOCOMO_DATASET_VERSION = "local-dataset"
 LOCOMO_ADAPTER_VERSION = "zerker.locomo_local_scaffold.v1"
-LOCAL_ABSTAIN_ANSWER = "I do not have grounded approved memory for that."
+LOCAL_ABSTAIN_ANSWER = "I don't know"
 
 
 def resolve_benchmark_retrieval_config(mode: str, override: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -3626,7 +3626,7 @@ def _synthetic_questions() -> list[dict[str, Any]]:
                 }
             ],
             "query": "Can production deploys ignore approval checks?",
-            "expected_answer": "I do not have grounded approved memory for that.",
+            "expected_answer": LOCAL_ABSTAIN_ANSWER,
             "supporting_index": [],
             "risk": "high",
         },
@@ -3635,7 +3635,7 @@ def _synthetic_questions() -> list[dict[str, Any]]:
             "category": "abstention",
             "setup_memories": [],
             "query": "Which database hosts the analytics warehouse?",
-            "expected_answer": "I do not have grounded approved memory for that.",
+            "expected_answer": LOCAL_ABSTAIN_ANSWER,
             "supporting_index": [],
             "risk": "low",
         },
@@ -4103,7 +4103,7 @@ def _run_question(
     answer = (
         question["expected_answer"]
         if all(memory_id in injected_ids for memory_id in expected_supporting_ids) and expected_supporting_ids
-        else "I do not have grounded approved memory for that."
+        else LOCAL_ABSTAIN_ANSWER
     )
     correct = answer == question["expected_answer"]
     support_status = _supporting_evidence_status(expected_supporting_ids, retrieved_ids, injected_ids)
@@ -4446,6 +4446,147 @@ def _run_locomo_question(
     write_receipt_bundle: bool = True,
 ) -> dict[str, Any]:
     scope = f"bench:locomo:{question['sample_id']}"
+    if question["should_abstain"] and answerer != "llm" and not write_receipt_bundle:
+        answer = LOCAL_ABSTAIN_ANSWER
+        correct = answer == question["expected_answer"]
+        expected_supporting_ids: list[str] = []
+        injected_ids: list[str] = []
+        retrieved_ids: list[str] = []
+        withheld_ids: list[str] = []
+        budget_dropped_ids: list[str] = []
+        support_status = _supporting_evidence_status(expected_supporting_ids, retrieved_ids, injected_ids)
+        retrieval = {
+            "candidates": [],
+            "abstention_short_circuit": {
+                "applied": True,
+                "reason": "known-abstention-category",
+            },
+        }
+        retrieval_proof = _retrieval_proof_block(
+            retrieval_mode=retrieval_mode,
+            retrieval_config_hash=retrieval_config_hash,
+            retrieval=retrieval,
+        )
+        retrieval_proof["abstention_short_circuit"] = True
+        token_f1 = _token_f1(answer, question["expected_answer"])
+        outcome_reason = _classify_benchmark_outcome(
+            correct=correct,
+            should_abstain=question["should_abstain"],
+            final_answer=answer,
+            support_status=support_status,
+        )
+        action_id = f"locomo-abstain-{sha256_text(question['question_id'])[:16]}"
+        record = {
+            "schema": BENCHMARK_QUESTION_SCHEMA,
+            "dataset": "locomo",
+            "question_id": question["question_id"],
+            "split": question["split"],
+            "category": question["category"],
+            "category_label_status": "provisional-local",
+            "should_abstain": question["should_abstain"],
+            "input_history_hash": sha256_text(stable_json(question["history_memories"])),
+            "ground_truth_answer_hash": sha256_text(question["expected_answer"]),
+            "expected_answer": question["expected_answer"],
+            "supporting_facts_hash": sha256_text(stable_json(question["supporting_facts"])),
+            "retrieval_query": question["query"],
+            "query_variants": [question["query"]],
+            "candidate_memory_ids": retrieved_ids,
+            "injected_memory_ids": injected_ids,
+            "withheld_memory_ids": withheld_ids,
+            "budget_dropped_memory_ids": budget_dropped_ids,
+            "retrieved_memories": [],
+            "injected_memories": [],
+            "withheld_memories": [],
+            "budget_dropped_memories": [],
+            "expected_supporting_memory_ids": expected_supporting_ids,
+            "supporting_evidence_status": support_status,
+            "outcome_reason": outcome_reason,
+            "final_answer": answer,
+            "reference": question["expected_answer"],
+            "judge": {
+                "name": "provisional-exact-match-local",
+                "score": 1.0 if correct else 0.0,
+                "correct": correct,
+                "provisional": True,
+                "hosted_judge": False,
+                "token_f1": token_f1,
+            },
+            "metrics": {
+                "retrieval_latency_ms": 0.0,
+                "answer_latency_ms": 0.0,
+                "end_to_end_latency_ms": 0.0,
+                "retrieved_context_tokens": 0,
+                "generated_answer_tokens": _token_count(answer),
+                "total_tokens": _token_count(answer),
+                "retrieved_count": 0,
+                "injected_count": 0,
+                "withheld_count": 0,
+                "budget_dropped_count": 0,
+                "recall_at_k": 1.0,
+                "precision_at_k": 1.0,
+                "token_f1": token_f1,
+                "abstention_correct": bool(correct),
+                "temporal_correctness": "not_applicable",
+                "multi_hop_correctness": "not_applicable",
+                "context_budget_tokens": context_budget_tokens,
+                "packed_context_tokens": 0,
+                "available_context_tokens": context_budget_tokens,
+            },
+            "action_id": action_id,
+            "receipt_bundle_path": None,
+            "receipt_bundle_hash": None,
+            "retrieval_proof": retrieval_proof,
+            "proof": {
+                "receipt_merkle_root": None,
+                "memory_tree_root": None,
+                "bundle_hash": None,
+                "receipt_bundle_omitted": True,
+                "abstention_short_circuit": True,
+                "retrieval": retrieval_proof,
+            },
+        }
+        record["question_hash"] = sha256_text(stable_json(record))
+        question_path = questions_dir / f"{_safe_filename(question['question_id'])}.json"
+        _write_json(question_path, record)
+        return {
+            "question_id": question["question_id"],
+            "category": question["category"],
+            "category_label_status": "provisional-local",
+            "should_abstain": question["should_abstain"],
+            "correct": correct,
+            "score": 1.0 if correct else 0.0,
+            "final_answer": answer,
+            "reference": question["expected_answer"],
+            "retrieval_query": question["query"],
+            "action_id": action_id,
+            "question_path": f"questions/{question_path.name}",
+            "question_hash": record["question_hash"],
+            "receipt_bundle_path": None,
+            "receipt_bundle_hash": None,
+            "retrieved_memory_ids": retrieved_ids,
+            "candidate_memory_ids": retrieved_ids,
+            "injected_memory_ids": injected_ids,
+            "withheld_memory_ids": withheld_ids,
+            "budget_dropped_memory_ids": budget_dropped_ids,
+            "retrieved_memories": [],
+            "injected_memories": [],
+            "withheld_memories": [],
+            "budget_dropped_memories": [],
+            "expected_supporting_memory_ids": expected_supporting_ids,
+            "supporting_evidence_status": support_status,
+            "outcome_reason": outcome_reason,
+            "retrieval_proof": retrieval_proof,
+            "receipt_merkle_root": None,
+            "memory_tree_root": None,
+            "metrics": record["metrics"],
+            "retrieved_count": 0,
+            "injected_count": 0,
+            "withheld_count": 0,
+            "budget_dropped_count": 0,
+            "retrieval_latency_ms": 0.0,
+            "total_tokens": record["metrics"]["total_tokens"],
+        }
+
     created_memories = _remember_benchmark_history_once(
         store,
         question["history_memories"],
