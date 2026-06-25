@@ -76,6 +76,40 @@ The fixture now also exposes the first append-only persistence contract for emit
 
 This keeps summary persistence reversible and auditable without widening the system boundary: it still does not inspect the live store, run a daemon, or require hosted summarization, but emitted summaries no longer have to remain purely in-memory values.
 
+## Local Ledger Audit Report
+
+The fixture now also exposes a read-only audit view over the existing append-only ledgers:
+
+- `consolidation_audit_report(job_ledger_path, summary_ledger_path)` joins the latest job state per `job_id` with the latest emitted summary record per `summary_id`.
+- Each audit record preserves the job's scope, levels, ordered `source_child_ids`, expected `output_summary_ids`, materialized summary ids, and a compact emitted-summary digest view.
+- The audit status is explicit and local-first:
+  - `verified` when a completed job's expected outputs match the persisted summary ledger.
+  - `missing-summary` when a completed job expects a summary that is not yet materialized in the ledger.
+  - `mismatch` when persisted summary metadata no longer matches the completed job contract.
+  - `not-materialized` or `unexpected-summary` for non-completed jobs, depending on whether summary records already exist.
+
+This keeps the L4 surface reversible and auditable without widening into `store.py`, SQLite migrations, a daemon loop, or hosted summarization: operators can now inspect whether a completed local consolidation job still has the exact persisted summary output it claims to have produced.
+
+## Transitive Summary Lineage Report
+
+The fixture now also exposes a read-only recursive lineage view over the persisted summary ledger:
+
+- `consolidation_summary_lineage_report(summary_ledger_path, summary_id)` expands a stored summary through any nested child summaries already present in the local ledger.
+- The report preserves the root summary's `summary_level`, `source_level`, `lineage_kind`, and reversibility contract while also collecting ordered transitive `leaf_source_child_ids`, ordered transitive `summary_id` ancestry, any `missing_summary_ids`, and any `cycle_summary_ids`.
+- Each nested node stays explicit about whether a child is a leaf source child, a nested summary, a missing summary, or a cycle marker.
+
+This keeps reversibility local-first and inspectable without widening into `store.py`, a daemon, or hosted summarization: operators can now unwind a day/week/profile-project summary back to the exact persisted lower-level summaries and leaf child ids that still support it.
+
+## Reverse Summary Lineage Report
+
+The fixture now also exposes the matching child-to-summary impact view over the persisted summary ledger:
+
+- `consolidation_summary_reverse_lineage_report(summary_ledger_path, child_id)` starts from either a leaf source child id or a nested summary id and walks upward through any persisted parent summaries already present in the local ledger.
+- The report preserves direct `summary_id` parents, ordered transitive `summary_id` ancestry, root impacted summaries, and explicit path arrays that show which higher-level summaries would need review or unwind if a child were revoked or rewritten.
+- Recursive cycles are still surfaced explicitly through `cycle_summary_ids` instead of silently looping.
+
+This keeps the L4 surface reversible in both directions without widening into `store.py`, a daemon, or hosted summarization: operators can now ask not only "what evidence supports this summary?" but also "which summaries depend on this child?"
+
 ## Current Boundary
 
-The fixture in [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/consolidation.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/consolidation.py) now exposes ordered levels, reversible lineage, the local job ledger, the recall-planner contract, a deterministic local summary materializer, and an append-only summary ledger, still with `hosted_llm: false` and `model_id: null`. The next implementation slice should source consolidation candidates from the live store or persist these summaries into a store-backed surface, without adding hosted summarization as a hard dependency.
+The fixture in [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/consolidation.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/consolidation.py) now exposes ordered levels, reversible lineage, the local job ledger, the recall-planner contract, a deterministic local summary materializer, an append-only summary ledger, a read-only ledger audit report, a transitive summary-lineage report, and a reverse child-to-summary lineage report, still with `hosted_llm: false` and `model_id: null`. The next implementation slice should source consolidation candidates from the live store or expose this audit/report surface through a read-only store or CLI path, without adding hosted summarization as a hard dependency.

@@ -15,6 +15,10 @@ CONSOLIDATION_LINEAGE_KIND = "source-child-to-summary"
 CONSOLIDATION_JOB_SCHEMA = "zerker.consolidation_job.v1"
 CONSOLIDATION_RECALL_PLAN_SCHEMA = "zerker.consolidation_recall_plan.v1"
 CONSOLIDATION_SUMMARY_SCHEMA = "zerker.consolidation_summary.v1"
+CONSOLIDATION_AUDIT_RECORD_SCHEMA = "zerker.consolidation_audit_record.v1"
+CONSOLIDATION_AUDIT_REPORT_SCHEMA = "zerker.consolidation_audit_report.v1"
+CONSOLIDATION_LINEAGE_REPORT_SCHEMA = "zerker.consolidation_lineage_report.v1"
+CONSOLIDATION_REVERSE_LINEAGE_REPORT_SCHEMA = "zerker.consolidation_reverse_lineage_report.v1"
 CONSOLIDATION_JOB_STATUSES = ("pending", "running", "completed", "failed", "cancelled")
 
 _LEVELS: tuple[dict[str, Any], ...] = (
@@ -534,6 +538,102 @@ def latest_consolidation_summaries(path: Path) -> dict[str, dict[str, Any]]:
     return latest
 
 
+def consolidation_audit_report(
+    job_ledger_path: Path,
+    summary_ledger_path: Path,
+) -> dict[str, Any]:
+    latest_jobs = latest_consolidation_jobs(job_ledger_path)
+    latest_summaries = latest_consolidation_summaries(summary_ledger_path)
+    summaries_by_job: dict[str, list[dict[str, Any]]] = {}
+    for summary in latest_summaries.values():
+        summaries_by_job.setdefault(summary["job_id"], []).append(deepcopy(summary))
+
+    records: list[dict[str, Any]] = []
+    verified_record_count = 0
+    incomplete_record_count = 0
+    for job in latest_jobs.values():
+        records.append(_consolidation_audit_record(job, summaries_by_job.get(job.job_id, [])))
+        if records[-1]["audit_status"] == "verified":
+            verified_record_count += 1
+        elif records[-1]["audit_status"] != "not-materialized":
+            incomplete_record_count += 1
+
+    return {
+        "schema": CONSOLIDATION_AUDIT_REPORT_SCHEMA,
+        "job_count": len(latest_jobs),
+        "completed_job_count": sum(1 for job in latest_jobs.values() if job.status == "completed"),
+        "summary_record_count": len(latest_summaries),
+        "verified_record_count": verified_record_count,
+        "incomplete_record_count": incomplete_record_count,
+        "records": records,
+    }
+
+
+def consolidation_summary_lineage_report(
+    summary_ledger_path: Path,
+    summary_id: str,
+) -> dict[str, Any]:
+    latest_summaries = latest_consolidation_summaries(summary_ledger_path)
+    root_summary = latest_summaries.get(summary_id)
+    if root_summary is None:
+        raise KeyError(summary_id)
+
+    node = _build_consolidation_lineage_node(
+        root_summary,
+        latest_summaries=latest_summaries,
+        ancestry=(),
+    )
+    return {
+        "schema": CONSOLIDATION_LINEAGE_REPORT_SCHEMA,
+        "summary_id": summary_id,
+        "summary_level": root_summary["summary_level"],
+        "source_level": root_summary["source_level"],
+        "leaf_source_child_ids": list(node["leaf_source_child_ids"]),
+        "transitive_summary_ids": list(node["transitive_summary_ids"]),
+        "missing_summary_ids": list(node["missing_summary_ids"]),
+        "cycle_summary_ids": list(node["cycle_summary_ids"]),
+        "reversible": root_summary["reversible"],
+        "lineage_kind": root_summary["lineage_kind"],
+        "node": node,
+    }
+
+
+def consolidation_summary_reverse_lineage_report(
+    summary_ledger_path: Path,
+    child_id: str,
+) -> dict[str, Any]:
+    latest_summaries = latest_consolidation_summaries(summary_ledger_path)
+    summaries_by_id = {summary["summary_id"]: summary for summary in latest_summaries.values()}
+    parent_index = _reverse_summary_parent_index(latest_summaries)
+    direct_parent_summaries = parent_index.get(child_id, [])
+    paths: list[dict[str, Any]] = []
+    transitive_summary_ids: list[str] = []
+    root_summary_ids: list[str] = []
+    cycle_summary_ids: list[str] = []
+
+    for direct_parent in direct_parent_summaries:
+        _collect_reverse_lineage_paths(
+            direct_parent,
+            summaries_by_id=summaries_by_id,
+            parent_index=parent_index,
+            ancestry=(),
+            paths=paths,
+            transitive_summary_ids=transitive_summary_ids,
+            root_summary_ids=root_summary_ids,
+            cycle_summary_ids=cycle_summary_ids,
+        )
+
+    return {
+        "schema": CONSOLIDATION_REVERSE_LINEAGE_REPORT_SCHEMA,
+        "child_id": child_id,
+        "direct_summary_ids": [summary["summary_id"] for summary in direct_parent_summaries],
+        "transitive_summary_ids": list(dict.fromkeys(transitive_summary_ids)),
+        "root_summary_ids": list(dict.fromkeys(root_summary_ids)),
+        "cycle_summary_ids": list(dict.fromkeys(cycle_summary_ids)),
+        "paths": paths,
+    }
+
+
 def _candidate_from_dict(payload: dict[str, Any]) -> ConsolidationPlanCandidate:
     trigger = payload.get("trigger", {})
     candidate = ConsolidationPlanCandidate(
@@ -725,3 +825,207 @@ def _validate_summary_record(job: ConsolidationJobRecord, summary: dict[str, Any
         raise ValueError("consolidation summary record requires summary_text")
     if not isinstance(summary.get("content_digest"), str) or not summary["content_digest"].startswith("sha256:"):
         raise ValueError("consolidation summary record requires sha256 content_digest")
+
+
+def _consolidation_audit_record(
+    job: ConsolidationJobRecord,
+    summaries: list[dict[str, Any]],
+) -> dict[str, Any]:
+    expected_output_summary_ids = list(job.output_summary_ids)
+    ordered_summaries = sorted(summaries, key=lambda summary: summary["summary_id"])
+    materialized_summary_ids = [summary["summary_id"] for summary in ordered_summaries]
+    missing_output_summary_ids = [
+        summary_id for summary_id in expected_output_summary_ids if summary_id not in materialized_summary_ids
+    ]
+    unexpected_output_summary_ids = [
+        summary_id for summary_id in materialized_summary_ids if summary_id not in expected_output_summary_ids
+    ]
+    summary_scope_mismatches = [
+        summary["summary_id"]
+        for summary in ordered_summaries
+        if summary.get("scope") != job.scope
+        or summary.get("summary_level") != job.summary_level
+        or summary.get("source_level") != job.source_level
+        or summary.get("source_child_ids") != list(job.source_child_ids)
+        or summary.get("lineage_kind") != job.lineage_kind
+    ]
+
+    if job.status != "completed":
+        audit_status = "not-materialized" if not materialized_summary_ids else "unexpected-summary"
+    elif missing_output_summary_ids:
+        audit_status = "missing-summary"
+    elif unexpected_output_summary_ids or summary_scope_mismatches:
+        audit_status = "mismatch"
+    else:
+        audit_status = "verified"
+
+    return {
+        "schema": CONSOLIDATION_AUDIT_RECORD_SCHEMA,
+        "job_id": job.job_id,
+        "scope": job.scope,
+        "status": job.status,
+        "summary_level": job.summary_level,
+        "source_level": job.source_level,
+        "source_child_ids": list(job.source_child_ids),
+        "expected_output_summary_ids": expected_output_summary_ids,
+        "materialized_summary_ids": materialized_summary_ids,
+        "missing_output_summary_ids": missing_output_summary_ids,
+        "unexpected_output_summary_ids": unexpected_output_summary_ids,
+        "summary_scope_mismatches": summary_scope_mismatches,
+        "non_blocking": job.non_blocking,
+        "reversible": job.reversible,
+        "lineage_kind": job.lineage_kind,
+        "audit_status": audit_status,
+        "summaries": [
+            {
+                "summary_id": summary["summary_id"],
+                "content_digest": summary["content_digest"],
+                "source_child_count": summary["source_child_count"],
+                "source_child_ids": list(summary["source_child_ids"]),
+                "created_at": summary["created_at"],
+            }
+            for summary in ordered_summaries
+        ],
+    }
+
+
+def _build_consolidation_lineage_node(
+    summary: dict[str, Any],
+    *,
+    latest_summaries: dict[str, dict[str, Any]],
+    ancestry: tuple[str, ...],
+) -> dict[str, Any]:
+    summary_id = summary["summary_id"]
+    next_ancestry = ancestry + (summary_id,)
+    leaf_source_child_ids: list[str] = []
+    transitive_summary_ids = [summary_id]
+    missing_summary_ids: list[str] = []
+    cycle_summary_ids: list[str] = []
+    children: list[dict[str, Any]] = []
+
+    for child_id in summary["source_child_ids"]:
+        if child_id in next_ancestry:
+            cycle_summary_ids.append(child_id)
+            children.append(
+                {
+                    "kind": "cycle_summary",
+                    "summary_id": child_id,
+                }
+            )
+            continue
+        child_summary = latest_summaries.get(child_id)
+        if child_summary is not None:
+            child_node = _build_consolidation_lineage_node(
+                child_summary,
+                latest_summaries=latest_summaries,
+                ancestry=next_ancestry,
+            )
+            children.append(child_node)
+            leaf_source_child_ids.extend(child_node["leaf_source_child_ids"])
+            transitive_summary_ids.extend(child_node["transitive_summary_ids"])
+            missing_summary_ids.extend(child_node["missing_summary_ids"])
+            cycle_summary_ids.extend(child_node["cycle_summary_ids"])
+            continue
+        if child_id.startswith("summary:"):
+            missing_summary_ids.append(child_id)
+            children.append(
+                {
+                    "kind": "missing_summary",
+                    "summary_id": child_id,
+                }
+            )
+            continue
+        leaf_source_child_ids.append(child_id)
+        children.append(
+            {
+                "kind": "source_child",
+                "child_id": child_id,
+            }
+        )
+
+    return {
+        "kind": "summary",
+        "summary_id": summary_id,
+        "summary_level": summary["summary_level"],
+        "source_level": summary["source_level"],
+        "source_child_ids": list(summary["source_child_ids"]),
+        "content_digest": summary["content_digest"],
+        "leaf_source_child_ids": list(dict.fromkeys(leaf_source_child_ids)),
+        "transitive_summary_ids": list(dict.fromkeys(transitive_summary_ids)),
+        "missing_summary_ids": list(dict.fromkeys(missing_summary_ids)),
+        "cycle_summary_ids": list(dict.fromkeys(cycle_summary_ids)),
+        "children": children,
+    }
+
+
+def _reverse_summary_parent_index(
+    latest_summaries: dict[str, dict[str, Any]],
+) -> dict[str, list[dict[str, Any]]]:
+    parent_index: dict[str, list[dict[str, Any]]] = {}
+    for summary in latest_summaries.values():
+        for child_id in summary["source_child_ids"]:
+            parent_index.setdefault(child_id, []).append(summary)
+    return parent_index
+
+
+def _collect_reverse_lineage_paths(
+    summary: dict[str, Any],
+    *,
+    summaries_by_id: dict[str, dict[str, Any]],
+    parent_index: dict[str, list[dict[str, Any]]],
+    ancestry: tuple[str, ...],
+    paths: list[dict[str, Any]],
+    transitive_summary_ids: list[str],
+    root_summary_ids: list[str],
+    cycle_summary_ids: list[str],
+) -> None:
+    summary_id = summary["summary_id"]
+    chain = ancestry + (summary_id,)
+    transitive_summary_ids.append(summary_id)
+    parent_summaries = parent_index.get(summary_id, [])
+
+    if not parent_summaries:
+        root_summary_ids.append(summary_id)
+        paths.append(
+            {
+                "summary_ids": list(chain),
+                "summary_levels": [summaries_by_id[item]["summary_level"] for item in chain],
+                "root_summary_id": summary_id,
+            }
+        )
+        return
+
+    followed_parent = False
+    for parent_summary in parent_summaries:
+        parent_summary_id = parent_summary["summary_id"]
+        if parent_summary_id in chain:
+            cycle_summary_ids.append(parent_summary_id)
+            paths.append(
+                {
+                    "summary_ids": list(chain),
+                    "summary_levels": [summaries_by_id[item]["summary_level"] for item in chain],
+                    "cycle_summary_id": parent_summary_id,
+                }
+            )
+            continue
+        followed_parent = True
+        _collect_reverse_lineage_paths(
+            parent_summary,
+            summaries_by_id=summaries_by_id,
+            parent_index=parent_index,
+            ancestry=chain,
+            paths=paths,
+            transitive_summary_ids=transitive_summary_ids,
+            root_summary_ids=root_summary_ids,
+            cycle_summary_ids=cycle_summary_ids,
+        )
+
+    if not followed_parent:
+        root_summary_ids.append(summary_id)
+        paths.append(
+            {
+                "summary_ids": list(chain),
+                "summary_levels": [summaries_by_id[item]["summary_level"] for item in chain],
+                "root_summary_id": summary_id,
+            }
+        )
