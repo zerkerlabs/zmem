@@ -34,6 +34,7 @@ WRITE_RECEIPT_SCHEMA = "zerker.memory_write.v1"
 LIFECYCLE_RECEIPT_SCHEMA = "zerker.lifecycle_receipt.v1"
 EVENT_SCHEMA = "zerker.memory_event.v1"
 SNAPSHOT_SCHEMA = "zerker.memory_snapshot.v1"
+SESSION_START_SCHEMA = "zerker.session_start.v1"
 SESSION_CHECKPOINT_SCHEMA = "zerker.session_checkpoint.v1"
 SESSION_SNAPSHOT_SCHEMA = "zerker.session_snapshot.v1"
 SESSION_SNAPSHOT_RETENTION_SCHEMA = "zerker.session_snapshot_retention.v1"
@@ -1076,6 +1077,94 @@ def _annotate_hybrid_semantic_ranking(retrieval: dict[str, Any]) -> None:
         fusion["outranked_candidate_ids"] = outranked_ids
 
 
+def _overlay_outranked_reason(overlay_key: str, metadata: dict[str, Any], candidate: dict[str, Any]) -> str:
+    overlay_metadata = candidate.get(overlay_key) if isinstance(candidate.get(overlay_key), dict) else {}
+    if metadata.get("provider_id") and not metadata.get("fallback") and overlay_metadata.get("provider_eligible"):
+        return f"provider-{overlay_key}-ranked-lower"
+    return f"local-{overlay_key}-ranked-lower"
+
+
+def _annotate_overlay_ranking(
+    retrieval: dict[str, Any],
+    *,
+    overlay_key: str,
+    pre_rank_key: str,
+    post_rank_key: str,
+    rank_key: str,
+    promoted_key: str,
+    outranked_key: str,
+    reason_key: str,
+) -> None:
+    metadata = retrieval.get(overlay_key)
+    candidates = retrieval.get("candidates", [])
+    if not isinstance(metadata, dict) or not isinstance(candidates, list):
+        return
+    if not metadata.get("enabled"):
+        return
+
+    promoted_ids = []
+    outranked_ids = []
+    rank_delta_key = f"{overlay_key}_rank_delta"
+    for candidate in candidates:
+        pre_rank = candidate.get(pre_rank_key)
+        post_rank = candidate.get(post_rank_key)
+        overlay_rank = post_rank if isinstance(post_rank, int) and not isinstance(post_rank, bool) else None
+        rank_delta = None
+        promoted = False
+        outranked = False
+        outranked_reason = None
+        if isinstance(pre_rank, int) and not isinstance(pre_rank, bool) and isinstance(overlay_rank, int):
+            rank_delta = overlay_rank - pre_rank
+            promoted = overlay_rank < pre_rank
+            outranked = overlay_rank > pre_rank
+            if promoted:
+                promoted_ids.append(candidate["memory_id"])
+            if outranked:
+                outranked_ids.append(candidate["memory_id"])
+                outranked_reason = _overlay_outranked_reason(overlay_key, metadata, candidate)
+        candidate[rank_key] = overlay_rank
+        candidate[rank_delta_key] = rank_delta
+        candidate[promoted_key] = promoted
+        candidate[outranked_key] = outranked
+        candidate[reason_key] = outranked_reason
+        candidate.setdefault("features", {})[rank_key] = overlay_rank
+        candidate["features"][rank_delta_key] = rank_delta
+        candidate["features"][promoted_key] = promoted
+        candidate["features"][outranked_key] = outranked
+        candidate["features"][reason_key] = outranked_reason
+
+    metadata["promoted_candidate_ids"] = promoted_ids
+    metadata["outranked_candidate_ids"] = outranked_ids
+
+
+def _overlay_receipt_fields(candidate: dict[str, Any] | None, *, include_empty: bool = False) -> dict[str, Any]:
+    if not isinstance(candidate, dict):
+        candidate = {}
+    fields: dict[str, Any] = {}
+    for overlay_key in ("embedding", "reranker"):
+        rank_key = f"{overlay_key}_rank"
+        rank_delta_key = f"{overlay_key}_rank_delta"
+        promoted_key = f"{overlay_key}_promoted"
+        outranked_key = f"{overlay_key}_outranked"
+        reason_key = f"{overlay_key}_outranked_reason"
+        rank = candidate.get(rank_key)
+        if not isinstance(rank, int) or isinstance(rank, bool):
+            rank = None
+        rank_delta = candidate.get(rank_delta_key)
+        if not isinstance(rank_delta, int) or isinstance(rank_delta, bool):
+            rank_delta = None
+        promoted = bool(candidate.get(promoted_key))
+        outranked = bool(candidate.get(outranked_key))
+        reason = candidate.get(reason_key)
+        if include_empty or rank is not None or rank_delta is not None or promoted or outranked or reason is not None:
+            fields[rank_key] = rank
+            fields[rank_delta_key] = rank_delta
+            fields[promoted_key] = promoted
+            fields[outranked_key] = outranked
+            fields[reason_key] = reason
+    return fields
+
+
 def _fts_candidate_window_limit(limit: int) -> int:
     limit = max(0, int(limit))
     if limit == 0:
@@ -1407,6 +1496,16 @@ def apply_embedding_overlay(
         ordered_candidates.append(candidate)
     retrieval["candidates"] = ordered_candidates
     retrieval["embedding"] = metadata
+    _annotate_overlay_ranking(
+        retrieval,
+        overlay_key="embedding",
+        pre_rank_key="pre_embedding_rank",
+        post_rank_key="embedding_rank",
+        rank_key="embedding_rank",
+        promoted_key="embedding_promoted",
+        outranked_key="embedding_outranked",
+        reason_key="embedding_outranked_reason",
+    )
     return ordered, metadata
 
 
@@ -1633,6 +1732,16 @@ def apply_reranker(
         ordered_candidates.append(candidate)
     retrieval["candidates"] = ordered_candidates
     retrieval["reranker"] = metadata
+    _annotate_overlay_ranking(
+        retrieval,
+        overlay_key="reranker",
+        pre_rank_key="pre_rerank_rank",
+        post_rank_key="post_rerank_rank",
+        rank_key="reranker_rank",
+        promoted_key="reranker_promoted",
+        outranked_key="reranker_outranked",
+        reason_key="reranker_outranked_reason",
+    )
     return ordered, metadata
 
 
@@ -5446,6 +5555,7 @@ def pack_memory_context(
                     prefer_temporal_fusion_rank=prefer_temporal_fusion_rank,
                     prefer_multi_hop_fusion_rank=prefer_multi_hop_fusion_rank,
                 ),
+                **_overlay_receipt_fields(candidate, include_empty=True),
             }
         )
 
@@ -5568,6 +5678,16 @@ def pack_memory_context(
                     "packing_rank_basis": entry["packing_rank_basis"],
                     "packing_priority": entry["priority"],
                     "selected_by_temporal_strategy": entry["selected_by_temporal_strategy"],
+                    "embedding_rank": entry["embedding_rank"],
+                    "embedding_rank_delta": entry["embedding_rank_delta"],
+                    "embedding_promoted": entry["embedding_promoted"],
+                    "embedding_outranked": entry["embedding_outranked"],
+                    "embedding_outranked_reason": entry["embedding_outranked_reason"],
+                    "reranker_rank": entry["reranker_rank"],
+                    "reranker_rank_delta": entry["reranker_rank_delta"],
+                    "reranker_promoted": entry["reranker_promoted"],
+                    "reranker_outranked": entry["reranker_outranked"],
+                    "reranker_outranked_reason": entry["reranker_outranked_reason"],
                     "hybrid_semantic_rank": entry["hybrid_semantic_rank"],
                     "hybrid_outranked_by_semantic_backfill": entry["hybrid_outranked_by_semantic_backfill"],
                     "hybrid_outranked_reason": entry["hybrid_outranked_reason"],
@@ -5617,6 +5737,16 @@ def pack_memory_context(
                 "approx_tokens": entry["approx_tokens"],
                 "packing_priority": entry["priority"],
                 "selected_by_temporal_strategy": entry["selected_by_temporal_strategy"],
+                "embedding_rank": entry["embedding_rank"],
+                "embedding_rank_delta": entry["embedding_rank_delta"],
+                "embedding_promoted": entry["embedding_promoted"],
+                "embedding_outranked": entry["embedding_outranked"],
+                "embedding_outranked_reason": entry["embedding_outranked_reason"],
+                "reranker_rank": entry["reranker_rank"],
+                "reranker_rank_delta": entry["reranker_rank_delta"],
+                "reranker_promoted": entry["reranker_promoted"],
+                "reranker_outranked": entry["reranker_outranked"],
+                "reranker_outranked_reason": entry["reranker_outranked_reason"],
                 "hybrid_semantic_rank": entry["hybrid_semantic_rank"],
                 "hybrid_outranked_by_semantic_backfill": entry["hybrid_outranked_by_semantic_backfill"],
                 "hybrid_outranked_reason": entry["hybrid_outranked_reason"],
@@ -8460,6 +8590,7 @@ class MemoryStore:
         current_candidates = search_result["current_memories"]
         selected_candidates = search_result.get("selected_memories", current_candidates)
         selected_candidate_ids = {memory.id for memory in selected_candidates}
+        candidate_metadata_by_id = _candidate_by_id(search_result["retrieval"])
         policy_candidates = list(current_candidates)
         seen_policy_candidate_ids = {memory.id for memory in policy_candidates}
         for memory in selected_candidates:
@@ -8473,10 +8604,13 @@ class MemoryStore:
         policy_decisions: list[dict[str, str]] = []
         policy_config = load_policy_config(self.policy_path or default_policy_path())
         for memory in policy_candidates:
+            candidate_metadata = candidate_metadata_by_id.get(memory.id)
             decision = decide_memory(memory, risk=risk, config=policy_config)
             policy_decisions.append(decision.to_dict())
             if decision.decision == "withhold":
-                withheld.append({"memory_id": memory.id, "reason": decision.reason, "rule": decision.rule})
+                withheld_entry = {"memory_id": memory.id, "reason": decision.reason, "rule": decision.rule}
+                withheld_entry.update(_overlay_receipt_fields(candidate_metadata))
+                withheld.append(withheld_entry)
                 continue
             if memory.id not in selected_candidate_ids:
                 continue
@@ -8899,6 +9033,61 @@ class MemoryStore:
         )
         self.conn.commit()
         return self._session_checkpoint_from_event_row(
+            self.conn.execute("SELECT * FROM events WHERE event_hash = ?", (event["event_hash"],)).fetchone()
+        )
+
+    def start_session(
+        self,
+        session_id: str,
+        *,
+        actor_id: str,
+        scope: str | None = None,
+        summary: str | None = None,
+        context_budget_tokens: int | None = None,
+    ) -> dict[str, Any]:
+        self.init()
+        if context_budget_tokens is not None and context_budget_tokens < 0:
+            raise ValueError("context budget hint cannot be negative")
+        session_start_id = "sst_" + uuid.uuid4().hex[:16]
+        prior_merkle_root = self.current_merkle_root()
+        active_memories = self.list_memories(scope=scope, status="active", limit=10_000)
+        memory_tree = self.memory_tree(active_memories, scope="session-start")
+        memory_ids_by_type = _memory_ids_by_type(active_memories)
+        snapshot = self.snapshot()
+        payload = {
+            "schema": SESSION_START_SCHEMA,
+            "session_start_id": session_start_id,
+            "session_id": session_id,
+            "scope": scope,
+            "summary": summary,
+            "prior_merkle_root": prior_merkle_root,
+            "snapshot_hash": snapshot["snapshot_hash"],
+            "snapshot_merkle_root": snapshot["merkle_root"],
+            "snapshot_memory_count": snapshot["memory_count"],
+            "snapshot_event_count": snapshot["event_count"],
+            "active_memory_ids": [memory.id for memory in active_memories],
+            "memory_count": len(active_memories),
+            "memory_tree_root": memory_tree["root"],
+            "memory_tree_leaf_count": memory_tree["leaf_count"],
+            "memory_type_summary": {
+                "instruction_types": list(INSTRUCTION_MEMORY_TYPES),
+                "recall_types": list(RECALL_MEMORY_TYPES),
+                "active_ids_by_type": memory_ids_by_type,
+                "active_counts_by_type": {
+                    memory_type: len(memory_ids_by_type.get(memory_type, []))
+                    for memory_type in sorted(MEMORY_TYPES)
+                },
+            },
+        }
+        if context_budget_tokens is not None:
+            payload["context_budget_tokens"] = int(context_budget_tokens)
+        event = self._append_event(
+            "SESSION_STARTED",
+            actor_id=actor_id,
+            payload=payload,
+        )
+        self.conn.commit()
+        return self._session_start_from_event_row(
             self.conn.execute("SELECT * FROM events WHERE event_hash = ?", (event["event_hash"],)).fetchone()
         )
 
@@ -9737,6 +9926,50 @@ class MemoryStore:
             "receipt": receipt,
         }
 
+    def _session_start_from_event_row(self, row: sqlite3.Row | None) -> dict[str, Any]:
+        if row is None:
+            raise KeyError("session start event not found")
+        payload = json.loads(row["payload_json"])
+        if payload.get("schema") != SESSION_START_SCHEMA:
+            raise ValueError("event payload is not a session start")
+        receipt = self._lifecycle_receipt_from_event_row(
+            row,
+            payload,
+            mutation="start_session",
+            mutation_id=payload["session_start_id"],
+        )
+        token_budget_hint = None
+        if payload.get("context_budget_tokens") is not None:
+            token_budget_hint = {"context_budget_tokens": payload["context_budget_tokens"]}
+        return {
+            "schema": SESSION_START_SCHEMA,
+            "session_start_id": payload["session_start_id"],
+            "session_id": payload["session_id"],
+            "scope": payload.get("scope"),
+            "summary": payload.get("summary"),
+            "actor_id": row["actor_id"],
+            "event_hash": row["event_hash"],
+            "prior_event_hash": row["prev_event_hash"],
+            "prior_merkle_root": payload["prior_merkle_root"],
+            "session_start_merkle_root": row["merkle_root"],
+            "created_at": row["created_at"],
+            "snapshot": {
+                "snapshot_hash": payload["snapshot_hash"],
+                "snapshot_merkle_root": payload["snapshot_merkle_root"],
+                "memory_count": payload["snapshot_memory_count"],
+                "event_count": payload["snapshot_event_count"],
+            },
+            "memory_count": payload["memory_count"],
+            "active_memory_ids": payload["active_memory_ids"],
+            "memory_tree": {
+                "root": payload["memory_tree_root"],
+                "leaf_count": payload["memory_tree_leaf_count"],
+            },
+            "memory_type_summary": payload["memory_type_summary"],
+            "token_budget_hint": token_budget_hint,
+            "receipt": receipt,
+        }
+
     def _session_snapshot_from_event_row(self, row: sqlite3.Row | None) -> dict[str, Any]:
         if row is None:
             raise KeyError("session snapshot event not found")
@@ -9900,6 +10133,8 @@ class MemoryStore:
             },
             "created_at": row["created_at"],
         }
+        if payload.get("context_budget_tokens") is not None:
+            treeship_statement["object"]["context_budget_tokens"] = payload["context_budget_tokens"]
         receipt = dict(receipt_without_hash)
         receipt["treeship_statement"] = treeship_statement
         receipt["receipt_hash"] = sha256_text(stable_json(receipt))

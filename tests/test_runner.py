@@ -2,7 +2,9 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
+from zerker_memory.retrieval_providers import RerankerProviderResult
 from zerker_memory.runner import build_context, run_with_memory
 from zerker_memory.store import MemoryStore, approx_memory_tokens
 
@@ -3668,6 +3670,91 @@ class RunnerTest(unittest.TestCase):
             context["budget_dropped"][0]["hybrid_outranked_reason"],
             "hybrid-semantic-backfill-ranked-lower",
         )
+
+    def test_build_context_preserves_provider_reranker_budget_drop_metadata(self):
+        broad = self.store.remember(
+            "Runner provider reranker budget marker broad alpha beta gamma delta",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.99,
+        )
+        exact = self.store.remember(
+            "Runner provider reranker budget marker",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.01,
+        )
+        self.store.promote(broad.id)
+        self.store.promote(exact.id)
+        provider_result = RerankerProviderResult(
+            provider_id="cohere:rerank-v3.5",
+            model_id="rerank-v3.5",
+            reranker_id="rerank-v3.5",
+            scores=[0.1, 0.9],
+            latency_ms=8.25,
+            network_call=True,
+            score_hashes=["sha256:broad-score", "sha256:exact-score"],
+        )
+        provider_config = {
+            "schema": "zerker.retrieval_providers.v1",
+            "embedding": {
+                "default": "local:pseudo",
+                "providers": {
+                    "local:pseudo": {
+                        "enabled": True,
+                        "network": False,
+                        "model_id": "zmem-pseudo-embedding-v1",
+                    }
+                },
+            },
+            "reranker": {
+                "default": "local:deterministic",
+                "providers": {
+                    "local:deterministic": {
+                        "enabled": True,
+                        "network": False,
+                        "reranker_id": "zmem-deterministic-rerank-v1",
+                    },
+                    "cohere:rerank-v3.5": {
+                        "enabled": True,
+                        "network": True,
+                        "reranker_id": "rerank-v3.5",
+                        "api_key_env": "COHERE_API_KEY",
+                    },
+                },
+            },
+        }
+
+        with mock.patch.dict("os.environ", {"COHERE_API_KEY": "cohere-test-secret"}):
+            with mock.patch("zerker_memory.store.rerank_texts", return_value=provider_result):
+                receipt = self.store.inject(
+                    "runner provider reranker budget marker",
+                    agent_id="codex",
+                    risk="low",
+                    scope="project",
+                    context_budget_tokens=approx_memory_tokens(exact),
+                    retrieval_config={
+                        "reranker": {
+                            "enabled": True,
+                            "provider_id": "cohere:rerank-v3.5",
+                            "reranker_id": "rerank-v3.5",
+                        }
+                    },
+                    retrieval_provider_config=provider_config,
+                    allow_network_providers=True,
+                )
+
+        context = build_context(receipt)
+
+        self.assertEqual([memory["id"] for memory in context["memories"]], [exact.id])
+        self.assertEqual(context["budget_dropped"][0]["memory_id"], broad.id)
+        self.assertEqual(context["budget_dropped"][0]["reranker_rank"], 1)
+        self.assertEqual(context["budget_dropped"][0]["reranker_rank_delta"], -1)
+        self.assertTrue(context["budget_dropped"][0]["reranker_promoted"])
+        self.assertFalse(context["budget_dropped"][0]["reranker_outranked"])
+        self.assertIsNone(context["budget_dropped"][0]["reranker_outranked_reason"])
 
     def test_before_target_history_deploy_context_uses_subject_entity_expansion(self):
         support = self.store.remember(

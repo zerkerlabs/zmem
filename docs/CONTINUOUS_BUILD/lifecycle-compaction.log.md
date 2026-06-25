@@ -59,3 +59,43 @@
 - Artifacts/receipts: read-only summaries for `checkpoint_merkle_root`, `session_snapshot_merkle_root`, `snapshot_hash`, `payload_status`, and `retention.soft_delete_merkle_root`.
 - Blockers: there is still no CLI write surface for `checkpoint_session` / `snapshot_session`, and no automatic retention-pruning policy exists beyond explicit soft-delete.
 - Next safe slice: add one thin `zmem session checkpoint` write wrapper around the existing store contract, or add one bounded retention-pruning policy without widening `start_session` or `end_session`.
+
+## 2026-06-24 - session checkpoint CLI write wrapper
+
+- Scope: bounded L2 slice on checkpoint writes only; did not add `snapshot_session`, `start_session`, or `end_session` commands.
+- Files touched: `zerker_memory/cli.py`, `tests/test_cli_onboarding.py`.
+- Behavior changed: `zmem session checkpoint` now writes a persisted checkpoint through the existing store contract. Default output returns the full checkpoint JSON payload; `--summary-only` surfaces checkpoint id, session id, actor id, checkpoint root, snapshot hash/root, active-memory count, and memory-type counts.
+- Tests: focused CLI checkpoint coverage passed (`python3 -m unittest tests.test_cli_onboarding.CliOnboardingTest.test_build_parser_parses_session_checkpoint_write_summary_only tests.test_cli_onboarding.CliOnboardingTest.test_session_checkpoint_summary_surfaces_written_checkpoint_root_and_counts tests.test_cli_onboarding.CliOnboardingTest.test_session_checkpoints_summary_surfaces_checkpoint_root_and_memory_type_counts tests.test_cli_onboarding.CliOnboardingTest.test_session_snapshots_summary_surfaces_soft_deleted_retention_state -q`); broad `python3 -m unittest tests.test_cli_onboarding tests.test_store tests.test_runner -q` passed (`Ran 393 tests`); `python3 -m zerker_memory eval` passed (`11/11`).
+- Artifacts/receipts: write-path CLI access to persisted `zerker.session_checkpoint.v1` payloads, including `checkpoint_merkle_root`, `snapshot.snapshot_hash`, `snapshot.snapshot_merkle_root`, and `memory_type_summary.active_counts_by_type`.
+- Blockers: there is still no CLI write surface for `snapshot_session`, no `start_session` / `end_session` surface, and no automatic retention-pruning policy beyond explicit soft-delete.
+- Next safe slice: add one thin `zmem session snapshot` write wrapper around the existing store contract, or add one bounded `start_session` contract without widening retention or restore UX.
+
+## 2026-06-24 - session snapshot CLI write wrapper
+
+- Scope: bounded L2 slice on snapshot writes only; did not add `start_session` or `end_session` commands and did not change retention behavior.
+- Files touched: `zerker_memory/cli.py`, `tests/test_cli_onboarding.py`.
+- Behavior changed: `zmem session snapshot` now writes a persisted session snapshot through the existing store contract. Default output returns the full session snapshot JSON payload; `--summary-only` surfaces session snapshot id, session id, actor id, payload status, session snapshot root, snapshot hash, active-memory count, and memory-type counts.
+- Tests: focused snapshot CLI coverage passed (`python3 -m unittest tests.test_cli_onboarding.CliOnboardingTest.test_build_parser_parses_session_snapshot_write_summary_only tests.test_cli_onboarding.CliOnboardingTest.test_session_snapshot_summary_surfaces_written_snapshot_root_and_counts tests.test_cli_onboarding.CliOnboardingTest.test_session_checkpoint_summary_surfaces_written_checkpoint_root_and_counts tests.test_cli_onboarding.CliOnboardingTest.test_session_snapshots_summary_surfaces_soft_deleted_retention_state -q`); broad `python3 -m unittest tests.test_cli_onboarding tests.test_store tests.test_runner -q` passed (`Ran 401 tests`); `python3 -m zerker_memory eval` passed (`11/11`).
+- Artifacts/receipts: write-path CLI access to persisted `zerker.session_snapshot.v1` payloads, including `session_snapshot_merkle_root`, `snapshot_hash`, `payload_status`, and `memory_type_summary.active_counts_by_type`.
+- Blockers: there is still no `start_session` / `end_session` command surface, and no automatic retention-pruning policy beyond explicit soft-delete.
+- Next safe slice: add one bounded `start_session` contract, or add one thin soft-delete write wrapper for snapshot retention without widening restore UX.
+
+## 2026-06-24 - session snapshot soft-delete CLI write wrapper
+
+- Scope: bounded L2 slice on snapshot retention writes only; did not add `start_session` or `end_session` commands and did not change store retention semantics.
+- Files touched: `zerker_memory/cli.py`, `tests/test_cli_onboarding.py`.
+- Behavior changed: `zmem session delete-snapshot` now exposes the existing `soft_delete_session_snapshot_payload(...)` store contract as a thin CLI write surface. Default output returns the full soft-deleted session snapshot JSON payload; `--summary-only` surfaces session snapshot id, session id, deleted-by/at/reason, payload status, snapshot hash, original session snapshot root, soft-delete root, and memory-type counts.
+- Tests: focused retention CLI coverage passed (`python3 -m unittest tests.test_cli_onboarding.CliOnboardingTest.test_build_parser_parses_session_delete_snapshot_summary_only tests.test_cli_onboarding.CliOnboardingTest.test_session_snapshot_soft_delete_summary_surfaces_retention_roots -q`, `python3 -m unittest tests.test_store.MemoryStoreTest.test_soft_delete_session_snapshot_payload_preserves_receipt_visible_summary tests.test_store.MemoryStoreTest.test_session_snapshots_reports_soft_deleted_payload_without_returning_snapshot_json -q`, `python3 -m unittest tests.test_runner.RunnerTest.test_build_context_separates_instructional_and_recall_memory_and_surfaces_budget_receipts -q`); broad `python3 -m unittest tests.test_cli_onboarding tests.test_store tests.test_runner -q` passed (`Ran 407 tests`); `python3 -m zerker_memory eval` passed (`11/11`).
+- Artifacts/receipts: write-path CLI access to persisted `zerker.session_snapshot_retention.v1` tombstones, including `payload_status`, `retention.deleted_reason`, and `retention.soft_delete_merkle_root`.
+- Blockers: there is still no `start_session` / `end_session` command surface, and no automatic retention-pruning policy beyond explicit soft-delete.
+- Next safe slice: add one bounded `start_session` contract so lifecycle continuity has an explicit begin-state before adding any pruning automation.
+
+## 2026-06-25 - session start CLI/store contract
+
+- Scope: bounded L2 slice on explicit session begin-state only; did not add `end_session` or any new retention/report surface.
+- Files touched: `zerker_memory/store.py`, `zerker_memory/cli.py`, `tests/test_store.py`, `tests/test_cli_onboarding.py`.
+- Behavior changed: `start_session(...)` now persists `SESSION_STARTED` lifecycle events with prior/new Merkle roots, snapshot hash/root summary, active-memory tree summary, memory-type-separated active ids/counts, and an optional `context_budget_tokens` hint. `zmem session start` now exposes that contract through JSON or `--summary-only`.
+- Tests: focused `python3 -m unittest tests.test_store.MemoryStoreTest.test_start_session_emits_receipt_visible_roots_and_budget_hint tests.test_cli_onboarding.CliOnboardingTest.test_build_parser_parses_session_start_summary_only tests.test_cli_onboarding.CliOnboardingTest.test_session_start_summary_surfaces_written_start_root_and_budget_hint -q` passed; broad `python3 -m unittest tests.test_cli_onboarding tests.test_store tests.test_runner -q` passed (`Ran 422 tests`); `python3 -m zerker_memory eval` passed (`11/11`).
+- Artifacts/receipts: `zerker.session_start.v1`, `SESSION_STARTED`, `session_start_merkle_root`, `token_budget_hint.context_budget_tokens`, and lifecycle receipt `mutation=start_session`.
+- Blockers: there is still no `end_session` command surface, and there is still no read-only `session starts` report for later inspection.
+- Next safe slice: add one bounded `end_session` contract, or add one thin read-only `session starts` report without widening restore or retention behavior.

@@ -24,6 +24,7 @@ from zerker_memory.cli import (
     build_agent_config_preset,
     build_agent_server_snippet,
     build_parser,
+    build_session_start_result,
     build_session_checkpoint_result,
     build_retrieval_provider_readiness_report,
     build_session_checkpoints_report,
@@ -59,6 +60,7 @@ from zerker_memory.cli import (
     render_public_verify_summary,
     render_return_packet_summary,
     render_release_pack_summary,
+    render_session_start_summary,
     render_session_checkpoint_summary,
     render_session_checkpoints_summary,
     render_session_snapshot_soft_delete_summary,
@@ -254,6 +256,31 @@ class CliOnboardingTest(unittest.TestCase):
         self.assertEqual(args.session_command, "snapshots")
         self.assertEqual(args.session_id, "session://alpha")
         self.assertEqual(args.scope, "project:alpha")
+        self.assertTrue(args.summary_only)
+
+    def test_build_parser_parses_session_start_summary_only(self):
+        args = build_parser().parse_args(
+            [
+                "session",
+                "start",
+                "--session-id",
+                "session://alpha",
+                "--actor-id",
+                "codex",
+                "--scope",
+                "project:alpha",
+                "--context-budget-tokens",
+                "256",
+                "--summary-only",
+            ]
+        )
+
+        self.assertEqual(args.command, "session")
+        self.assertEqual(args.session_command, "start")
+        self.assertEqual(args.session_id, "session://alpha")
+        self.assertEqual(args.actor_id, "codex")
+        self.assertEqual(args.scope, "project:alpha")
+        self.assertEqual(args.context_budget_tokens, 256)
         self.assertTrue(args.summary_only)
 
     def test_build_parser_parses_session_checkpoint_write_summary_only(self):
@@ -463,6 +490,51 @@ class CliOnboardingTest(unittest.TestCase):
         self.assertIn(f"Checkpoint root: {checkpoint['checkpoint_merkle_root']}", summary)
         self.assertIn("policy=1 procedural=1 episodic=0 semantic=1", summary)
         self.assertIn("handoff before context compaction", summary)
+
+    def test_session_start_summary_surfaces_written_start_root_and_budget_hint(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = MemoryStore(Path(tmpdir) / "memory.sqlite")
+            store.init()
+            store.remember(
+                "Production deploys require approval",
+                memory_type="policy",
+                scope="project:alpha",
+                source_kind="human",
+            )
+            store.remember(
+                "Use the release checklist before tagging",
+                memory_type="procedural",
+                scope="project:alpha",
+                source_kind="human",
+            )
+            store.remember(
+                "Deploy target is Render",
+                memory_type="semantic",
+                scope="project:alpha",
+                source_kind="human",
+            )
+
+            result = build_session_start_result(
+                store,
+                session_id="session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="resume deploy swarm",
+                context_budget_tokens=256,
+            )
+            summary = render_session_start_summary(result)
+
+        session_start = result["session_start"]
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["schema"], "zerker.session_start_result.v1")
+        self.assertEqual(session_start["session_id"], "session://alpha")
+        self.assertEqual(session_start["token_budget_hint"], {"context_budget_tokens": 256})
+        self.assertIn("Session started", summary)
+        self.assertIn(f"Session start id: {session_start['session_start_id']}", summary)
+        self.assertIn(f"Session start root: {session_start['session_start_merkle_root']}", summary)
+        self.assertIn("Context budget hint: 256", summary)
+        self.assertIn("policy=1 procedural=1 episodic=0 semantic=1", summary)
+        self.assertIn("resume deploy swarm", summary)
 
     def test_session_snapshot_summary_surfaces_written_snapshot_root_and_counts(self):
         with tempfile.TemporaryDirectory() as tmpdir:

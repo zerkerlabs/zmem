@@ -2,6 +2,148 @@
 
 This is the short orchestration dashboard for Zerker Memory. Every autonomous build run should update this file after it updates `docs/BUILD_LOG.md`.
 
+## Lifecycle Compaction
+`2026-06-25T01:01:43Z`
+
+- `start_session(...)` now provides the first explicit begin-state contract for long-lived agent sessions, and `zmem session start` now exposes that persisted lifecycle write path in the CLI.
+- The stored `SESSION_STARTED` payload now captures prior/new Merkle roots, snapshot hash/root summary, active-memory tree summary, memory-type-separated active ids/counts, and an optional `context_budget_tokens` hint so a session can declare its initial budget and still keep policy/procedural memory separate from episodic/semantic recall.
+- Verified focused session-start regressions first, then `python3 -m unittest tests.test_cli_onboarding tests.test_store tests.test_runner -q` (`Ran 422 tests`) and `python3 -m zerker_memory eval` (`11/11`).
+- This slice stayed bounded: checkpoint/snapshot/retention behavior did not change, no new report surface landed, and there is still no `end_session` command yet.
+
+## Trust Ledger
+`2026-06-24T23:06:11Z`
+
+- `zmem bundle verify <bundle> --summary-only` now adds the first compact read-only bundle proof summary on top of the existing bundle verifier and bundled supporting write-receipt checks.
+- The summary surfaces action id, bundle hash, supporting memory/event/write-receipt counts, bundle verification, memory-tree verification, optional Treeship artifact ids from supporting provenance receipts, `Trusted provenance: verified` / `not verified`, and explicit `Semantic truth: not guaranteed` wording. Default JSON `bundle verify` output now includes the same additive provenance verification fields.
+- Verified focused bundle/receipt regressions first with `python3 -m unittest tests.test_cli_onboarding.CliOnboardingTest.test_build_parser_parses_bundle_verify_summary_only tests.test_cli_onboarding.CliOnboardingTest.test_bundle_verify_summary_only_surfaces_verified_supporting_provenance tests.test_store.MemoryStoreTest.test_memory_write_emits_provenance_receipt tests.test_store.MemoryStoreTest.test_memory_write_can_emit_compact_treeship_attestation_when_enabled -q` (`Ran 4 tests`), then `python3 scripts/release_smoke.py --summary-only`, `python3 -m zerker_memory status --summary-only`, and `git diff --check -- zerker_memory/cli.py tests/test_cli_onboarding.py`.
+- This slice stayed bounded and read-only: no memory write path, `zerker_memory/store.py`, SQLite schema, or generated `.zerker/launch-proof/` artifact changed.
+
+## Retrieval Baseline
+`2026-06-25T00:19:17Z`
+
+- Retrieval receipts now use the same explicit promoted/outranked contract for semantic overlays beyond the earlier hybrid-only path.
+- `retrieval.embedding` and `retrieval.reranker` now publish `promoted_candidate_ids` / `outranked_candidate_ids`; candidates add `embedding_rank_delta` / `reranker_rank_delta` plus local-vs-provider outrank reasons; and `withheld` plus `packing.budget_dropped` entries now retain the same overlay rank breadcrumbs instead of dropping them at the policy or budget boundary.
+- Verified focused overlay regressions first, then full `python3 -m unittest tests.test_store -q` (`Ran 207 tests`), `python3 -m unittest tests.test_policy -q` (`Ran 7 tests`), `python3 -m unittest tests.test_runner -q` (`Ran 87 tests`), and `python3 -m zerker_memory eval` (`11/11`).
+- This slice stayed local-first and receipt-additive: no `MemoryStore.search()` return-shape change, no SQLite migration, no CLI/release-sensitive path change, and no Phase 1 launch-proof or public-site surface changed.
+- Next highest-leverage retrieval slice is to decide and test when `embedding_rank` / `reranker_rank` should become an explicit `packing_rank_basis` so promoted semantic winners can survive tight non-temporal budgets without weakening temporal/history packing rules.
+
+## Temporal Selected Query Filter
+`2026-06-24T23:01:50Z`
+
+- `MemoryStore.query_at(...)` now accepts `current_resolution="selected"` as a read-only usable-current filter on top of the existing temporal projection.
+- In that mode, the snapshot returns only resolved current entries and visible temporal envelopes for the timestamp, while unresolved same-timestamp contradictions correctly yield an empty selected-only view.
+- The `Status page owner is Alice.` -> `Status page owner is Alice Chen.` identity/supersession fixture now proves cross-session identity history can collapse to only the current `Alice Chen` envelope without pulling unrelated `Alice` facts into the selected view.
+- Verified focused selected-filter regressions first, then `python3 -m unittest tests.test_store -q` (`Ran 206 tests`), `python3 -m unittest tests.test_runner -q` (`Ran 86 tests`), and `python3 -m zerker_memory eval` (`11/11`).
+- This slice stayed schema-free and local-store-only: no SQLite migration, no receipt format change, no runner-context contract change, and no generated `.zerker/launch-proof/` artifact was touched.
+
+## Identity Workspaces
+`2026-06-24T19:03:58Z`
+
+- `zmem ws sources --summary-only` now surfaces the existing read-only `source_identity` and optional Treeship artifact lineage directly in the terminal summary instead of leaving those fields JSON-only.
+- Agent lines now show `tool`, `repo`, workspace id, and latest artifact hint; a new recent-source section shows source URI plus receipt/artifact/root lineage; claim-conflict lines now carry the same tool/repo/artifact hints.
+- Verified focused L5 summary regressions first, then `python3 -m unittest tests.test_workspaces -q` (`Ran 10 tests`), required `python3 -m unittest tests.test_store tests.test_cli_onboarding -q` (`Ran 324 tests`), and `python3 -m zerker_memory eval` (`11/11`).
+- This slice stayed read-only and local-first: no memory write path, SQLite schema, workspace report payload, or Hub dependency changed.
+
+## Lifecycle Compaction
+`2026-06-24T18:59:06Z`
+
+- `zmem session delete-snapshot` now provides a thin CLI write wrapper over the existing persisted `soft_delete_session_snapshot_payload(...)` retention contract.
+- The new `--summary-only` view surfaces session snapshot id, session id, deleted-by/at/reason, payload status, snapshot hash, the original session snapshot root, the retention-event soft-delete root, and memory-type counts, while the default JSON output preserves the full tombstone payload.
+- Verified focused retention CLI tests first, then `python3 -m unittest tests.test_cli_onboarding tests.test_store tests.test_runner -q` (`Ran 407 tests`) and `python3 -m zerker_memory eval` (`11/11`).
+- This slice stayed bounded: no store/schema changes, no `start_session` or `end_session` surface, and no automatic retention-pruning automation landed.
+
+## Temporal Contradiction Query Filter
+`2026-06-24T18:58:57Z`
+
+- `MemoryStore.query_at(...)` now accepts `current_resolution="abstained"` as a read-only contradiction-only filter on top of the existing temporal projection.
+- In that mode, the snapshot returns only abstained current contradiction entries, visible temporal envelopes, and abstained conflict sets for the timestamp, while leaving default `current_resolution="all"` behavior unchanged.
+- Resolved identity/supersession timelines such as `Status page owner is Alice.` -> `Status page owner is Alice Chen.` now correctly return an empty contradiction-only snapshot instead of leaking non-contradictory history.
+- Verified focused contradiction-filter regressions first, then `python3 -m unittest tests.test_store -q` (`Ran 203 tests`), `python3 -m unittest tests.test_runner -q` (`Ran 86 tests`), and `python3 -m zerker_memory eval` (`11/11`).
+- This slice stayed schema-free and local-store-only: no SQLite migration, no receipt format change, no runner-context contract change, and no generated `.zerker/launch-proof/` artifact was touched.
+
+## Consolidation
+`2026-06-24T18:45:00Z`
+
+- The append-only consolidation summary ledger now has a transitive read-only lineage report via `consolidation_summary_lineage_report(...)`.
+- The report can recursively expand a persisted summary through nested child summaries already present in the local ledger and preserve ordered `leaf_source_child_ids`, transitive `summary_id` ancestry, `missing_summary_ids`, and `cycle_summary_ids`.
+- Verified focused transitive-lineage regressions first, then `python3 -m unittest tests.test_consolidation -q` (`Ran 17 tests`).
+- This slice stayed bounded and local-first: no `store.py`, benchmark harness, SQLite migration, daemon loop, or hosted summarization dependency changed.
+
+## Retrieval Baseline
+`2026-06-24T20:15:50Z`
+
+- Baseline-only hybrid semantic backfill now keeps weaker lexical anchors explainable even when a stronger local semantic match wins.
+- Receipts now expose `retrieval.hybrid.selection_exclusions` for replaced lexical anchors, `retrieval.hybrid.fusion.promoted_candidate_ids` / `outranked_candidate_ids`, candidate-level `hybrid_semantic_rank` / `hybrid_rank_delta` / `hybrid_outranked_reason`, and the same hybrid outrank fields on packing and budget-drop receipts.
+- Verified focused hybrid regressions first, then full `python3 -m unittest tests.test_store -q` (`Ran 204 tests`), `python3 -m unittest tests.test_policy -q` (`Ran 7 tests`), `python3 -m unittest tests.test_runner -q` (`Ran 86 tests`), and `python3 -m zerker_memory eval` (`11/11`).
+- This slice stayed local-first and receipt-additive: no `MemoryStore.search()` shape change, no SQLite migration, no hosted provider dependency, and no Phase 1 launch-proof or public-site surface changed.
+- Next highest-leverage retrieval slice is to extend the same promoted/outranked receipt contract to local embedding/reranker overlays so non-temporal semantic reorders beyond hybrid backfill stay explicit in retrieved, injected, withheld, and budget-dropped receipts.
+
+## Trust Ledger
+`2026-06-24T15:05:33Z`
+
+- `zmem lineage --summary-only` now adds the first compact read-only CLI summary for ordered per-memory write-receipt chains on top of `MemoryStore.verify_memory_write_receipt_chain(...)`.
+- The summary surfaces original/latest receipt ids and kinds, actor URIs, content digest, prior/new Merkle-root transition, optional Treeship artifact ids, verified provenance status, and explicit `Semantic truth: not guaranteed` wording; default JSON lineage output is unchanged.
+- Verified focused lineage/receipt regressions first with `python3 -m unittest tests.test_cli_onboarding.CliOnboardingTest.test_lineage_parser_accepts_summary_only tests.test_cli_onboarding.CliOnboardingTest.test_lineage_summary_only_surfaces_verified_write_receipt_chain tests.test_store.MemoryStoreTest.test_verify_memory_write_receipt_chain_accepts_attested_promote_chain tests.test_store.MemoryStoreTest.test_verify_memory_write_receipt_chain_reports_tampered_prior_root -q` (`Ran 4 tests`), then `python3 scripts/release_smoke.py --summary-only`, `python3 -m zerker_memory status --summary-only`, and `git diff --check -- zerker_memory/cli.py tests/test_cli_onboarding.py`.
+- This slice stayed bounded and read-only: no memory write path, SQLite schema, receipt schema, or generated `.zerker/launch-proof/` artifact changed.
+
+## Temporal Query Filter
+`2026-06-24T14:58:35Z`
+
+- `MemoryStore.query_at(...)` now accepts a read-only `include_abstained_current` flag so point-in-time snapshots can hide unresolved abstained-current envelopes without changing the underlying temporal projection or schema.
+- With `include_abstained_current=False`, visible `entries`, visible `temporal_graph`, and visible history/current id lists omit unresolved current contradictions, while `abstained_current_memory_ids`, `conflict_sets`, and `abstention` still preserve the contradiction evidence and ids.
+- Verified focused temporal filter regressions first, then `python3 -m unittest tests.test_store -q` (`Ran 200 tests`), `python3 -m unittest tests.test_runner -q` (`Ran 86 tests`), and `python3 -m zerker_memory eval` (`11/11`).
+- This slice stayed schema-free and local-store-only: no SQLite migration, no receipt format change, no runner-context contract change, and no generated `.zerker/launch-proof/` artifact was touched.
+
+## Trust Ledger
+`2026-06-24T11:05:45Z`
+
+- `MemoryStore.verify_memory_write_receipt(...)` and `MemoryStore.verify_memory_write_receipt_chain(...)` now provide the first shared independent verification contract for surfaced per-memory write receipt chains, covering original provenance receipts, later mutation receipts, and snapshot-restored/exported chains.
+- The verifier recomputes each `receipt_hash` from the embedded canonical `treeship_statement.source.receipt`, checks Treeship statement consistency, prior-receipt linkage, prior/new Merkle-root transitions, and optional digest-only Treeship attestation payloads/artifact ids, while staying explicit that semantic truth of the memory content is not guaranteed.
+- Verified focused chain-verifier regressions first, then `python3 -m unittest tests.test_store -q` (`Ran 197 tests`), `python3 -m unittest tests.test_snapshot -q` (`Ran 21 tests`), `python3 -m zerker_memory eval` (`11/11`), `python3 scripts/release_smoke.py --summary-only`, and `python3 -m zerker_memory status --summary-only`.
+- This slice stayed bounded and read-only: no memory write path changed, no SQLite schema changed, no receipt schema changed, and no generated `.zerker/launch-proof/` artifact was touched.
+
+## Identity Workspaces
+`2026-06-24T11:01:04Z`
+
+- `workspace_source_report` now adds a read-only `source_identity` descriptor on each source row and conflict claim, covering `tool`, session/source URI schemes, workspace root, repo root, and repo name from the local workspace registry plus existing write receipts.
+- Connected-agent summaries now carry the same repo/tool hints, and `proof_lineage` now surfaces optional Treeship attestation status, artifact id, payload digest, and signed timestamp when those fields already exist on the stored receipt.
+- Verified `python3 -m unittest tests.test_workspaces -q` (`Ran 9 tests`), `python3 -m unittest tests.test_dashboard.DashboardTest.test_build_workspace_sources_state_is_dashboard_ready -q` (`Ran 1 test`), and `git diff --check -- zerker_memory/workspaces.py tests/test_workspaces.py tests/test_dashboard.py`.
+- This slice stayed read-only and local-first: no memory write path, SQLite schema, CLI command behavior, or Hub dependency changed.
+
+## Lifecycle Compaction
+`2026-06-24T12:56:10Z`
+
+- `zmem session snapshot` now provides a thin CLI write wrapper over the existing persisted `snapshot_session(...)` store contract, joining the earlier `zmem session checkpoint` write path.
+- The new `--summary-only` view surfaces session snapshot id, session id, actor id, payload status, session snapshot root, snapshot hash, active-memory count, and memory-type counts, while the default JSON output preserves the full persisted snapshot payload.
+- Verified focused lifecycle snapshot CLI tests first, then `python3 -m unittest tests.test_cli_onboarding tests.test_store tests.test_runner -q` (`Ran 401 tests`) and `python3 -m zerker_memory eval` (`11/11`).
+- This slice stayed bounded: no store/schema changes, no `start_session` or `end_session` surface, and no retention-pruning automation landed.
+
+## Temporal Contradiction Envelopes
+`2026-06-24T10:56:45Z`
+
+- Stored inject receipts now preserve abstained current-memory envelopes under `retrieval.temporal.abstained_temporal_graph`, closing the last contradiction case where ids and conflict summaries survived but the per-memory bi-temporal envelope did not.
+- `zerker.memory_context.v1` now forwards that same `abstained_temporal_graph` subset beside the existing selected/injected/withheld/budget-dropped temporal subsets, so no-injection contradiction snapshots keep full current-state envelopes in runtime context.
+- Verified focused contradiction regressions first, then `python3 -m unittest tests.test_store -q` (`Ran 195 tests`), `python3 -m unittest tests.test_runner -q` (`Ran 85 tests`), and `python3 -m zerker_memory eval` (`11/11`).
+- This slice stayed schema-free and local-store-only: no SQLite migration, no temporal resolver rewrite, no external graph dependency, and no generated `.zerker/launch-proof/` artifact changes.
+
+## Retrieval Baseline
+`2026-06-24T12:10:19Z`
+
+- Plain recent relation-history retrieval now adds the explicit stale/relation-current pair into temporal `reciprocal_rank_fusion_v1`, and that same fused order now drives context packing for this new recent-history relation signal.
+- The concrete local-first gain is that a higher-authority generic `changed after ...` support anchor no longer stays ahead of a longer answer-bearing current relation for prompts like `what did the api gateway point at before`; the stale predecessor still stays first, the current relation now comes second in `retrieval["candidates"]`, and under a tight budget the generic anchor becomes the explicit budget-dropped memory instead of displacing the current relation.
+- Receipts now expose `retrieval.temporal.fusion.signal=temporal_history_relation_pair_rrf_score_v1`, `basis=history_relation_pair`, `source_rankings.temporal_history_relation_pair`, candidate `temporal_fusion_sources`, and recent-history relation-path `packing_rank_basis=temporal_fusion_rank`; `retrieval.baseline_ranking.temporal_fusion_signal` now distinguishes this recent-history relation-pair ordering from the earlier support-chain, update-pair, update-history relation-pair, earliest-history relation-pair, and mutation-anchor paths.
+- Verified focused recent-history relation regressions, full `python3 -m unittest tests.test_store -q` (`Ran 198 tests`), full `python3 -m unittest tests.test_policy -q` (`Ran 7 tests`), full `python3 -m unittest tests.test_runner -q` (`Ran 86 tests`), and `python3 -m zerker_memory eval` (`11/11`).
+- No Phase 1 launch-proof, installer, release-pack, prelaunch, public-site copy, or generated `.zerker/launch-proof/` artifacts were touched in this retrieval slice.
+- Next highest-leverage retrieval slice is to extend the same deterministic fusion plus packing contract to graph-backed candidate merges while keeping candidate-by-candidate withheld, injected, and budget-dropped visibility explicit.
+
+## Temporal Runtime Conflict Contract
+`2026-06-24T07:02:53Z`
+
+- Added a dedicated no-injection contradiction fixture for `runner.build_context()`, so `zerker.memory_context.v1` now has explicit regression coverage for `current_conflict_abstained_v1` snapshots where `memories` is empty but `temporal.conflict_sets` and `temporal.abstention` must still survive.
+- The locked runtime contract is schema-free and store-free: current-claim contradictions now have tested context coverage for `selection_strategy`, `selection_reason`, `current_memory_ids`, `abstained_current_memory_ids`, empty selected/injected temporal subsets, and the preserved `lexical-current-conflict` envelope.
+- Verified `python3 -m unittest tests.test_runner.RunnerTest.test_build_context_preserves_current_conflict_abstention_without_injected_memories -q` (`Ran 1 test`), `python3 -m unittest tests.test_store -q` (`Ran 194 tests`), `python3 -m unittest tests.test_runner -q` (`Ran 84 tests`), and `python3 -m zerker_memory eval` (`11/11`).
+- No runtime/store behavior changed in this slice; it adds durable L1 coverage around an already-shipped receipt-to-context path.
+
 ## Progress Tracker
 `2026-06-24T04:20:24Z`
 
@@ -239,15 +381,17 @@ This is the short orchestration dashboard for Zerker Memory. Every autonomous bu
 - No SQLite schema changed in this slice; the new temporal surface is a derived local projection over existing receipts/events, and explicit same-subject update/restatement edges are still only receipt-time retrieval logic outside `query_at`.
 
 ## Trust Ledger
-`2026-06-24T03:05:29Z`
+`2026-06-24T19:06:03Z`
 
 - `promote()`, `reject()`, root `revoke()`, and `forget()` still append durable mutation receipts in addition to the original source-provenance write receipt; lifecycle checkpoint/snapshot events still expose derived receipt envelopes; and `restore_snapshot()` still returns its own explicit rollback/export receipt without appending a new event to the restored chain.
 - Ordered write-receipt access remains split intentionally: `memory_write_receipt(memory_id)` stays pinned to the original provenance anchor, while `memory_write_receipts(memory_id)` exposes the full event-ordered chain for independent verification and snapshot export.
+- Snapshot/export plus `restore_snapshot()` now have explicit regression coverage for optional Treeship digest attestations on ordered write-receipt chains, including the original provenance receipt and a later mutation receipt. The portable attestation payload remains `sha256:<receipt_hash>` plus optional artifact metadata only; it does not assert semantic truth of the underlying memory.
 - `MemoryStore.verify_lifecycle_receipt(receipt, *, source_snapshot=None)` now gives the lifecycle receipt family a shared local verifier: it recomputes `receipt_hash`, `content_digest`, and embedded Treeship statement consistency, and when a snapshot is supplied it also verifies snapshot hash/root/count linkage for rollback/export or persisted session snapshot receipts.
 - `restore_snapshot(snapshot, *, actor_id=\"snapshot_restore\")` still returns a deterministic `zerker.lifecycle_receipt.v1` payload with actor identity, snapshot hash, payload content digest, prior/new Merkle roots, optional `treeship_artifact_id: null`, and an embedded `zerker.memory.mutation_receipt` statement. The restored store Merkle root still matches the imported snapshot Merkle root exactly because this receipt is derived, not event-appended.
 - `zmem --db ... restore --handoff-dir ... --summary-only` now verifies that returned rollback/export receipt against the source snapshot and surfaces receipt verification status, receipt id/hash, snapshot hash, prior/new Merkle roots, and optional Treeship artifact id in the terminal summary.
+- Direct `zmem --db ... restore <snapshot>` now reuses that same local verifier and compact summary contract for standalone snapshot restores; `--summary-only` prints only the proof summary, and the default path prints the summary before the full JSON payload.
 - Lifecycle receipt verification and the new restore summary prove provenance, integrity, and snapshot-lineage consistency only; they do not guarantee semantic truth of the restored or snapshotted memories. No Treeship CLI or hosted service is required to verify them locally.
-- Verified with focused restore lifecycle/store CLI tests plus `python3 scripts/release_smoke.py --summary-only` and `python3 -m zerker_memory status --summary-only`, both still green.
+- Verified with focused restore summary tests plus lifecycle receipt coverage, `python3 scripts/release_smoke.py --summary-only`, `python3 -m zerker_memory status --summary-only`, and `git diff --check -- zerker_memory/cli.py tests/test_cli_onboarding.py`, all still green.
 
 ## Benchmark Scoring Workflow
 `2026-06-22T22:59:00Z`
@@ -4421,3 +4565,9 @@ This is the short orchestration dashboard for Zerker Memory. Every autonomous bu
 - Reconfirmed the active launch surfaces remain clean of stale public targets: no non-historical `zerkerlabs/zerker-memory`, stale raw-installer, stale `rezkerlabs`, or stale GitHub repo targets were found across `README.md`, `QUICKSTART.md`, `install.sh`, `scripts/`, `tests/`, `zerker_memory/`, `docs/`, `landing/`, `llms.txt`, and `site/` outside historical state/log files.
 - Next highest-leverage launch step remains unchanged: hand `.zerker/launch-proof/CLEAN_SHELL_OPERATOR_PROMPT.md`, `.zerker/launch-proof/CLEAN_SHELL_PUBLIC_VERIFY.md`, and `.zerker/launch-proof/public-verify-operator-packet.tar.gz` to a networked operator with valid GitHub auth, then accept handback only after `verify-public-verify`, `verify-launch-assets`, and `verify-return-packet` all report ready.
 - `2026-06-20T00:17:34Z` launch oversight recheck: reran the required repo check with `bash scripts/gstack_check.sh`, reconfirmed `origin` still targets `https://github.com/zerkerlabs/zmem.git`, and reconfirmed `gh auth status` still fails because the active `rezker1` token is invalid. The required repo-local proof rerun still passed end to end, but in this shell `python3 scripts/release_smoke.py --summary-only` had to be invoked as `~/.pyenv/versions/3.10.15/bin/python3.10 scripts/release_smoke.py --summary-only` because the default `python3` shim hit `pyenv-version-name: fork: Resource temporarily unavailable`; with that concrete interpreter path, `release_smoke`, `status --summary-only`, `verify-operator-packet`, `verify-public-verify`, `verify-launch-assets`, `verify-return-packet`, and `prelaunch --summary-only` all reconfirmed the same durable gate: operator packet `Ready: yes`, public verify still `0/6`, launch assets still `0/8`, return packet still `Ready: no`, and strict publish still blocked only on `launch_assets` plus `public_verify_evidence`. The watched launch-facing inputs remain unchanged in substance, the packet-local proof artifacts now sit at the `2026-06-19T23:20:41Z` to `2026-06-19T23:20:42Z` refresh window, and the focused active-surface stale-target scan again found no non-historical stale public repo, raw-installer, `rezkerlabs`, `rezker1`, or stale GitHub repo targets on active launch entrypoints. Exact next blocked step remains unchanged: hand `.zerker/launch-proof/CLEAN_SHELL_OPERATOR_PROMPT.md`, `.zerker/launch-proof/CLEAN_SHELL_PUBLIC_VERIFY.md`, and `.zerker/launch-proof/public-verify-operator-packet.tar.gz` to a networked operator with valid GitHub auth, then accept handback only after `verify-public-verify`, `verify-launch-assets`, and `verify-return-packet` all report ready.
+
+- Added the first L4 read-only consolidation ledger audit report in [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/consolidation.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/consolidation.py), with focused coverage in [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_consolidation.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_consolidation.py) and updated operator notes in [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONSOLIDATION_FIXTURE.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONSOLIDATION_FIXTURE.md).
+- Consolidation now has six local-first layers: ordered levels and reversible lineage, an append-only job ledger, a deterministic recall planner, a deterministic local summary materializer, an append-only summary ledger, and a read-only audit report over the job and summary ledgers.
+- The audit report stays auditable and reversible: it joins latest-by-`job_id` and latest-by-`summary_id` ledger views, preserves expected `output_summary_ids` plus ordered `source_child_ids`, and makes missing or mismatched persisted outputs explicit without touching the live store or requiring a hosted model.
+- Verified `python3 -m unittest tests.test_consolidation.ConsolidationFixtureTest.test_consolidation_audit_report_verifies_completed_job_summary_lineage tests.test_consolidation.ConsolidationFixtureTest.test_consolidation_audit_report_marks_missing_completed_summary_outputs -q` (`Ran 2 tests`) and `python3 -m unittest tests.test_consolidation -q` (`Ran 15 tests`).
+- Next safe consolidation slice is exposing this audit report through a read-only store/CLI surface or sourcing consolidation candidates from the live store once the overlapping dirty files are safe to touch.

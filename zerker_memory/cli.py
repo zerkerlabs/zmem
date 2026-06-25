@@ -297,8 +297,19 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
         help="Print only a compact human-readable workspace-source summary",
     )
 
-    session = sub.add_parser("session", help="Inspect persisted lifecycle checkpoints and snapshots")
+    session = sub.add_parser("session", help="Manage persisted session lifecycle state")
     session_sub = session.add_subparsers(dest="session_command", required=True)
+    session_start = session_sub.add_parser("start", help="Write a persisted session start marker")
+    session_start.add_argument("--session-id", required=True)
+    session_start.add_argument("--actor-id", required=True)
+    session_start.add_argument("--scope")
+    session_start.add_argument("--summary")
+    session_start.add_argument("--context-budget-tokens", type=int)
+    session_start.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Print only a compact human-readable session-start result",
+    )
     session_checkpoint = session_sub.add_parser("checkpoint", help="Write a persisted session checkpoint")
     session_checkpoint.add_argument("--session-id", required=True)
     session_checkpoint.add_argument("--actor-id", required=True)
@@ -1103,6 +1114,20 @@ def main(argv: list[str] | None = None) -> int:
                     print_json(result)
                 return 0
         if args.command == "session":
+            if args.session_command == "start":
+                result = build_session_start_result(
+                    store,
+                    session_id=args.session_id,
+                    actor_id=args.actor_id,
+                    scope=args.scope,
+                    summary=args.summary,
+                    context_budget_tokens=args.context_budget_tokens,
+                )
+                if args.summary_only:
+                    print(render_session_start_summary(result), end="")
+                else:
+                    print_json(result)
+                return 0
             if args.session_command == "checkpoint":
                 result = build_session_checkpoint_result(
                     store,
@@ -6061,6 +6086,29 @@ def build_session_checkpoints_report(
     }
 
 
+def build_session_start_result(
+    store: MemoryStore,
+    *,
+    session_id: str,
+    actor_id: str,
+    scope: str | None = None,
+    summary: str | None = None,
+    context_budget_tokens: int | None = None,
+) -> dict[str, Any]:
+    session_start = store.start_session(
+        session_id,
+        actor_id=actor_id,
+        scope=scope,
+        summary=summary,
+        context_budget_tokens=context_budget_tokens,
+    )
+    return {
+        "ok": True,
+        "schema": "zerker.session_start_result.v1",
+        "session_start": session_start,
+    }
+
+
 def build_session_checkpoint_result(
     store: MemoryStore,
     *,
@@ -6171,6 +6219,31 @@ def render_session_checkpoint_summary(result: dict[str, Any]) -> str:
     ]
     if checkpoint.get("summary"):
         lines.append(f"Summary: {checkpoint['summary']}")
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def render_session_start_summary(result: dict[str, Any]) -> str:
+    session_start = result["session_start"]
+    snapshot = session_start.get("snapshot") if isinstance(session_start.get("snapshot"), dict) else {}
+    token_budget_hint = session_start.get("token_budget_hint") if isinstance(session_start.get("token_budget_hint"), dict) else {}
+    context_budget_tokens = token_budget_hint.get("context_budget_tokens")
+    lines = [
+        "Session started",
+        "",
+        f"Session start id: {session_start['session_start_id']}",
+        f"Session id: {session_start['session_id']}",
+        f"Scope: {session_start.get('scope') or 'any'}",
+        f"Actor: {session_start['actor_id']}",
+        f"Created: {session_start['created_at']}",
+        f"Active memories: {session_start['memory_count']}",
+        f"Session start root: {session_start['session_start_merkle_root']}",
+        f"Snapshot hash: {snapshot.get('snapshot_hash') or 'unknown'}",
+        "Context budget hint: "
+        f"{context_budget_tokens if isinstance(context_budget_tokens, int) and not isinstance(context_budget_tokens, bool) else 'none'}",
+        f"Memory types: {_render_session_memory_type_counts(session_start.get('memory_type_summary'))}",
+    ]
+    if session_start.get("summary"):
+        lines.append(f"Summary: {session_start['summary']}")
     return "\n".join(lines).rstrip() + "\n"
 
 
