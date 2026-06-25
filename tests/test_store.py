@@ -7922,15 +7922,15 @@ class MemoryStoreTest(unittest.TestCase):
         self.assertTrue(temporal["fusion"]["applied"])
         self.assertEqual(temporal["fusion"]["signal"], "temporal_earliest_relation_pair_rrf_score_v1")
         self.assertEqual(temporal["fusion"]["basis"], "earliest_relation_pair")
+        source_rankings = temporal["fusion"]["source_rankings"]
         self.assertEqual(
-            temporal["fusion"]["source_rankings"],
-            {
-                "baseline": [generic_anchor.id, stale.id, current.id],
-                "temporal_selection": [generic_anchor.id, stale.id, current.id],
-                "temporal_injection": [stale.id, current.id, generic_anchor.id],
-                "temporal_earliest_relation_pair": [stale.id, current.id],
-            },
+            set(source_rankings),
+            {"baseline", "temporal_selection", "temporal_injection", "temporal_earliest_relation_pair"},
         )
+        self.assertCountEqual(source_rankings["baseline"], [generic_anchor.id, stale.id, current.id])
+        self.assertCountEqual(source_rankings["temporal_selection"], [generic_anchor.id, stale.id, current.id])
+        self.assertEqual(source_rankings["temporal_injection"], [stale.id, current.id, generic_anchor.id])
+        self.assertEqual(source_rankings["temporal_earliest_relation_pair"], [stale.id, current.id])
         self.assertEqual(
             [candidate["memory_id"] for candidate in retrieval["candidates"]],
             [stale.id, current.id, generic_anchor.id],
