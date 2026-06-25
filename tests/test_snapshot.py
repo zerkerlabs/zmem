@@ -378,6 +378,7 @@ class SnapshotTest(unittest.TestCase):
         self.assertEqual(result["snapshot_hash"], snapshot["snapshot_hash"])
         self.assertEqual(result["computed_snapshot_hash"], snapshot["snapshot_hash"])
         self.assertEqual(result["computed_merkle_root"], snapshot["merkle_root"])
+        self.assertEqual(result["attestation_artifacts"], [])
 
     def test_verify_snapshot_reports_tampering(self):
         self.store.remember(
@@ -394,6 +395,136 @@ class SnapshotTest(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertEqual(result["error"], "snapshot_hash mismatch")
         self.assertNotEqual(result["computed_snapshot_hash"], snapshot["snapshot_hash"])
+
+    def test_verify_snapshot_accepts_revoke_receipt_with_intervening_events(self):
+        source = self.store.remember(
+            "Production deploys go through Railway",
+            memory_type="episodic",
+            scope="project",
+            source_kind="agent",
+            actor_id="codex",
+            actor_uri="agent://codex/session-c",
+            session_id="session://gamma",
+            source_uri="conversation://session-c/message-9",
+            parent_action_id="act_review",
+            environment_hash="sha256:env_fixture",
+        )
+        self.store.remember(
+            "Deploy target is Railway",
+            memory_type="semantic",
+            scope="project",
+            source_kind="agent",
+            parents=[source.id],
+        )
+        self.store.revoke(source.id, actor_id="reviewer", reason="source evidence was wrong")
+        snapshot = self.store.snapshot()
+
+        result = self.store.verify_snapshot(snapshot)
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["write_receipt_chain_count"], 2)
+        self.assertEqual(result["verified_write_receipt_count"], 3)
+        self.assertEqual(result["verified_write_receipt_transition_count"], 1)
+
+    def test_verify_snapshot_rejects_tampered_write_receipt_chain(self):
+        memory = self.store.remember(
+            "Production deploys require approval",
+            memory_type="policy",
+            scope="project",
+            source_kind="agent",
+            actor_id="codex",
+            actor_uri="agent://codex/session-a",
+            session_id="session://alpha",
+            source_uri="conversation://session-a/message-17",
+            parent_action_id="act_prompt_injection",
+            environment_hash="sha256:env_fixture",
+        )
+        self.store.promote(memory.id, actor_id="reviewer")
+        snapshot = self.store.snapshot()
+
+        tampered = json.loads(json.dumps(snapshot))
+        tampered_receipt = tampered["write_receipts"][1]
+        tampered_receipt["treeship_statement"]["evidence"]["prior_merkle_root"] = "bad-root"
+        stripped_statement = json.loads(json.dumps(tampered_receipt["treeship_statement"]))
+        stripped_statement.pop("attestation", None)
+        tampered_hash_input = dict(tampered_receipt["treeship_statement"]["source"]["receipt"])
+        tampered_hash_input["treeship_statement"] = stripped_statement
+        tampered_receipt["receipt_hash"] = sha256_text(stable_json(tampered_hash_input))
+        tampered["snapshot_hash"] = sha256_text(stable_json({k: v for k, v in tampered.items() if k != "snapshot_hash"}))
+
+        result = self.store.verify_snapshot(tampered)
+
+        self.assertFalse(result["ok"])
+        self.assertIn("snapshot write receipt chain invalid", result["error"])
+        self.assertIn("prior_merkle_root mismatch", result["error"])
+
+    def test_verify_snapshot_surfaces_attested_write_receipt_artifacts(self):
+        store = MemoryStore(Path(self.tmp.name) / "attested-snapshot.sqlite", treeship_auto_sign=True)
+        store.init()
+        signed_provenance = mock.Mock(
+            returncode=0,
+            stdout='{"id":"art_write_1","kind":"memory.write","signed":"2026-06-24T05:27:53Z","status":"ok","system":"system://zmem"}',
+            stderr="",
+        )
+        signed_mutation = mock.Mock(
+            returncode=0,
+            stdout='{"id":"art_write_2","kind":"memory.write","signed":"2026-06-24T05:27:54Z","status":"ok","system":"system://zmem"}',
+            stderr="",
+        )
+        with mock.patch("zerker_memory.treeship.shutil.which", return_value="/usr/local/bin/treeship"):
+            with mock.patch("zerker_memory.treeship.subprocess.run", side_effect=[signed_provenance, signed_mutation]):
+                memory = store.remember(
+                    "Production deploys require approval",
+                    memory_type="policy",
+                    scope="project",
+                    source_kind="agent",
+                    actor_id="codex",
+                    actor_uri="agent://codex/session-a",
+                    session_id="session://alpha",
+                    source_uri="conversation://session-a/message-17",
+                    parent_action_id="act_prompt_injection",
+                    environment_hash="sha256:env_fixture",
+                )
+                store.promote(memory.id, actor_id="reviewer")
+
+        result = store.verify_snapshot(store.snapshot())
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["write_receipt_attestation_count"], 2)
+        self.assertEqual(
+            [item["artifact_id"] for item in result["attestation_artifacts"]],
+            ["art_write_1", "art_write_2"],
+        )
+
+    def test_restore_rejects_snapshot_with_tampered_write_receipt_chain(self):
+        memory = self.store.remember(
+            "Production deploys require approval",
+            memory_type="policy",
+            scope="project",
+            source_kind="agent",
+            actor_id="codex",
+            actor_uri="agent://codex/session-a",
+            session_id="session://alpha",
+            source_uri="conversation://session-a/message-17",
+            parent_action_id="act_prompt_injection",
+            environment_hash="sha256:env_fixture",
+        )
+        self.store.promote(memory.id, actor_id="reviewer")
+        snapshot = self.store.snapshot()
+
+        tampered = json.loads(json.dumps(snapshot))
+        tampered_receipt = tampered["write_receipts"][1]
+        tampered_receipt["treeship_statement"]["evidence"]["prior_merkle_root"] = "bad-root"
+        stripped_statement = json.loads(json.dumps(tampered_receipt["treeship_statement"]))
+        stripped_statement.pop("attestation", None)
+        tampered_hash_input = dict(tampered_receipt["treeship_statement"]["source"]["receipt"])
+        tampered_hash_input["treeship_statement"] = stripped_statement
+        tampered_receipt["receipt_hash"] = sha256_text(stable_json(tampered_hash_input))
+        tampered["snapshot_hash"] = sha256_text(stable_json({k: v for k, v in tampered.items() if k != "snapshot_hash"}))
+
+        restored = MemoryStore(Path(self.tmp.name) / "tampered-write-receipt.sqlite")
+        with self.assertRaisesRegex(ValueError, "snapshot write receipt chain invalid"):
+            restored.restore_snapshot(tampered)
 
     def test_receipt_bundle_contains_pre_action_proof(self):
         memory = self.store.remember(

@@ -310,6 +310,34 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
         action="store_true",
         help="Print only a compact human-readable session-start result",
     )
+    session_starts = session_sub.add_parser("starts", help="List persisted session starts")
+    session_starts.add_argument("--session-id")
+    session_starts.add_argument("--scope")
+    session_starts.add_argument("--limit", type=int, default=10)
+    session_starts.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Print only a compact human-readable session-start summary",
+    )
+    session_end = session_sub.add_parser("end", help="Write a persisted session end marker")
+    session_end.add_argument("--session-id", required=True)
+    session_end.add_argument("--actor-id", required=True)
+    session_end.add_argument("--scope")
+    session_end.add_argument("--summary")
+    session_end.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Print only a compact human-readable session-end result",
+    )
+    session_ends = session_sub.add_parser("ends", help="List persisted session ends")
+    session_ends.add_argument("--session-id")
+    session_ends.add_argument("--scope")
+    session_ends.add_argument("--limit", type=int, default=10)
+    session_ends.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Print only a compact human-readable session-end summary",
+    )
     session_checkpoint = session_sub.add_parser("checkpoint", help="Write a persisted session checkpoint")
     session_checkpoint.add_argument("--session-id", required=True)
     session_checkpoint.add_argument("--actor-id", required=True)
@@ -347,6 +375,20 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
         "--summary-only",
         action="store_true",
         help="Print only a compact human-readable session-snapshot summary",
+    )
+    session_prune_snapshots = session_sub.add_parser(
+        "prune-snapshots",
+        help="Soft-delete older session snapshot payloads while keeping the latest retained snapshots",
+    )
+    session_prune_snapshots.add_argument("--session-id", required=True)
+    session_prune_snapshots.add_argument("--actor-id", required=True)
+    session_prune_snapshots.add_argument("--scope")
+    session_prune_snapshots.add_argument("--keep-latest", type=int, default=1)
+    session_prune_snapshots.add_argument("--reason")
+    session_prune_snapshots.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Print only a compact human-readable snapshot-prune summary",
     )
     session_delete_snapshot = session_sub.add_parser(
         "delete-snapshot",
@@ -552,6 +594,11 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
     treeship_publish.add_argument("action_id")
     treeship_publish.add_argument("--command-template")
     treeship_publish.add_argument("--dry-run", action="store_true")
+    treeship_publish.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Print only a compact human-readable Treeship publish summary",
+    )
     treeship_publish.add_argument("--out", type=Path)
     treeship_publish.add_argument("--out-dir", type=Path)
 
@@ -569,6 +616,11 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
     snapshot = sub.add_parser("snapshot", help="Export or verify the full local memory state as a hashed artifact")
     snapshot.add_argument("snapshot_action", nargs="?", choices=["verify"], help="Use 'verify' to check a snapshot file")
     snapshot.add_argument("snapshot_path", nargs="?", type=Path)
+    snapshot.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Print only a compact human-readable snapshot verification summary",
+    )
     snapshot.add_argument("--out", type=Path)
     snapshot.add_argument("--out-dir", type=Path)
 
@@ -1128,6 +1180,43 @@ def main(argv: list[str] | None = None) -> int:
                 else:
                     print_json(result)
                 return 0
+            if args.session_command == "starts":
+                result = build_session_starts_report(
+                    store,
+                    session_id=args.session_id,
+                    scope=args.scope,
+                    limit=args.limit,
+                )
+                if args.summary_only:
+                    print(render_session_starts_summary(result), end="")
+                else:
+                    print_json(result)
+                return 0
+            if args.session_command == "end":
+                result = build_session_end_result(
+                    store,
+                    session_id=args.session_id,
+                    actor_id=args.actor_id,
+                    scope=args.scope,
+                    summary=args.summary,
+                )
+                if args.summary_only:
+                    print(render_session_end_summary(result), end="")
+                else:
+                    print_json(result)
+                return 0
+            if args.session_command == "ends":
+                result = build_session_ends_report(
+                    store,
+                    session_id=args.session_id,
+                    scope=args.scope,
+                    limit=args.limit,
+                )
+                if args.summary_only:
+                    print(render_session_ends_summary(result), end="")
+                else:
+                    print_json(result)
+                return 0
             if args.session_command == "checkpoint":
                 result = build_session_checkpoint_result(
                     store,
@@ -1175,6 +1264,20 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 if args.summary_only:
                     print(render_session_snapshots_summary(result), end="")
+                else:
+                    print_json(result)
+                return 0
+            if args.session_command == "prune-snapshots":
+                result = build_session_snapshot_prune_result(
+                    store,
+                    session_id=args.session_id,
+                    actor_id=args.actor_id,
+                    scope=args.scope,
+                    keep_latest=args.keep_latest,
+                    reason=args.reason,
+                )
+                if args.summary_only:
+                    print(render_session_snapshot_prune_summary(result), end="")
                 else:
                     print_json(result)
                 return 0
@@ -1415,7 +1518,10 @@ def main(argv: list[str] | None = None) -> int:
                 dry_run=args.dry_run,
             )
             result["export"] = compact_export_summary(artifact)
-            print_json(result)
+            if args.summary_only:
+                print(render_treeship_publish_summary(result), end="")
+            else:
+                print_json(result)
             return 0 if result["ok"] else 1
         if args.command == "bundle":
             from .exporter import export_bundle
@@ -1440,7 +1546,10 @@ def main(argv: list[str] | None = None) -> int:
                 snapshot_payload = json.loads(args.snapshot_path.read_text(encoding="utf-8"))
                 result = store.verify_snapshot(snapshot_payload)
                 result["path"] = str(args.snapshot_path)
-                print_json(result)
+                if args.summary_only:
+                    print(render_snapshot_verification_summary(result), end="")
+                else:
+                    print_json(result)
                 return 0 if result["ok"] else 1
             print_json(export_snapshot(store.snapshot(), out=args.out, out_dir=args.out_dir))
             return 0
@@ -4964,6 +5073,76 @@ def render_bundle_verification_summary(result: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def render_snapshot_verification_summary(result: dict[str, Any]) -> str:
+    attestation_artifacts = [
+        str(item.get("artifact_id"))
+        for item in result.get("attestation_artifacts", [])
+        if str(item.get("artifact_id") or "")
+    ]
+    verified_write_receipt_count = int(result.get("verified_write_receipt_count") or 0)
+    write_receipt_count = int(result.get("write_receipt_count") or 0)
+    lines = [
+        "Memory snapshot verify",
+        "",
+        f"Ready: {'yes' if result.get('ok') else 'no'}",
+        f"Snapshot: {result.get('path')}",
+        f"Snapshot hash: {result.get('snapshot_hash')}",
+        f"Computed snapshot hash: {result.get('computed_snapshot_hash')}",
+        f"Memories: {int(result.get('memory_count') or 0)}",
+        f"Events: {int(result.get('event_count') or 0)}",
+        f"Receipts: {int(result.get('receipt_count') or 0)}",
+        f"Write receipts: {write_receipt_count}",
+        f"Write receipt chains: {int(result.get('write_receipt_chain_count') or 0)}",
+        f"Snapshot verify: {'ok' if result.get('ok') else 'failed'}",
+        (
+            "Write receipt verify: "
+            f"{'ok' if result.get('ok') else 'failed'} "
+            f"({verified_write_receipt_count}/{write_receipt_count} verified)"
+        ),
+        f"Verified write transitions: {int(result.get('verified_write_receipt_transition_count') or 0)}",
+        f"Merkle root: {result.get('merkle_root')}",
+        f"Computed Merkle root: {result.get('computed_merkle_root')}",
+        f"Treeship artifacts: {', '.join(attestation_artifacts) if attestation_artifacts else 'none'}",
+        f"Trusted provenance: {'verified' if result.get('ok') else 'not verified'}",
+        "Semantic truth: not guaranteed",
+    ]
+    if result.get("error"):
+        lines.append(f"Snapshot error: {result['error']}")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def render_treeship_publish_summary(result: dict[str, Any]) -> str:
+    export = dict(result.get("export") or {})
+    evidence = dict(export.get("evidence") or {})
+    subject = dict(export.get("subject") or {})
+    command = [str(part) for part in result.get("command") or []]
+    lines = [
+        "Treeship publish",
+        "",
+        f"Ready: {'yes' if result.get('ok') else 'no'}",
+        f"Dry run: {'yes' if result.get('dry_run') else 'no'}",
+        f"Action id: {result.get('action_id')}",
+        f"Statement: {result.get('statement_path')}",
+        f"Statement sha256: {export.get('sha256')}",
+        f"Statement kind: {export.get('kind')}",
+        f"Statement subject: {subject.get('id')}",
+        f"Bundle hash: {evidence.get('bundle_hash')}",
+        f"Bundle verify: {'ok' if evidence.get('bundle_verified') else 'failed'}",
+        f"Merkle root: {evidence.get('merkle_root')}",
+        f"Executable: {result.get('resolved_executable') or result.get('command', ['unknown'])[0]}",
+        f"Command: {' '.join(command) if command else 'unknown'}",
+        f"Trusted provenance: {'verified' if evidence.get('bundle_verified') else 'not verified'}",
+        "Semantic truth: not guaranteed",
+    ]
+    if result.get("stderr"):
+        lines.append(f"CLI stderr: {str(result['stderr']).strip()}")
+    if result.get("error"):
+        lines.append(f"Publish error: {result['error']}")
+    lines.append("")
+    return "\n".join(lines)
+
+
 def restore_snapshot_file(store: MemoryStore, *, snapshot_path: Path) -> dict:
     resolved_snapshot_path = snapshot_path.resolve()
     snapshot_payload = json.loads(resolved_snapshot_path.read_text(encoding="utf-8"))
@@ -6086,6 +6265,33 @@ def build_session_checkpoints_report(
     }
 
 
+def build_session_starts_report(
+    store: MemoryStore,
+    *,
+    session_id: str | None = None,
+    scope: str | None = None,
+    limit: int = 10,
+) -> dict[str, Any]:
+    starts = store.session_starts(session_id=session_id, scope=scope, limit=limit)
+    budget_hint_counts = {"set": 0, "unset": 0}
+    for session_start in starts:
+        token_budget_hint = session_start.get("token_budget_hint")
+        if isinstance(token_budget_hint, dict) and isinstance(token_budget_hint.get("context_budget_tokens"), int):
+            budget_hint_counts["set"] += 1
+        else:
+            budget_hint_counts["unset"] += 1
+    return {
+        "ok": True,
+        "schema": "zerker.session_starts_report.v1",
+        "session_id": session_id,
+        "scope": scope,
+        "limit": limit,
+        "count": len(starts),
+        "budget_hint_counts": budget_hint_counts,
+        "starts": starts,
+    }
+
+
 def build_session_start_result(
     store: MemoryStore,
     *,
@@ -6106,6 +6312,46 @@ def build_session_start_result(
         "ok": True,
         "schema": "zerker.session_start_result.v1",
         "session_start": session_start,
+    }
+
+
+def build_session_end_result(
+    store: MemoryStore,
+    *,
+    session_id: str,
+    actor_id: str,
+    scope: str | None = None,
+    summary: str | None = None,
+) -> dict[str, Any]:
+    session_end = store.end_session(
+        session_id,
+        actor_id=actor_id,
+        scope=scope,
+        summary=summary,
+    )
+    return {
+        "ok": True,
+        "schema": "zerker.session_end_result.v1",
+        "session_end": session_end,
+    }
+
+
+def build_session_ends_report(
+    store: MemoryStore,
+    *,
+    session_id: str | None = None,
+    scope: str | None = None,
+    limit: int = 10,
+) -> dict[str, Any]:
+    ends = store.session_ends(session_id=session_id, scope=scope, limit=limit)
+    return {
+        "ok": True,
+        "schema": "zerker.session_ends_report.v1",
+        "session_id": session_id,
+        "scope": scope,
+        "limit": limit,
+        "count": len(ends),
+        "ends": ends,
     }
 
 
@@ -6167,6 +6413,29 @@ def build_session_snapshot_soft_delete_result(
         "ok": True,
         "schema": "zerker.session_snapshot_soft_delete_result.v1",
         "session_snapshot": session_snapshot,
+    }
+
+
+def build_session_snapshot_prune_result(
+    store: MemoryStore,
+    *,
+    session_id: str,
+    actor_id: str,
+    scope: str | None = None,
+    keep_latest: int = 1,
+    reason: str | None = None,
+) -> dict[str, Any]:
+    prune = store.prune_session_snapshot_payloads(
+        session_id,
+        actor_id=actor_id,
+        scope=scope,
+        keep_latest=keep_latest,
+        reason=reason,
+    )
+    return {
+        "ok": True,
+        "schema": "zerker.session_snapshot_prune_result.v1",
+        "prune": prune,
     }
 
 
@@ -6247,6 +6516,94 @@ def render_session_start_summary(result: dict[str, Any]) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
+def render_session_starts_summary(report: dict[str, Any]) -> str:
+    starts = list(report.get("starts") or [])
+    budget_hint_counts = report.get("budget_hint_counts") or {}
+    latest_root = starts[0]["session_start_merkle_root"] if starts else "none"
+    lines = [
+        "Session starts",
+        "",
+        f"Session filter: {report.get('session_id') or 'any'}",
+        f"Scope filter: {report.get('scope') or 'any'}",
+        f"Returned: {report.get('count', 0)}",
+        f"Budget hints: {int(budget_hint_counts.get('set', 0))} set, {int(budget_hint_counts.get('unset', 0))} unset",
+        f"Latest session start root: {latest_root}",
+        "",
+        "Entries:",
+    ]
+    if not starts:
+        lines.append("  none")
+    for session_start in starts:
+        token_budget_hint = session_start.get("token_budget_hint") if isinstance(session_start.get("token_budget_hint"), dict) else {}
+        context_budget_tokens = token_budget_hint.get("context_budget_tokens")
+        budget_hint_text = (
+            str(context_budget_tokens)
+            if isinstance(context_budget_tokens, int) and not isinstance(context_budget_tokens, bool)
+            else "none"
+        )
+        lines.append(
+            "  "
+            f"{session_start['session_start_id']}: session={session_start['session_id']} "
+            f"scope={session_start.get('scope') or 'any'} created={session_start['created_at']} "
+            f"active={session_start['memory_count']} root={session_start['session_start_merkle_root']} "
+            f"context_budget_tokens={budget_hint_text}"
+        )
+        lines.append(f"    memory types: {_render_session_memory_type_counts(session_start.get('memory_type_summary'))}")
+        if session_start.get("summary"):
+            lines.append(f"    summary: {session_start['summary']}")
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def render_session_end_summary(result: dict[str, Any]) -> str:
+    session_end = result["session_end"]
+    snapshot = session_end.get("snapshot") if isinstance(session_end.get("snapshot"), dict) else {}
+    lines = [
+        "Session ended",
+        "",
+        f"Session end id: {session_end['session_end_id']}",
+        f"Session id: {session_end['session_id']}",
+        f"Scope: {session_end.get('scope') or 'any'}",
+        f"Actor: {session_end['actor_id']}",
+        f"Created: {session_end['created_at']}",
+        f"Active memories: {session_end['memory_count']}",
+        f"Session end root: {session_end['session_end_merkle_root']}",
+        f"Snapshot hash: {snapshot.get('snapshot_hash') or 'unknown'}",
+        f"Snapshot root: {snapshot.get('snapshot_merkle_root') or 'unknown'}",
+        f"Memory types: {_render_session_memory_type_counts(session_end.get('memory_type_summary'))}",
+    ]
+    if session_end.get("summary"):
+        lines.append(f"Summary: {session_end['summary']}")
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def render_session_ends_summary(report: dict[str, Any]) -> str:
+    ends = list(report.get("ends") or [])
+    latest_root = ends[0]["session_end_merkle_root"] if ends else "none"
+    lines = [
+        "Session ends",
+        "",
+        f"Session filter: {report.get('session_id') or 'any'}",
+        f"Scope filter: {report.get('scope') or 'any'}",
+        f"Returned: {report.get('count', 0)}",
+        f"Latest session end root: {latest_root}",
+        "",
+        "Entries:",
+    ]
+    if not ends:
+        lines.append("  none")
+    for session_end in ends:
+        lines.append(
+            "  "
+            f"{session_end['session_end_id']}: session={session_end['session_id']} "
+            f"scope={session_end.get('scope') or 'any'} created={session_end['created_at']} "
+            f"active={session_end['memory_count']} root={session_end['session_end_merkle_root']}"
+        )
+        lines.append(f"    memory types: {_render_session_memory_type_counts(session_end.get('memory_type_summary'))}")
+        if session_end.get("summary"):
+            lines.append(f"    summary: {session_end['summary']}")
+    return "\n".join(lines).rstrip() + "\n"
+
+
 def render_session_snapshot_summary(result: dict[str, Any]) -> str:
     session_snapshot = result["session_snapshot"]
     lines = [
@@ -6288,6 +6645,31 @@ def render_session_snapshot_soft_delete_summary(result: dict[str, Any]) -> str:
     ]
     if session_snapshot.get("summary"):
         lines.append(f"Summary: {session_snapshot['summary']}")
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def render_session_snapshot_prune_summary(result: dict[str, Any]) -> str:
+    prune = result["prune"]
+    kept_snapshot_ids = ", ".join(prune.get("kept_snapshot_ids", [])) or "none"
+    already_soft_deleted_snapshot_ids = ", ".join(prune.get("already_soft_deleted_snapshot_ids", [])) or "none"
+    pruned_snapshot_ids = ", ".join(prune.get("pruned_snapshot_ids", [])) or "none"
+    lines = [
+        "Session snapshot retention prune",
+        "",
+        f"Session id: {prune['session_id']}",
+        f"Scope: {prune.get('scope') or 'any'}",
+        f"Actor: {prune['actor_id']}",
+        f"Keep latest: {prune['keep_latest']}",
+        f"Reason: {prune.get('reason') or 'unspecified'}",
+        f"Available before: {prune['available_before']}",
+        f"Available after: {prune['available_after']}",
+        f"Already soft-deleted: {prune['soft_deleted_before']}",
+        f"Soft-deleted after: {prune['soft_deleted_after']}",
+        f"Pruned: {len(prune.get('pruned_snapshot_ids', []))}",
+        f"Kept snapshot ids: {kept_snapshot_ids}",
+        f"Pruned snapshot ids: {pruned_snapshot_ids}",
+        f"Previously soft-deleted snapshot ids: {already_soft_deleted_snapshot_ids}",
+    ]
     return "\n".join(lines).rstrip() + "\n"
 
 

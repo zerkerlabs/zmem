@@ -1,3 +1,622 @@
+## 2026-06-25 - Lifecycle Source Event Identity Bound Into Persisted Receipts
+
+Shipped:
+
+- Stayed strictly on the L0 trust-ledger lane and updated [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/store.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/store.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_store.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_store.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/trust-ledger.log.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/trust-ledger.log.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md), and this build log.
+- Landed one narrow trust slice only: persisted lifecycle receipts for session start/end/checkpoint/snapshot now echo the durable source-event identity and hash inputs they were derived from, and `verify_lifecycle_receipt(...)` now recomputes that embedded event hash during verification.
+- The concrete trust gain is receipt-facing and still local-first: a persisted lifecycle receipt now carries `event_schema`, `hash_alg`, `payload_hash`, `prev_event_hash`, `actor_id`, `actor_uri`, and `created_at` inside `treeship_statement.source.event`, so local verification can prove the receipt still matches the original durable event hash instead of only checking that `actor_id` and `actor_uri` agree with each other.
+- Kept the slice surgical: no lifecycle write semantics changed, no new event type or table was added, no snapshot artifact format changed, and no generated `.zerker/launch-proof/` artifact was touched.
+
+Verification:
+
+- `python3 -m unittest tests.test_store.MemoryStoreTest.test_verify_lifecycle_receipt_accepts_persisted_session_snapshot_receipt tests.test_store.MemoryStoreTest.test_verify_lifecycle_receipt_reports_tampered_actor_identity tests.test_store.MemoryStoreTest.test_verify_lifecycle_receipt_reports_tampered_source_event_identity -q` -> passed (`Ran 3 tests`)
+- `python3 -m unittest tests.test_snapshot.SnapshotTest.test_verify_lifecycle_receipt_accepts_restore_snapshot_receipt_with_source_snapshot tests.test_snapshot.SnapshotTest.test_verify_lifecycle_receipt_reports_tampered_restore_receipt -q` -> passed (`Ran 2 tests`)
+- `python3 -m unittest tests.test_store -q` -> passed (`Ran 224 tests`)
+- `python3 -m unittest tests.test_snapshot -q` -> passed (`Ran 25 tests`)
+- `python3 -m zerker_memory eval` -> passed (`11/11`)
+- `python3 scripts/release_smoke.py --summary-only` -> passed
+- `python3 -m zerker_memory status --summary-only` -> passed
+- `git diff --check -- zerker_memory/store.py tests/test_store.py docs/CONTINUOUS_BUILD/trust-ledger.log.md docs/SWARM_OPERATION_TRACKER.md docs/CURRENT_STATE.md docs/BUILD_LOG.md` -> passed
+
+Blockers:
+
+- `restore_snapshot()` still does not append a durable lifecycle event, so rollback receipts remain source-snapshot-linked rather than event-hash-linked.
+
+Next:
+
+- Add one bounded read-only lifecycle receipt summary/report that surfaces the new source-event identity block for persisted session lifecycle receipts without widening into write-path or Treeship-hosted changes.
+
+## 2026-06-25 - Runtime Temporal Id Groups Forwarded
+
+Shipped:
+
+- Stayed strictly on the L1 temporal-kg lane and updated [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/runner.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/runner.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_runner.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_runner.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/temporal-kg.log.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/temporal-kg.log.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md), and this build log.
+- Landed one narrow temporal slice only: `zerker.memory_context.v1` now preserves receipt-side `future_memory_ids`, `learned_memory_ids`, and `unlearned_memory_ids` from `retrieval.temporal`, closing a small runtime-context gap without changing temporal resolution, query surfaces, or schema.
+- The concrete bi-temporal gain is runtime-side interpretability and still local-first: downstream consumers no longer need to reconstruct every non-current state from subset graphs alone, and the runtime contract now keeps the same top-level temporal id groups that inject receipts already stored.
+- The live fixture proves a quarantined `Release freeze owner is Mallory.` candidate stays runtime-visible as `learned` while a future-dated `Roadmap owner is Priya.` candidate stays runtime-visible as `future`; a second receipt-level passthrough fixture locks the same additive runtime field for `unlearned_memory_ids` when that metadata is present upstream.
+- Kept the slice surgical: no `zerker_memory/store.py` change, no SQLite migration, no retrieval candidate-set change, no CLI/release-sensitive path change, and no generated `.zerker/launch-proof/` artifact was touched.
+
+Verification:
+
+- `python3 -m unittest tests.test_runner.RunnerTest.test_build_context_preserves_learned_and_future_temporal_id_groups tests.test_runner.RunnerTest.test_build_context_preserves_unlearned_temporal_id_groups_when_present -q` -> passed (`Ran 2 tests`)
+- `python3 -m unittest tests.test_store -q` -> passed (`Ran 223 tests`)
+- `python3 -m unittest tests.test_runner -q` -> passed (`Ran 90 tests`)
+- `python3 -m zerker_memory eval` -> passed (`11/11`)
+- `git diff --check -- zerker_memory/runner.py tests/test_runner.py` -> passed
+
+Blockers:
+
+- Ordinary inject receipts still do not surface rejected/revoked/forgotten envelopes because retrieval excludes non-active memories by design, so `unlearned_memory_ids` remains a forward-compatible runtime field until a dedicated non-active receipt or query consumer exists.
+
+Next:
+
+- Only if a real runtime or receipt consumer needs it, add one similarly bounded explicit unlearned-envelope subset or non-active receipt surface before widening into schema or typed-edge work.
+
+## 2026-06-25 - History Abstention Ordering Receipts Landed
+
+Shipped:
+
+- Stayed strictly on the L3 hybrid-retrieval lane and updated [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/store.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/store.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/runner.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/runner.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_store.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_store.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_runner.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_runner.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/hybrid-retrieval.log.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/hybrid-retrieval.log.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md), and this build log.
+- Landed one narrow retrieval slice only: `retrieval.temporal.history_ordering` now applies to `history_conflict_abstained_v1`, so winnerless cross-provenance history contradictions emit a deterministic `history_conflict_abstention_rank` view without changing candidate selection, packing, or `MemoryStore.search()` output shape.
+- The concrete retrieval gain is explainability for abstained history contradictions and still local-first: receipts now surface `source=temporal_history_conflict_abstention`, `reason` aligned with the wrapped history query, empty `selected_history_rankings`, and additive `considered_history_rankings`, which keeps abstained history siblings visible in stored receipts and forwarded `zerker.memory_context.v1`.
+- Kept the slice surgical: no SQLite schema changed, no CLI/release-sensitive path changed, no Phase 1 launch surface changed, and no generated `.zerker/launch-proof/` artifact was touched.
+
+Verification:
+
+- `python3 -m unittest tests.test_store.MemoryStoreTest.test_temporal_wrapped_relation_history_abstains_on_cross_provenance_conflict -q` -> passed (`Ran 1 test`)
+- `python3 -m unittest tests.test_runner.RunnerTest.test_temporal_wrapped_relation_history_context_abstains_on_cross_provenance_conflict -q` -> passed (`Ran 1 test`)
+- `python3 -m unittest tests.test_store -q` -> passed (`Ran 223 tests`)
+- `python3 -m unittest tests.test_policy -q` -> passed (`Ran 7 tests`)
+- `python3 -m unittest tests.test_runner -q` -> passed (`Ran 88 tests`)
+- `python3 -m zerker_memory eval` -> passed (`11/11`)
+
+Blockers:
+
+- This closes `history_conflict_abstained_v1` only; selected history strategies still do not expose one dedicated history-ordering view for selected versus omitted siblings.
+
+Next:
+
+- Extend additive `history_ordering` metadata to selected history strategies so selected stale/current anchors and omitted siblings share one receipt-visible ordering contract without changing retrieval or packing behavior.
+
+## 2026-06-25 - Session Snapshot Prune Contract Landed
+
+Shipped:
+
+- Stayed strictly on the L2 lifecycle-compaction lane and updated [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/store.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/store.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/cli.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/cli.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_store.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_store.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_cli_onboarding.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_cli_onboarding.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/lifecycle-compaction.log.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/lifecycle-compaction.log.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md), and this build log.
+- Landed one narrow lifecycle slice only: `MemoryStore.prune_session_snapshot_payloads(...)` now soft-deletes older available snapshot payloads for one session while keeping the latest `N`, and `zmem session prune-snapshots` now exposes the same bounded retention contract through JSON or `--summary-only`.
+- The concrete lifecycle gain is retention automation that still preserves the existing proof surface: pruning reuses `soft_delete_session_snapshot_payload(...)` for every deleted payload, skips already-soft-deleted rows, keeps the latest available payloads untouched, and reports kept/pruned ids plus before/after available vs soft-deleted counts without widening into restore, handoff, checkpoint, start/end, or runner behavior.
+- Kept the slice surgical: no lifecycle write receipt schema changed, no SQLite migration changed, no restore semantics changed, no runner context contract changed, and no generated `.zerker/launch-proof/` artifact was touched.
+
+Verification:
+
+- `python3 -m unittest tests.test_store.MemoryStoreTest.test_prune_session_snapshot_payloads_soft_deletes_older_available_snapshots tests.test_store.MemoryStoreTest.test_prune_session_snapshot_payloads_skips_already_soft_deleted_entries tests.test_cli_onboarding.CliOnboardingTest.test_build_parser_parses_session_prune_snapshots_summary_only tests.test_cli_onboarding.CliOnboardingTest.test_session_snapshot_prune_summary_surfaces_kept_and_pruned_counts -q` -> passed (`Ran 4 tests`)
+- `python3 -m unittest tests.test_store.MemoryStoreTest.test_soft_delete_session_snapshot_payload_preserves_receipt_visible_summary tests.test_store.MemoryStoreTest.test_session_snapshots_reports_soft_deleted_payload_without_returning_snapshot_json tests.test_store.MemoryStoreTest.test_prune_session_snapshot_payloads_soft_deletes_older_available_snapshots tests.test_store.MemoryStoreTest.test_prune_session_snapshot_payloads_skips_already_soft_deleted_entries tests.test_cli_onboarding.CliOnboardingTest.test_session_snapshots_summary_surfaces_soft_deleted_retention_state tests.test_cli_onboarding.CliOnboardingTest.test_session_snapshot_soft_delete_summary_surfaces_retention_roots tests.test_cli_onboarding.CliOnboardingTest.test_session_snapshot_prune_summary_surfaces_kept_and_pruned_counts tests.test_runner.RunnerTest.test_build_context_separates_instructional_and_recall_memory_and_surfaces_budget_receipts -q` -> passed (`Ran 8 tests`)
+- `python3 -m unittest tests.test_cli_onboarding tests.test_store tests.test_runner -q` -> failed only on unrelated temporal assertions in `tests.test_store.MemoryStoreTest.test_query_at_unlearned_history_surfaces_forgotten_resolution_reason` and `tests.test_store.MemoryStoreTest.test_query_at_unlearned_history_surfaces_deprecated_resolution_reason_for_rejected_memory`
+- `python3 -m zerker_memory eval` -> passed (`11/11`)
+- `git diff --check -- zerker_memory/store.py zerker_memory/cli.py tests/test_store.py tests/test_cli_onboarding.py` -> passed
+
+Blockers:
+
+- The required broad trio suite is currently blocked by the unrelated L1 temporal failures above, so this lifecycle lane cannot yet claim a fully green `tests.test_cli_onboarding tests.test_store tests.test_runner` sweep from the present dirty tree.
+- Lifecycle inspection/retention is still split across separate start/end/checkpoint/snapshot/prune surfaces instead of one aggregated timeline or compact retention dashboard.
+
+Next:
+
+- Add one bounded aggregated lifecycle timeline or retention-status summary on top of the existing session surfaces without changing receipt semantics or restore behavior.
+
+## 2026-06-25 - Receipt Actor Identity Verification Hardened
+
+Shipped:
+
+- Stayed strictly on the L0 trust-ledger lane and updated [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/store.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/store.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_store.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_store.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/trust-ledger.log.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/trust-ledger.log.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md), and this build log.
+- Landed one narrow verifier-only trust slice: local proof verification now binds existing mutation receipts to the embedded source event actor and binds lifecycle receipts to the surfaced actor URI, so a recomputed receipt cannot silently swap actor identity and still verify.
+- The concrete trust gain is receipt-facing and still local-first: per-memory mutation receipts now reject actor rewrites that disagree with the durable event actor, while lifecycle receipts now reject actor ids that no longer map to the visible actor URI. Both contracts stay explicit that provenance/integrity are verified but semantic truth is not guaranteed.
+- Kept the slice surgical: no receipt schema changed, no write path changed, no snapshot artifact changed, no CLI summary surface changed, and no generated `.zerker/launch-proof/` artifact was touched.
+
+Verification:
+
+- `python3 -m unittest tests.test_store.MemoryStoreTest.test_verify_memory_write_receipt_chain_reports_tampered_mutation_actor_identity tests.test_store.MemoryStoreTest.test_verify_memory_write_receipt_chain_accepts_attested_promote_chain tests.test_store.MemoryStoreTest.test_verify_memory_write_receipt_chain_reports_tampered_prior_root tests.test_store.MemoryStoreTest.test_verify_lifecycle_receipt_accepts_persisted_session_snapshot_receipt tests.test_store.MemoryStoreTest.test_verify_lifecycle_receipt_reports_tampered_actor_identity -q` -> passed (`Ran 5 tests`)
+- `python3 -m unittest tests.test_snapshot.SnapshotTest.test_verify_lifecycle_receipt_accepts_restore_snapshot_receipt_with_source_snapshot tests.test_snapshot.SnapshotTest.test_verify_lifecycle_receipt_reports_tampered_restore_receipt -q` -> passed (`Ran 2 tests`)
+- `python3 -m unittest tests.test_store -q` -> passed (`Ran 223 tests`)
+- `python3 -m unittest tests.test_snapshot -q` -> passed (`Ran 25 tests`)
+- `python3 -m zerker_memory eval` -> passed (`11/11`)
+- `python3 scripts/release_smoke.py --summary-only` -> passed
+- `python3 -m zerker_memory status --summary-only` -> passed
+- `git diff --check -- zerker_memory/store.py tests/test_store.py` -> passed
+
+Blockers:
+
+- Lifecycle receipts still do not carry a durable source-event `actor_id`, so a coherently rewritten lifecycle `actor_id`+`actor_uri` pair would need an additive source-identity field rather than verifier-only checks.
+
+Next:
+
+- Safest follow-on slice is one additive lifecycle source-identity echo or equivalent read-only event identity surface, without widening into write-path changes or a Treeship-hosted dependency.
+
+## 2026-06-25 - Consolidation Retry Guidance Landed
+
+Shipped:
+
+- Stayed strictly on the L4 consolidation lane and updated [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/consolidation_unwind.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/consolidation_unwind.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_consolidation_unwind.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_consolidation_unwind.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONSOLIDATION_UNWIND_FIXTURE.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONSOLIDATION_UNWIND_FIXTURE.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/consolidation.log.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/consolidation.log.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md), and this build log.
+- Landed one narrow consolidation slice only: the new `consolidation_retry_guidance(...)` helper turns the existing unwind-plan and job-audit data into a read-only `zerker.consolidation_retry_guidance.v1` payload for local rematerialization triage.
+- The concrete local-first gain is safer summary repair guidance, not wider store ownership: operators can now see which impacted summaries are ready to rematerialize now, which must wait on dependent-summary or nested-child repair, and which remain audit-blocked by mismatch, unexpected summary state, or cycles.
+- The helper also closes one real ledger gap: when a completed job is missing its latest summary record entirely, retry guidance can still recover that direct missing-summary step from the local audit ledger even if no summary-ledger row exists yet.
+- Kept the slice surgical: no `zerker_memory/store.py` changed, no benchmark harness behavior changed, no SQLite schema changed, no daemon loop changed, and no generated `.zerker/launch-proof/` artifact was touched.
+
+Verification:
+
+- `python3 -m unittest tests.test_consolidation_unwind -q` -> passed (`Ran 6 tests`)
+- `python3 -m unittest tests.test_consolidation tests.test_consolidation_unwind -q` -> passed (`Ran 25 tests`)
+- `git diff --check -- zerker_memory/consolidation_unwind.py tests/test_consolidation_unwind.py docs/CONSOLIDATION_UNWIND_FIXTURE.md` -> passed
+
+Blockers:
+
+- The retry guidance is still fixture-local and is not yet exposed through the live store or CLI because `zerker_memory/store.py`, `zerker_memory/bench.py`, `tests/test_store.py`, and `tests/test_bench.py` remain overlapping dirty surfaces in this workspace.
+
+Next:
+
+- Expose the existing unwind-plus-retry guidance through a read-only store or CLI surface once those overlapping files are safe to touch, or add fixture-backed dependency-group guidance for batch rematerialization without widening into store or benchmark behavior.
+
+## 2026-06-25 - CLI Source-Scheme And Attestation Hints Landed
+
+Shipped:
+
+- Stayed strictly on the L5 identity-workspaces lane and updated [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/cli.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/cli.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_workspaces.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_workspaces.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/identity-workspaces.log.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/identity-workspaces.log.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md), and this build log.
+- Landed one narrow identity slice only: the existing `zmem ws sources --summary-only` surface now renders read-only `session_scheme`, `source_scheme`, and Treeship attestation status text on top of the already-shipped source identity and artifact lineage hints.
+- The concrete local-first gain is terminal-side operator clarity without widening the source model: connected-agent lines now show latest attestation status beside artifact lineage; recent-source rows now show both URI schemes plus attestation status; and claim-conflict claim lines now expose the same URI-scheme and attestation text per competing claim.
+- Kept the slice surgical: no `workspace_source_report(...)` payload changed, no `zerker_memory/store.py` changed, no SQLite schema changed, no memory write path changed, and no generated `.zerker/launch-proof/` artifact was touched.
+
+Verification:
+
+- `python3 -m unittest tests.test_workspaces.WorkspaceRegistryTest.test_workspace_sources_cli_summary_surfaces_unresolved_exact_tie tests.test_workspaces.WorkspaceRegistryTest.test_workspace_sources_cli_summary_surfaces_resolution_basis_for_resolved_conflict tests.test_workspaces.WorkspaceRegistryTest.test_workspace_sources_cli_summary_surfaces_recent_source_identity_and_treeship_artifact -q` -> passed (`Ran 3 tests`)
+- `python3 -m unittest tests.test_workspaces -q` -> passed (`Ran 10 tests`)
+- `git diff --check -- zerker_memory/cli.py tests/test_workspaces.py` -> passed
+- Required `python3 -m unittest tests.test_store tests.test_cli_onboarding -q` -> failed on unrelated in-flight workspace breakage: missing `MemoryStore.prune_session_snapshot_payloads`, missing `build_session_snapshot_prune_result` import in `tests.test_cli_onboarding`, and two pre-existing temporal assertion failures in `tests.test_store`
+- `python3 -m zerker_memory eval` -> passed (`11/11`)
+
+Blockers:
+
+- Agent identity is still inferred from actor/session URIs rather than persisted as a first-class key.
+- The required broad CLI/store suite is currently blocked by unrelated pre-existing lifecycle/temporal failures outside this L5 render slice.
+
+Next:
+
+- Add one bounded read-only identity anchor or compact conflict-rule explainer on top of the existing summary/dashboard surfaces once the unrelated broad-suite breakage is cleared or explicitly left out of scope.
+
+## 2026-06-25 - Abstained Current Ordering Receipts Landed
+
+Shipped:
+
+- Stayed strictly on the L3 hybrid-retrieval lane and updated [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/store.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/store.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_store.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_store.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_runner.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_runner.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/hybrid-retrieval.log.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/hybrid-retrieval.log.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md), and this build log.
+- Landed one narrow retrieval slice only: `retrieval.temporal.current_ordering` now applies to `current_conflict_abstained_v1` in addition to the already-shipped direct-current paths, so abstained current contradictions emit a deterministic `current_conflict_abstention_rank` view without changing candidate selection or packing.
+- The concrete retrieval gain is explainability for winnerless contradictions and still local-first: direct-current abstentions now surface `source=temporal_current_conflict_abstention`, `reason=lexical-current-conflict-abstained`, empty `selected_current_rankings`, and additive `considered_current_rankings`, which keeps abstained siblings visible in stored receipts and forwarded `zerker.memory_context.v1`.
+- Kept the slice surgical: no `MemoryStore.search()` return shape changed, no SQLite schema changed, no CLI/release-sensitive path changed, no Phase 1 launch surface changed, and no generated `.zerker/launch-proof/` artifact was touched.
+
+Verification:
+
+- `python3 -m unittest tests.test_store.MemoryStoreTest.test_same_subject_current_conflict_abstains_when_cross_provenance_tie_stays_unresolved tests.test_runner.RunnerTest.test_build_context_preserves_current_conflict_abstention_without_injected_memories -q` -> passed (`Ran 2 tests`)
+- `git diff --check -- zerker_memory/store.py tests/test_store.py tests/test_runner.py` -> passed
+- `python3 -m unittest tests.test_store -q` -> passed (`Ran 218 tests`)
+- `python3 -m unittest tests.test_policy -q` -> passed (`Ran 7 tests`)
+- `python3 -m unittest tests.test_runner -q` -> passed (`Ran 88 tests`)
+- `python3 -m zerker_memory eval` -> passed (`11/11`)
+
+Blockers:
+
+- Direct-current abstention ordering is now explicit, but history-side abstentions still do not expose an equivalent considered-order receipt view.
+- `history_conflict_abstained_v1` therefore still requires reconstructing considered order from `conflict_sets` plus temporal envelopes.
+
+Next:
+
+- Add additive history-side abstention ordering metadata for `history_conflict_abstained_v1` without widening selected-history behavior, packing policy, or hosted-provider dependencies.
+
+## 2026-06-25 - Snapshot Verify Proof Summary Landed
+
+Shipped:
+
+- Stayed strictly on the L0 trust-ledger lane and updated [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/store.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/store.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/cli.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/cli.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_snapshot.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_snapshot.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_cli_onboarding.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_cli_onboarding.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/trust-ledger.log.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/trust-ledger.log.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md), and this build log.
+- Landed one narrow trust-ledger slice only: `verify_snapshot(...)` now keeps an additive `attestation_artifacts` list from already-verified exported write receipts, and `zmem snapshot verify <snapshot> --summary-only` now renders a compact proof-facing summary on top of the existing local verifier.
+- The concrete trust gain is export-facing and still local-first: operators can now inspect snapshot path/hash, memory/event/receipt counts, write-receipt chain verification counts, recomputed Merkle roots, optional Treeship artifact ids from embedded write receipts, `Trusted provenance: verified` / `not verified`, and explicit `Semantic truth: not guaranteed` wording without opening raw JSON or installing Treeship.
+- Kept the slice surgical: no snapshot schema changed, no receipt schema changed, no write path changed, no restore semantics changed, and no generated `.zerker/launch-proof/` artifact was touched.
+
+Verification:
+
+- `python3 -m unittest tests.test_snapshot.SnapshotTest.test_verify_snapshot_accepts_valid_snapshot tests.test_snapshot.SnapshotTest.test_verify_snapshot_surfaces_attested_write_receipt_artifacts tests.test_snapshot.SnapshotTest.test_verify_snapshot_rejects_tampered_write_receipt_chain -q` -> passed (`Ran 3 tests`)
+- `python3 -m unittest tests.test_cli_onboarding.CliOnboardingTest.test_snapshot_parser_accepts_verify_summary_only tests.test_cli_onboarding.CliOnboardingTest.test_snapshot_verify_summary_only_surfaces_verified_export_provenance -q` -> passed (`Ran 2 tests`)
+- `python3 -m unittest tests.test_snapshot -q` -> passed (`Ran 25 tests`)
+- `python3 -m unittest tests.test_store -q` -> passed (`Ran 218 tests`)
+- `python3 -m zerker_memory eval` -> passed (`11/11`)
+- `python3 scripts/release_smoke.py --summary-only` -> passed
+- `python3 -m zerker_memory status --summary-only` -> passed
+- `git diff --check -- zerker_memory/store.py zerker_memory/cli.py tests/test_snapshot.py tests/test_cli_onboarding.py docs/CONTINUOUS_BUILD/trust-ledger.log.md docs/SWARM_OPERATION_TRACKER.md docs/CURRENT_STATE.md docs/BUILD_LOG.md` -> passed
+
+Blockers:
+
+- Snapshot verify summary parity is now closed.
+- Lifecycle receipts still only expose `treeship_artifact_id: null`, so there is still no equivalent non-null artifact verification path on lifecycle receipts themselves.
+
+Next:
+
+- Only if lifecycle or export receipts begin carrying non-null optional Treeship artifact ids, extend the same bounded local verifier-plus-summary contract there without widening into hosted Treeship dependency or write-path changes.
+
+## 2026-06-25 - Unlearned History Envelope Reasons Landed
+
+Shipped:
+
+- Stayed strictly on the L1 temporal-kg lane and updated [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/store.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/store.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_store.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_store.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/temporal-kg.log.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/temporal-kg.log.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md), and this build log.
+- Landed one narrow temporal slice only: `query_at(...)` now gives existing unlearned history envelopes an explicit additive explanation via `temporal_resolution_kind=unlearned` and status-specific `temporal_resolution_reasons`, reusing the already-derived `status_at_query` and `unlearned_at` fields.
+- The concrete bi-temporal gain is history interpretation and still schema-free: a revoked `Status page owner is Alice.` fact now stays current before revocation and then becomes an unlearned history envelope with `temporal_resolution_reasons=["revoked"]`; a forgotten `Temporary routing snack is ramen.` fact now becomes an unlearned history envelope with `temporal_resolution_reasons=["forgotten"]`.
+- Kept the slice surgical: no SQLite schema changed, no retrieval candidate set changed, no inject receipt shape changed, no `zerker.memory_context.v1` runtime payload changed, and no generated `.zerker/launch-proof/` artifact was touched.
+
+Verification:
+
+- `python3 -m unittest tests.test_store.MemoryStoreTest.test_query_at_unlearned_history_surfaces_revoked_resolution_reason tests.test_store.MemoryStoreTest.test_query_at_unlearned_history_surfaces_forgotten_resolution_reason -q` -> passed (`Ran 2 tests`)
+- `python3 -m unittest tests.test_store -q` -> passed (`Ran 218 tests`)
+- `python3 -m unittest tests.test_runner -q` -> passed (`Ran 88 tests`)
+- `python3 -m zerker_memory eval` -> passed (`11/11`)
+
+Blockers:
+
+- Retrieval intentionally excludes deprecated/revoked/forgotten memories, so inject receipts and runtime context still do not surface unlearned envelopes.
+- Typed graph edges for revocation/forgetting still do not exist; this remains a read-only explanation improvement over the existing local event timeline.
+
+Next:
+
+- Add one bounded deprecated/rejected unlearned-history fixture if broader status coverage is needed, or stop before widening unlearned metadata into retrieval/receipt paths.
+
+## 2026-06-25 - Session Start/End Read-Only Reports Landed
+
+Shipped:
+
+- Stayed strictly on the L2 lifecycle-compaction lane and updated [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/store.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/store.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/cli.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/cli.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_store.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_store.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_cli_onboarding.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_cli_onboarding.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/lifecycle-compaction.log.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/lifecycle-compaction.log.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md), and this build log.
+- Landed one narrow lifecycle slice only: `MemoryStore.session_starts(...)` and `session_ends(...)` now read back persisted `SESSION_STARTED` / `SESSION_ENDED` events, while `zmem session starts` and `zmem session ends` expose those persisted lifecycle rows through JSON or `--summary-only`.
+- The concrete lifecycle gain is later inspection rather than new mutation behavior: operators can now review session start/end roots, memory-type counts, summaries, and receipt ids after the write moment, and start reports preserve `context_budget_tokens` hint visibility so budget declarations survive context-boundary handoff review.
+- Kept the slice surgical: no lifecycle write semantics changed, no checkpoint/snapshot retention semantics changed, no restore/handoff behavior changed, no SQLite schema changed, and no generated `.zerker/launch-proof/` artifact was touched.
+
+Verification:
+
+- `python3 -m unittest tests.test_store.MemoryStoreTest.test_session_starts_reads_back_persisted_start_events tests.test_store.MemoryStoreTest.test_session_ends_reads_back_persisted_end_events tests.test_cli_onboarding.CliOnboardingTest.test_build_parser_parses_session_starts_summary_only tests.test_cli_onboarding.CliOnboardingTest.test_build_parser_parses_session_ends_summary_only tests.test_cli_onboarding.CliOnboardingTest.test_session_starts_summary_surfaces_latest_start_root_and_budget_hints tests.test_cli_onboarding.CliOnboardingTest.test_session_ends_summary_surfaces_latest_end_root_and_counts -q` -> passed (`Ran 6 tests`)
+- `python3 -m unittest tests.test_cli_onboarding.CliOnboardingTest.test_build_parser_parses_session_start_summary_only tests.test_cli_onboarding.CliOnboardingTest.test_build_parser_parses_session_starts_summary_only tests.test_cli_onboarding.CliOnboardingTest.test_session_start_summary_surfaces_written_start_root_and_budget_hint tests.test_cli_onboarding.CliOnboardingTest.test_session_starts_summary_surfaces_latest_start_root_and_budget_hints tests.test_cli_onboarding.CliOnboardingTest.test_build_parser_parses_session_end_summary_only tests.test_cli_onboarding.CliOnboardingTest.test_build_parser_parses_session_ends_summary_only tests.test_cli_onboarding.CliOnboardingTest.test_session_end_summary_surfaces_written_end_root_and_counts tests.test_cli_onboarding.CliOnboardingTest.test_session_ends_summary_surfaces_latest_end_root_and_counts tests.test_store.MemoryStoreTest.test_start_session_emits_receipt_visible_roots_and_budget_hint tests.test_store.MemoryStoreTest.test_session_starts_reads_back_persisted_start_events tests.test_store.MemoryStoreTest.test_end_session_emits_receipt_visible_roots_and_memory_type_summary tests.test_store.MemoryStoreTest.test_session_ends_reads_back_persisted_end_events tests.test_store.MemoryStoreTest.test_checkpoint_session_emits_receipt_visible_roots_and_memory_type_summary tests.test_store.MemoryStoreTest.test_session_checkpoints_reads_back_persisted_checkpoint_events tests.test_store.MemoryStoreTest.test_snapshot_session_persists_snapshot_payload_and_receipt_visible_roots tests.test_store.MemoryStoreTest.test_session_snapshots_reads_back_persisted_snapshot_events_and_payloads tests.test_runner.RunnerTest.test_build_context_separates_instructional_and_recall_memory_and_surfaces_budget_receipts -q` -> passed (`Ran 17 tests`)
+- `python3 -m unittest tests.test_cli_onboarding tests.test_store tests.test_runner -q` -> passed (`Ran 438 tests`)
+- `python3 -m zerker_memory eval` -> passed (`11/11`)
+
+Blockers:
+
+- Automatic retention-pruning policy still does not exist beyond explicit snapshot soft-delete.
+- Lifecycle inspection is still split across separate start/end/checkpoint/snapshot commands rather than one aggregated timeline.
+
+Next:
+
+- Add one bounded retention-pruning policy or summary without widening restore UX or changing lifecycle write semantics.
+
+## 2026-06-25 - Non-History Current Ordering Receipts Landed
+
+Shipped:
+
+- Stayed strictly on the L3 hybrid-retrieval lane and updated [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/store.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/store.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_store.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_store.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_runner.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_runner.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/hybrid-retrieval.log.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/hybrid-retrieval.log.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md), and this build log.
+- Landed one narrow retrieval slice only: `retrieval.temporal.current_ordering` now covers `current_update_preferred_v1` and `current_conflict_resolved_v1` in addition to `current_only_v1`, with additive `considered_current_rankings` so selected winners plus excluded current siblings remain receipt-visible before packing.
+- The concrete local-first gain is explainability rather than ranking churn: update-preferred receipts now state explicit update-anchor preference via `basis=current_update_preference_rank`, resolved-current-conflict receipts now state deterministic contradiction resolution via `basis=current_conflict_resolution_rank`, and the same metadata survives into runtime context without changing `MemoryStore.search()` output shape.
+- Kept the slice surgical: no packing heuristic changed, no SQLite schema changed, no CLI or release-sensitive path changed, no Phase 1 launch-proof or public-site surface changed, and no generated `.zerker/launch-proof/` artifact was touched.
+
+Verification:
+
+- `python3 -m unittest tests.test_store.MemoryStoreTest.test_same_subject_current_conflict_prefers_higher_authority tests.test_store.MemoryStoreTest.test_current_target_query_prefers_update_fact_over_release_note_decoy tests.test_runner.RunnerTest.test_build_context_preserves_dropped_current_conflict_subset tests.test_runner.RunnerTest.test_current_target_context_prefers_update_fact_over_release_note_decoy -q` -> passed (`Ran 4 tests`)
+- `python3 -m unittest tests.test_store -q` -> passed (`Ran 214 tests`)
+- `python3 -m unittest tests.test_policy -q` -> passed (`Ran 7 tests`)
+- `python3 -m unittest tests.test_runner -q` -> passed (`Ran 88 tests`)
+- `python3 -m zerker_memory eval` -> passed (`11/11`)
+- `git diff --check -- zerker_memory/store.py tests/test_store.py tests/test_runner.py` -> passed
+
+Blockers:
+
+- `current_conflict_abstained_v1` still does not publish a matching `current_ordering` view for winnerless contradictions, so abstained current sets still require `conflict_sets` plus temporal envelopes to reconstruct considered order.
+- This slice only improves receipt/runtime explainability; it does not change retrieval ranking, packing, or hosted-provider behavior.
+
+Next:
+
+- Extend the same additive `current_ordering` contract to `current_conflict_abstained_v1` so winnerless current conflicts keep considered-order explainability without widening scope.
+
+## 2026-06-25 - Write Receipt Attestation Contract Hardened
+
+Shipped:
+
+- Stayed strictly on the L0 trust-ledger lane and updated [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/store.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/store.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_store.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_store.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/trust-ledger.log.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/trust-ledger.log.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md), and this build log.
+- Landed one narrow verifier-only trust slice: optional Treeship digest-attestation blobs on existing write receipts are now independently checked for `schema`, `system`, `kind`, `subject`, `status`, and signed-vs-null `artifact_id` / `signed_at` shape instead of being treated as opaque passthrough metadata.
+- The concrete trust gain is receipt-facing and still local-first: an attestation copied onto the wrong receipt id or mutated to carry impossible signed/unsigned artifact metadata now fails independent verification even though the receipt hash intentionally excludes the attestation blob itself.
+- Kept the slice surgical: no receipt schema changed, no write path changed, no snapshot artifact changed, no CLI surface changed, and no generated `.zerker/launch-proof/` artifact was touched.
+
+Verification:
+
+- `python3 -m unittest tests.test_store.MemoryStoreTest.test_memory_write_can_emit_compact_treeship_attestation_when_enabled tests.test_store.MemoryStoreTest.test_verify_memory_write_receipt_chain_accepts_attested_promote_chain tests.test_store.MemoryStoreTest.test_verify_memory_write_receipt_chain_reports_tampered_attestation_subject -q` -> passed (`Ran 3 tests`)
+- `python3 -m unittest tests.test_store -q` -> passed (`Ran 214 tests`)
+- `python3 -m zerker_memory eval` -> passed (`11/11`)
+
+Blockers:
+
+- This still proves local provenance/integrity and digest-binding only; it does not prove semantic truth of the memory content.
+- A remote Treeship artifact id still cannot be independently proven to exist without external Treeship evidence, so the verifier only checks local contract consistency for that optional field.
+
+Next:
+
+- Reuse the same bounded attestation-shape checks only if lifecycle/export receipts begin carrying non-null optional Treeship artifact metadata, or stop before widening into CLI/readability work.
+
+## 2026-06-25 - Dashboard Source-Scheme And Attestation Hints Landed
+
+Shipped:
+
+- Stayed strictly on the L5 identity-workspaces lane and updated [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/dashboard.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/dashboard.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_dashboard.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_dashboard.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/identity-workspaces.log.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/identity-workspaces.log.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md), and this build log.
+- Landed one narrow identity slice only: the existing dashboard `workspace_sources` panel now renders read-only `session_scheme`, `source_scheme`, and Treeship attestation status text on top of the already-shipped source identity and artifact lineage hints.
+- The concrete local-first gain is operator clarity without widening the source model: connected-agent cards now show latest attestation status beside artifact lineage, recent-source rows now show both URI schemes plus attestation status, and claim-conflict claim cards now expose the same session/source scheme and attestation text per competing claim.
+- Kept the slice surgical: no `workspace_source_report(...)` payload changed, no `zerker_memory/store.py` changed, no `zerker_memory/cli.py` changed, no SQLite schema changed, and no generated `.zerker/launch-proof/` artifact was touched.
+
+Verification:
+
+- `python3 -m unittest tests.test_dashboard.DashboardTest.test_console_has_proof_inspector tests.test_dashboard.DashboardTest.test_build_workspace_sources_state_is_dashboard_ready -q` -> passed (`Ran 2 tests`)
+- `python3 -m unittest tests.test_dashboard -q` -> passed (`Ran 17 tests`)
+- `git diff --check -- zerker_memory/dashboard.py tests/test_dashboard.py` -> passed
+
+Blockers:
+
+- Agent identity is still inferred from actor/session URIs rather than persisted as a first-class key.
+- `zmem ws sources --summary-only` still does not mirror the same session/source scheme and attestation status text.
+
+Next:
+
+- Mirror the same read-only session/source scheme and attestation hints into `zmem ws sources --summary-only` without changing write paths, schema, or Hub assumptions.
+
+## 2026-06-25 - Consolidation Unwind Plan Landed
+
+Shipped:
+
+- Stayed strictly on the L4 consolidation lane and updated [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/consolidation_unwind.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/consolidation_unwind.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_consolidation_unwind.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_consolidation_unwind.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONSOLIDATION_UNWIND_FIXTURE.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONSOLIDATION_UNWIND_FIXTURE.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/consolidation.log.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/consolidation.log.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md), and this build log.
+- Landed one narrow consolidation slice only: the new `consolidation_unwind_plan(...)` helper turns existing job-audit, forward-lineage, and reverse-lineage ledgers into a deterministic `zerker.consolidation_unwind_plan.v1` payload for reversible summary repair.
+- The concrete local-first gain is actionable reversibility rather than wider store ownership: plans now classify `source_child` versus `nested_summary` starts, order impacted summaries bottom-up, preserve nested child leaf evidence, and mark mismatched or cycle-blocked summaries as `review-before-rematerialize`.
+- Kept the slice surgical: no `zerker_memory/store.py` changed, no benchmark harness behavior changed, no SQLite schema changed, no daemon loop changed, and no generated `.zerker/launch-proof/` artifact was touched.
+
+Verification:
+
+- `python3 -m unittest tests.test_consolidation_unwind -q` -> passed (`Ran 3 tests`)
+- `python3 -m unittest tests.test_consolidation tests.test_consolidation_unwind -q` -> passed (`Ran 22 tests`)
+- `git diff --check -- zerker_memory/consolidation_unwind.py tests/test_consolidation_unwind.py docs/CONSOLIDATION_UNWIND_FIXTURE.md` -> passed
+
+Blockers:
+
+- The unwind plan is still fixture-local and is not yet exposed through the live store or CLI because `zerker_memory/store.py`, `zerker_memory/bench.py`, `tests/test_store.py`, and `tests/test_bench.py` remain overlapping dirty surfaces in this workspace.
+
+Next:
+
+- Expose the same unwind-plan payload through a read-only store or CLI surface once those overlapping files are safe to touch, or add fixture-backed retry guidance for blocked summaries without widening into store or benchmark behavior.
+
+## 2026-06-25 - Temporal Envelope Contradiction/Supersession Metadata Landed
+
+Shipped:
+
+- Stayed strictly on the L1 temporal-kg lane and updated [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/store.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/store.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_store.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_store.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_runner.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_runner.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/temporal-kg.log.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/temporal-kg.log.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md), and this build log.
+- Landed one narrow temporal slice only: temporal envelopes now carry additive `temporal_resolution_kind` and `temporal_resolution_reasons` so callers can distinguish contradiction-driven envelopes from supersession/history envelopes without inferring that from multiple existing fields.
+- The concrete bi-temporal gain is interpretation-facing and still schema-free: the cross-session `Status page owner is Alice.` -> `Status page owner is Alice Chen.` fixture now marks the stale `Alice` history envelope as `supersession`, the unresolved `Incident owner is Alex.` versus `Incident owner is Priya.` contradiction now marks both current envelopes as `contradiction`, and the resolved `Deploy target is Render.` versus `Deploy target is Railway.` conflict now marks both the dropped loser and selected winner as contradiction-driven while leaving selection behavior unchanged.
+- Kept the slice surgical: no temporal resolver logic changed, no SQLite schema changed, no CLI surface changed, no external graph dependency was introduced, and no generated `.zerker/launch-proof/` artifact was touched.
+
+Verification:
+
+- `python3 -m unittest tests.test_store.MemoryStoreTest.test_temporal_contract_current_vs_history_keeps_identity_disambiguation tests.test_store.MemoryStoreTest.test_temporal_receipt_projection_surfaces_current_conflict_resolution_metadata tests.test_store.MemoryStoreTest.test_temporal_receipt_projection_preserves_dropped_current_subset_metadata tests.test_store.MemoryStoreTest.test_query_at_projects_parent_supersession_without_merging_unrelated_alice_identity tests.test_store.MemoryStoreTest.test_query_at_surfaces_current_conflict_resolution_metadata_without_erasing_current_state -q` -> passed (`Ran 5 tests`)
+- `python3 -m unittest tests.test_runner.RunnerTest.test_build_context_preserves_current_vs_history_temporal_envelopes tests.test_runner.RunnerTest.test_build_context_preserves_current_conflict_abstention_without_injected_memories tests.test_runner.RunnerTest.test_build_context_preserves_dropped_current_conflict_subset -q` -> passed (`Ran 3 tests`)
+- `python3 -m unittest tests.test_store -q` -> passed (`Ran 213 tests`)
+- `python3 -m unittest tests.test_runner -q` -> passed (`Ran 88 tests`)
+- `python3 -m zerker_memory eval` -> passed (`11/11`)
+- `git diff --check -- zerker_memory/store.py tests/test_store.py tests/test_runner.py` -> passed
+
+Blockers:
+
+- The new discriminator is explicit, but its reasons still come from the existing local lexical/lineage contract rather than typed graph edges.
+- Unlearned/revoked history envelopes still do not have a matching explicit reason field.
+
+Next:
+
+- Add one bounded temporal-envelope reason for unlearned/revoked history, or stop before schema work until typed contradiction/supersession edges are genuinely needed.
+
+## 2026-06-25 - Current-Only Semantic Pass-Through Receipts Landed
+
+Shipped:
+
+- Stayed strictly on the L3 hybrid-retrieval lane and updated [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/store.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/store.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/runner.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/runner.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_store.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_store.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_runner.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_runner.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/hybrid-retrieval.log.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/hybrid-retrieval.log.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md), and this build log.
+- Landed one narrow retrieval slice only: `retrieval.temporal.current_ordering` now makes `current_only_v1` explicitly say when selected-current order was a `reranker_rank`, `embedding_rank`, or `hybrid_semantic_rank` pass-through instead of temporal/history logic.
+- The concrete local-first gain is upstream explainability, not a wider ranking rewrite: receipts now expose ordered `selected_current_rankings` beside the chosen semantic basis, and `zerker.memory_context.v1` now forwards the same dict so runtime consumers no longer need packing metadata to distinguish semantic-vs-temporal current ordering.
+- Kept the slice surgical: no `MemoryStore.search()` return-shape changed, no packing heuristic changed, no SQLite schema changed, no CLI/release-sensitive path changed, and no generated `.zerker/launch-proof/` artifact was touched.
+
+Verification:
+
+- `python3 -m unittest tests.test_store.MemoryStoreTest.test_embedding_overlay_budget_uses_embedding_rank_packing_basis tests.test_store.MemoryStoreTest.test_provider_reranker_budget_drop_surfaces_outrank_metadata tests.test_store.MemoryStoreTest.test_current_deploy_target_budget_baseline_only_surfaces_hybrid_outrank_metadata tests.test_runner.RunnerTest.test_build_context_preserves_provider_reranker_budget_drop_metadata -q` -> passed (`Ran 4 tests`)
+- `python3 -m unittest tests.test_store -q` -> passed (`Ran 213 tests`)
+- `python3 -m unittest tests.test_policy -q` -> passed (`Ran 7 tests`)
+- `python3 -m unittest tests.test_runner -q` -> passed (`Ran 88 tests`)
+- `python3 -m zerker_memory eval` -> passed (`11/11`)
+- `git diff --check -- zerker_memory/store.py zerker_memory/runner.py tests/test_store.py tests/test_runner.py` -> passed
+
+Blockers:
+
+- `current_only_v1` is now explicit, but `current_update_preferred_v1` and `current_conflict_resolved_v1` still do not expose the same upstream semantic-vs-temporal ordering contract.
+
+Next:
+
+- Extend the same additive `current_ordering` metadata to those two non-history current-selection strategies without widening into schema work, hosted providers, or packing changes.
+
+## 2026-06-25 - Snapshot Write-Receipt Export Verification Landed
+
+Shipped:
+
+- Stayed strictly on the L0 trust-ledger lane and updated [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/store.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/store.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_snapshot.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_snapshot.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/trust-ledger.log.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/trust-ledger.log.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md), and this build log.
+- Landed one narrow trust-ledger slice only: snapshot verification and restore now independently verify exported `write_receipts` against the snapshot's own event chain instead of relying only on top-level snapshot hash/count fields.
+- The concrete proof gain is export/rollback-facing and still local-first: `verify_snapshot(...)` now counts verified write-receipt chains/transitions, accepts valid interleaved-event cases such as revoke-after-descendant-create by checking `prior_merkle_root` against the exported prior event root, and rejects recomputed snapshots whose embedded write receipt lineage or prior/new Merkle-root transitions were forged.
+- Kept the slice surgical: no CLI summary/readability surface changed, no SQLite schema changed, no Treeship dependency changed, no generated `.zerker/launch-proof/` artifact changed, and the stricter receipt-only `verify_memory_write_receipt_chain(...)` contract stayed unchanged.
+
+Verification:
+
+- `python3 -m unittest tests.test_snapshot.SnapshotTest.test_verify_snapshot_accepts_revoke_receipt_with_intervening_events tests.test_snapshot.SnapshotTest.test_verify_snapshot_rejects_tampered_write_receipt_chain tests.test_snapshot.SnapshotTest.test_restore_rejects_snapshot_with_tampered_write_receipt_chain tests.test_store.MemoryStoreTest.test_verify_memory_write_receipt_chain_reports_tampered_prior_root -q` -> passed (`Ran 4 tests`)
+- `python3 -m unittest tests.test_snapshot -q` -> passed (`Ran 24 tests`)
+- `python3 -m unittest tests.test_store -q` -> passed (`Ran 213 tests`)
+- `python3 -m zerker_memory eval` -> passed (`11/11`)
+- `python3 scripts/release_smoke.py --summary-only` -> passed
+- `python3 -m zerker_memory status --summary-only` -> passed
+- `git diff --check -- zerker_memory/store.py tests/test_snapshot.py` -> passed
+
+Blockers:
+
+- `zmem snapshot verify` still remains JSON-first, so the stronger export verifier is not yet exposed through the same compact proof summary style used by lineage, restore, bundle verify, and treeship publish.
+
+Next:
+
+- Extend the same bounded proof-summary contract to `zmem snapshot verify` on top of the strengthened store/export verifier without changing snapshot schema, Treeship dependency boundaries, or write paths.
+
+## 2026-06-25 - Session End CLI/Store Contract Landed
+
+Shipped:
+
+- Stayed strictly on the L2 lifecycle-compaction lane and updated [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/store.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/store.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/cli.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/cli.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_store.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_store.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_cli_onboarding.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_cli_onboarding.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/lifecycle-compaction.log.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/lifecycle-compaction.log.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md), and this build log.
+- Landed one narrow lifecycle slice only: `MemoryStore.end_session(...)` now writes a persisted closeout receipt, and `zmem session end` now exposes that exact store contract through JSON or `--summary-only`.
+- The concrete lifecycle gain is explicit session closeout and still bounded: `SESSION_ENDED` events now preserve prior/new Merkle roots, snapshot hash/root summary, active-memory tree summary, and memory-type-separated active ids/counts so long agent runs have a durable end marker beside the existing start/checkpoint/snapshot surfaces.
+- Kept the slice surgical: no checkpoint/snapshot/start semantics changed, no new read-only session-start/session-end report landed, no SQLite schema changed, no runner contract changed, and no generated `.zerker/launch-proof/` artifact was touched.
+
+Verification:
+
+- `python3 -m unittest tests.test_store.MemoryStoreTest.test_end_session_emits_receipt_visible_roots_and_memory_type_summary tests.test_cli_onboarding.CliOnboardingTest.test_build_parser_parses_session_end_summary_only tests.test_cli_onboarding.CliOnboardingTest.test_session_end_summary_surfaces_written_end_root_and_counts -q` -> passed (`Ran 3 tests`)
+- `python3 -m unittest tests.test_cli_onboarding tests.test_store tests.test_runner -q` -> passed (`Ran 431 tests`)
+- `python3 -m zerker_memory eval` -> passed (`11/11`)
+
+Blockers:
+
+- There is still no read-only `session starts` or `session ends` report for later inspection.
+- Retention policy is still explicit soft-delete only; no automatic pruning automation exists yet.
+
+Next:
+
+- Add one thin read-only `session starts` / `session ends` report without widening restore or retention behavior.
+
+## 2026-06-25 - Dropped Current Receipt/Runtime Temporal Subset Landed
+
+Shipped:
+
+- Stayed strictly on the L1 temporal-kg lane and updated [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/store.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/store.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/runner.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/runner.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_store.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_store.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_runner.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_runner.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/temporal-kg.log.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/temporal-kg.log.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md), and this build log.
+- Landed one narrow temporal slice only: inject receipts and runtime context now preserve a dedicated dropped-current subset for locally outranked current memories.
+- The concrete bi-temporal gain is current-conflict facing and still schema-free: `retrieval.temporal.dropped_current_temporal_graph` now keeps the losing current envelope visible beyond `query_at(...)`, and `zerker.memory_context.v1` now forwards that same subset so the resolved `Deploy target is Render.` versus `Deploy target is Railway.` fixture keeps `Render` visible as `current_resolution=dropped` while `Railway` remains the injected winner.
+- Kept the slice surgical: temporal resolution rules did not change, no `query_at(...)` contract changed, no SQLite schema changed, no CLI path changed, and no generated `.zerker/launch-proof/` artifact was touched.
+
+Verification:
+
+- `python3 -m unittest tests.test_store.MemoryStoreTest.test_temporal_receipt_projection_preserves_dropped_current_subset_metadata tests.test_runner.RunnerTest.test_build_context_preserves_dropped_current_conflict_subset -q` -> passed (`Ran 2 tests`)
+- `python3 -m unittest tests.test_store.MemoryStoreTest.test_query_at_can_focus_only_dropped_current_conflict_subset tests.test_store.MemoryStoreTest.test_query_at_dropped_resolution_stays_empty_for_resolved_identity_history tests.test_store.MemoryStoreTest.test_temporal_receipt_projection_preserves_dropped_current_subset_metadata tests.test_runner.RunnerTest.test_build_context_preserves_dropped_current_conflict_subset -q` -> passed (`Ran 4 tests`)
+- `python3 -m unittest tests.test_store -q` -> passed (`Ran 213 tests`)
+- `python3 -m unittest tests.test_runner -q` -> passed (`Ran 88 tests`)
+- `python3 -m zerker_memory eval` -> passed (`11/11`)
+- `git diff --check -- zerker_memory/store.py zerker_memory/runner.py tests/test_store.py tests/test_runner.py` -> passed
+
+Blockers:
+
+- Dropped current losers are now explicit in receipts and runtime context, but contradiction/supersession still ride on the existing lexical/local temporal contract rather than typed graph edges.
+- There is still no dedicated receipt discriminator for contradiction versus supersession beyond the shared envelope/conflict metadata.
+
+Next:
+
+- Add one bounded contradiction-vs-supersession receipt metadata refinement before any schema or graph-edge work.
+
+## 2026-06-25 - Default-Current Semantic Packing Basis Landed
+
+Shipped:
+
+- Stayed strictly on the L3 hybrid-retrieval lane and updated [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/store.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/store.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_store.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_store.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_runner.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_runner.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/hybrid-retrieval.log.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/hybrid-retrieval.log.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md), and this build log.
+- Landed one narrow retrieval slice only: default-current context packing now keeps semantic overlay ordering explicit instead of labeling those selections as generic temporal ordering.
+- The concrete local-first gain is receipt-facing and bounded: when `retrieval.temporal.selection_strategy=current_only_v1` is only the default current wrapper, packing now uses `reranker_rank`, `embedding_rank`, or `hybrid_semantic_rank` as the explicit `packing_rank_basis`, and `retrieval.packing.priority_model` now matches the same basis for provider reranker drops, local embedding reorders, and baseline-only hybrid backfill budgets.
+- Kept the slice surgical: no `MemoryStore.search()` return-shape changed, no SQLite schema changed, no CLI or release-sensitive path changed, and no generated `.zerker/launch-proof/` artifact was touched.
+
+Verification:
+
+- `python3 -m unittest tests.test_store.MemoryStoreTest.test_embedding_overlay_budget_uses_embedding_rank_packing_basis tests.test_store.MemoryStoreTest.test_provider_reranker_budget_drop_surfaces_outrank_metadata tests.test_store.MemoryStoreTest.test_current_deploy_target_budget_baseline_only_surfaces_hybrid_outrank_metadata tests.test_store.MemoryStoreTest.test_hybrid_backfill_baseline_prefers_semantic_state_when_embedding_and_reranker_disabled tests.test_runner.RunnerTest.test_build_context_preserves_provider_reranker_budget_drop_metadata tests.test_runner.RunnerTest.test_build_context_current_deploy_target_budget_prefers_semantic_backfill_state_without_embedding_or_reranker -q` -> passed (`Ran 6 tests`)
+- `python3 -m unittest tests.test_store -q` -> passed (`Ran 211 tests`)
+- `python3 -m unittest tests.test_policy -q` -> passed (`Ran 7 tests`)
+- `python3 -m unittest tests.test_runner -q` -> passed (`Ran 87 tests`)
+- `python3 -m zerker_memory eval` -> passed (`11/11`)
+- `git diff --check -- zerker_memory/store.py tests/test_store.py tests/test_runner.py` -> passed
+
+Blockers:
+
+- `retrieval.temporal.current_only_v1` still does not explicitly say when its selected-current order was only a semantic rank pass-through, so callers still need packing metadata to distinguish semantic-vs-temporal ordering.
+
+Next:
+
+- Extend the same pass-through explanation into `retrieval.temporal.current_only_v1` so upstream receipts make semantic ordering explicit before the packing stage.
+
+## 2026-06-25 - Dashboard Workspace Identity Hints Landed
+
+Shipped:
+
+- Stayed strictly on the L5 identity-workspaces lane and updated [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/dashboard.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/dashboard.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_dashboard.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_dashboard.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/identity-workspaces.log.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/identity-workspaces.log.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md), and this build log.
+- Landed one narrow identity slice only: the existing dashboard `workspace_sources` panel now renders the already-shipped read-only source identity, artifact lineage, and merge-basis hints instead of leaving them hidden in CLI-only or JSON-only views.
+- The concrete local-first gain is operator-facing and bounded: connected-agent cards now show tool, repo, workspace id, and latest Treeship artifact hint; recent-source rows now show normalized source identity plus receipt/artifact/root lineage; and claim-conflict cards now show the same per-claim tool/repo/workspace/artifact hints plus the existing `resolution_basis` summary.
+- Kept the slice surgical: no `workspace_source_report(...)` payload changed, no `zerker_memory/store.py` changed, no `zerker_memory/cli.py` changed, no SQLite schema changed, and no generated `.zerker/launch-proof/` artifact was touched.
+
+Verification:
+
+- `python3 -m unittest tests.test_dashboard.DashboardTest.test_console_has_proof_inspector tests.test_dashboard.DashboardTest.test_build_workspace_sources_state_is_dashboard_ready -q` -> passed (`Ran 2 tests`)
+- `python3 -m unittest tests.test_dashboard -q` -> passed (`Ran 17 tests`)
+- `git diff --check -- zerker_memory/dashboard.py tests/test_dashboard.py` -> passed
+
+Blockers:
+
+- Agent identity is still inferred from actor/session URIs rather than persisted as a first-class key.
+- The dashboard still does not surface session/source URI schemes or attestation status text explicitly.
+
+Next:
+
+- Add one bounded read-only identity detail line for session/source URI schemes and attestation status in the dashboard or CLI summary without changing write paths or Hub assumptions.
+
+## 2026-06-25 - Treeship Publish Proof Summary Landed
+
+Shipped:
+
+- Stayed strictly on the L0 trust-ledger lane and updated [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/cli.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/cli.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_cli_onboarding.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_cli_onboarding.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/trust-ledger.log.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/trust-ledger.log.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md), and this build log.
+- Landed one narrow trust-ledger slice only: `zmem treeship publish <action-id> --summary-only` now exposes the same compact proof-facing readability that earlier landed for lineage, restore, and bundle verification.
+- The concrete trust gain is export-facing and still local-first: the summary shows action id, statement path/hash, statement kind/subject, verified bundle hash, Merkle root, resolved executable, rendered command, trusted provenance status, and explicit `Semantic truth: not guaranteed` wording without requiring raw JSON inspection or a user-facing Treeship dependency.
+- Kept the slice surgical: no `MemoryStore` write path changed, no SQLite schema changed, no receipt schema changed, no public site changed, and no generated `.zerker/launch-proof/` artifact was touched.
+
+Verification:
+
+- `python3 -m unittest tests.test_cli_onboarding.CliOnboardingTest.test_treeship_publish_parser tests.test_cli_onboarding.CliOnboardingTest.test_treeship_publish_summary_only_surfaces_verified_export_and_command tests.test_cli_onboarding.CliOnboardingTest.test_build_parser_parses_bundle_verify_summary_only tests.test_cli_onboarding.CliOnboardingTest.test_bundle_verify_summary_only_surfaces_verified_supporting_provenance tests.test_cli_onboarding.CliOnboardingTest.test_restore_snapshot_summary_only_verifies_and_restores_snapshot tests.test_cli_onboarding.CliOnboardingTest.test_lineage_summary_only_surfaces_verified_write_receipt_chain tests.test_treeship -q` -> passed (`Ran 18 tests`)
+- `git diff --check -- zerker_memory/cli.py tests/test_cli_onboarding.py` -> passed
+- `python3 scripts/release_smoke.py --summary-only` -> passed
+- `python3 -m zerker_memory status --summary-only` -> passed
+
+Blockers:
+
+- `zmem snapshot verify` still remains JSON-first, so proof-summary readability is not yet uniform across every verifier entry point.
+
+Next:
+
+- Extend the same bounded proof-summary contract to `zmem snapshot verify` without changing snapshot schemas, store behavior, or Treeship dependency boundaries.
+
+## 2026-06-25 - Query-At Dropped Resolution Filter Landed
+
+Shipped:
+
+- Stayed strictly on the L1 temporal-kg lane and updated [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/store.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/store.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_store.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_store.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/temporal-kg.log.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/temporal-kg.log.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md), and this build log.
+- Landed one narrow temporal slice only: `MemoryStore.query_at(...)` now accepts `current_resolution="dropped"` so callers can request only locally outranked current losers at a timestamp without changing the underlying temporal projection or persistence shape.
+- The concrete bi-temporal gain is current-conflict facing and still schema-free: the resolved `Deploy target is Render.` versus `Deploy target is Railway.` authority-conflict fixture now returns only the dropped `Render` current envelope in dropped mode while preserving the winning `Railway` id in the resolved conflict metadata, and the cross-session `Status page owner is Alice.` -> `Status page owner is Alice Chen.` identity fixture now proves superseded history does not leak into that dropped-only surface.
+- Kept the slice surgical: default `query_at(...)`, `current_resolution="abstained"`, and `current_resolution="selected"` behavior are unchanged, no SQLite schema changed, no receipt or runtime-context shape changed, and no generated `.zerker/launch-proof/` artifact was touched.
+
+Verification:
+
+- `python3 -m unittest tests.test_store.MemoryStoreTest.test_query_at_can_focus_only_dropped_current_conflict_subset tests.test_store.MemoryStoreTest.test_query_at_dropped_resolution_stays_empty_for_resolved_identity_history -q` -> passed (`Ran 2 tests`)
+- `python3 -m unittest tests.test_store.MemoryStoreTest.test_query_at_can_focus_only_abstained_current_contradiction_subset tests.test_store.MemoryStoreTest.test_query_at_abstained_resolution_stays_empty_for_resolved_identity_history tests.test_store.MemoryStoreTest.test_query_at_can_focus_only_selected_current_identity_subset tests.test_store.MemoryStoreTest.test_query_at_selected_resolution_stays_empty_for_unresolved_current_contradiction tests.test_store.MemoryStoreTest.test_query_at_can_focus_only_dropped_current_conflict_subset tests.test_store.MemoryStoreTest.test_query_at_dropped_resolution_stays_empty_for_resolved_identity_history tests.test_store.MemoryStoreTest.test_query_at_rejects_hidden_abstained_resolution_filter_combination -q` -> passed (`Ran 7 tests`)
+- `python3 -m unittest tests.test_store -q` -> passed (`Ran 210 tests`)
+- `python3 -m unittest tests.test_runner -q` -> passed (`Ran 87 tests`)
+- `python3 -m zerker_memory eval` -> passed (`11/11`)
+
+Blockers:
+
+- `query_at(...)` can now isolate abstained contradictions, selected winners, and dropped losers, but receipt/runtime temporal envelopes still do not expose a dedicated dropped-current subset.
+- Contradiction and supersession still use the existing lexical/local temporal contract rather than typed graph edges.
+
+Next:
+
+- Add one bounded `dropped_current_temporal_graph` receipt/runtime subset so locally outranked current losers remain visible beyond `query_at(...)` before any schema or graph-edge work.
+
 ## 2026-06-25 - Session Start CLI And Store Contract Landed
 
 Shipped:
@@ -19630,6 +20249,29 @@ Blockers:
 Next:
 
 - Expose the existing audit-plus-lineage report surfaces through a read-only store or CLI surface once the overlapping files are safe to touch, or source consolidation candidates from the live store while preserving the same local-first reversibility contract.
+
+## 2026-06-24 - Reverse Consolidation Lineage Report
+
+Shipped:
+
+- Stayed on the L4 consolidation lane and updated [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/consolidation.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/consolidation.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_consolidation.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_consolidation.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONSOLIDATION_FIXTURE.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONSOLIDATION_FIXTURE.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/consolidation.log.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/consolidation.log.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md), and this build log.
+- Landed one narrow consolidation slice only: the existing append-only summary ledger now has a read-only `consolidation_summary_reverse_lineage_report(...)` contract that starts from a leaf child or nested summary and reconstructs the higher-level summaries that depend on it.
+- The new reversibility surface stays local-first and auditable: it preserves direct parent `summary_id`s, ordered transitive impacted summaries, root impacted summaries, and explicit upward `paths` without widening into `store.py`, SQLite migrations, a daemon loop, or hosted summarization.
+
+Verification:
+
+- `python3 -m unittest tests.test_consolidation.ConsolidationFixtureTest.test_consolidation_summary_reverse_lineage_report_tracks_transitive_parent_summaries tests.test_consolidation.ConsolidationFixtureTest.test_consolidation_summary_reverse_lineage_report_tracks_nested_summary_children -q` -> passed (`Ran 2 tests in 0.016s`)
+- `python3 -m unittest tests.test_consolidation -q` -> passed (`Ran 19 tests in 0.064s`)
+- `git diff --check -- zerker_memory/consolidation.py tests/test_consolidation.py docs/CONSOLIDATION_FIXTURE.md` -> passed
+
+Blockers:
+
+- The live memory store and CLI still have no read-only surface for the existing consolidation audit, forward-lineage, or reverse-lineage reports.
+- The overlapping `zerker_memory/store.py`, `zerker_memory/bench.py`, `tests/test_store.py`, and `tests/test_bench.py` surfaces were already dirty at the start of the run, so this slice intentionally stayed off them.
+
+Next:
+
+- Expose the existing audit-plus-forward/reverse-lineage report surfaces through a read-only store or CLI path once the overlapping files are safe to touch, or source consolidation candidates from the live store while preserving the same local-first reversibility contract.
 
 - `2026-06-24T19:06:03Z` trust-ledger direct-restore summary: extended the existing rollback/export receipt summary contract to direct `zmem restore <snapshot>` without changing store receipts, snapshot payloads, or Treeship dependency boundaries. `restore_snapshot()` still returns the same deterministic derived lifecycle receipt; the CLI now verifies that receipt against the source snapshot and prints the same compact proof-facing summary already used by handoff restore, including receipt id/hash, prior/new Merkle roots, optional Treeship artifact id, and explicit `Semantic truth: not guaranteed` wording before optional JSON output.
 - Verified with `python3 -m unittest tests.test_cli_onboarding.CliOnboardingTest.test_restore_parser_accepts_handoff_dir_and_summary_only tests.test_cli_onboarding.CliOnboardingTest.test_restore_parser_accepts_snapshot_path_and_summary_only tests.test_cli_onboarding.CliOnboardingTest.test_restore_handoff_package_verifies_and_restores_snapshot tests.test_cli_onboarding.CliOnboardingTest.test_restore_snapshot_summary_only_verifies_and_restores_snapshot tests.test_snapshot.SnapshotTest.test_verify_lifecycle_receipt_accepts_restore_snapshot_receipt_with_source_snapshot tests.test_store.MemoryStoreTest.test_verify_lifecycle_receipt_accepts_persisted_session_snapshot_receipt -q` -> passed (`Ran 6 tests`), `git diff --check -- zerker_memory/cli.py tests/test_cli_onboarding.py` -> passed, `python3 scripts/release_smoke.py --summary-only` -> passed, and `python3 -m zerker_memory status --summary-only` -> passed.

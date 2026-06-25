@@ -107,6 +107,79 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(context["temporal"]["withheld_temporal_graph"][withheld.id]["temporal_state"], "learned")
         self.assertEqual(context["temporal"]["budget_dropped_temporal_graph"][semantic.id]["temporal_state"], "current")
 
+    def test_build_context_preserves_learned_and_future_temporal_id_groups(self):
+        learned = self.store.remember(
+            "Release freeze owner is Mallory.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="agent",
+        )
+        future = self.store.remember(
+            "Roadmap owner is Priya.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            status="active",
+        )
+        future_timestamp = "2099-01-01T00:00:00Z"
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            (future_timestamp, future_timestamp, future.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            (future_timestamp, future.id),
+        )
+        self.store.conn.commit()
+
+        receipt = self.store.inject("owner", agent_id="codex", risk="low", scope="project")
+        context = build_context(receipt)
+        temporal = context["temporal"]
+
+        self.assertEqual(temporal["learned_memory_ids"], [learned.id])
+        self.assertEqual(temporal["future_memory_ids"], [future.id])
+        self.assertEqual(temporal["unlearned_memory_ids"], [])
+        self.assertEqual(temporal["withheld_temporal_graph"][learned.id]["temporal_state"], "learned")
+        self.assertEqual(temporal["selected_temporal_graph"][future.id]["temporal_state"], "future")
+
+    def test_build_context_preserves_unlearned_temporal_id_groups_when_present(self):
+        receipt = {
+            "action_id": "act_temporal_context",
+            "task": "temporal passthrough",
+            "risk": "low",
+            "merkle_root": "root_fixture",
+            "policy_checks": [],
+            "memories": [],
+            "retrieval": {
+                "temporal": {
+                    "temporal_projection_at": "2024-02-20T00:00:00Z",
+                    "history_memory_ids": ["mem_rejected"],
+                    "current_memory_ids": [],
+                    "future_memory_ids": [],
+                    "unlearned_memory_ids": ["mem_rejected"],
+                    "learned_memory_ids": [],
+                    "superseded_memory_ids": [],
+                    "resolved_current_memory_ids": [],
+                    "dropped_current_memory_ids": [],
+                    "abstained_current_memory_ids": [],
+                    "conflict_sets": [],
+                    "abstention": {
+                        "applied": False,
+                        "reason": None,
+                        "abstained_ids": [],
+                        "conflict_reasons": [],
+                    },
+                }
+            },
+        }
+
+        context = build_context(receipt)
+
+        self.assertEqual(context["temporal"]["history_memory_ids"], ["mem_rejected"])
+        self.assertEqual(context["temporal"]["future_memory_ids"], [])
+        self.assertEqual(context["temporal"]["learned_memory_ids"], [])
+        self.assertEqual(context["temporal"]["unlearned_memory_ids"], ["mem_rejected"])
+
     def test_build_context_preserves_current_vs_history_temporal_envelopes(self):
         unrelated = self.store.remember(
             "Alice owns the billing exporter.",
@@ -166,8 +239,15 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(temporal["superseded_memory_ids"], [stale.id])
         self.assertNotIn(unrelated.id, temporal["selected_temporal_graph"])
         self.assertEqual(temporal["injected_temporal_graph"][stale.id]["temporal_state"], "superseded")
+        self.assertEqual(temporal["injected_temporal_graph"][stale.id]["temporal_resolution_kind"], "supersession")
+        self.assertEqual(
+            temporal["injected_temporal_graph"][stale.id]["temporal_resolution_reasons"],
+            ["active-child-candidate"],
+        )
         self.assertEqual(temporal["injected_temporal_graph"][stale.id]["valid_to"], "2024-02-01T00:00:00Z")
         self.assertEqual(temporal["injected_temporal_graph"][current.id]["temporal_state"], "current")
+        self.assertIsNone(temporal["injected_temporal_graph"][current.id]["temporal_resolution_kind"])
+        self.assertEqual(temporal["injected_temporal_graph"][current.id]["temporal_resolution_reasons"], [])
 
     def test_build_context_preserves_temporal_omitted_subset_envelopes(self):
         policy_path = self.tmp_path / "policy.json"
@@ -299,12 +379,22 @@ class RunnerTest(unittest.TestCase):
         self.assertCountEqual(list(temporal["abstained_temporal_graph"]), [first.id, second.id])
         self.assertEqual(temporal["abstained_temporal_graph"][first.id]["temporal_state"], "current")
         self.assertEqual(temporal["abstained_temporal_graph"][first.id]["current_resolution"], "abstained")
+        self.assertEqual(temporal["abstained_temporal_graph"][first.id]["temporal_resolution_kind"], "contradiction")
+        self.assertEqual(
+            temporal["abstained_temporal_graph"][first.id]["temporal_resolution_reasons"],
+            ["lexical-current-conflict"],
+        )
         self.assertEqual(
             temporal["abstained_temporal_graph"][first.id]["current_conflict_reasons"],
             ["lexical-current-conflict"],
         )
         self.assertEqual(temporal["abstained_temporal_graph"][second.id]["temporal_state"], "current")
         self.assertEqual(temporal["abstained_temporal_graph"][second.id]["current_resolution"], "abstained")
+        self.assertEqual(temporal["abstained_temporal_graph"][second.id]["temporal_resolution_kind"], "contradiction")
+        self.assertEqual(
+            temporal["abstained_temporal_graph"][second.id]["temporal_resolution_reasons"],
+            ["lexical-current-conflict"],
+        )
         self.assertEqual(
             temporal["abstained_temporal_graph"][second.id]["current_conflict_reasons"],
             ["lexical-current-conflict"],
@@ -314,9 +404,109 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(temporal["abstention"]["reason"], "unresolved-current-conflict")
         self.assertEqual(temporal["abstention"]["conflict_reasons"], ["lexical-current-conflict"])
         self.assertCountEqual(temporal["abstention"]["abstained_ids"], [first.id, second.id])
+        current_ordering = temporal["current_ordering"]
+
+        self.assertTrue(current_ordering["applied"])
+        self.assertFalse(current_ordering["pass_through"])
+        self.assertEqual(current_ordering["basis"], "current_conflict_abstention_rank")
+        self.assertEqual(current_ordering["source"], "temporal_current_conflict_abstention")
+        self.assertEqual(current_ordering["reason"], "lexical-current-conflict-abstained")
+        self.assertEqual(current_ordering["selected_current_rankings"], [])
+        self.assertEqual(
+            current_ordering["considered_current_rankings"],
+            [{"memory_id": memory_id, "rank": index, "selected": False} for index, memory_id in enumerate(conflict["current_ids"], start=1)],
+        )
         self.assertEqual(conflict["resolution_outcome"], "abstained")
         self.assertEqual(conflict["chosen_current_id"], None)
         self.assertCountEqual(conflict["abstained_current_ids"], [first.id, second.id])
+
+    def test_build_context_preserves_dropped_current_conflict_subset(self):
+        first = self.store.remember(
+            "Deploy target is Render.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="document",
+            authority="low",
+            status="active",
+        )
+        second = self.store.remember(
+            "Deploy target is Railway.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            authority="high",
+            status="active",
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-02-01T00:00:00Z", "2024-02-01T00:00:00Z", first.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z", second.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-02-01T00:00:00Z", first.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-01T00:00:00Z", second.id),
+        )
+        self.store.conn.commit()
+
+        receipt = self.store.inject("deploy target", agent_id="codex", risk="low", scope="project")
+        context = build_context(receipt)
+        temporal = context["temporal"]
+        conflict = next(item for item in temporal["conflict_sets"] if item["reason"] == "lexical-current-conflict")
+
+        self.assertEqual([memory["id"] for memory in context["memories"]], [second.id])
+        self.assertCountEqual(temporal["current_memory_ids"], [first.id, second.id])
+        self.assertEqual(temporal["resolved_current_memory_ids"], [second.id])
+        self.assertEqual(temporal["dropped_current_memory_ids"], [first.id])
+        self.assertEqual(temporal["abstained_current_memory_ids"], [])
+        self.assertEqual(list(temporal["dropped_current_temporal_graph"]), [first.id])
+        self.assertEqual(temporal["dropped_current_temporal_graph"][first.id]["temporal_state"], "current")
+        self.assertEqual(temporal["dropped_current_temporal_graph"][first.id]["current_resolution"], "dropped")
+        self.assertEqual(
+            temporal["dropped_current_temporal_graph"][first.id]["temporal_resolution_kind"],
+            "contradiction",
+        )
+        self.assertEqual(
+            temporal["dropped_current_temporal_graph"][first.id]["temporal_resolution_reasons"],
+            ["lexical-current-conflict"],
+        )
+        self.assertEqual(
+            temporal["dropped_current_temporal_graph"][first.id]["current_conflict_reasons"],
+            ["lexical-current-conflict"],
+        )
+        current_ordering = temporal["current_ordering"]
+
+        self.assertTrue(current_ordering["applied"])
+        self.assertFalse(current_ordering["pass_through"])
+        self.assertEqual(current_ordering["basis"], "current_conflict_resolution_rank")
+        self.assertEqual(current_ordering["source"], "temporal_current_conflict_resolution")
+        self.assertEqual(current_ordering["reason"], "lexical-current-conflict-deterministic-resolution")
+        self.assertEqual(current_ordering["selected_current_rankings"], [{"memory_id": second.id, "rank": 1}])
+        self.assertEqual(
+            current_ordering["considered_current_rankings"],
+            [
+                {"memory_id": second.id, "rank": 1, "selected": True},
+                {"memory_id": first.id, "rank": 2, "selected": False},
+            ],
+        )
+        self.assertEqual(list(temporal["injected_temporal_graph"]), [second.id])
+        self.assertEqual(temporal["injected_temporal_graph"][second.id]["temporal_state"], "current")
+        self.assertEqual(temporal["injected_temporal_graph"][second.id]["current_resolution"], "selected")
+        self.assertEqual(temporal["injected_temporal_graph"][second.id]["temporal_resolution_kind"], "contradiction")
+        self.assertEqual(
+            temporal["injected_temporal_graph"][second.id]["temporal_resolution_reasons"],
+            ["lexical-current-conflict"],
+        )
+        self.assertFalse(temporal["abstention"]["applied"])
+        self.assertEqual(conflict["resolution_outcome"], "resolved")
+        self.assertEqual(conflict["chosen_current_id"], second.id)
+        self.assertEqual(conflict["dropped_current_ids"], [first.id])
 
     def test_history_query_context_includes_superseded_memory_when_requested(self):
         parent = self.store.remember(
@@ -3294,10 +3484,15 @@ class RunnerTest(unittest.TestCase):
                     authority="medium",
                     status="active",
                 )
-                shared_timestamp = "2024-02-01T00:00:00Z"
+                first_timestamp = "2024-01-01T00:00:00Z" if "chronology" in label else "2024-02-01T00:00:00Z"
+                second_timestamp = "2024-02-01T00:00:00Z"
                 self.store.conn.execute(
-                    "UPDATE memories SET created_at = ?, updated_at = ? WHERE id IN (?, ?)",
-                    (shared_timestamp, shared_timestamp, first.id, second.id),
+                    "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+                    (first_timestamp, first_timestamp, first.id),
+                )
+                self.store.conn.execute(
+                    "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+                    (second_timestamp, second_timestamp, second.id),
                 )
                 self.store.conn.commit()
                 context_path = self.tmp_path / f"{label}-cross-provenance-context.json"
@@ -3322,6 +3517,26 @@ class RunnerTest(unittest.TestCase):
                 self.assertEqual(retrieval["temporal"]["abstention"]["reason"], "unresolved-cross-provenance-history")
                 self.assertCountEqual(retrieval["temporal"]["abstention"]["abstained_ids"], [first.id, second.id])
                 self.assertEqual(retrieval["query_lookup"]["lookup_basis"], expected_basis)
+                history_ordering = retrieval["temporal"]["history_ordering"]
+                self.assertEqual(context["temporal"]["history_ordering"], history_ordering)
+                self.assertTrue(history_ordering["applied"])
+                self.assertFalse(history_ordering["pass_through"])
+                self.assertEqual(history_ordering["basis"], "history_conflict_abstention_rank")
+                self.assertEqual(history_ordering["source"], "temporal_history_conflict_abstention")
+                self.assertEqual(history_ordering["reason"], expected_reason)
+                self.assertEqual(history_ordering["selected_history_rankings"], [])
+                self.assertCountEqual(
+                    [item["memory_id"] for item in history_ordering["considered_history_rankings"]],
+                    [first.id, second.id],
+                )
+                if "chronology" in label:
+                    self.assertEqual(
+                        history_ordering["considered_history_rankings"],
+                        [
+                            {"memory_id": first.id, "rank": 1, "selected": False},
+                            {"memory_id": second.id, "rank": 2, "selected": False},
+                        ],
+                    )
                 history_conflict = next(
                     item
                     for item in retrieval["temporal"]["conflict_sets"]
@@ -3657,14 +3872,14 @@ class RunnerTest(unittest.TestCase):
         self.assertFalse(retrieval["reranker"]["enabled"])
         self.assertTrue(retrieval["baseline_ranking"]["hybrid_semantic_signal_applied"])
         self.assertEqual(retrieval["packing"]["budget_dropped"][0]["memory_id"], current.id)
-        self.assertEqual(retrieval["packing"]["budget_dropped"][0]["packing_rank_basis"], "temporal_selection_rank")
+        self.assertEqual(retrieval["packing"]["budget_dropped"][0]["packing_rank_basis"], "hybrid_semantic_rank")
         self.assertEqual(retrieval["packing"]["budget_dropped"][0]["hybrid_semantic_rank"], 2)
         self.assertEqual(
             retrieval["packing"]["budget_dropped"][0]["hybrid_outranked_reason"],
             "hybrid-semantic-backfill-ranked-lower",
         )
         self.assertEqual(context["budget_dropped"][0]["memory_id"], current.id)
-        self.assertEqual(context["budget_dropped"][0]["packing_rank_basis"], "temporal_selection_rank")
+        self.assertEqual(context["budget_dropped"][0]["packing_rank_basis"], "hybrid_semantic_rank")
         self.assertEqual(context["budget_dropped"][0]["hybrid_semantic_rank"], 2)
         self.assertEqual(
             context["budget_dropped"][0]["hybrid_outranked_reason"],
@@ -3747,9 +3962,23 @@ class RunnerTest(unittest.TestCase):
                 )
 
         context = build_context(receipt)
+        current_ordering = context["temporal"]["current_ordering"]
 
         self.assertEqual([memory["id"] for memory in context["memories"]], [exact.id])
+        self.assertTrue(current_ordering["applied"])
+        self.assertTrue(current_ordering["pass_through"])
+        self.assertEqual(current_ordering["basis"], "reranker_rank")
+        self.assertEqual(current_ordering["source"], "reranker")
+        self.assertEqual(current_ordering["reason"], "current-only-reranker-pass-through")
+        self.assertEqual(
+            current_ordering["selected_current_rankings"],
+            [
+                {"memory_id": broad.id, "rank": 1},
+                {"memory_id": exact.id, "rank": 2},
+            ],
+        )
         self.assertEqual(context["budget_dropped"][0]["memory_id"], broad.id)
+        self.assertEqual(context["budget_dropped"][0]["packing_rank_basis"], "reranker_rank")
         self.assertEqual(context["budget_dropped"][0]["reranker_rank"], 1)
         self.assertEqual(context["budget_dropped"][0]["reranker_rank_delta"], -1)
         self.assertTrue(context["budget_dropped"][0]["reranker_promoted"])
@@ -3958,6 +4187,21 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(retrieval["temporal"]["selection_reason"], "current-update-query-terms")
         self.assertEqual(retrieval["temporal"]["selected_ids"], [current.id])
         self.assertEqual(retrieval["temporal"]["selected_current_anchor_id"], current.id)
+        current_ordering = retrieval["temporal"]["current_ordering"]
+
+        self.assertTrue(current_ordering["applied"])
+        self.assertFalse(current_ordering["pass_through"])
+        self.assertEqual(current_ordering["basis"], "current_update_preference_rank")
+        self.assertEqual(current_ordering["source"], "temporal_current_update_preference")
+        self.assertEqual(current_ordering["reason"], "current-update-explicit-anchor-selection")
+        self.assertEqual(current_ordering["selected_current_rankings"], [{"memory_id": current.id, "rank": 1}])
+        self.assertEqual(
+            current_ordering["considered_current_rankings"],
+            [
+                {"memory_id": current.id, "rank": 1, "selected": True},
+                {"memory_id": decoy.id, "rank": 2, "selected": False},
+            ],
+        )
 
     def test_original_history_question_context_prefers_earliest_state_but_keeps_current_visible(self):
         first = self.store.remember(

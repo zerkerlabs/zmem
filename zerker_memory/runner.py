@@ -37,6 +37,9 @@ def _build_temporal_context(retrieval: dict[str, Any]) -> dict[str, Any] | None:
         "selected_ids",
         "history_memory_ids",
         "current_memory_ids",
+        "future_memory_ids",
+        "unlearned_memory_ids",
+        "learned_memory_ids",
         "superseded_memory_ids",
         "resolved_current_memory_ids",
         "dropped_current_memory_ids",
@@ -51,9 +54,12 @@ def _build_temporal_context(retrieval: dict[str, Any]) -> dict[str, Any] | None:
     for key in (
         "selected_temporal_graph",
         "abstained_temporal_graph",
+        "dropped_current_temporal_graph",
         "injected_temporal_graph",
         "withheld_temporal_graph",
         "budget_dropped_temporal_graph",
+        "current_ordering",
+        "history_ordering",
     ):
         value = temporal.get(key)
         if isinstance(value, dict):

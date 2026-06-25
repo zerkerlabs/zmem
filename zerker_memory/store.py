@@ -35,6 +35,7 @@ LIFECYCLE_RECEIPT_SCHEMA = "zerker.lifecycle_receipt.v1"
 EVENT_SCHEMA = "zerker.memory_event.v1"
 SNAPSHOT_SCHEMA = "zerker.memory_snapshot.v1"
 SESSION_START_SCHEMA = "zerker.session_start.v1"
+SESSION_END_SCHEMA = "zerker.session_end.v1"
 SESSION_CHECKPOINT_SCHEMA = "zerker.session_checkpoint.v1"
 SESSION_SNAPSHOT_SCHEMA = "zerker.session_snapshot.v1"
 SESSION_SNAPSHOT_RETENTION_SCHEMA = "zerker.session_snapshot_retention.v1"
@@ -2067,16 +2068,26 @@ def _packing_priority(
     candidate_count: int,
     prefer_temporal_fusion_rank: bool = False,
     prefer_multi_hop_fusion_rank: bool = False,
+    prefer_reranker_rank: bool = False,
+    prefer_embedding_rank: bool = False,
+    prefer_hybrid_semantic_rank: bool = False,
+    allow_default_current_selection_override: bool = False,
 ) -> int:
     candidate = candidate or {}
     features = candidate.get("features", {})
+    selected_by_temporal_strategy = bool(
+        candidate.get("selected_by_temporal_strategy", features.get("selected_by_temporal_strategy", False))
+    )
     multi_hop_fusion_rank = candidate.get("multi_hop_fusion_rank", features.get("multi_hop_fusion_rank"))
     temporal_fusion_rank = candidate.get("temporal_fusion_rank", features.get("temporal_fusion_rank"))
+    reranker_rank = candidate.get("reranker_rank", features.get("reranker_rank"))
+    embedding_rank = candidate.get("embedding_rank", features.get("embedding_rank"))
+    hybrid_semantic_rank = candidate.get("hybrid_semantic_rank", features.get("hybrid_semantic_rank"))
     temporal_injection_rank = candidate.get("temporal_injection_rank", features.get("temporal_injection_rank"))
     temporal_selection_rank = candidate.get("temporal_selection_rank", features.get("temporal_selection_rank"))
     if (
         prefer_temporal_fusion_rank
-        and candidate.get("selected_by_temporal_strategy", features.get("selected_by_temporal_strategy", False))
+        and selected_by_temporal_strategy
         and isinstance(temporal_fusion_rank, int)
         and temporal_fusion_rank > 0
     ):
@@ -2084,13 +2095,34 @@ def _packing_priority(
     elif isinstance(multi_hop_fusion_rank, int) and multi_hop_fusion_rank > 0 and prefer_multi_hop_fusion_rank:
         rank = multi_hop_fusion_rank
     elif (
-        candidate.get("selected_by_temporal_strategy", features.get("selected_by_temporal_strategy", False))
+        prefer_reranker_rank
+        and (not selected_by_temporal_strategy or allow_default_current_selection_override)
+        and isinstance(reranker_rank, int)
+        and reranker_rank > 0
+    ):
+        rank = reranker_rank
+    elif (
+        prefer_embedding_rank
+        and (not selected_by_temporal_strategy or allow_default_current_selection_override)
+        and isinstance(embedding_rank, int)
+        and embedding_rank > 0
+    ):
+        rank = embedding_rank
+    elif (
+        prefer_hybrid_semantic_rank
+        and (not selected_by_temporal_strategy or allow_default_current_selection_override)
+        and isinstance(hybrid_semantic_rank, int)
+        and hybrid_semantic_rank > 0
+    ):
+        rank = hybrid_semantic_rank
+    elif (
+        selected_by_temporal_strategy
         and isinstance(temporal_injection_rank, int)
         and temporal_injection_rank > 0
     ):
         rank = temporal_injection_rank
     elif (
-        candidate.get("selected_by_temporal_strategy", features.get("selected_by_temporal_strategy", False))
+        selected_by_temporal_strategy
         and isinstance(temporal_selection_rank, int)
         and temporal_selection_rank > 0
     ):
@@ -2809,6 +2841,282 @@ def _packing_reservation(authorized_entries: list[dict[str, Any]], retrieval: di
         "applied_ids": [],
         "applied": False,
         "blocked_reason": None,
+    }
+
+
+def _candidate_has_positive_rank(candidate: dict[str, Any] | None, rank_key: str) -> bool:
+    if not isinstance(candidate, dict):
+        return False
+    rank = candidate.get(rank_key)
+    return isinstance(rank, int) and not isinstance(rank, bool) and rank > 0
+
+
+def _current_ordering_rank(
+    *,
+    memory_id: str,
+    candidate_meta: dict[str, dict[str, Any]],
+    basis: str,
+    pass_through: bool,
+    fallback_rank: int,
+) -> int | None:
+    candidate = candidate_meta.get(memory_id, {})
+    if pass_through:
+        rank = candidate.get(basis)
+    elif basis == "retrieval_rank":
+        rank = candidate.get("rank")
+    else:
+        rank = fallback_rank
+    return rank if isinstance(rank, int) and not isinstance(rank, bool) else None
+
+
+def _current_only_ordering_metadata(
+    *,
+    retrieval: dict[str, Any],
+    selection: dict[str, Any],
+    candidate_meta: dict[str, dict[str, Any]],
+    current_ids: list[str],
+    conflict_sets: list[dict[str, Any]],
+) -> dict[str, Any]:
+    selection_strategy = str(selection.get("selection_strategy") or "")
+    current_ids = [str(memory_id) for memory_id in current_ids if str(memory_id)]
+    selected_current_ids = [
+        str(memory_id)
+        for memory_id in selection.get("selected_current_ids", [])
+        if str(memory_id)
+    ]
+    considered_current_ids = list(selected_current_ids)
+    basis = "retrieval_rank"
+    source = "baseline"
+    pass_through = False
+    reason = "current-only-retrieval-rank"
+
+    reranker = retrieval.get("reranker") if isinstance(retrieval.get("reranker"), dict) else {}
+    embedding = retrieval.get("embedding") if isinstance(retrieval.get("embedding"), dict) else {}
+    hybrid = retrieval.get("hybrid") if isinstance(retrieval.get("hybrid"), dict) else {}
+
+    if selection_strategy == "current_only_v1" and selected_current_ids:
+        if bool(reranker.get("enabled")) and all(
+            _candidate_has_positive_rank(candidate_meta.get(memory_id), "reranker_rank")
+            for memory_id in selected_current_ids
+        ):
+            basis = "reranker_rank"
+            source = "reranker"
+            pass_through = True
+            reason = "current-only-reranker-pass-through"
+        elif bool(embedding.get("enabled")) and all(
+            _candidate_has_positive_rank(candidate_meta.get(memory_id), "embedding_rank")
+            for memory_id in selected_current_ids
+        ):
+            basis = "embedding_rank"
+            source = "embedding"
+            pass_through = True
+            reason = "current-only-embedding-pass-through"
+        elif bool(hybrid.get("applied")) and all(
+            _candidate_has_positive_rank(candidate_meta.get(memory_id), "hybrid_semantic_rank")
+            for memory_id in selected_current_ids
+        ):
+            basis = "hybrid_semantic_rank"
+            source = "hybrid_semantic_backfill"
+            pass_through = True
+            reason = "current-only-hybrid-semantic-pass-through"
+    elif selection_strategy == "current_update_preferred_v1" and selected_current_ids:
+        basis = "current_update_preference_rank"
+        source = "temporal_current_update_preference"
+        reason = "current-update-explicit-anchor-selection"
+        considered_current_ids = selected_current_ids + [
+            memory_id for memory_id in current_ids if memory_id not in selected_current_ids
+        ]
+    elif selection_strategy == "current_conflict_resolved_v1" and selected_current_ids:
+        basis = "current_conflict_resolution_rank"
+        source = "temporal_current_conflict_resolution"
+        reason = "lexical-current-conflict-deterministic-resolution"
+        conflict_current_ids: list[str] = []
+        selected_current_id_set = set(selected_current_ids)
+        for conflict_set in conflict_sets:
+            if (
+                str(conflict_set.get("reason") or "") != "lexical-current-conflict"
+                or str(conflict_set.get("resolution_outcome") or "") != "resolved"
+            ):
+                continue
+            ordered_current_ids = [
+                str(memory_id)
+                for memory_id in conflict_set.get("current_ids", [])
+                if str(memory_id)
+            ]
+            if not selected_current_id_set.intersection(ordered_current_ids):
+                continue
+            conflict_current_ids.extend(ordered_current_ids)
+        if conflict_current_ids:
+            deduped_conflict_current_ids: list[str] = []
+            seen_conflict_ids: set[str] = set()
+            for memory_id in conflict_current_ids:
+                if memory_id in seen_conflict_ids:
+                    continue
+                seen_conflict_ids.add(memory_id)
+                deduped_conflict_current_ids.append(memory_id)
+            considered_current_ids = deduped_conflict_current_ids + [
+                memory_id for memory_id in current_ids if memory_id not in seen_conflict_ids
+            ]
+        else:
+            considered_current_ids = selected_current_ids + [
+                memory_id for memory_id in current_ids if memory_id not in selected_current_ids
+            ]
+    elif selection_strategy == "current_conflict_abstained_v1":
+        basis = "current_conflict_abstention_rank"
+        source = "temporal_current_conflict_abstention"
+        reason = "lexical-current-conflict-abstained"
+        conflict_current_ids: list[str] = []
+        for conflict_set in conflict_sets:
+            if (
+                str(conflict_set.get("reason") or "") != "lexical-current-conflict"
+                or str(conflict_set.get("resolution_outcome") or "") != "abstained"
+            ):
+                continue
+            conflict_current_ids.extend(
+                [
+                    str(memory_id)
+                    for memory_id in conflict_set.get("current_ids", [])
+                    if str(memory_id)
+                ]
+            )
+        if conflict_current_ids:
+            deduped_conflict_current_ids: list[str] = []
+            seen_conflict_ids: set[str] = set()
+            for memory_id in conflict_current_ids:
+                if memory_id in seen_conflict_ids:
+                    continue
+                seen_conflict_ids.add(memory_id)
+                deduped_conflict_current_ids.append(memory_id)
+            considered_current_ids = deduped_conflict_current_ids + [
+                memory_id for memory_id in current_ids if memory_id not in seen_conflict_ids
+            ]
+        else:
+            considered_current_ids = list(current_ids)
+
+    selected_current_rankings = []
+    for index, memory_id in enumerate(selected_current_ids, start=1):
+        selected_current_rankings.append(
+            {
+                "memory_id": memory_id,
+                "rank": _current_ordering_rank(
+                    memory_id=memory_id,
+                    candidate_meta=candidate_meta,
+                    basis=basis,
+                    pass_through=pass_through,
+                    fallback_rank=index,
+                ),
+            }
+        )
+    selected_current_id_set = set(selected_current_ids)
+    considered_current_rankings = []
+    for index, memory_id in enumerate(considered_current_ids, start=1):
+        considered_current_rankings.append(
+            {
+                "memory_id": memory_id,
+                "rank": _current_ordering_rank(
+                    memory_id=memory_id,
+                    candidate_meta=candidate_meta,
+                    basis=basis,
+                    pass_through=pass_through,
+                    fallback_rank=index,
+                ),
+                "selected": memory_id in selected_current_id_set,
+            }
+        )
+
+    return {
+        "applied": selection_strategy in {
+            "current_only_v1",
+            "current_update_preferred_v1",
+            "current_conflict_resolved_v1",
+            "current_conflict_abstained_v1",
+        },
+        "pass_through": pass_through,
+        "basis": basis,
+        "source": source,
+        "reason": reason,
+        "selected_current_rankings": selected_current_rankings,
+        "considered_current_rankings": considered_current_rankings,
+    }
+
+
+def _history_ordering_metadata(
+    *,
+    selection: dict[str, Any],
+    candidate_by_id: dict[str, MemoryRecord],
+    candidate_ids_in_rank_order: list[str],
+    conflict_sets: list[dict[str, Any]],
+) -> dict[str, Any]:
+    selection_strategy = str(selection.get("selection_strategy") or "")
+    selection_reason = str(selection.get("selection_reason") or "")
+    if selection_strategy != "history_conflict_abstained_v1":
+        return {
+            "applied": False,
+            "pass_through": False,
+            "basis": "history_conflict_abstention_rank",
+            "source": "temporal_history_conflict_abstention",
+            "reason": selection_reason,
+            "selected_history_rankings": [],
+            "considered_history_rankings": [],
+        }
+
+    abstained_history_ids = [
+        str(memory_id)
+        for memory_id in selection.get("abstention", {}).get("abstained_ids", [])
+        if str(memory_id)
+    ]
+    if not abstained_history_ids:
+        for conflict_set in conflict_sets:
+            if str(conflict_set.get("reason") or "") != "subject-lookup-cross-provenance-conflict":
+                continue
+            if str(conflict_set.get("resolution_outcome") or "") != "abstained":
+                continue
+            abstained_history_ids.extend(
+                str(memory_id)
+                for memory_id in conflict_set.get("abstained_current_ids", [])
+                if str(memory_id)
+            )
+
+    deduped_abstained_history_ids: list[str] = []
+    seen_history_ids: set[str] = set()
+    for memory_id in abstained_history_ids:
+        if memory_id in seen_history_ids:
+            continue
+        seen_history_ids.add(memory_id)
+        deduped_abstained_history_ids.append(memory_id)
+
+    selection_order = str(selection.get("selection_order") or "")
+    if selection_order in {
+        "chronological_asc_abstained",
+        "chronological_asc_prefer_earliest_abstained",
+    }:
+        rank_by_id = {
+            memory_id: rank
+            for rank, memory_id in enumerate(candidate_ids_in_rank_order, start=1)
+        }
+        considered_history_ids = _chronology_ordered_ids(
+            deduped_abstained_history_ids,
+            candidate_by_id=candidate_by_id,
+            rank_by_id=rank_by_id,
+        )
+    else:
+        considered_history_ids = [
+            memory_id
+            for memory_id in candidate_ids_in_rank_order
+            if memory_id in seen_history_ids
+        ]
+
+    return {
+        "applied": True,
+        "pass_through": False,
+        "basis": "history_conflict_abstention_rank",
+        "source": "temporal_history_conflict_abstention",
+        "reason": selection_reason,
+        "selected_history_rankings": [],
+        "considered_history_rankings": [
+            {"memory_id": memory_id, "rank": index, "selected": False}
+            for index, memory_id in enumerate(considered_history_ids, start=1)
+        ],
     }
 
 
@@ -4163,6 +4471,7 @@ def _apply_query_at_explicit_updates(
     status_at_query_by_id: dict[str, str],
     superseded_at_by_id: dict[str, str | None],
     superseded_by_ids: dict[str, list[str]],
+    supersession_reasons_by_id: dict[str, list[str]],
     observation_seq_by_id: dict[str, int],
     timestamp: str,
 ) -> None:
@@ -4251,16 +4560,45 @@ def _apply_query_at_explicit_updates(
                 ]
         for stale_memory_id in stale_candidate_ids:
             current_id_set.discard(stale_memory_id)
-            existing_superseded_at = superseded_at_by_id.get(stale_memory_id)
-            if existing_superseded_at is None or chosen_valid_from < existing_superseded_at:
-                superseded_at_by_id[stale_memory_id] = chosen_valid_from
-                superseded_by_ids[stale_memory_id] = [chosen_current_id]
-                continue
-            if chosen_valid_from == existing_superseded_at:
-                superseding_ids = superseded_by_ids.setdefault(stale_memory_id, [])
-                if chosen_current_id not in superseding_ids:
-                    superseding_ids.append(chosen_current_id)
-                    superseding_ids.sort()
+            _record_query_at_supersession(
+                stale_memory_id=stale_memory_id,
+                chosen_current_ids=[chosen_current_id],
+                superseded_at=chosen_valid_from,
+                reason="explicit-update-candidate",
+                superseded_at_by_id=superseded_at_by_id,
+                superseded_by_ids=superseded_by_ids,
+                supersession_reasons_by_id=supersession_reasons_by_id,
+            )
+
+
+def _record_query_at_supersession(
+    *,
+    stale_memory_id: str,
+    chosen_current_ids: list[str],
+    superseded_at: str,
+    reason: str,
+    superseded_at_by_id: dict[str, str | None],
+    superseded_by_ids: dict[str, list[str]],
+    supersession_reasons_by_id: dict[str, list[str]],
+) -> None:
+    existing_superseded_at = superseded_at_by_id.get(stale_memory_id)
+    if existing_superseded_at is None or superseded_at < existing_superseded_at:
+        superseded_at_by_id[stale_memory_id] = superseded_at
+        superseded_by_ids[stale_memory_id] = sorted({memory_id for memory_id in chosen_current_ids if memory_id})
+        supersession_reasons_by_id[stale_memory_id] = [reason]
+        return
+    if superseded_at != existing_superseded_at:
+        return
+
+    superseding_ids = superseded_by_ids.setdefault(stale_memory_id, [])
+    for chosen_current_id in chosen_current_ids:
+        if chosen_current_id and chosen_current_id not in superseding_ids:
+            superseding_ids.append(chosen_current_id)
+    superseding_ids.sort()
+
+    reasons = supersession_reasons_by_id.setdefault(stale_memory_id, [])
+    if reason not in reasons:
+        reasons.append(reason)
 
 
 def _apply_query_at_subject_lookup_restatements(
@@ -4271,6 +4609,7 @@ def _apply_query_at_subject_lookup_restatements(
     status_at_query_by_id: dict[str, str],
     superseded_at_by_id: dict[str, str | None],
     superseded_by_ids: dict[str, list[str]],
+    supersession_reasons_by_id: dict[str, list[str]],
     observation_seq_by_id: dict[str, int],
     timestamp: str,
 ) -> None:
@@ -4343,16 +4682,15 @@ def _apply_query_at_subject_lookup_restatements(
             continue
         for stale_memory_id in ordered[1:]:
             current_id_set.discard(stale_memory_id)
-            existing_superseded_at = superseded_at_by_id.get(stale_memory_id)
-            if existing_superseded_at is None or chosen_valid_from < existing_superseded_at:
-                superseded_at_by_id[stale_memory_id] = chosen_valid_from
-                superseded_by_ids[stale_memory_id] = [chosen_current_id]
-                continue
-            if chosen_valid_from == existing_superseded_at:
-                superseding_ids = superseded_by_ids.setdefault(stale_memory_id, [])
-                if chosen_current_id not in superseding_ids:
-                    superseding_ids.append(chosen_current_id)
-                    superseding_ids.sort()
+            _record_query_at_supersession(
+                stale_memory_id=stale_memory_id,
+                chosen_current_ids=[chosen_current_id],
+                superseded_at=chosen_valid_from,
+                reason="subject-lookup-restatement",
+                superseded_at_by_id=superseded_at_by_id,
+                superseded_by_ids=superseded_by_ids,
+                supersession_reasons_by_id=supersession_reasons_by_id,
+            )
 
 
 def _apply_subject_lookup_restatements(
@@ -5296,6 +5634,19 @@ def resolve_temporal_lifecycle(
         str(item["memory_id"]): item
         for item in selection_exclusions
     }
+    current_ordering = _current_only_ordering_metadata(
+        retrieval=retrieval,
+        selection=selection,
+        candidate_meta=candidate_meta,
+        current_ids=current_ids,
+        conflict_sets=conflict_sets,
+    )
+    history_ordering = _history_ordering_metadata(
+        selection=selection,
+        candidate_by_id=candidate_by_id,
+        candidate_ids_in_rank_order=candidate_ids_in_rank_order,
+        conflict_sets=conflict_sets,
+    )
     temporal_fusion = None
     temporal_fusion_signal = _temporal_fusion_signal(selection)
     temporal_fusion_source_rankings = _temporal_support_fusion_source_rankings(
@@ -5367,6 +5718,8 @@ def resolve_temporal_lifecycle(
         "selection_order": selection["selection_order"],
         "selected_ids": selection["selected_ids"],
         "selection_exclusions": selection["selection_exclusions"],
+        "current_ordering": current_ordering,
+        "history_ordering": history_ordering,
         "selected_superseded_ids": selection["selected_superseded_ids"],
         "selected_current_ids": selection["selected_current_ids"],
         "selected_stale_anchor_id": selection["selected_stale_anchor_id"],
@@ -5481,12 +5834,41 @@ def pack_memory_context(
     hybrid_semantic_applied = bool(
         ((retrieval.get("hybrid") or {}) if isinstance(retrieval.get("hybrid"), dict) else {}).get("applied")
     )
+    embedding_enabled = bool(
+        ((retrieval.get("embedding") or {}) if isinstance(retrieval.get("embedding"), dict) else {}).get("enabled")
+    )
+    reranker_enabled = bool(
+        ((retrieval.get("reranker") or {}) if isinstance(retrieval.get("reranker"), dict) else {}).get("enabled")
+    )
+    temporal_metadata = (retrieval.get("temporal") or {}) if isinstance(retrieval.get("temporal"), dict) else {}
+    temporal_selection_strategy = str(temporal_metadata.get("selection_strategy") or "")
+    temporal_injection_strategy = temporal_metadata.get("injection_strategy")
     prefer_temporal_fusion_rank = temporal_fusion_signal in {
         "temporal_history_relation_pair_rrf_score_v1",
         "temporal_update_relation_pair_rrf_score_v1",
         "temporal_earliest_relation_pair_rrf_score_v1",
     }
     prefer_multi_hop_fusion_rank = multi_hop_fusion_applied and not prefer_temporal_fusion_rank
+    allow_default_current_selection_override = (
+        temporal_selection_strategy == "current_only_v1"
+        and temporal_injection_strategy in {None, ""}
+        and not prefer_temporal_fusion_rank
+        and not prefer_multi_hop_fusion_rank
+    )
+    prefer_reranker_rank = reranker_enabled and not prefer_temporal_fusion_rank and not prefer_multi_hop_fusion_rank
+    prefer_embedding_rank = (
+        embedding_enabled
+        and not prefer_temporal_fusion_rank
+        and not prefer_multi_hop_fusion_rank
+        and not prefer_reranker_rank
+    )
+    prefer_hybrid_semantic_rank = (
+        hybrid_semantic_applied
+        and not prefer_temporal_fusion_rank
+        and not prefer_multi_hop_fusion_rank
+        and not prefer_reranker_rank
+        and not prefer_embedding_rank
+    )
     if max_tokens is not None and max_tokens < 0:
         raise ValueError("context budget cannot be negative")
 
@@ -5512,10 +5894,26 @@ def pack_memory_context(
             packing_rank = multi_hop_fusion_rank
             packing_rank_basis = "multi_hop_fusion_rank"
         elif (
-            hybrid_semantic_applied
+            prefer_reranker_rank
+            and isinstance(candidate.get("reranker_rank"), int)
+            and int(candidate["reranker_rank"]) > 0
+            and (not selected_by_temporal_strategy or allow_default_current_selection_override)
+        ):
+            packing_rank = int(candidate["reranker_rank"])
+            packing_rank_basis = "reranker_rank"
+        elif (
+            prefer_embedding_rank
+            and isinstance(candidate.get("embedding_rank"), int)
+            and int(candidate["embedding_rank"]) > 0
+            and (not selected_by_temporal_strategy or allow_default_current_selection_override)
+        ):
+            packing_rank = int(candidate["embedding_rank"])
+            packing_rank_basis = "embedding_rank"
+        elif (
+            prefer_hybrid_semantic_rank
             and isinstance(hybrid_semantic_rank, int)
             and hybrid_semantic_rank > 0
-            and not selected_by_temporal_strategy
+            and (not selected_by_temporal_strategy or allow_default_current_selection_override)
         ):
             packing_rank = hybrid_semantic_rank
             packing_rank_basis = "hybrid_semantic_rank"
@@ -5554,6 +5952,10 @@ def pack_memory_context(
                     candidate_count=candidate_count,
                     prefer_temporal_fusion_rank=prefer_temporal_fusion_rank,
                     prefer_multi_hop_fusion_rank=prefer_multi_hop_fusion_rank,
+                    prefer_reranker_rank=prefer_reranker_rank,
+                    prefer_embedding_rank=prefer_embedding_rank,
+                    prefer_hybrid_semantic_rank=prefer_hybrid_semantic_rank,
+                    allow_default_current_selection_override=allow_default_current_selection_override,
                 ),
                 **_overlay_receipt_fields(candidate, include_empty=True),
             }
@@ -5721,9 +6123,17 @@ def pack_memory_context(
                 "multi_hop_fusion_rank_score_authority_current_v1"
                 if prefer_multi_hop_fusion_rank
                 else (
+                    "reranker_rank_score_authority_current_v1"
+                    if any(entry["packing_rank_basis"] == "reranker_rank" for entry in authorized_entries)
+                    else (
+                        "embedding_rank_score_authority_current_v1"
+                        if any(entry["packing_rank_basis"] == "embedding_rank" for entry in authorized_entries)
+                        else (
                     "hybrid_semantic_rank_score_authority_current_v1"
                     if any(entry["packing_rank_basis"] == "hybrid_semantic_rank" for entry in authorized_entries)
                     else "temporal_selection_rank_score_authority_current_v1"
+                        )
+                    )
                 )
             )
         ),
@@ -6267,6 +6677,7 @@ class MemoryStore:
 
         superseded_at_by_id: dict[str, str | None] = {memory.id: None for memory in memories}
         superseded_by_ids: dict[str, list[str]] = {memory.id: [] for memory in memories}
+        supersession_reasons_by_id: dict[str, list[str]] = {memory.id: [] for memory in memories}
         for parent_id, child_ids in child_ids_by_parent.items():
             child_events = [
                 (str(valid_from_by_id[child_id]), child_id)
@@ -6281,6 +6692,7 @@ class MemoryStore:
             superseded_by_ids[parent_id] = [
                 child_id for child_at, child_id in child_events if child_at == superseded_at
             ]
+            supersession_reasons_by_id[parent_id] = ["active-child-candidate"]
         _apply_query_at_explicit_updates(
             memories_by_id=memories_by_id,
             valid_from_by_id=valid_from_by_id,
@@ -6288,6 +6700,7 @@ class MemoryStore:
             status_at_query_by_id=status_at_query_by_id,
             superseded_at_by_id=superseded_at_by_id,
             superseded_by_ids=superseded_by_ids,
+            supersession_reasons_by_id=supersession_reasons_by_id,
             observation_seq_by_id=observation_seq_by_id,
             timestamp=timestamp,
         )
@@ -6298,6 +6711,7 @@ class MemoryStore:
             status_at_query_by_id=status_at_query_by_id,
             superseded_at_by_id=superseded_at_by_id,
             superseded_by_ids=superseded_by_ids,
+            supersession_reasons_by_id=supersession_reasons_by_id,
             observation_seq_by_id=observation_seq_by_id,
             timestamp=timestamp,
         )
@@ -6341,6 +6755,16 @@ class MemoryStore:
                 history_memory_ids.append(memory.id)
                 learned_memory_ids.append(memory.id)
 
+            temporal_resolution_kind = None
+            temporal_resolution_reasons: list[str] = []
+            if temporal_state == "superseded":
+                temporal_resolution_kind = "supersession"
+                temporal_resolution_reasons = list(supersession_reasons_by_id.get(memory.id, []))
+            elif temporal_state == "unlearned":
+                temporal_resolution_kind = "unlearned"
+                if status_at_query in {"deprecated", "revoked", "forgotten"}:
+                    temporal_resolution_reasons = [status_at_query]
+
             envelope = {
                 "memory_id": memory.id,
                 "parents": list(memory.parents),
@@ -6354,6 +6778,8 @@ class MemoryStore:
                 "temporal_state": temporal_state,
                 "current_resolution": None,
                 "current_conflict_reasons": [],
+                "temporal_resolution_kind": temporal_resolution_kind,
+                "temporal_resolution_reasons": temporal_resolution_reasons,
             }
             temporal_graph[memory.id] = envelope
             entries.append(
@@ -6413,7 +6839,11 @@ class MemoryStore:
                 envelope["current_resolution"] = "dropped"
             else:
                 envelope["current_resolution"] = "selected"
-            envelope["current_conflict_reasons"] = conflict_reasons_by_id.get(memory_id, [])
+            conflict_reasons = conflict_reasons_by_id.get(memory_id, [])
+            envelope["current_conflict_reasons"] = conflict_reasons
+            if conflict_reasons:
+                envelope["temporal_resolution_kind"] = "contradiction"
+                envelope["temporal_resolution_reasons"] = list(conflict_reasons)
 
         abstention = {
             "applied": False,
@@ -6453,10 +6883,12 @@ class MemoryStore:
         current_resolution: str,
     ) -> dict[str, Any]:
         filtered = dict(projection)
-        if current_resolution in {"abstained", "selected"}:
-            resolution_id_key = (
-                "abstained_current_memory_ids" if current_resolution == "abstained" else "resolved_current_memory_ids"
-            )
+        if current_resolution in {"abstained", "selected", "dropped"}:
+            resolution_id_key = {
+                "abstained": "abstained_current_memory_ids",
+                "selected": "resolved_current_memory_ids",
+                "dropped": "dropped_current_memory_ids",
+            }[current_resolution]
             visible_ids = {
                 str(memory_id)
                 for memory_id in projection.get(resolution_id_key, [])
@@ -6496,6 +6928,16 @@ class MemoryStore:
                     and any(
                         str(memory_id) in visible_ids
                         for memory_id in conflict_set.get("abstained_current_ids", [])
+                    )
+                ]
+            elif current_resolution == "dropped":
+                filtered["conflict_sets"] = [
+                    conflict_set
+                    for conflict_set in projection.get("conflict_sets", [])
+                    if str(conflict_set.get("resolution_outcome") or "") == "resolved"
+                    and any(
+                        str(memory_id) in visible_ids
+                        for memory_id in conflict_set.get("dropped_current_ids", [])
                     )
                 ]
             else:
@@ -6563,8 +7005,8 @@ class MemoryStore:
         self.init()
         if not re.match(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$", timestamp):
             raise ValueError("query_at timestamp must be in ISO 8601 UTC form like 2024-01-01T00:00:00Z")
-        if current_resolution not in {"all", "abstained", "selected"}:
-            raise ValueError("query_at current_resolution must be 'all', 'abstained', or 'selected'")
+        if current_resolution not in {"all", "abstained", "selected", "dropped"}:
+            raise ValueError("query_at current_resolution must be 'all', 'abstained', 'selected', or 'dropped'")
         if current_resolution == "abstained" and not include_abstained_current:
             raise ValueError("query_at current_resolution='abstained' requires include_abstained_current=True")
 
@@ -8679,6 +9121,11 @@ class MemoryStore:
                 for memory_id in temporal_projection["abstained_current_memory_ids"]
                 if memory_id in temporal_graph
             }
+            temporal_metadata["dropped_current_temporal_graph"] = {
+                memory_id: temporal_graph[memory_id]
+                for memory_id in temporal_projection["dropped_current_memory_ids"]
+                if memory_id in temporal_graph
+            }
             temporal_metadata["injected_temporal_graph"] = {
                 memory.id: temporal_graph[memory.id]
                 for memory in injected
@@ -9091,6 +9538,56 @@ class MemoryStore:
             self.conn.execute("SELECT * FROM events WHERE event_hash = ?", (event["event_hash"],)).fetchone()
         )
 
+    def end_session(
+        self,
+        session_id: str,
+        *,
+        actor_id: str,
+        scope: str | None = None,
+        summary: str | None = None,
+    ) -> dict[str, Any]:
+        self.init()
+        session_end_id = "sed_" + uuid.uuid4().hex[:16]
+        prior_merkle_root = self.current_merkle_root()
+        active_memories = self.list_memories(scope=scope, status="active", limit=10_000)
+        memory_tree = self.memory_tree(active_memories, scope="session-end")
+        memory_ids_by_type = _memory_ids_by_type(active_memories)
+        snapshot = self.snapshot()
+        payload = {
+            "schema": SESSION_END_SCHEMA,
+            "session_end_id": session_end_id,
+            "session_id": session_id,
+            "scope": scope,
+            "summary": summary,
+            "prior_merkle_root": prior_merkle_root,
+            "snapshot_hash": snapshot["snapshot_hash"],
+            "snapshot_merkle_root": snapshot["merkle_root"],
+            "snapshot_memory_count": snapshot["memory_count"],
+            "snapshot_event_count": snapshot["event_count"],
+            "active_memory_ids": [memory.id for memory in active_memories],
+            "memory_count": len(active_memories),
+            "memory_tree_root": memory_tree["root"],
+            "memory_tree_leaf_count": memory_tree["leaf_count"],
+            "memory_type_summary": {
+                "instruction_types": list(INSTRUCTION_MEMORY_TYPES),
+                "recall_types": list(RECALL_MEMORY_TYPES),
+                "active_ids_by_type": memory_ids_by_type,
+                "active_counts_by_type": {
+                    memory_type: len(memory_ids_by_type.get(memory_type, []))
+                    for memory_type in sorted(MEMORY_TYPES)
+                },
+            },
+        }
+        event = self._append_event(
+            "SESSION_ENDED",
+            actor_id=actor_id,
+            payload=payload,
+        )
+        self.conn.commit()
+        return self._session_end_from_event_row(
+            self.conn.execute("SELECT * FROM events WHERE event_hash = ?", (event["event_hash"],)).fetchone()
+        )
+
     def snapshot_session(
         self,
         session_id: str,
@@ -9364,6 +9861,62 @@ class MemoryStore:
         self.conn.commit()
         return self._session_snapshot_from_event_row(snapshot_event_row)
 
+    def prune_session_snapshot_payloads(
+        self,
+        session_id: str,
+        *,
+        actor_id: str,
+        scope: str | None = None,
+        keep_latest: int = 1,
+        reason: str | None = None,
+    ) -> dict[str, Any]:
+        self.init()
+        if keep_latest < 0:
+            raise ValueError("keep_latest must be >= 0")
+
+        snapshots_before = self.session_snapshots(session_id=session_id, scope=scope, limit=10_000)
+        available_before_snapshots = [
+            snapshot for snapshot in snapshots_before if snapshot.get("payload_status") == "available"
+        ]
+        already_soft_deleted_snapshot_ids = [
+            snapshot["session_snapshot_id"]
+            for snapshot in snapshots_before
+            if snapshot.get("payload_status") == "soft_deleted"
+        ]
+        kept_snapshot_ids = [
+            snapshot["session_snapshot_id"]
+            for snapshot in available_before_snapshots[:keep_latest]
+        ]
+        prune_reason = reason or "retention-prune-keep-latest"
+        pruned_snapshots = [
+            self.soft_delete_session_snapshot_payload(
+                snapshot["session_snapshot_id"],
+                actor_id=actor_id,
+                reason=prune_reason,
+            )
+            for snapshot in available_before_snapshots[keep_latest:]
+        ]
+        snapshots_after = self.session_snapshots(session_id=session_id, scope=scope, limit=10_000)
+        available_after = sum(1 for snapshot in snapshots_after if snapshot.get("payload_status") == "available")
+        soft_deleted_after = sum(1 for snapshot in snapshots_after if snapshot.get("payload_status") == "soft_deleted")
+        return {
+            "ok": True,
+            "schema": "zerker.session_snapshot_prune.v1",
+            "session_id": session_id,
+            "scope": scope,
+            "actor_id": actor_id,
+            "keep_latest": keep_latest,
+            "reason": prune_reason,
+            "available_before": len(available_before_snapshots),
+            "available_after": available_after,
+            "soft_deleted_before": len(already_soft_deleted_snapshot_ids),
+            "soft_deleted_after": soft_deleted_after,
+            "kept_snapshot_ids": kept_snapshot_ids,
+            "already_soft_deleted_snapshot_ids": already_soft_deleted_snapshot_ids,
+            "pruned_snapshot_ids": [snapshot["session_snapshot_id"] for snapshot in pruned_snapshots],
+            "pruned_snapshots": pruned_snapshots,
+        }
+
     def verify_snapshot(self, snapshot: dict[str, Any]) -> dict[str, Any]:
         without_hash = dict(snapshot)
         without_hash.pop("snapshot_hash", None)
@@ -9381,9 +9934,19 @@ class MemoryStore:
             "event_count": snapshot.get("event_count"),
             "receipt_count": snapshot.get("receipt_count"),
             "write_receipt_count": snapshot.get("write_receipt_count"),
+            "write_receipt_chain_count": 0,
+            "verified_write_receipt_count": 0,
+            "verified_write_receipt_transition_count": 0,
+            "write_receipt_attestation_count": 0,
+            "attestation_artifacts": [],
         }
         try:
-            self._validate_snapshot(snapshot)
+            write_receipt_verification = self._validate_snapshot(snapshot)
+            result["write_receipt_chain_count"] = write_receipt_verification["chain_count"]
+            result["verified_write_receipt_count"] = write_receipt_verification["verified_write_receipt_count"]
+            result["verified_write_receipt_transition_count"] = write_receipt_verification["verified_transition_count"]
+            result["write_receipt_attestation_count"] = len(write_receipt_verification["attestation_artifacts"])
+            result["attestation_artifacts"] = write_receipt_verification["attestation_artifacts"]
         except (KeyError, ValueError) as exc:
             result["ok"] = False
             result["error"] = str(exc)
@@ -9394,12 +9957,14 @@ class MemoryStore:
         receipt: dict[str, Any],
         *,
         prior_receipt: dict[str, Any] | None = None,
+        allow_intervening_prior_merkle_root: bool = False,
     ) -> dict[str, Any]:
         treeship_statement = receipt.get("treeship_statement")
         statement_object = treeship_statement.get("object", {}) if isinstance(treeship_statement, dict) else {}
         statement_evidence = treeship_statement.get("evidence", {}) if isinstance(treeship_statement, dict) else {}
         statement_source = treeship_statement.get("source", {}) if isinstance(treeship_statement, dict) else {}
         source_receipt = statement_source.get("receipt", {}) if isinstance(statement_source, dict) else {}
+        source_event = statement_source.get("event", {}) if isinstance(statement_source, dict) else {}
         statement_attestation = treeship_statement.get("attestation") if isinstance(treeship_statement, dict) else None
         receipt_attestation = receipt.get("treeship_attestation")
         result = {
@@ -9482,6 +10047,12 @@ class MemoryStore:
             ):
                 if statement_object.get(key) != receipt.get(key):
                     raise ValueError(f"write receipt treeship {key} mismatch")
+            actor_id = statement_object.get("actor_id")
+            if actor_id is not None:
+                if not isinstance(actor_id, str) or not actor_id:
+                    raise ValueError("write receipt treeship actor_id mismatch")
+                if source_event.get("actor_id") != actor_id:
+                    raise ValueError("write receipt source event actor_id mismatch")
             if statement_object.get("semantic_truth_guaranteed") is True:
                 raise ValueError("write receipt semantic_truth_guaranteed must not be true")
 
@@ -9496,6 +10067,8 @@ class MemoryStore:
 
             if statement_source.get("system") != "zerker-memory":
                 raise ValueError("write receipt treeship source system mismatch")
+            if source_event and source_event.get("event_hash") != receipt.get("event_hash"):
+                raise ValueError("write receipt source event_hash mismatch")
             for key in (
                 "receipt_schema",
                 "hash_alg",
@@ -9522,8 +10095,31 @@ class MemoryStore:
                     raise ValueError("write receipt top-level attestation missing")
                 if receipt_attestation != statement_attestation:
                     raise ValueError("write receipt attestation mismatch")
+                if statement_attestation.get("schema") != "zerker.memory.treeship_attestation.v1":
+                    raise ValueError("write receipt attestation schema mismatch")
+                if statement_attestation.get("system") != "system://zmem":
+                    raise ValueError("write receipt attestation system mismatch")
+                if statement_attestation.get("kind") != "memory.write":
+                    raise ValueError("write receipt attestation kind mismatch")
+                if statement_attestation.get("subject") != receipt.get("receipt_id"):
+                    raise ValueError("write receipt attestation subject mismatch")
                 if statement_attestation.get("payload_digest") != f"{HASH_ALG}:{receipt['receipt_hash']}":
                     raise ValueError("write receipt attestation payload_digest mismatch")
+                status = statement_attestation.get("status")
+                if status not in {"signed", "failed", "unavailable"}:
+                    raise ValueError("write receipt attestation status mismatch")
+                artifact_id = statement_attestation.get("artifact_id")
+                signed_at = statement_attestation.get("signed_at")
+                if status == "signed":
+                    if not isinstance(artifact_id, str) or not artifact_id:
+                        raise ValueError("write receipt attestation artifact_id mismatch")
+                    if not isinstance(signed_at, str) or not signed_at:
+                        raise ValueError("write receipt attestation signed_at mismatch")
+                else:
+                    if artifact_id is not None:
+                        raise ValueError("write receipt attestation artifact_id mismatch")
+                    if signed_at is not None:
+                        raise ValueError("write receipt attestation signed_at mismatch")
                 result["treeship_attestation_verified"] = True
             elif receipt_attestation is not None:
                 raise ValueError("write receipt top-level attestation missing statement copy")
@@ -9535,7 +10131,10 @@ class MemoryStore:
                     raise ValueError("prior_receipt_id mismatch")
                 if statement_source.get("prior_receipt_hash") != prior_receipt.get("receipt_hash"):
                     raise ValueError("prior_receipt_hash mismatch")
-                if statement_evidence.get("prior_merkle_root") != prior_receipt.get("merkle_root"):
+                if (
+                    not allow_intervening_prior_merkle_root
+                    and statement_evidence.get("prior_merkle_root") != prior_receipt.get("merkle_root")
+                ):
                     raise ValueError("prior_merkle_root mismatch")
             elif statement_source.get("prior_receipt_id") is not None or statement_source.get("prior_receipt_hash") is not None:
                 raise ValueError("write receipt unexpectedly links to a prior receipt")
@@ -9673,6 +10272,13 @@ class MemoryStore:
                 raise ValueError("lifecycle treeship mutation mismatch")
             if statement_object.get("content_digest") != computed_content_digest:
                 raise ValueError("lifecycle treeship content_digest mismatch")
+            actor_id = statement_object.get("actor_id")
+            if not isinstance(actor_id, str) or not actor_id:
+                raise ValueError("lifecycle treeship actor_id mismatch")
+            if actor_uri_for(actor_id) != receipt.get("actor_uri"):
+                raise ValueError("lifecycle treeship actor identity mismatch")
+            if "actor_uri" in statement_object and statement_object.get("actor_uri") != receipt.get("actor_uri"):
+                raise ValueError("lifecycle treeship actor_uri mismatch")
             if statement_object.get("semantic_truth_guaranteed") is not False:
                 raise ValueError("lifecycle semantic_truth_guaranteed must be false")
             if statement_evidence.get("hash_alg") != HASH_ALG:
@@ -9689,6 +10295,47 @@ class MemoryStore:
                 raise ValueError("lifecycle receipt missing treeship source")
             if statement_source.get("system") != "zerker-memory":
                 raise ValueError("lifecycle treeship source system mismatch")
+            source_event = statement_source.get("event")
+            if receipt.get("source_event_hash") is None:
+                if source_event is not None:
+                    raise ValueError("lifecycle source event mismatch")
+            else:
+                if not isinstance(source_event, dict):
+                    raise ValueError("lifecycle source event mismatch")
+                if source_event.get("event_schema") != EVENT_SCHEMA:
+                    raise ValueError("lifecycle source event schema mismatch")
+                if source_event.get("hash_alg") != HASH_ALG:
+                    raise ValueError("lifecycle source event hash algorithm mismatch")
+                if source_event.get("event_hash") != receipt.get("source_event_hash"):
+                    raise ValueError("lifecycle source event_hash mismatch")
+                if source_event.get("actor_id") != actor_id:
+                    raise ValueError("lifecycle source event actor_id mismatch")
+                if source_event.get("actor_uri") != receipt.get("actor_uri"):
+                    raise ValueError("lifecycle source event actor_uri mismatch")
+                expected_payload_hash = sha256_text(stable_json(source_payload))
+                if source_event.get("payload_hash") != expected_payload_hash:
+                    raise ValueError("lifecycle source event payload_hash mismatch")
+                if source_event.get("prev_event_hash") != statement_evidence.get("prior_event_hash"):
+                    raise ValueError("lifecycle source event prev_event_hash mismatch")
+                if source_event.get("created_at") != receipt.get("created_at"):
+                    raise ValueError("lifecycle source event created_at mismatch")
+                computed_event_hash = sha256_text(
+                    stable_json(
+                        {
+                            "event_schema": source_event.get("event_schema"),
+                            "hash_alg": source_event.get("hash_alg"),
+                            "event_type": source_event.get("event_type"),
+                            "memory_id": source_event.get("memory_id"),
+                            "action_id": source_event.get("action_id"),
+                            "actor_id": source_event.get("actor_id"),
+                            "payload_hash": source_event.get("payload_hash"),
+                            "prev_event_hash": source_event.get("prev_event_hash"),
+                            "created_at": source_event.get("created_at"),
+                        }
+                    )
+                )
+                if computed_event_hash != receipt.get("source_event_hash"):
+                    raise ValueError("lifecycle source event_hash mismatch")
             if statement_source.get("treeship_artifact_id") != receipt.get("treeship_artifact_id"):
                 raise ValueError("lifecycle treeship artifact mismatch")
             expected_source_receipt = dict(receipt)
@@ -9739,7 +10386,94 @@ class MemoryStore:
             result["error"] = str(exc)
         return result
 
-    def _validate_snapshot(self, snapshot: dict[str, Any]) -> None:
+    def _verify_snapshot_write_receipts(self, snapshot: dict[str, Any]) -> dict[str, Any]:
+        memories = snapshot.get("memories", [])
+        memory_ids = {memory.get("id") for memory in memories if isinstance(memory, dict)}
+        events = snapshot.get("events", [])
+        event_by_hash = {
+            event.get("event_hash"): event
+            for event in events
+            if isinstance(event, dict) and event.get("event_hash") is not None
+        }
+        event_hashes = {event.get("event_hash") for event in events if isinstance(event, dict)}
+        receipts_by_memory: dict[str, list[dict[str, Any]]] = {}
+        summary = {
+            "chain_count": 0,
+            "verified_write_receipt_count": 0,
+            "verified_transition_count": 0,
+            "attestation_artifacts": [],
+        }
+        for index, write_receipt in enumerate(snapshot.get("write_receipts", [])):
+            if not isinstance(write_receipt, dict):
+                raise ValueError(f"snapshot write_receipt at index {index} is invalid")
+            memory_id = write_receipt.get("memory_id")
+            if memory_id not in memory_ids:
+                raise ValueError(f"snapshot write receipt memory_id missing from snapshot memories: {memory_id}")
+            if write_receipt.get("event_hash") not in event_hashes:
+                raise ValueError(
+                    f"snapshot write receipt event_hash missing from snapshot events: {write_receipt.get('receipt_id') or index}"
+                )
+            receipts_by_memory.setdefault(str(memory_id), []).append(write_receipt)
+
+        summary["chain_count"] = len(receipts_by_memory)
+        for memory_id, receipts in receipts_by_memory.items():
+            prior_receipt = None
+            verified_transition_count = 0
+            for index, receipt in enumerate(receipts):
+                verification = self.verify_memory_write_receipt(
+                    receipt,
+                    prior_receipt=prior_receipt,
+                    allow_intervening_prior_merkle_root=True,
+                )
+                if not verification["ok"]:
+                    raise ValueError(
+                        f"snapshot write receipt chain invalid for {memory_id}: "
+                        f"receipt {receipt.get('receipt_id') or index} verification failed: {verification['error']}"
+                    )
+                event = event_by_hash.get(receipt.get("event_hash"))
+                if event is None:
+                    raise ValueError(
+                        f"snapshot write receipt event_hash missing from snapshot events: {receipt.get('receipt_id') or index}"
+                    )
+                if event.get("merkle_root") != receipt.get("merkle_root"):
+                    raise ValueError(
+                        f"snapshot write receipt event merkle_root mismatch: {receipt.get('receipt_id') or index}"
+                    )
+                statement_evidence = (receipt.get("treeship_statement") or {}).get("evidence") or {}
+                if prior_receipt is not None:
+                    prior_event_hash = event.get("prev_event_hash")
+                    prior_event = event_by_hash.get(prior_event_hash)
+                    expected_prior_merkle_root = prior_event.get("merkle_root") if prior_event is not None else merkle_root([])
+                    if statement_evidence.get("prior_merkle_root") != expected_prior_merkle_root:
+                        raise ValueError(
+                            f"snapshot write receipt chain invalid for {memory_id}: "
+                            f"receipt {receipt.get('receipt_id') or index} prior_merkle_root mismatch"
+                        )
+                    verified_transition_count += 1
+                if (
+                    (receipt.get("treeship_statement") or {}).get("kind") == "zerker.memory.mutation_receipt"
+                    and statement_evidence.get("new_merkle_root") != event.get("merkle_root")
+                ):
+                    raise ValueError(
+                        f"snapshot write receipt chain invalid for {memory_id}: "
+                        f"receipt {receipt.get('receipt_id') or index} new_merkle_root mismatch"
+                    )
+                attestation = receipt.get("treeship_attestation")
+                if isinstance(attestation, dict):
+                    summary["attestation_artifacts"].append(
+                        {
+                            "receipt_id": receipt.get("receipt_id"),
+                            "artifact_id": attestation.get("artifact_id"),
+                            "status": attestation.get("status"),
+                            "signed_at": attestation.get("signed_at"),
+                        }
+                    )
+                summary["verified_write_receipt_count"] += 1
+                prior_receipt = receipt
+            summary["verified_transition_count"] += verified_transition_count
+        return summary
+
+    def _validate_snapshot(self, snapshot: dict[str, Any]) -> dict[str, Any]:
         if snapshot.get("snapshot_schema") != SNAPSHOT_SCHEMA:
             raise ValueError("unsupported snapshot schema")
         if snapshot.get("hash_alg") != HASH_ALG:
@@ -9765,6 +10499,7 @@ class MemoryStore:
             raise ValueError("snapshot receipt_count mismatch")
         if snapshot.get("write_receipt_count", len(snapshot.get("write_receipts", []))) != len(snapshot.get("write_receipts", [])):
             raise ValueError("snapshot write_receipt_count mismatch")
+        return self._verify_snapshot_write_receipts(snapshot)
 
     def verify(self, action_id: str) -> bool:
         self.init()
@@ -9829,6 +10564,62 @@ class MemoryStore:
             max_seq = action_row["seq"] - 1 if action_row else 0
             rows = self.conn.execute("SELECT event_hash FROM events WHERE seq <= ? ORDER BY seq", (max_seq,)).fetchall()
         return merkle_root([row["event_hash"] for row in rows])
+
+    def session_starts(
+        self,
+        *,
+        session_id: str | None = None,
+        scope: str | None = None,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        self.init()
+        rows = self.conn.execute(
+            """
+            SELECT *
+            FROM events
+            WHERE event_type = 'SESSION_STARTED'
+            ORDER BY seq DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+        starts: list[dict[str, Any]] = []
+        for row in rows:
+            session_start = self._session_start_from_event_row(row)
+            if session_id is not None and session_start["session_id"] != session_id:
+                continue
+            if scope is not None and session_start["scope"] != scope:
+                continue
+            starts.append(session_start)
+        return starts
+
+    def session_ends(
+        self,
+        *,
+        session_id: str | None = None,
+        scope: str | None = None,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        self.init()
+        rows = self.conn.execute(
+            """
+            SELECT *
+            FROM events
+            WHERE event_type = 'SESSION_ENDED'
+            ORDER BY seq DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+        ends: list[dict[str, Any]] = []
+        for row in rows:
+            session_end = self._session_end_from_event_row(row)
+            if session_id is not None and session_end["session_id"] != session_id:
+                continue
+            if scope is not None and session_end["scope"] != scope:
+                continue
+            ends.append(session_end)
+        return ends
 
     def session_checkpoints(
         self,
@@ -9967,6 +10758,46 @@ class MemoryStore:
             },
             "memory_type_summary": payload["memory_type_summary"],
             "token_budget_hint": token_budget_hint,
+            "receipt": receipt,
+        }
+
+    def _session_end_from_event_row(self, row: sqlite3.Row | None) -> dict[str, Any]:
+        if row is None:
+            raise KeyError("session end event not found")
+        payload = json.loads(row["payload_json"])
+        if payload.get("schema") != SESSION_END_SCHEMA:
+            raise ValueError("event payload is not a session end")
+        receipt = self._lifecycle_receipt_from_event_row(
+            row,
+            payload,
+            mutation="end_session",
+            mutation_id=payload["session_end_id"],
+        )
+        return {
+            "schema": SESSION_END_SCHEMA,
+            "session_end_id": payload["session_end_id"],
+            "session_id": payload["session_id"],
+            "scope": payload.get("scope"),
+            "summary": payload.get("summary"),
+            "actor_id": row["actor_id"],
+            "event_hash": row["event_hash"],
+            "prior_event_hash": row["prev_event_hash"],
+            "prior_merkle_root": payload["prior_merkle_root"],
+            "session_end_merkle_root": row["merkle_root"],
+            "created_at": row["created_at"],
+            "snapshot": {
+                "snapshot_hash": payload["snapshot_hash"],
+                "snapshot_merkle_root": payload["snapshot_merkle_root"],
+                "memory_count": payload["snapshot_memory_count"],
+                "event_count": payload["snapshot_event_count"],
+            },
+            "memory_count": payload["memory_count"],
+            "active_memory_ids": payload["active_memory_ids"],
+            "memory_tree": {
+                "root": payload["memory_tree_root"],
+                "leaf_count": payload["memory_tree_leaf_count"],
+            },
+            "memory_type_summary": payload["memory_type_summary"],
             "receipt": receipt,
         }
 
@@ -10123,8 +10954,16 @@ class MemoryStore:
             "source": {
                 "system": "zerker-memory",
                 "event": {
+                    "event_schema": EVENT_SCHEMA,
+                    "hash_alg": HASH_ALG,
                     "event_type": row["event_type"],
+                    "memory_id": None,
+                    "action_id": None,
+                    "payload_hash": row["payload_hash"],
+                    "prev_event_hash": row["prev_event_hash"],
                     "event_hash": row["event_hash"],
+                    "actor_id": actor_id,
+                    "actor_uri": actor_uri,
                     "created_at": row["created_at"],
                 },
                 "payload": source_payload,
