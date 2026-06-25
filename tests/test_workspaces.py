@@ -385,6 +385,8 @@ class WorkspaceRegistryTest(unittest.TestCase):
             self.assertIn("conversation://openclaw/session-22/message-9", summary)
             self.assertIn("status=active authority=medium trust=0.95", summary)
             self.assertIn("workspace=ws_", summary)
+            self.assertIn("session_scheme=chat source_scheme=conversation", summary)
+            self.assertIn("attestation=none", summary)
             self.assertIn("root=", summary)
             self.assertIn("tool=codex repo=project", summary)
             self.assertIn("tool=openclaw repo=project", summary)
@@ -450,6 +452,8 @@ class WorkspaceRegistryTest(unittest.TestCase):
             self.assertIn("resolution basis: freshest updated_at", summary)
             self.assertIn("chosen priya: openclaw @ chat://openclaw/session-22", summary)
             self.assertIn("other alex: codex @ chat://codex/session-17", summary)
+            self.assertIn("session_scheme=chat source_scheme=conversation", summary)
+            self.assertIn("attestation=none", summary)
             self.assertIn("tool=openclaw repo=project", summary)
             self.assertIn("tool=codex repo=project", summary)
 
@@ -512,7 +516,10 @@ class WorkspaceRegistryTest(unittest.TestCase):
             self.assertIn("tool=codex repo=project", summary)
             self.assertIn("workspace=ws_", summary)
             self.assertIn("latest_artifact=ts_artifact_123", summary)
+            self.assertIn("latest_attestation=signed", summary)
             self.assertIn("artifact=ts_artifact_123", summary)
+            self.assertIn("attestation=signed", summary)
+            self.assertIn("session_scheme=chat source_scheme=conversation", summary)
             self.assertIn("conversation://codex/session-17/message-3", summary)
 
 

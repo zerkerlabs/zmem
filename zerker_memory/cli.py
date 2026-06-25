@@ -6375,7 +6375,12 @@ def render_workspace_sources_summary(report: dict[str, Any]) -> str:
         tool = str(source_identity.get("tool") or "unknown")
         repo_name = str(source_identity.get("repo_name") or "unknown")
         source_workspace_id = str(source_identity.get("workspace_id") or fallback_workspace_id or "unknown")
-        return f"tool={tool} repo={repo_name} workspace={source_workspace_id}"
+        session_scheme = str(source_identity.get("session_scheme") or "unknown")
+        source_scheme = str(source_identity.get("source_scheme") or "unknown")
+        return (
+            f"tool={tool} repo={repo_name} workspace={source_workspace_id} "
+            f"session_scheme={session_scheme} source_scheme={source_scheme}"
+        )
 
     def claim_lineage_summary(claim: dict[str, Any]) -> str:
         agent_id = str(claim.get("agent_id") or "unknown")
@@ -6393,13 +6398,15 @@ def render_workspace_sources_summary(report: dict[str, Any]) -> str:
         source_identity = claim.get("source_identity") or {}
         receipt_id = str(proof_lineage.get("receipt_id") or "unknown-receipt")
         treeship_artifact_id = str(proof_lineage.get("treeship_artifact_id") or "none")
+        treeship_attestation_status = str(proof_lineage.get("treeship_attestation_status") or "none")
         merkle_root = str(proof_lineage.get("merkle_root") or "unknown-root")
         merkle_root_short = merkle_root[:12]
         return (
             f"{agent_id} @ {session_id} via {source_uri} "
             f"[{source_identity_summary(source_identity, fallback_workspace_id=workspace_id)} "
             f"kind={source_kind} status={trust_status} authority={authority} trust={trust_text} "
-            f"updated={updated_at} created={created_at} receipt={receipt_id} artifact={treeship_artifact_id} root={merkle_root_short}]"
+            f"updated={updated_at} created={created_at} receipt={receipt_id} artifact={treeship_artifact_id} "
+            f"attestation={treeship_attestation_status} root={merkle_root_short}]"
         )
 
     lines = [
@@ -6424,10 +6431,11 @@ def render_workspace_sources_summary(report: dict[str, Any]) -> str:
             repo_name = str(agent.get("repo_name") or "unknown")
             agent_workspace_id = str(agent.get("workspace_id") or workspace_id or "unknown")
             treeship_artifact_id = str(latest_proof_lineage.get("treeship_artifact_id") or "none")
+            treeship_attestation_status = str(latest_proof_lineage.get("treeship_attestation_status") or "none")
             lines.append(
                 f"  {agent.get('agent_id', 'unknown')}: {memory_count} receipts, {session_count} sessions, "
                 f"last seen {last_seen_at} tool={tool} repo={repo_name} workspace={agent_workspace_id} "
-                f"latest_artifact={treeship_artifact_id}"
+                f"latest_artifact={treeship_artifact_id} latest_attestation={treeship_attestation_status}"
             )
     else:
         lines.append("  none")
@@ -6436,6 +6444,7 @@ def render_workspace_sources_summary(report: dict[str, Any]) -> str:
         for source in sources[:5]:
             proof_lineage = source.get("proof_lineage") or {}
             treeship_artifact_id = str(proof_lineage.get("treeship_artifact_id") or "none")
+            treeship_attestation_status = str(proof_lineage.get("treeship_attestation_status") or "none")
             receipt_id = str(proof_lineage.get("receipt_id") or "unknown-receipt")
             merkle_root = str(proof_lineage.get("merkle_root") or "unknown-root")
             lines.append(
@@ -6444,7 +6453,8 @@ def render_workspace_sources_summary(report: dict[str, Any]) -> str:
                 f"via {source.get('source_uri') or 'unknown-source'} "
                 f"[{source_identity_summary(source.get('source_identity'), fallback_workspace_id=source.get('workspace_id'))} "
                 f"kind={source.get('source_kind') or 'unknown'} status={source.get('trust_status') or 'unknown'} "
-                f"receipt={receipt_id} artifact={treeship_artifact_id} root={merkle_root[:12]}]"
+                f"receipt={receipt_id} artifact={treeship_artifact_id} attestation={treeship_attestation_status} "
+                f"root={merkle_root[:12]}]"
             )
         if len(sources) > 5:
             lines.append(f"  ... {len(sources) - 5} more sources omitted")

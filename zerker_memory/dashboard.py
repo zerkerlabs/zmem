@@ -673,16 +673,37 @@ INDEX_HTML = """<!doctype html>
       const agents = report.connected_agents || [];
       const conflicts = report.claim_conflicts || [];
       const sources = report.sources || [];
+      function sourceIdentityText(identity, fallbackWorkspaceId) {
+        const sourceIdentity = identity || {};
+        const tool = String(sourceIdentity.tool || 'unknown');
+        const repo = String(sourceIdentity.repo_name || 'unknown');
+        const workspace = String(sourceIdentity.workspace_id || fallbackWorkspaceId || 'unknown');
+        return `tool ${tool} · repo ${repo} · workspace ${workspace}`;
+      }
+      function sourceSchemeText(identity) {
+        const sourceIdentity = identity || {};
+        const sessionScheme = String(sourceIdentity.session_scheme || 'none');
+        const sourceScheme = String(sourceIdentity.source_scheme || 'none');
+        return `session scheme ${sessionScheme} · source scheme ${sourceScheme}`;
+      }
+      function attestationText(lineage) {
+        const proofLineage = lineage || {};
+        return `attestation ${proofLineage.treeship_attestation_status || 'none'} · artifact ${proofLineage.treeship_artifact_id || 'none'}`;
+      }
       if (!agents.length && !sources.length && !conflicts.length) {
         $('workspaceSources').innerHTML = '<div class="empty">No source-lineage receipts yet. Agent writes will appear here after memory is saved.</div>';
         return;
       }
-      const agentCards = agents.slice(0, 6).map((agent) => `<div class="quick-card">
-        <strong>${escapeHtml(agent.agent_id || 'unknown agent')}</strong>
-        <span>${escapeHtml((agent.chat_session_ids || []).join(', ') || 'no sessions')}</span>
-        <span>${escapeHtml(`memories ${agent.memory_count || 0} · workspace ${agent.workspace_id || report.workspace_id || 'none'}`)}</span>
-        <span>${escapeHtml(`latest root ${shortHash((agent.latest_proof_lineage || {}).merkle_root)}`)}</span>
-      </div>`).join('');
+      const agentCards = agents.slice(0, 6).map((agent) => {
+        const latestProof = agent.latest_proof_lineage || {};
+        return `<div class="quick-card">
+          <strong>${escapeHtml(agent.agent_id || 'unknown agent')}</strong>
+          <span>${escapeHtml(sourceIdentityText(agent, report.workspace_id))}</span>
+          <span>${escapeHtml((agent.chat_session_ids || []).join(', ') || 'no sessions')}</span>
+          <span>${escapeHtml(`memories ${agent.memory_count || 0} · ${attestationText(latestProof)}`)}</span>
+          <span>${escapeHtml(`latest root ${shortHash(latestProof.merkle_root)}`)}</span>
+        </div>`;
+      }).join('');
       const sourceRows = sources.slice(0, 5).map((source) => {
         const lineage = source.proof_lineage || {};
         return `<div class="item">
@@ -692,19 +713,24 @@ INDEX_HTML = """<!doctype html>
             ${pill(source.source_kind || 'unknown source')}
           </div>
           <div class="content">${escapeHtml(source.source_uri || 'no source URI recorded')}</div>
-          <div class="topline">${escapeHtml(source.chat_session_id || 'no session')} · ${escapeHtml(source.workspace_id || 'no workspace')} · receipt ${escapeHtml(lineage.receipt_id || 'none')} · root ${escapeHtml(shortHash(lineage.merkle_root))}</div>
+          <div class="topline">${escapeHtml(sourceIdentityText(source.source_identity, source.workspace_id))}</div>
+          <div class="topline">${escapeHtml(sourceSchemeText(source.source_identity))}</div>
+          <div class="topline">${escapeHtml(source.chat_session_id || 'no session')} · receipt ${escapeHtml(lineage.receipt_id || 'none')} · ${escapeHtml(attestationText(lineage))} · root ${escapeHtml(shortHash(lineage.merkle_root))}</div>
         </div>`;
       }).join('');
       const conflictRows = conflicts.slice(0, 3).map((conflict) => {
         const preview = conflict.merge_preview || {};
+        const resolutionBasis = (preview.resolution_basis || {}).summary || 'read-only merge preview';
         const claims = (conflict.claims || []).slice(0, 3).map((claim) => {
           const lineage = claim.proof_lineage || {};
           const chosen = preview.chosen_memory_id && preview.chosen_memory_id === claim.memory_id;
           return `<div class="quick-card">
             <strong>${escapeHtml(claim.agent_id || 'unknown agent')} · ${escapeHtml(claim.value || 'unknown claim')}</strong>
             <span>${escapeHtml(claim.chat_session_id || 'no session')}</span>
+            <span>${escapeHtml(sourceIdentityText(claim.source_identity, claim.workspace_id))}</span>
+            <span>${escapeHtml(sourceSchemeText(claim.source_identity))}</span>
             <span>${escapeHtml(`${claim.trust_status || 'unknown'} · ${claim.authority || 'unknown'} authority`)}</span>
-            <span>${escapeHtml(`root ${shortHash(lineage.merkle_root)}${chosen ? ' · selected' : ''}`)}</span>
+            <span>${escapeHtml(`${attestationText(lineage)} · root ${shortHash(lineage.merkle_root)}${chosen ? ' · selected' : ''}`)}</span>
           </div>`;
         }).join('');
         const headline = `${conflict.subject_key || 'unknown entity'} ${conflict.relation || 'is'}`;
@@ -716,6 +742,7 @@ INDEX_HTML = """<!doctype html>
           </div>
           <div class="content">${escapeHtml(headline)}</div>
           <div class="topline">${escapeHtml(preview.rule_summary || 'read-only merge preview')}</div>
+          <div class="topline">${escapeHtml(`resolution basis ${resolutionBasis}`)}</div>
           <div class="quick-grid" style="margin-top:12px">${claims}</div>
         </div>`;
       }).join('');

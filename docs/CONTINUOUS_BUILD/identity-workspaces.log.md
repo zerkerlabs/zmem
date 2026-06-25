@@ -1,5 +1,55 @@
 # Identity Workspaces Lane Log
 
+## 2026-06-25T19:01:44Z - L5 identity-workspaces - Codex
+
+- Scope: mirrored the existing read-only session/source URI scheme and Treeship attestation hints into `zmem ws sources --summary-only` so the terminal summary matches the already-shipped dashboard lineage cues.
+- Files touched: `zerker_memory/cli.py`, `tests/test_workspaces.py`, `docs/CONTINUOUS_BUILD/identity-workspaces.log.md`, `docs/SWARM_OPERATION_TRACKER.md`, `docs/CURRENT_STATE.md`, `docs/BUILD_LOG.md`.
+- Behavior changed: connected-agent summary lines now show latest attestation status beside artifact lineage; recent-source lines now show `session_scheme` and `source_scheme` plus attestation status; claim-conflict claim lines now show the same URI-scheme and attestation hints per competing claim.
+- Tests: focused `python3 -m unittest tests.test_workspaces.WorkspaceRegistryTest.test_workspace_sources_cli_summary_surfaces_unresolved_exact_tie tests.test_workspaces.WorkspaceRegistryTest.test_workspace_sources_cli_summary_surfaces_resolution_basis_for_resolved_conflict tests.test_workspaces.WorkspaceRegistryTest.test_workspace_sources_cli_summary_surfaces_recent_source_identity_and_treeship_artifact -q` passed; `python3 -m unittest tests.test_workspaces -q` passed; `git diff --check -- zerker_memory/cli.py tests/test_workspaces.py` passed; required `python3 -m unittest tests.test_store tests.test_cli_onboarding -q` failed on unrelated in-flight workspace breakage (`MemoryStore.prune_session_snapshot_payloads` missing, `build_session_snapshot_prune_result` import missing, and two pre-existing temporal assertion failures in `tests.test_store`); `python3 -m zerker_memory eval` passed (`11/11`).
+- Artifacts/receipts: no external artifacts; the new summary lines are derived entirely from the existing local `workspace_source_report` payload and stored write-receipt Treeship attestation data when present.
+- Blockers: agent identity is still inferred from actor/session URIs rather than persisted as a first-class key, and the required broad CLI/store suite is currently blocked by unrelated pre-existing lifecycle/temporal failures outside this L5 render slice.
+- Next safe slice: add one bounded read-only agent/chat/workspace identity anchor line or compact conflict-rule explainer on top of the existing summary/dashboard surfaces, without changing write paths, schema, or Hub assumptions.
+
+## 2026-06-25T11:01:52Z - L5 identity-workspaces - Codex
+
+- Scope: finished the next dashboard-only read-side hint so multi-agent operators can see source/session URI lineage and Treeship attestation status without opening raw JSON.
+- Files touched: `zerker_memory/dashboard.py`, `tests/test_dashboard.py`, `docs/CONTINUOUS_BUILD/identity-workspaces.log.md`, `docs/SWARM_OPERATION_TRACKER.md`, `docs/CURRENT_STATE.md`, `docs/BUILD_LOG.md`.
+- Behavior changed: dashboard connected-agent cards now show latest attestation status alongside artifact lineage; recent-source rows now show `session_scheme` and `source_scheme`; claim-conflict claim cards now show the same URI-scheme hints plus attestation status text from existing local proof lineage.
+- Tests: focused `python3 -m unittest tests.test_dashboard.DashboardTest.test_console_has_proof_inspector tests.test_dashboard.DashboardTest.test_build_workspace_sources_state_is_dashboard_ready -q` passed; `python3 -m unittest tests.test_dashboard -q` passed; `git diff --check -- zerker_memory/dashboard.py tests/test_dashboard.py` passed.
+- Artifacts/receipts: no external artifacts; the new dashboard lines render existing `workspace_source_report` `source_identity.session_scheme` / `source_identity.source_scheme` and stored `proof_lineage.treeship_attestation_status` fields when present.
+- Blockers: agent identity is still inferred from existing actor/session URIs rather than persisted as a first-class key, and the CLI summary still does not mirror the same session/source scheme plus attestation text.
+- Next safe slice: mirror the same read-only session/source scheme and attestation hints into `zmem ws sources --summary-only` without changing write paths, schema, or Hub assumptions.
+
+## 2026-06-25T03:03:50Z - L5 identity-workspaces - Codex
+
+- Scope: mirrored the existing read-only workspace source identity and conflict-lineage hints into the dashboard so multi-agent operators can see local tool/repo/workspace/artifact lineage without switching to the CLI or raw JSON.
+- Files touched: `zerker_memory/dashboard.py`, `tests/test_dashboard.py`, `docs/CONTINUOUS_BUILD/identity-workspaces.log.md`, `docs/SWARM_OPERATION_TRACKER.md`, `docs/CURRENT_STATE.md`, `docs/BUILD_LOG.md`.
+- Behavior changed: the dashboard connected-agent cards now show `tool`, `repo`, workspace id, and latest Treeship artifact hint; recent-source rows now show the normalized `source_identity` plus receipt/artifact/root lineage; claim-conflict cards now show the same tool/repo/workspace/artifact hints per claim and the existing read-only `resolution_basis` summary.
+- Tests: focused `python3 -m unittest tests.test_dashboard.DashboardTest.test_console_has_proof_inspector tests.test_dashboard.DashboardTest.test_build_workspace_sources_state_is_dashboard_ready -q` passed; `python3 -m unittest tests.test_dashboard -q` passed; `git diff --check -- zerker_memory/dashboard.py tests/test_dashboard.py` passed.
+- Artifacts/receipts: no external artifacts; the dashboard fields are derived entirely from the existing local `workspace_source_report` payload and stored Treeship attestation data when present.
+- Blockers: agent identity is still inferred from existing actor/session URIs rather than persisted as a first-class key, and the dashboard still does not surface session/source URI schemes or attestation status text explicitly.
+- Next safe slice: add one bounded read-only identity detail line for session/source URI schemes and attestation status in the dashboard or CLI summary without changing write paths or Hub assumptions.
+
+## 2026-06-24T19:03:58Z - L5 identity-workspaces - Codex
+
+- Scope: extended the existing read-only `zmem ws sources --summary-only` output so local operators can see tool/repo lineage and optional Treeship artifact hints without opening raw JSON or the dashboard.
+- Files touched: `zerker_memory/cli.py`, `tests/test_workspaces.py`, `docs/CONTINUOUS_BUILD/identity-workspaces.log.md`, `docs/SWARM_OPERATION_TRACKER.md`, `docs/CURRENT_STATE.md`, `docs/BUILD_LOG.md`.
+- Behavior changed: the CLI summary now includes per-agent `tool`, `repo`, workspace id, and latest Treeship artifact hint; it also adds a compact recent-source section plus richer conflict-claim lineage lines that surface the existing read-only `source_identity` fields and optional `treeship_artifact_id`.
+- Tests: focused `python3 -m unittest tests.test_workspaces.WorkspaceRegistryTest.test_workspace_sources_cli_summary_surfaces_unresolved_exact_tie tests.test_workspaces.WorkspaceRegistryTest.test_workspace_sources_cli_summary_surfaces_resolution_basis_for_resolved_conflict tests.test_workspaces.WorkspaceRegistryTest.test_workspace_sources_cli_summary_surfaces_recent_source_identity_and_treeship_artifact -q` passed; `python3 -m unittest tests.test_workspaces -q` passed; required `python3 -m unittest tests.test_store tests.test_cli_onboarding -q` passed (`Ran 324 tests`); `python3 -m zerker_memory eval` passed (`11/11`); `git diff --check -- zerker_memory/cli.py tests/test_workspaces.py` passed.
+- Artifacts/receipts: no external artifacts; the new summary fields are derived entirely from the local workspace registry plus existing `memory_write_receipts` and stored Treeship statements.
+- Blockers: the dashboard still does not render the same repo/tool/artifact hints, and agent identity is still inferred from existing actor/session URIs rather than persisted as a first-class key.
+- Next safe slice: mirror the same read-only tool/repo/artifact hints into the dashboard connected-agent and conflict/source cards without changing write paths or Hub assumptions.
+
+## 2026-06-24T11:01:04Z - L5 identity-workspaces - Codex
+
+- Scope: extended the existing read-only workspace source report with a normalized local identity descriptor so multi-agent setups can see tool and repo lineage per source without opening raw receipts or relying on Hub state.
+- Files touched: `zerker_memory/workspaces.py`, `tests/test_workspaces.py`, `tests/test_dashboard.py`, `docs/CONTINUOUS_BUILD/identity-workspaces.log.md`, `docs/SWARM_OPERATION_TRACKER.md`, `docs/CURRENT_STATE.md`, `docs/BUILD_LOG.md`.
+- Behavior changed: `workspace_source_report` sources and conflict claims now include read-only `source_identity` fields for `tool`, session/source URI schemes, workspace root, repo root, and repo name; connected-agent summaries now carry the same repo/tool hints; `proof_lineage` now exposes optional Treeship attestation status, artifact id, payload digest, and signed timestamp when those fields already exist on the local write receipt.
+- Tests: `python3 -m unittest tests.test_workspaces -q` passed; `python3 -m unittest tests.test_dashboard.DashboardTest.test_build_workspace_sources_state_is_dashboard_ready -q` passed; `git diff --check -- zerker_memory/workspaces.py tests/test_workspaces.py tests/test_dashboard.py` passed.
+- Artifacts/receipts: no external artifacts; the new identity and attestation fields are derived entirely from the local workspace registry plus existing `memory_write_receipts`.
+- Blockers: the new `source_identity` and Treeship attestation fields are not yet rendered in the CLI summary or dashboard cards, and agent identity is still inferred from existing URIs rather than persisted as a first-class key.
+- Next safe slice: surface `source_identity.tool`, `repo_name`, and optional `treeship_artifact_id` in the existing CLI summary and dashboard source/conflict cards without changing write paths.
+
 ## 2026-06-24T03:03:39Z - L5 identity-workspaces - Codex
 
 - Scope: extended the existing read-only workspace conflict summary so operators can see why a competing claim resolved or abstained without reading raw JSON.

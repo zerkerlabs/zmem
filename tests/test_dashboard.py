@@ -1,3 +1,4 @@
+import json
 import os
 import tempfile
 import unittest
@@ -72,6 +73,13 @@ class DashboardTest(unittest.TestCase):
         self.assertIn("public verify pending", INDEX_HTML)
         self.assertIn("launch assets pending", INDEX_HTML)
         self.assertIn("return packet pending", INDEX_HTML)
+        self.assertIn("resolution basis", INDEX_HTML)
+        self.assertIn("tool ${tool}", INDEX_HTML)
+        self.assertIn("repo ${repo}", INDEX_HTML)
+        self.assertIn("workspace ${workspace}", INDEX_HTML)
+        self.assertIn("session scheme ${sessionScheme}", INDEX_HTML)
+        self.assertIn("source scheme ${sourceScheme}", INDEX_HTML)
+        self.assertIn("attestation ${proofLineage.treeship_attestation_status || 'none'}", INDEX_HTML)
 
     def test_build_workspace_sources_state_is_dashboard_ready(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -109,6 +117,22 @@ class DashboardTest(unittest.TestCase):
                 "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
                 ("2024-02-01T00:00:00Z", "2024-02-01T00:00:00Z", second.id),
             )
+            row = store.conn.execute(
+                "SELECT receipt_id, treeship_statement_json FROM memory_write_receipts WHERE memory_id = ?",
+                (second.id,),
+            ).fetchone()
+            treeship_statement = json.loads(row["treeship_statement_json"])
+            treeship_statement["attestation"] = {
+                "schema": "zerker.memory.treeship_attestation.v1",
+                "status": "signed",
+                "payload_digest": "sha256:abc123",
+                "artifact_id": "ts_dashboard_123",
+                "signed_at": "2026-06-25T01:10:11Z",
+            }
+            store.conn.execute(
+                "UPDATE memory_write_receipts SET treeship_statement_json = ? WHERE receipt_id = ?",
+                (json.dumps(treeship_statement, sort_keys=True), row["receipt_id"]),
+            )
             store.conn.commit()
 
             with patch.dict(os.environ, {"ZMEM_WORKSPACE_REGISTRY": str(registry_path)}):
@@ -127,9 +151,21 @@ class DashboardTest(unittest.TestCase):
         self.assertEqual({source["source_identity"]["repo_name"] for source in state["sources"]}, {"project"})
         self.assertEqual({source["source_identity"]["source_scheme"] for source in state["sources"]}, {"conversation"})
         self.assertTrue(all("merkle_root" in source["proof_lineage"] for source in state["sources"]))
+        self.assertIn("treeship_artifact_id", state["connected_agents"][1]["latest_proof_lineage"])
+        self.assertEqual(state["connected_agents"][1]["latest_proof_lineage"]["treeship_artifact_id"], "ts_dashboard_123")
+        self.assertEqual(state["connected_agents"][1]["latest_proof_lineage"]["treeship_attestation_status"], "signed")
         self.assertEqual(state["claim_conflict_count"], 1)
         self.assertEqual(state["claim_conflicts"][0]["merge_preview"]["chosen_memory_id"], second.id)
         self.assertEqual(state["claim_conflicts"][0]["merge_preview"]["chosen_value"], "iris")
+        claims_by_id = {claim["memory_id"]: claim for claim in state["claim_conflicts"][0]["claims"]}
+        self.assertEqual(claims_by_id[second.id]["proof_lineage"]["treeship_artifact_id"], "ts_dashboard_123")
+        self.assertEqual(claims_by_id[second.id]["proof_lineage"]["treeship_attestation_status"], "signed")
+        self.assertEqual(claims_by_id[second.id]["source_identity"]["session_scheme"], "chat")
+        self.assertEqual(claims_by_id[second.id]["source_identity"]["source_scheme"], "conversation")
+        self.assertEqual(
+            state["claim_conflicts"][0]["merge_preview"]["resolution_basis"]["summary"],
+            "freshest updated_at",
+        )
 
     def test_dashboard_server_is_threaded(self):
         self.assertIn("Threading", DashboardServer.__mro__[1].__name__)
