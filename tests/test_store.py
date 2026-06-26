@@ -1010,6 +1010,98 @@ class MemoryStoreTest(unittest.TestCase):
             [second["receipt"]["receipt_hash"], first["receipt"]["receipt_hash"]],
         )
 
+    def test_session_lifecycle_timeline_reads_back_mixed_events_and_retention_state(self):
+        self.store.remember(
+            "Production deploys require approval",
+            memory_type="policy",
+            scope="project:alpha",
+            source_kind="human",
+        )
+        start = self.store.start_session(
+            "session://alpha",
+            actor_id="codex",
+            scope="project:alpha",
+            summary="resume deploy swarm",
+            context_budget_tokens=256,
+        )
+        checkpoint = self.store.checkpoint_session(
+            "session://alpha",
+            actor_id="codex",
+            scope="project:alpha",
+            summary="checkpoint before compaction",
+        )
+        session_snapshot = self.store.snapshot_session(
+            "session://alpha",
+            actor_id="codex",
+            scope="project:alpha",
+            summary="freeze before retention prune",
+        )
+        session_end = self.store.end_session(
+            "session://alpha",
+            actor_id="codex",
+            scope="project:alpha",
+            summary="closeout after handoff",
+        )
+        self.store.soft_delete_session_snapshot_payload(
+            session_snapshot["session_snapshot_id"],
+            actor_id="reviewer",
+            reason="retention window expired",
+        )
+        self.store.start_session(
+            "session://beta",
+            actor_id="hermes",
+            scope="project:beta",
+            summary="other session start",
+        )
+
+        timeline = self.store.session_lifecycle_timeline(session_id="session://alpha", scope="project:alpha")
+
+        self.assertEqual(
+            [entry["event_kind"] for entry in timeline],
+            ["snapshot_soft_delete", "end", "snapshot", "checkpoint", "start"],
+        )
+        self.assertEqual(
+            [entry["lifecycle_id"] for entry in timeline],
+            [
+                session_snapshot["session_snapshot_id"],
+                session_end["session_end_id"],
+                session_snapshot["session_snapshot_id"],
+                checkpoint["checkpoint_id"],
+                start["session_start_id"],
+            ],
+        )
+        self.assertEqual(timeline[0]["timeline_root"], timeline[0]["retention"]["soft_delete_merkle_root"])
+        self.assertEqual(timeline[0]["payload_status"], "soft_deleted")
+        self.assertEqual(timeline[0]["retention"]["deleted_by"], "reviewer")
+        self.assertEqual(timeline[0]["receipt"]["mutation"], "soft_delete_session_snapshot_payload")
+        self.assertEqual(timeline[1]["timeline_root"], session_end["session_end_merkle_root"])
+        self.assertEqual(timeline[2]["timeline_root"], session_snapshot["session_snapshot_merkle_root"])
+        self.assertEqual(timeline[2]["payload_status"], "soft_deleted")
+        self.assertEqual(timeline[3]["timeline_root"], checkpoint["checkpoint_merkle_root"])
+        self.assertEqual(timeline[4]["timeline_root"], start["session_start_merkle_root"])
+        self.assertEqual(timeline[4]["token_budget_hint"], {"context_budget_tokens": 256})
+
+    def test_session_lifecycle_timeline_filters_before_limit(self):
+        alpha_start = self.store.start_session(
+            "session://alpha",
+            actor_id="codex",
+            scope="project:alpha",
+            summary="target session",
+        )
+        for index in range(3):
+            self.store.start_session(
+                f"session://beta-{index}",
+                actor_id="hermes",
+                scope="project:beta",
+                summary="newer unrelated session",
+            )
+
+        timeline = self.store.session_lifecycle_timeline(session_id="session://alpha", scope="project:alpha", limit=1)
+
+        self.assertEqual(len(timeline), 1)
+        self.assertEqual(timeline[0]["event_kind"], "start")
+        self.assertEqual(timeline[0]["lifecycle_id"], alpha_start["session_start_id"])
+
     def test_verify_lifecycle_receipt_accepts_persisted_session_snapshot_receipt(self):
         self.store.remember(
             "Keep deploy rules separate from run history",

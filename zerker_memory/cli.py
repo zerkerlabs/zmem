@@ -376,6 +376,18 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
         action="store_true",
         help="Print only a compact human-readable session-snapshot summary",
     )
+    session_timeline = session_sub.add_parser(
+        "timeline",
+        help="Show an aggregated session lifecycle timeline across starts, checkpoints, snapshots, retention tombstones, and ends",
+    )
+    session_timeline.add_argument("--session-id")
+    session_timeline.add_argument("--scope")
+    session_timeline.add_argument("--limit", type=int, default=10)
+    session_timeline.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Print only a compact human-readable session lifecycle timeline summary",
+    )
     session_prune_snapshots = session_sub.add_parser(
         "prune-snapshots",
         help="Soft-delete older session snapshot payloads while keeping the latest retained snapshots",
@@ -1264,6 +1276,18 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 if args.summary_only:
                     print(render_session_snapshots_summary(result), end="")
+                else:
+                    print_json(result)
+                return 0
+            if args.session_command == "timeline":
+                result = build_session_timeline_report(
+                    store,
+                    session_id=args.session_id,
+                    scope=args.scope,
+                    limit=args.limit,
+                )
+                if args.summary_only:
+                    print(render_session_timeline_summary(result), end="")
                 else:
                     print_json(result)
                 return 0
@@ -6463,6 +6487,45 @@ def build_session_snapshots_report(
     }
 
 
+def build_session_timeline_report(
+    store: MemoryStore,
+    *,
+    session_id: str | None = None,
+    scope: str | None = None,
+    limit: int = 10,
+) -> dict[str, Any]:
+    timeline = store.session_lifecycle_timeline(session_id=session_id, scope=scope, limit=limit)
+    event_kind_counts = {
+        "start": 0,
+        "checkpoint": 0,
+        "snapshot": 0,
+        "snapshot_soft_delete": 0,
+        "end": 0,
+    }
+    snapshot_payload_status_by_id: dict[str, str] = {}
+    for entry in timeline:
+        event_kind = str(entry.get("event_kind") or "")
+        event_kind_counts[event_kind] = event_kind_counts.get(event_kind, 0) + 1
+        session_snapshot_id = entry.get("session_snapshot_id")
+        payload_status = entry.get("payload_status")
+        if isinstance(session_snapshot_id, str) and isinstance(payload_status, str) and session_snapshot_id not in snapshot_payload_status_by_id:
+            snapshot_payload_status_by_id[session_snapshot_id] = payload_status
+    payload_status_counts = {"available": 0, "soft_deleted": 0}
+    for payload_status in snapshot_payload_status_by_id.values():
+        payload_status_counts[payload_status] = payload_status_counts.get(payload_status, 0) + 1
+    return {
+        "ok": True,
+        "schema": "zerker.session_timeline_report.v1",
+        "session_id": session_id,
+        "scope": scope,
+        "limit": limit,
+        "count": len(timeline),
+        "event_kind_counts": event_kind_counts,
+        "payload_status_counts": payload_status_counts,
+        "timeline": timeline,
+    }
+
+
 def _render_session_memory_type_counts(memory_type_summary: dict[str, Any] | None) -> str:
     counts = memory_type_summary.get("active_counts_by_type") if isinstance(memory_type_summary, dict) else {}
     ordered_types = ("policy", "procedural", "episodic", "semantic")
@@ -6740,6 +6803,66 @@ def render_session_snapshots_summary(report: dict[str, Any]) -> str:
                 f"deleted_at={retention.get('deleted_at') or 'unknown'} "
                 f"root={retention.get('soft_delete_merkle_root') or 'unknown'}"
             )
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def render_session_timeline_summary(report: dict[str, Any]) -> str:
+    timeline = list(report.get("timeline") or [])
+    event_kind_counts = report.get("event_kind_counts") or {}
+    payload_status_counts = report.get("payload_status_counts") or {}
+    latest_root = timeline[0]["timeline_root"] if timeline else "none"
+    lines = [
+        "Session timeline",
+        "",
+        f"Session filter: {report.get('session_id') or 'any'}",
+        f"Scope filter: {report.get('scope') or 'any'}",
+        f"Returned: {report.get('count', 0)}",
+        "Event kinds: "
+        f"starts={int(event_kind_counts.get('start', 0))} "
+        f"checkpoints={int(event_kind_counts.get('checkpoint', 0))} "
+        f"snapshots={int(event_kind_counts.get('snapshot', 0))} "
+        f"snapshot_soft_deletes={int(event_kind_counts.get('snapshot_soft_delete', 0))} "
+        f"ends={int(event_kind_counts.get('end', 0))}",
+        "Snapshot payloads: "
+        f"{int(payload_status_counts.get('available', 0))} available, "
+        f"{int(payload_status_counts.get('soft_deleted', 0))} soft-deleted",
+        f"Latest timeline root: {latest_root}",
+        "",
+        "Entries:",
+    ]
+    if not timeline:
+        lines.append("  none")
+    for entry in timeline:
+        details = [
+            f"{entry['event_kind']}:{entry['lifecycle_id']}",
+            f"session={entry['session_id']}",
+            f"scope={entry.get('scope') or 'any'}",
+            f"created={entry['created_at']}",
+            f"actor={entry['actor_id']}",
+            f"active={entry['memory_count']}",
+            f"root={entry['timeline_root']}",
+        ]
+        if entry.get("event_kind") == "start":
+            token_budget_hint = entry.get("token_budget_hint") if isinstance(entry.get("token_budget_hint"), dict) else {}
+            context_budget_tokens = token_budget_hint.get("context_budget_tokens")
+            budget_hint_text = (
+                str(context_budget_tokens)
+                if isinstance(context_budget_tokens, int) and not isinstance(context_budget_tokens, bool)
+                else "none"
+            )
+            details.append(f"context_budget_tokens={budget_hint_text}")
+        if entry.get("payload_status") is not None:
+            details.append(f"payload={entry['payload_status']}")
+        if entry.get("event_kind") == "snapshot":
+            details.append(f"snapshot_hash={entry.get('snapshot_hash') or 'unknown'}")
+        if entry.get("event_kind") == "snapshot_soft_delete":
+            retention = entry.get("retention") if isinstance(entry.get("retention"), dict) else {}
+            details.append(f"deleted_by={retention.get('deleted_by') or 'unknown'}")
+            details.append(f"deleted_reason={retention.get('deleted_reason') or 'unspecified'}")
+        lines.append("  " + " ".join(details))
+        lines.append(f"    memory types: {_render_session_memory_type_counts(entry.get('memory_type_summary'))}")
+        if entry.get("summary"):
+            lines.append(f"    summary: {entry['summary']}")
     return "\n".join(lines).rstrip() + "\n"
 
 

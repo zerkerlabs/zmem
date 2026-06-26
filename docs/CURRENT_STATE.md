@@ -11,6 +11,16 @@ This is the short orchestration dashboard for Zerker Memory. Every autonomous bu
 - This slice stayed additive and local-first: no lifecycle write semantics changed, no new event type was introduced, no snapshot artifact format changed, and no generated `.zerker/launch-proof/` artifact changed.
 - Next highest-leverage trust slice is one bounded read-only lifecycle receipt summary/report that surfaces the new source-event identity block for persisted session lifecycle receipts without widening into write-path or Treeship-hosted changes.
 
+## Lifecycle Compaction
+`2026-06-26T01:06:11Z`
+
+- `MemoryStore.session_lifecycle_timeline(...)` now provides one read-only event-ordered lifecycle view across session starts, checkpoints, snapshots, snapshot-payload soft-delete tombstones, and session ends.
+- `zmem session timeline --summary-only` now surfaces the latest timeline root, per-kind counts, context-budget hints, snapshot payload availability, and retention tombstone details in one compact terminal view instead of requiring separate start/end/checkpoint/snapshot scans.
+- The timeline query filters before applying the returned-entry limit so busy stores do not hide older matching session events.
+- Verified focused lifecycle aggregation coverage first (`Ran 9 tests`), then `python3 -m unittest tests.test_cli_onboarding tests.test_store tests.test_runner -q` (`Ran 456 tests`), `python3 -m zerker_memory eval` (`11/11`), and `git diff --check -- zerker_memory/store.py zerker_memory/cli.py tests/test_store.py tests/test_cli_onboarding.py`.
+- This slice stayed read-only and local-first: no lifecycle write semantics changed, no retention semantics changed, no SQLite schema changed, no restore/handoff behavior changed, and no generated `.zerker/launch-proof/` artifact changed.
+- Next highest-leverage lifecycle slice is one bounded retention-status rollup on top of the new aggregate timeline so operators can see latest available vs soft-deleted snapshot state per session without widening lifecycle write semantics.
+
 ## Temporal KG
 `2026-06-25T23:02:59Z`
 

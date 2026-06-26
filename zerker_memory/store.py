@@ -10710,6 +10710,42 @@ class MemoryStore:
             snapshots.append(session_snapshot)
         return snapshots
 
+    def session_lifecycle_timeline(
+        self,
+        *,
+        session_id: str | None = None,
+        scope: str | None = None,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        self.init()
+        if limit <= 0:
+            return []
+        rows = self.conn.execute(
+            """
+            SELECT *
+            FROM events
+            WHERE event_type IN (
+              'SESSION_STARTED',
+              'SESSION_ENDED',
+              'SESSION_CHECKPOINTED',
+              'SESSION_SNAPSHOTTED',
+              'SESSION_SNAPSHOT_PAYLOAD_SOFT_DELETED'
+            )
+            ORDER BY seq DESC
+            """
+        ).fetchall()
+        timeline: list[dict[str, Any]] = []
+        for row in rows:
+            entry = self._session_lifecycle_timeline_entry_from_event_row(row)
+            if session_id is not None and entry["session_id"] != session_id:
+                continue
+            if scope is not None and entry["scope"] != scope:
+                continue
+            timeline.append(entry)
+            if len(timeline) >= limit:
+                break
+        return timeline
+
     def _session_checkpoint_from_event_row(self, row: sqlite3.Row | None) -> dict[str, Any]:
         if row is None:
             raise KeyError("session checkpoint event not found")
@@ -10921,6 +10957,83 @@ class MemoryStore:
             "memory_type_summary": payload["memory_type_summary"],
             "receipt": receipt,
         }
+
+    def _session_lifecycle_timeline_entry_from_event_row(self, row: sqlite3.Row) -> dict[str, Any]:
+        event_type = row["event_type"]
+        if event_type == "SESSION_STARTED":
+            session_start = self._session_start_from_event_row(row)
+            return {
+                **session_start,
+                "schema": "zerker.session_lifecycle_timeline_entry.v1",
+                "event_kind": "start",
+                "event_type": event_type,
+                "lifecycle_id": session_start["session_start_id"],
+                "timeline_root": session_start["session_start_merkle_root"],
+            }
+        if event_type == "SESSION_ENDED":
+            session_end = self._session_end_from_event_row(row)
+            return {
+                **session_end,
+                "schema": "zerker.session_lifecycle_timeline_entry.v1",
+                "event_kind": "end",
+                "event_type": event_type,
+                "lifecycle_id": session_end["session_end_id"],
+                "timeline_root": session_end["session_end_merkle_root"],
+            }
+        if event_type == "SESSION_CHECKPOINTED":
+            checkpoint = self._session_checkpoint_from_event_row(row)
+            return {
+                **checkpoint,
+                "schema": "zerker.session_lifecycle_timeline_entry.v1",
+                "event_kind": "checkpoint",
+                "event_type": event_type,
+                "lifecycle_id": checkpoint["checkpoint_id"],
+                "timeline_root": checkpoint["checkpoint_merkle_root"],
+            }
+        if event_type == "SESSION_SNAPSHOTTED":
+            session_snapshot = self._session_snapshot_from_event_row(row)
+            return {
+                **session_snapshot,
+                "schema": "zerker.session_lifecycle_timeline_entry.v1",
+                "event_kind": "snapshot",
+                "event_type": event_type,
+                "lifecycle_id": session_snapshot["session_snapshot_id"],
+                "timeline_root": session_snapshot["session_snapshot_merkle_root"],
+            }
+        if event_type == "SESSION_SNAPSHOT_PAYLOAD_SOFT_DELETED":
+            payload = json.loads(row["payload_json"])
+            if payload.get("schema") != SESSION_SNAPSHOT_RETENTION_SCHEMA:
+                raise ValueError("event payload is not a session snapshot retention tombstone")
+            snapshot_event_row = self.conn.execute(
+                """
+                SELECT events.*
+                FROM events
+                INNER JOIN session_snapshot_payloads
+                  ON session_snapshot_payloads.event_hash = events.event_hash
+                WHERE session_snapshot_payloads.session_snapshot_id = ?
+                  AND events.event_type = 'SESSION_SNAPSHOTTED'
+                """,
+                (payload["session_snapshot_id"],),
+            ).fetchone()
+            session_snapshot = self._session_snapshot_from_event_row(snapshot_event_row)
+            retention = session_snapshot.get("retention") if isinstance(session_snapshot.get("retention"), dict) else {}
+            return {
+                **session_snapshot,
+                "schema": "zerker.session_lifecycle_timeline_entry.v1",
+                "event_kind": "snapshot_soft_delete",
+                "event_type": event_type,
+                "lifecycle_id": payload["session_snapshot_id"],
+                "timeline_root": row["merkle_root"],
+                "snapshot_created_at": session_snapshot["created_at"],
+                "created_at": row["created_at"],
+                "actor_id": row["actor_id"],
+                "event_hash": row["event_hash"],
+                "prior_event_hash": row["prev_event_hash"],
+                "prior_merkle_root": payload["prior_merkle_root"],
+                "summary": payload.get("summary"),
+                "receipt": retention.get("receipt"),
+            }
+        raise ValueError(f"unsupported lifecycle timeline event type: {event_type}")
 
     def _lifecycle_receipt_from_event_row(
         self,

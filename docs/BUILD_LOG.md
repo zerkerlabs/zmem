@@ -1,3 +1,27 @@
+## 2026-06-26 - Session Lifecycle Timeline Landed
+
+Shipped:
+
+- Stayed strictly on the L2 lifecycle-compaction lane and updated [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/store.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/store.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/cli.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/cli.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_store.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_store.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_cli_onboarding.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_cli_onboarding.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/lifecycle-compaction.log.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/lifecycle-compaction.log.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md), and this build log.
+- Landed one narrow lifecycle slice only: `session_lifecycle_timeline(...)` now merges persisted starts, checkpoints, snapshots, snapshot-payload soft-delete tombstones, and ends into one read-only event-ordered contract, and `zmem session timeline` now exposes the same aggregate surface through JSON or `--summary-only`. The timeline query filters before applying the returned-entry limit so busy stores do not hide older matching session events.
+- The concrete lifecycle gain is operator-visible continuity and still local-first: one report now shows the latest timeline root, per-kind counts, start budget hints, snapshot payload availability, and retention tombstone details for a session without changing any write path, restore behavior, or runner packing contract.
+- Kept the slice surgical: no lifecycle write receipt schema changed, no retention semantics changed, no SQLite migration changed, no restore/handoff behavior changed, and no generated `.zerker/launch-proof/` artifact was touched.
+
+Verification:
+
+- Focused lifecycle aggregation and limit/filter regressions -> passed (`Ran 9 tests`)
+- `python3 -m unittest tests.test_cli_onboarding tests.test_store tests.test_runner -q` -> passed (`Ran 456 tests`)
+- `python3 -m zerker_memory eval` -> passed (`11/11`)
+- `git diff --check -- zerker_memory/store.py zerker_memory/cli.py tests/test_store.py tests/test_cli_onboarding.py` -> passed
+
+Blockers:
+
+- The new aggregate view is still session-by-session and read-only; operators still do not have a compact per-session retention rollup for the latest available versus soft-deleted snapshot state across many sessions.
+
+Next:
+
+- Add one bounded retention-status rollup on top of the new aggregate timeline so operators can see latest available vs soft-deleted snapshot state per session without widening lifecycle write semantics or restore behavior.
+
 ## 2026-06-26 - Selected History Ordering Receipts Landed
 
 Shipped:

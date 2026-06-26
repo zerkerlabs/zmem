@@ -129,3 +129,13 @@
 - Artifacts/receipts: bounded reuse of `zerker.session_snapshot_retention.v1` via per-snapshot soft-delete receipts, plus read-only `zerker.session_snapshot_prune.v1` / `zerker.session_snapshot_prune_result.v1` summaries.
 - Blockers: full lifecycle verification is currently blocked by the unrelated L1 temporal red-suite failures above, and lifecycle inspection/retention is still split across separate start/end/checkpoint/snapshot/prune surfaces rather than one aggregate timeline.
 - Next safe slice: add one read-only aggregated lifecycle timeline or retention-status summary on top of the existing session surfaces without changing receipt semantics or restore behavior.
+
+## 2026-06-26 - session lifecycle aggregate timeline
+
+- Scope: bounded L2 slice on read-only lifecycle aggregation only; did not change lifecycle write semantics, retention behavior, restore behavior, or runner context packing.
+- Files touched: `zerker_memory/store.py`, `zerker_memory/cli.py`, `tests/test_store.py`, `tests/test_cli_onboarding.py`.
+- Behavior changed: `session_lifecycle_timeline(...)` now merges persisted session starts, checkpoints, snapshots, snapshot-payload soft-delete tombstones, and session ends into one event-ordered read-only view. `zmem session timeline` now exposes that aggregate lifecycle surface through JSON or `--summary-only`, including latest timeline root, context-budget hints, snapshot payload availability, and retention tombstone details in one report. The timeline query filters before applying the returned-entry limit so busy stores do not hide older matching session events.
+- Tests: focused lifecycle aggregation and limit/filter regressions passed (`Ran 9 tests`); required `python3 -m unittest tests.test_cli_onboarding tests.test_store tests.test_runner -q` passed (`Ran 456 tests`); `python3 -m zerker_memory eval` passed (`11/11`); `git diff --check -- zerker_memory/store.py zerker_memory/cli.py tests/test_store.py tests/test_cli_onboarding.py` passed.
+- Artifacts/receipts: read-only `zerker.session_timeline_report.v1` plus `zerker.session_lifecycle_timeline_entry.v1` entries with event-kind counts, latest timeline root, start budget hints, snapshot payload states, and soft-delete tombstone details.
+- Blockers: aggregate lifecycle inspection still remains session-by-session and terminal/JSON-first; there is not yet a compact retention rollup for latest-retained snapshot state across many sessions.
+- Next safe slice: add one bounded retention-status rollup on top of the new aggregate timeline so operators can see latest available vs soft-deleted snapshot state per session without widening lifecycle write semantics.

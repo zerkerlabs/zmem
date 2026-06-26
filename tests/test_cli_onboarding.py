@@ -35,6 +35,7 @@ from zerker_memory.cli import (
     build_session_snapshot_prune_result,
     build_session_snapshot_result,
     build_session_snapshots_report,
+    build_session_timeline_report,
     build_status_report,
     build_status_next_steps,
     build_mcp_config,
@@ -74,6 +75,7 @@ from zerker_memory.cli import (
     render_session_snapshot_prune_summary,
     render_session_snapshot_summary,
     render_session_snapshots_summary,
+    render_session_timeline_summary,
     render_prelaunch_summary,
     render_retrieval_provider_readiness_summary,
     render_restore_summary,
@@ -262,6 +264,17 @@ class CliOnboardingTest(unittest.TestCase):
 
         self.assertEqual(args.command, "session")
         self.assertEqual(args.session_command, "snapshots")
+        self.assertEqual(args.session_id, "session://alpha")
+        self.assertEqual(args.scope, "project:alpha")
+        self.assertTrue(args.summary_only)
+
+    def test_build_parser_parses_session_timeline_summary_only(self):
+        args = build_parser().parse_args(
+            ["session", "timeline", "--session-id", "session://alpha", "--scope", "project:alpha", "--summary-only"]
+        )
+
+        self.assertEqual(args.command, "session")
+        self.assertEqual(args.session_command, "timeline")
         self.assertEqual(args.session_id, "session://alpha")
         self.assertEqual(args.scope, "project:alpha")
         self.assertTrue(args.summary_only)
@@ -914,6 +927,68 @@ class CliOnboardingTest(unittest.TestCase):
         self.assertIn(f"Kept snapshot ids: {kept_snapshot['session_snapshot_id']}", summary)
         self.assertIn(pruned_snapshot["session_snapshot_id"], summary)
         self.assertIn("Reason: keep latest only", summary)
+
+    def test_session_timeline_summary_surfaces_mixed_lifecycle_entries_and_retention_state(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = MemoryStore(Path(tmpdir) / "memory.sqlite")
+            store.init()
+            store.remember(
+                "Production deploys require approval",
+                memory_type="policy",
+                scope="project:alpha",
+                source_kind="human",
+            )
+            start = store.start_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="resume deploy swarm",
+                context_budget_tokens=256,
+            )
+            store.checkpoint_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="checkpoint before compaction",
+            )
+            session_snapshot = store.snapshot_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="freeze before retention prune",
+            )
+            store.end_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="closeout after handoff",
+            )
+            store.soft_delete_session_snapshot_payload(
+                session_snapshot["session_snapshot_id"],
+                actor_id="reviewer",
+                reason="retention window expired",
+            )
+
+            report = build_session_timeline_report(
+                store,
+                session_id="session://alpha",
+                scope="project:alpha",
+                limit=10,
+            )
+            summary = render_session_timeline_summary(report)
+
+        self.assertTrue(report["ok"])
+        self.assertEqual(report["count"], 5)
+        self.assertIn("Session timeline", summary)
+        self.assertIn("Session filter: session://alpha", summary)
+        self.assertIn("Event kinds: starts=1 checkpoints=1 snapshots=1 snapshot_soft_deletes=1 ends=1", summary)
+        self.assertIn("Snapshot payloads: 0 available, 1 soft-deleted", summary)
+        self.assertIn(f"Latest timeline root: {report['timeline'][0]['timeline_root']}", summary)
+        self.assertIn(f"start:{start['session_start_id']}", summary)
+        self.assertIn("context_budget_tokens=256", summary)
+        self.assertIn(f"snapshot_soft_delete:{session_snapshot['session_snapshot_id']}", summary)
+        self.assertIn("deleted_by=reviewer", summary)
+        self.assertIn("deleted_reason=retention window expired", summary)
 
     def test_agent_pack_path_uses_project_local_default(self):
         with tempfile.TemporaryDirectory() as tmp:
