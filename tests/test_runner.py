@@ -4298,6 +4298,7 @@ class RunnerTest(unittest.TestCase):
 
         self.assertEqual(receipt["exit_code"], 0)
         context = json.loads(context_path.read_text())
+        history_ordering = receipt["memory_receipt"]["retrieval"]["temporal"]["history_ordering"]
         self.assertEqual([memory["id"] for memory in context["memories"]], [first.id, second.id, third.id])
         self.assertEqual(
             receipt["memory_receipt"]["retrieval"]["temporal"]["selection_strategy"],
@@ -4306,6 +4307,28 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(
             receipt["memory_receipt"]["retrieval"]["temporal"]["selection_reason"],
             "earliest-history-query-terms",
+        )
+        self.assertEqual(context["temporal"]["history_ordering"], history_ordering)
+        self.assertTrue(history_ordering["applied"])
+        self.assertFalse(history_ordering["pass_through"])
+        self.assertEqual(history_ordering["basis"], "earliest_history_selection_rank")
+        self.assertEqual(history_ordering["source"], "temporal_earliest_history_selection")
+        self.assertEqual(history_ordering["reason"], "earliest-history-query-terms")
+        self.assertEqual(
+            history_ordering["selected_history_rankings"],
+            [
+                {"memory_id": first.id, "rank": 1},
+                {"memory_id": second.id, "rank": 2},
+                {"memory_id": third.id, "rank": 3},
+            ],
+        )
+        self.assertEqual(
+            history_ordering["considered_history_rankings"],
+            [
+                {"memory_id": first.id, "rank": 1, "selected": True},
+                {"memory_id": second.id, "rank": 2, "selected": True},
+                {"memory_id": third.id, "rank": 3, "selected": True},
+            ],
         )
 
     def test_original_history_context_prefers_explicit_current_before_generic_anchor(self):

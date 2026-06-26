@@ -7593,9 +7593,30 @@ class MemoryStoreTest(unittest.TestCase):
         self.assertEqual(hybrid["semantic_probe"]["effective_query_terms"], ["deploy", "target"])
         self.assertCountEqual(receipt["retrieved_memory_ids"], [stale.id, current.id])
         self.assertEqual(receipt["injected_memory_ids"], [stale.id, current.id])
-        self.assertEqual(retrieval["temporal"]["selection_reason"], "update-history-query-terms")
-        self.assertEqual(retrieval["temporal"]["selected_stale_anchor_id"], stale.id)
-        self.assertEqual(retrieval["temporal"]["selected_current_anchor_id"], current.id)
+        temporal = retrieval["temporal"]
+        history_ordering = temporal["history_ordering"]
+        self.assertEqual(temporal["selection_reason"], "update-history-query-terms")
+        self.assertEqual(temporal["selected_stale_anchor_id"], stale.id)
+        self.assertEqual(temporal["selected_current_anchor_id"], current.id)
+        self.assertTrue(history_ordering["applied"])
+        self.assertFalse(history_ordering["pass_through"])
+        self.assertEqual(history_ordering["basis"], "historical_selection_rank")
+        self.assertEqual(history_ordering["source"], "temporal_history_selection")
+        self.assertEqual(history_ordering["reason"], "update-history-query-terms")
+        self.assertEqual(
+            history_ordering["selected_history_rankings"],
+            [
+                {"memory_id": stale.id, "rank": 1},
+                {"memory_id": current.id, "rank": 2},
+            ],
+        )
+        self.assertEqual(
+            history_ordering["considered_history_rankings"],
+            [
+                {"memory_id": stale.id, "rank": 1, "selected": True},
+                {"memory_id": current.id, "rank": 2, "selected": True},
+            ],
+        )
 
     def test_update_history_deploy_destination_query_uses_canonical_hybrid_backfill_without_change_from_noise(self):
         decoy = self.store.remember(
@@ -8479,9 +8500,32 @@ class MemoryStoreTest(unittest.TestCase):
         self.assertCountEqual(receipt["retrieved_memory_ids"], [first.id, second.id, third.id])
         self.assertEqual(receipt["injected_memory_ids"], [first.id, second.id, third.id])
         self.assertNotIn(decoy.id, receipt["retrieved_memory_ids"])
-        self.assertEqual(retrieval["temporal"]["selection_strategy"], "earliest_history_preferred_v1")
-        self.assertEqual(retrieval["temporal"]["selection_reason"], "earliest-history-query-terms")
-        self.assertEqual(retrieval["temporal"]["selected_ids"], [first.id, second.id, third.id])
+        temporal = retrieval["temporal"]
+        history_ordering = temporal["history_ordering"]
+        self.assertEqual(temporal["selection_strategy"], "earliest_history_preferred_v1")
+        self.assertEqual(temporal["selection_reason"], "earliest-history-query-terms")
+        self.assertEqual(temporal["selected_ids"], [first.id, second.id, third.id])
+        self.assertTrue(history_ordering["applied"])
+        self.assertFalse(history_ordering["pass_through"])
+        self.assertEqual(history_ordering["basis"], "earliest_history_selection_rank")
+        self.assertEqual(history_ordering["source"], "temporal_earliest_history_selection")
+        self.assertEqual(history_ordering["reason"], "earliest-history-query-terms")
+        self.assertEqual(
+            history_ordering["selected_history_rankings"],
+            [
+                {"memory_id": first.id, "rank": 1},
+                {"memory_id": second.id, "rank": 2},
+                {"memory_id": third.id, "rank": 3},
+            ],
+        )
+        self.assertEqual(
+            history_ordering["considered_history_rankings"],
+            [
+                {"memory_id": first.id, "rank": 1, "selected": True},
+                {"memory_id": second.id, "rank": 2, "selected": True},
+                {"memory_id": third.id, "rank": 3, "selected": True},
+            ],
+        )
 
     def test_original_history_query_injects_explicit_current_before_generic_current_anchor(self):
         stale = self.store.remember(

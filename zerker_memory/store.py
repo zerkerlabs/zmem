@@ -3049,6 +3049,39 @@ def _history_ordering_metadata(
 ) -> dict[str, Any]:
     selection_strategy = str(selection.get("selection_strategy") or "")
     selection_reason = str(selection.get("selection_reason") or "")
+    selected_history_strategy_metadata = {
+        "earliest_history_preferred_v1": (
+            "earliest_history_selection_rank",
+            "temporal_earliest_history_selection",
+        ),
+        "historical_preferred_v1": (
+            "historical_selection_rank",
+            "temporal_history_selection",
+        ),
+    }
+    if selection_strategy in selected_history_strategy_metadata:
+        basis, source = selected_history_strategy_metadata[selection_strategy]
+        selected_history_ids = [
+            str(memory_id)
+            for memory_id in selection.get("selected_ids", [])
+            if str(memory_id)
+        ]
+        selected_history_rankings = [
+            {"memory_id": memory_id, "rank": index}
+            for index, memory_id in enumerate(selected_history_ids, start=1)
+        ]
+        return {
+            "applied": True,
+            "pass_through": False,
+            "basis": basis,
+            "source": source,
+            "reason": selection_reason,
+            "selected_history_rankings": selected_history_rankings,
+            "considered_history_rankings": [
+                {**item, "selected": True}
+                for item in selected_history_rankings
+            ],
+        }
     if selection_strategy != "history_conflict_abstained_v1":
         return {
             "applied": False,

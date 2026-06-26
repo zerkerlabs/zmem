@@ -1,5 +1,15 @@
 # Hybrid Retrieval Lane Log
 
+## 2026-06-26T00:15:40Z - selected history ordering receipts
+
+- Scope: upgraded one L3 local-first retrieval explainability slice from abstained-history-only ordering receipts to explicit selected-history ordering receipts.
+- Files touched: `zerker_memory/store.py`, `tests/test_store.py`, `tests/test_runner.py`, `docs/CONTINUOUS_BUILD/hybrid-retrieval.log.md`, `docs/SWARM_OPERATION_TRACKER.md`, `docs/BUILD_LOG.md`, `docs/CURRENT_STATE.md`.
+- Behavior changed: `retrieval.temporal.history_ordering` now also applies to `historical_preferred_v1` and `earliest_history_preferred_v1`; selected-history receipts now expose `basis=historical_selection_rank` or `basis=earliest_history_selection_rank`, strategy-specific `source`, ordered `selected_history_rankings`, and additive `considered_history_rankings` so selected stale/current history chains stay receipt-visible before packing and inside forwarded runtime context.
+- Tests: `python3 -m unittest tests.test_store.MemoryStoreTest.test_update_history_deploy_target_query_uses_canonical_hybrid_backfill_without_change_from_noise tests.test_store.MemoryStoreTest.test_original_owner_query_uses_earliest_history_alias_search_variant_and_prefers_earliest_state -q` -> passed (`Ran 2 tests`); `python3 -m unittest tests.test_runner.RunnerTest.test_original_history_question_context_orders_multi_update_chain_from_earliest -q` -> passed (`Ran 1 test`); `python3 -m unittest tests.test_store -q` -> passed (`Ran 224 tests`); `python3 -m unittest tests.test_policy -q` -> passed (`Ran 7 tests`); `python3 -m unittest tests.test_runner -q` -> passed (`Ran 90 tests`); `python3 -m zerker_memory eval` -> passed (`11/11`).
+- Artifacts/receipts: selected-history receipts and `zerker.memory_context.v1` now keep one upstream ordering view for shipped earliest-history and update-history selections, so consumers no longer need to infer selected history order only from `selected_ids`.
+- Blockers: support-pair history strategies such as `target_history_support_preferred_v1` and `history_observation_support_v1` still do not expose the same dedicated history-ordering view for excluded or support-sibling paths.
+- Next safe slice: extend the same additive `history_ordering` contract to support-pair history strategies so selected supports plus omitted current siblings share one receipt-visible ordering view without widening into packing or hosted-provider work.
+
 ## 2026-06-25T20:14:26Z - history abstention ordering receipts
 
 - Scope: upgraded one L3 local-first retrieval explainability slice from current-only abstention ordering receipts to winnerless history-conflict abstentions.
