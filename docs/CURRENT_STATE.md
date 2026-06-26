@@ -21,13 +21,13 @@ This is the short orchestration dashboard for Zerker Memory. Every autonomous bu
 - Next highest-leverage temporal slice is one similarly bounded explicit unlearned-envelope subset only if a real runtime or receipt consumer needs more than the id-group metadata.
 
 ## Retrieval Baseline
-`2026-06-25T20:14:26Z`
+`2026-06-26T00:15:40Z`
 
-- `retrieval.temporal.history_ordering` now covers `history_conflict_abstained_v1` and is forwarded through `zerker.memory_context.v1`.
-- Winnerless cross-provenance history contradictions now expose `basis=history_conflict_abstention_rank`, `source=temporal_history_conflict_abstention`, empty `selected_history_rankings`, and additive `considered_history_rankings`, so abstained history siblings stay receipt-visible upstream of packing and in runtime context.
-- Verified focused history-abstention regressions first, then `python3 -m unittest tests.test_store -q` (`Ran 223 tests`), `python3 -m unittest tests.test_policy -q` (`Ran 7 tests`), `python3 -m unittest tests.test_runner -q` (`Ran 88 tests`), and `python3 -m zerker_memory eval` (`11/11`).
+- `retrieval.temporal.history_ordering` now also covers the shipped selected-history strategies `historical_preferred_v1` and `earliest_history_preferred_v1`, and the same metadata stays forwarded through `zerker.memory_context.v1`.
+- Selected history receipts now expose strategy-specific `basis` / `source`, ordered `selected_history_rankings`, and additive `considered_history_rankings`, so earliest-history and update-history stale/current chains stay receipt-visible upstream of packing and in runtime context instead of relying only on `selected_ids`.
+- Verified focused selected-history regressions first, then `python3 -m unittest tests.test_store -q` (`Ran 224 tests`), `python3 -m unittest tests.test_policy -q` (`Ran 7 tests`), `python3 -m unittest tests.test_runner -q` (`Ran 90 tests`), and `python3 -m zerker_memory eval` (`11/11`).
 - This slice stayed local-first and receipt-additive: no `MemoryStore.search()` return-shape change, no SQLite migration, no CLI/release-sensitive path, no Phase 1 launch-proof or public-site surface, and no generated `.zerker/launch-proof/` artifact changed.
-- Next highest-leverage retrieval slice is to extend additive `history_ordering` metadata to selected history strategies so selected stale/current anchors and omitted siblings share one receipt-visible ordering contract too.
+- Next highest-leverage retrieval slice is one similarly bounded extension of additive `history_ordering` metadata to support-pair history strategies so selected supports plus omitted current siblings share the same receipt-visible ordering contract.
 
 ## Identity Workspaces
 `2026-06-25T19:01:44Z`

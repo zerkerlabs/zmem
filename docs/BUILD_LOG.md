@@ -1,3 +1,29 @@
+## 2026-06-26 - Selected History Ordering Receipts Landed
+
+Shipped:
+
+- Stayed strictly on the L3 hybrid-retrieval lane and updated [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/store.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/store.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_store.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_store.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_runner.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_runner.py), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/hybrid-retrieval.log.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/hybrid-retrieval.log.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md), and this build log.
+- Landed one narrow retrieval slice only: `retrieval.temporal.history_ordering` now applies to `historical_preferred_v1` and `earliest_history_preferred_v1`, so selected history chains emit explicit ordering metadata without changing candidate selection, packing, or `MemoryStore.search()` output shape.
+- The concrete retrieval gain is explainability for shipped selected-history paths and still local-first: receipts now surface strategy-specific `basis` / `source`, ordered `selected_history_rankings`, and additive `considered_history_rankings`, which keeps earliest-history and update-history stale/current chains visible in stored receipts and forwarded `zerker.memory_context.v1`.
+- Kept the slice surgical: no SQLite schema changed, no CLI/release-sensitive path changed, no Phase 1 launch surface changed, and no generated `.zerker/launch-proof/` artifact was touched.
+
+Verification:
+
+- `python3 -m unittest tests.test_store.MemoryStoreTest.test_update_history_deploy_target_query_uses_canonical_hybrid_backfill_without_change_from_noise tests.test_store.MemoryStoreTest.test_original_owner_query_uses_earliest_history_alias_search_variant_and_prefers_earliest_state -q` -> passed (`Ran 2 tests`)
+- `python3 -m unittest tests.test_runner.RunnerTest.test_original_history_question_context_orders_multi_update_chain_from_earliest -q` -> passed (`Ran 1 test`)
+- `python3 -m unittest tests.test_store -q` -> passed (`Ran 224 tests`)
+- `python3 -m unittest tests.test_policy -q` -> passed (`Ran 7 tests`)
+- `python3 -m unittest tests.test_runner -q` -> passed (`Ran 90 tests`)
+- `python3 -m zerker_memory eval` -> passed (`11/11`)
+
+Blockers:
+
+- Support-pair history strategies such as `target_history_support_preferred_v1` and `history_observation_support_v1` still do not expose the same dedicated history-ordering view for excluded or support-sibling paths.
+
+Next:
+
+- Extend the same additive `history_ordering` contract to support-pair history strategies so selected supports plus omitted current siblings share one receipt-visible ordering view without widening into packing or hosted-provider work.
+
 ## 2026-06-25 - Lifecycle Source Event Identity Bound Into Persisted Receipts
 
 Shipped:

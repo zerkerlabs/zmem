@@ -23,6 +23,15 @@ Primary mission brief:
 
 Coordinator update `2026-06-25T20:14:26Z`:
 
+Coordinator update `2026-06-26T00:15:40Z`:
+
+- Retrieval baseline advanced on one bounded L3 slice only: [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/store.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/store.py) now adds additive `retrieval.temporal.history_ordering` coverage for `historical_preferred_v1` and `earliest_history_preferred_v1`, while [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_store.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_store.py) plus [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_runner.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_runner.py) now lock selected-history ordering receipts and runtime-context forwarding end to end.
+- The focused retrieval gain is selected-history explainability and still local-first: shipped earliest-history and update-history selections now say that `history_ordering` was applied with strategy-specific `basis` and `source`, and they publish ordered `selected_history_rankings` plus additive `considered_history_rankings`, so selected stale/current chains stay visible before packing and inside `zerker.memory_context.v1`.
+- Verification passed with focused selected-history coverage first (`Ran 2 tests`, then `Ran 1 test`), then `python3 -m unittest tests.test_store -q` (`Ran 224 tests`), `python3 -m unittest tests.test_policy -q` (`Ran 7 tests`), `python3 -m unittest tests.test_runner -q` (`Ran 90 tests`), and `python3 -m zerker_memory eval` (`11/11`).
+- Blockers: support-pair history strategies such as `target_history_support_preferred_v1` and `history_observation_support_v1` still do not expose the same dedicated history-ordering view for excluded or support-sibling paths.
+- No `MemoryStore.search()` return-shape change, no SQLite migration, no CLI/release-sensitive path, no Phase 1 launch-proof or public-site surface, and no generated `.zerker/launch-proof/` artifact changed in this retrieval run.
+- Next retrieval slice: extend additive `history_ordering` metadata to support-pair history strategies so selected supports plus omitted current siblings share one receipt-visible ordering contract without widening into packing changes or hosted-provider dependencies.
+
 Coordinator update `2026-06-25T23:08:10Z`:
 
 - Trust ledger advanced on one bounded L0 slice only: [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/store.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/store.py) now binds persisted lifecycle receipts to fuller source-event identity metadata, while [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_store.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_store.py) now lock both the added source-event payload and the forged-actor rejection path.
