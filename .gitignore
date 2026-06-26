@@ -10,3 +10,7 @@ build/
 dist/
 *.egg-info/
 .gstack/
+.treeship/
+.vercel/
+.zerker-clean-public-verify-*/
+data/
