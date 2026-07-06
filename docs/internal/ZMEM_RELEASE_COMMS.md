@@ -1,11 +1,14 @@
 # ZMem Release Comms
 
-## 2026-06-24 - v0.1.2 candidate checkpoint
+## 2026-07-06 - v0.1.2 release checkpoint
 
 Audience: internal Zerker launch/build coordination.
 
 ### What changed
 
+- The paused continuous-swarm harvest is landed on `main` as `91c792f Land continuous swarm hardening`.
+- CI is green on Python 3.10, 3.11, and 3.12 plus release-smoke.
+- The release includes trust-ledger, temporal, lifecycle, retrieval, consolidation, identity/workspace, dashboard, and release-proof hardening.
 - Website positioning now leads with governed memory for agents that act.
 - The homepage explains ZMem as native local memory plus an authority gate: propose, review, inject, withhold, revoke, verify.
 - The copy avoids competing on generic durable context. The sharper line is: search finds context; ZMem decides what becomes trusted memory.
@@ -25,7 +28,7 @@ ZMem is an open-source, local-first memory system for agents with review before 
 
 ### Next build move
 
-Commit the L3 retrieval candidate separately from the website positioning pass, then resume benchmarks in isolated output directories:
+Tag and deploy `v0.1.2`, then resume benchmarks in isolated output directories:
 
 ```bash
 zmem bench matrix locomo \

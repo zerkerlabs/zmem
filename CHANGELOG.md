@@ -2,7 +2,17 @@
 
 All notable Zerker Memory alpha changes are summarized here.
 
-## Unreleased - v0.1.2 candidate
+## 0.1.2 - 2026-07-06
+
+### Shipped
+
+- Landed the continuous swarm hardening checkpoint across trust ledger, temporal memory, lifecycle receipts, retrieval ordering, consolidation lineage, workspace source identity, dashboard reporting, and release proof tracking.
+- Hardened trust-ledger mutation coverage for promoted, rejected, revoked, forgotten, checkpointed, snapshotted, and restored memory state.
+- Expanded temporal/query coverage for current, historical, future, superseded, and unlearned memory views.
+- Improved deterministic retrieval explainability around support-chain reservation, stale/current update-history pairs, temporal support ordering, and budget-dropped/withheld memory metadata.
+- Added consolidation lineage, unwind, duplicate suppression, and append-only summary-ledger coverage.
+- Improved workspace/source identity summaries, conflict previews, connected-agent traces, and dashboard source reporting.
+- Kept benchmark claims narrow: LoCoMo FTS and LongMemEval matrix results remain evidence, not leaderboard claims.
 
 ### Changed
 
@@ -19,6 +29,10 @@ All notable Zerker Memory alpha changes are summarized here.
 - `python3 -m unittest tests.test_store tests.test_policy tests.test_runner -q`
 - `python3 -m zerker_memory eval`
 - `git diff --check`
+- `python3 -m unittest discover -s tests -q`
+- `python3 scripts/release_smoke.py --summary-only`
+- GitHub Actions `test` on Python 3.10, 3.11, and 3.12
+- GitHub Actions `release-smoke`
 
 ## 0.1.0-alpha frontier build - ActiveGraph, LoCoMo, and compact traces
 

@@ -14,14 +14,13 @@ Use this language precisely:
 
 ## Current Product Truth
 
-As of 2026-06-24, the product has a published `v0.1.1` alpha release
+As of 2026-07-06, the product has a published `v0.1.2` alpha release
 and a lane-by-lane progress board:
 
 - Progress tracker: [`ZMEM_PROGRESS_TRACKER.md`](ZMEM_PROGRESS_TRACKER.md)
-- Current public release: `v0.1.1`
-- Current release tag commit: `e9c80c5`
-- Current unpublished lane diff: L3 relation-history RRF in `zerker_memory/store.py`,
-  `tests/test_store.py`, and `tests/test_runner.py`
+- Current public release: `v0.1.2`
+- Current release tag: `v0.1.2`
+- Current unpublished lane diff: none. Swarms are paused while the release tag and deploy are completed.
 
 The product already has meaningful working surface:
 

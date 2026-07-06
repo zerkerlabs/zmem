@@ -1,6 +1,6 @@
 # ZMem Progress Tracker
 
-Last updated: 2026-06-24
+Last updated: 2026-07-06
 
 This is the shared progress board for ZMem release and frontier work. It turns the
 continuous-build lanes into a checkpointable product plan: what is built, what is
@@ -20,36 +20,22 @@ Every push or meaningful automation drop should update this file alongside:
 | Release | Status | Commit | Notes |
 | --- | --- | --- | --- |
 | `v0.1.0` | Historical tag | `f460191` | Earlier launch checkpoint. Do not move this tag. |
-| `v0.1.1` | Published | `e9c80c5` | Current public alpha release. CI passed on Python 3.10/3.11/3.12 plus release-smoke. |
-| `v0.1.2` | Candidate | pending | Use for the next verified retrieval/docs/benchmark checkpoint if the current dirty diff is kept. |
+| `v0.1.1` | Published | `e9c80c5` | Previous public alpha release. CI passed on Python 3.10/3.11/3.12 plus release-smoke. |
+| `v0.1.2` | Published | `v0.1.2` tag | Continuous swarm hardening release. CI passed on Python 3.10/3.11/3.12 plus release-smoke. |
 
 Current public release:
 
-- GitHub: `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.1`
+- GitHub: `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.2`
 - Site: `https://www.zmem.sh`
 - Raw installer: `https://raw.githubusercontent.com/zerkerlabs/zmem/main/install.sh`
 
-Current `v0.1.2` candidate checkpoint diff:
+Current `v0.1.2` release checkpoint:
 
-- `zerker_memory/store.py`
-- `tests/test_store.py`
-- `tests/test_runner.py`
-- `CHANGELOG.md`
-- `docs/internal/ZMEM_RELEASE_COMMS.md`
-- `site/src/components/Navigation.tsx`
-- `site/src/sections/AgentContinuitySection.tsx`
-- `site/src/sections/HeroSection.tsx`
-- `site/src/sections/MemoryLoopSection.tsx`
-- `site/src/sections/ProofOfWorkSection.tsx`
-- `site/src/sections/TrustArchitectureSection.tsx`
-- `site/src/sections/TrustBarSection.tsx`
-
-Checkpoint summary: relation-history temporal RRF now promotes explicit stale/current
-relation pairs over generic high-authority change anchors. The focused L3 tests,
-`tests.test_store tests.test_policy tests.test_runner`, and `python3 -m zerker_memory eval`
-passed locally on 2026-06-24. The website copy also now leads with ZMem as a
-governed local memory system and authority gate, not generic durable context.
-Keep future benchmark output in isolated directories before adding more L6 evidence.
+- Base checkpoint: `91c792f Land continuous swarm hardening`
+- Landed the paused swarm harvest as one coherent checkpoint because the lane output crossed `store.py`, `cli.py`, tests, dashboards, and shared control-room docs.
+- Local verification passed: `python3 -m unittest discover -s tests -q`, `python3 -m zerker_memory eval`, `python3 scripts/release_smoke.py --summary-only`, and `git diff --check`.
+- Remote verification passed in GitHub Actions on Python 3.10, 3.11, and 3.12 plus `release-smoke`.
+- Keep swarms paused until the release tag/deploy is complete, then restart only bounded lanes with isolated benchmark output directories.
 
 ## Lane Scoreboard
 
@@ -60,11 +46,11 @@ Percentages are practical launch-grade alpha estimates, not benchmark scores.
 | L0 Trust Ledger | Receipts, Merkle lineage, restore/export proof | 70% | Mutation/lifecycle/restore receipts exist; handoff restore verifies and summarizes restore receipts | Add compact read-only mutation-chain summary and direct snapshot-restore receipt summary |
 | L1 Temporal KG | Current/history/superseded temporal memory | 55% | `query_at`, supersession, omitted-memory envelopes, runtime temporal context | Add contradiction/abstention runtime fixture and decide when true bi-temporal graph schema is needed |
 | L2 Lifecycle Compaction | Sessions, checkpoints, snapshots, retention | 45% | Checkpoint/snapshot store contracts plus read-only CLI summaries | Add write-facing `zmem session checkpoint` or retention policy without widening scope |
-| L3 Retrieval Baseline | FTS/BM25, semantic backfill, RRF, packing | 67% | Hybrid semantic, multi-hop RRF, temporal support-chain RRF, chronology mutation RRF, update-history relation-pair RRF verified locally | Commit/push relation-pair RRF, then rerun LoCoMo mode deltas in isolated output dirs |
+| L3 Retrieval Baseline | FTS/BM25, semantic backfill, RRF, packing | 68% | Hybrid semantic, multi-hop RRF, temporal support-chain RRF, chronology mutation RRF, update-history relation-pair RRF shipped in `v0.1.2` | Rerun LoCoMo mode deltas in isolated output dirs |
 | L4 Consolidation | Hierarchical summaries and job ledger | 35% | Deterministic fixture, job lifecycle, reversible summary payloads, append-only summary ledger | Source candidates from live store or expose persisted summaries through read-only CLI |
 | L5 Identity / Workspaces | Multi-agent source lineage and conflicts | 50% | Source reports, claim conflicts, resolution basis, exact-tie abstention summaries | Persist merge decisions or add repo/tool lineage descriptors |
 | L6 Benchmark Harness | LoCoMo/LongMemEval/BEAM evidence | 45% | Synthetic/LoCoMo/LongMemEval-style harnesses, full LoCoMo FTS baseline, ActiveGraph compact smoke | Resume with isolated dirs: LoCoMo `fts-multihop`, `pseudo-embedding`, `pseudo-embedding-rerank`, `zmem-retrieval`; then LongMemEval-S |
-| Launch Oversight | Release pack, proof evidence, public release | 90% | Public verify `6/6`, assets `8/8`, return packet ready, `v0.1.1` published | Keep launch automation paused/archived after one clean post-release check; maintain release docs |
+| Launch Oversight | Release pack, proof evidence, public release | 92% | Public verify `6/6`, assets `8/8`, return packet ready, `v0.1.2` pushed and CI-green | Tag/deploy `v0.1.2`, then keep launch automation paused/archived after one clean post-release check |
 | Website / Docs | Landing, proof page, docs, changelog | 70% | Site live, proof page, changelog, ActiveGraph/blog/docs, benchmark docs | Add release writeup discipline: public changelog, public docs, internal comms after each push |
 | ActiveGraph Integration | Event substrate and compact traces | 45% | Source pack, `zmem.persist`, `zmem.recall`, `zmem-bench-locomo`, 5-question compact smoke | Clean `activegraph pack add zmem` smoke and batching/perf for full traces |
 

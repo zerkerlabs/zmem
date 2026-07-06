@@ -16,6 +16,7 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any, Callable
 
+from . import __version__
 from .providers import (
     SUPPORTED_PROVIDERS,
     default_provider_config_path,
@@ -129,9 +130,10 @@ def release_artifact_lock(lock_path: Path, *, timeout_seconds: float = 300.0, en
 def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog=prog, description="Trusted local-first memory control for AI agents")
     try:
-        package_version = version("zerker-memory")
+        installed_version = version("zerker-memory")
     except PackageNotFoundError:
-        package_version = "0.1.0"
+        installed_version = __version__
+    package_version = __version__ if installed_version != __version__ else installed_version
     parser.add_argument("--version", action="version", version=f"%(prog)s {package_version}")
     parser.add_argument("--db", type=Path, default=default_db_path(), help="SQLite database path")
     parser.add_argument("--policy", type=Path, default=default_policy_path(), help="Policy config JSON path")
