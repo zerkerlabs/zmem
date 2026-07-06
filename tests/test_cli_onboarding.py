@@ -29,6 +29,8 @@ from zerker_memory.cli import (
     build_session_start_result,
     build_session_starts_report,
     build_session_checkpoint_result,
+    build_session_lifecycle_rollup_report,
+    build_session_retention_rollup_report,
     build_retrieval_provider_readiness_report,
     build_session_checkpoints_report,
     build_session_snapshot_soft_delete_result,
@@ -71,6 +73,8 @@ from zerker_memory.cli import (
     render_session_starts_summary,
     render_session_checkpoint_summary,
     render_session_checkpoints_summary,
+    render_session_lifecycle_rollup_summary,
+    render_session_retention_rollup_summary,
     render_session_snapshot_soft_delete_summary,
     render_session_snapshot_prune_summary,
     render_session_snapshot_summary,
@@ -82,6 +86,7 @@ from zerker_memory.cli import (
     render_status_summary,
     prelaunch_next_steps,
     public_verify_status,
+    restore_snapshot_file,
     verify_public_verify,
     verify_operator_packet_archive,
     return_packet_status,
@@ -268,6 +273,17 @@ class CliOnboardingTest(unittest.TestCase):
         self.assertEqual(args.scope, "project:alpha")
         self.assertTrue(args.summary_only)
 
+    def test_build_parser_parses_session_retention_summary_only(self):
+        args = build_parser().parse_args(
+            ["session", "retention", "--scope", "project:alpha", "--limit", "2", "--summary-only"]
+        )
+
+        self.assertEqual(args.command, "session")
+        self.assertEqual(args.session_command, "retention")
+        self.assertEqual(args.scope, "project:alpha")
+        self.assertEqual(args.limit, 2)
+        self.assertTrue(args.summary_only)
+
     def test_build_parser_parses_session_timeline_summary_only(self):
         args = build_parser().parse_args(
             ["session", "timeline", "--session-id", "session://alpha", "--scope", "project:alpha", "--summary-only"]
@@ -277,6 +293,17 @@ class CliOnboardingTest(unittest.TestCase):
         self.assertEqual(args.session_command, "timeline")
         self.assertEqual(args.session_id, "session://alpha")
         self.assertEqual(args.scope, "project:alpha")
+        self.assertTrue(args.summary_only)
+
+    def test_build_parser_parses_session_rollup_summary_only(self):
+        args = build_parser().parse_args(
+            ["session", "rollup", "--scope", "project:alpha", "--limit", "2", "--summary-only"]
+        )
+
+        self.assertEqual(args.command, "session")
+        self.assertEqual(args.session_command, "rollup")
+        self.assertEqual(args.scope, "project:alpha")
+        self.assertEqual(args.limit, 2)
         self.assertTrue(args.summary_only)
 
     def test_build_parser_parses_session_prune_snapshots_summary_only(self):
@@ -500,9 +527,23 @@ class CliOnboardingTest(unittest.TestCase):
         self.assertTrue(report["ok"])
         self.assertEqual(report["count"], 1)
         self.assertEqual(report["checkpoints"][0]["checkpoint_id"], checkpoint["checkpoint_id"])
+        self.assertEqual(report["verified_receipt_count"], 1)
+        self.assertEqual(report["failed_receipt_count"], 0)
+        self.assertEqual(report["linked_treeship_artifact_count"], 0)
+        self.assertTrue(report["checkpoints"][0]["receipt_verification"]["ok"])
+        self.assertEqual(
+            report["checkpoints"][0]["receipt_summary"]["source_event_hash"],
+            checkpoint["receipt"]["source_event_hash"],
+        )
         self.assertIn("Session checkpoints", summary)
         self.assertIn("Session filter: session://alpha", summary)
+        self.assertIn("Receipt provenance: 1 verified, 0 failed", summary)
+        self.assertIn("Linked Treeship artifacts: 0", summary)
         self.assertIn(f"Latest checkpoint root: {checkpoint['checkpoint_merkle_root']}", summary)
+        self.assertIn("trusted_provenance=verified", summary)
+        self.assertIn(f"content_digest={checkpoint['receipt']['content_digest']}", summary)
+        self.assertIn(f"source event: hash={checkpoint['receipt']['source_event_hash']}", summary)
+        self.assertIn("semantic truth: not guaranteed", summary)
         self.assertIn("policy=1 procedural=1 episodic=0 semantic=1", summary)
         self.assertIn("handoff before context compaction", summary)
 
@@ -652,9 +693,19 @@ class CliOnboardingTest(unittest.TestCase):
 
         self.assertTrue(report["ok"])
         self.assertEqual(report["count"], 2)
+        self.assertEqual(report["verified_receipt_count"], 2)
+        self.assertEqual(report["failed_receipt_count"], 0)
+        self.assertEqual(report["linked_treeship_artifact_count"], 0)
+        self.assertTrue(report["ends"][0]["receipt_verification"]["ok"])
         self.assertIn("Session ends", summary)
         self.assertIn("Session filter: session://alpha", summary)
+        self.assertIn("Receipt provenance: 2 verified, 0 failed", summary)
+        self.assertIn("Linked Treeship artifacts: 0", summary)
         self.assertIn(f"Latest session end root: {latest['session_end_merkle_root']}", summary)
+        self.assertIn("trusted_provenance=verified", summary)
+        self.assertIn(f"content_digest={latest['receipt']['content_digest']}", summary)
+        self.assertIn(f"source event: hash={latest['receipt']['source_event_hash']}", summary)
+        self.assertIn("semantic truth: not guaranteed", summary)
         self.assertIn("policy=1 procedural=1 episodic=0 semantic=0", summary)
         self.assertIn("second closeout", summary)
         self.assertIn("first closeout", summary)
@@ -739,10 +790,20 @@ class CliOnboardingTest(unittest.TestCase):
 
         self.assertTrue(report["ok"])
         self.assertEqual(report["count"], 2)
+        self.assertEqual(report["verified_receipt_count"], 2)
+        self.assertEqual(report["failed_receipt_count"], 0)
+        self.assertEqual(report["linked_treeship_artifact_count"], 0)
+        self.assertTrue(report["starts"][0]["receipt_verification"]["ok"])
         self.assertIn("Session starts", summary)
         self.assertIn("Session filter: session://alpha", summary)
         self.assertIn("Budget hints: 2 set, 0 unset", summary)
+        self.assertIn("Receipt provenance: 2 verified, 0 failed", summary)
+        self.assertIn("Linked Treeship artifacts: 0", summary)
         self.assertIn(f"Latest session start root: {latest['session_start_merkle_root']}", summary)
+        self.assertIn("trusted_provenance=verified", summary)
+        self.assertIn(f"content_digest={latest['receipt']['content_digest']}", summary)
+        self.assertIn(f"source event: hash={latest['receipt']['source_event_hash']}", summary)
+        self.assertIn("semantic truth: not guaranteed", summary)
         self.assertIn("context_budget_tokens=128", summary)
         self.assertIn("context_budget_tokens=256", summary)
         self.assertIn("resume after checkpoint restore", summary)
@@ -830,13 +891,90 @@ class CliOnboardingTest(unittest.TestCase):
 
         self.assertTrue(report["ok"])
         self.assertEqual(report["count"], 2)
+        self.assertEqual(report["verified_receipt_count"], 2)
+        self.assertEqual(report["failed_receipt_count"], 0)
+        self.assertEqual(report["linked_treeship_artifact_count"], 0)
+        self.assertTrue(report["snapshots"][0]["receipt_verification"]["ok"])
         self.assertIn("Session snapshots", summary)
+        self.assertIn("Receipt provenance: 2 verified, 0 failed", summary)
+        self.assertIn("Linked Treeship artifacts: 0", summary)
         self.assertIn("Payloads: 1 available, 1 soft-deleted", summary)
         self.assertIn(f"Latest session snapshot root: {deleted['session_snapshot_merkle_root']}", summary)
+        self.assertIn("trusted_provenance=verified", summary)
+        self.assertIn(f"content_digest={deleted['receipt']['content_digest']}", summary)
+        self.assertIn(f"source event: hash={deleted['receipt']['source_event_hash']}", summary)
+        self.assertIn("semantic truth: not guaranteed", summary)
         self.assertIn("payload=soft_deleted", summary)
         self.assertIn("deleted_by=reviewer", summary)
         self.assertIn("deleted_reason=retention window expired", summary)
         self.assertIn("payload=available", summary)
+
+    def test_session_retention_rollup_summary_surfaces_mixed_available_and_soft_deleted_sessions(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = MemoryStore(Path(tmpdir) / "memory.sqlite")
+            store.init()
+            store.remember(
+                "Production deploy target is Render",
+                memory_type="semantic",
+                scope="project:alpha",
+                source_kind="human",
+            )
+            alpha_available = store.snapshot_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="alpha retained",
+            )
+            alpha_deleted = store.snapshot_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="alpha latest soft-deleted",
+            )
+            store.soft_delete_session_snapshot_payload(
+                alpha_deleted["session_snapshot_id"],
+                actor_id="reviewer",
+                reason="keep only stable checkpoint",
+            )
+            beta_available = store.snapshot_session(
+                "session://beta",
+                actor_id="hermes",
+                scope="project:beta",
+                summary="beta retained",
+            )
+            gamma_deleted = store.snapshot_session(
+                "session://gamma",
+                actor_id="opencode",
+                scope="project:gamma",
+                summary="gamma deleted",
+            )
+            store.soft_delete_session_snapshot_payload(
+                gamma_deleted["session_snapshot_id"],
+                actor_id="reviewer",
+                reason="expired retention window",
+            )
+
+            report = build_session_retention_rollup_report(store, limit=10)
+            summary = render_session_retention_rollup_summary(report)
+
+        self.assertTrue(report["ok"])
+        self.assertEqual(report["count"], 3)
+        self.assertEqual(
+            report["retention_state_counts"],
+            {"all_available": 1, "mixed": 1, "soft_deleted_only": 1},
+        )
+        self.assertEqual(report["payload_status_counts"], {"available": 2, "soft_deleted": 2})
+        self.assertIn("Session snapshot retention", summary)
+        self.assertIn("Retention states: all_available=1 mixed=1 soft_deleted_only=1", summary)
+        self.assertIn("Snapshot payloads: 2 available, 2 soft-deleted", summary)
+        self.assertIn("session://alpha: scope=project:alpha latest=soft_deleted state=mixed", summary)
+        self.assertIn(f"latest available: id={alpha_available['session_snapshot_id']}", summary)
+        self.assertIn("deleted_reason=keep only stable checkpoint", summary)
+        self.assertIn("session://beta: scope=project:beta latest=available state=all_available", summary)
+        self.assertIn(f"latest_snapshot={beta_available['session_snapshot_id']}", summary)
+        self.assertIn("latest soft-deleted: id=none", summary)
+        self.assertIn("session://gamma: scope=project:gamma latest=soft_deleted state=soft_deleted_only", summary)
+        self.assertIn("deleted_reason=expired retention window", summary)
 
     def test_session_snapshot_soft_delete_summary_surfaces_retention_roots(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -982,13 +1120,116 @@ class CliOnboardingTest(unittest.TestCase):
         self.assertIn("Session timeline", summary)
         self.assertIn("Session filter: session://alpha", summary)
         self.assertIn("Event kinds: starts=1 checkpoints=1 snapshots=1 snapshot_soft_deletes=1 ends=1", summary)
+        self.assertIn("Receipt provenance: 5 verified, 0 failed", summary)
+        self.assertEqual(report["verified_receipt_count"], 5)
+        self.assertEqual(report["failed_receipt_count"], 0)
+        self.assertEqual(report["linked_treeship_artifact_count"], 0)
         self.assertIn("Snapshot payloads: 0 available, 1 soft-deleted", summary)
         self.assertIn(f"Latest timeline root: {report['timeline'][0]['timeline_root']}", summary)
         self.assertIn(f"start:{start['session_start_id']}", summary)
         self.assertIn("context_budget_tokens=256", summary)
+        self.assertIn("receipt: trusted_provenance=verified", summary)
+        self.assertIn("source event: hash=", summary)
+        self.assertIn("semantic truth: not guaranteed", summary)
         self.assertIn(f"snapshot_soft_delete:{session_snapshot['session_snapshot_id']}", summary)
         self.assertIn("deleted_by=reviewer", summary)
         self.assertIn("deleted_reason=retention window expired", summary)
+
+    def test_session_lifecycle_rollup_summary_groups_sessions_and_latest_status(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = MemoryStore(Path(tmpdir) / "memory.sqlite")
+            store.init()
+            store.remember(
+                "Production deploys require approval",
+                memory_type="policy",
+                scope="project:alpha",
+                source_kind="human",
+            )
+            store.start_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="resume deploy swarm",
+                context_budget_tokens=256,
+            )
+            store.checkpoint_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="checkpoint before compaction",
+            )
+            alpha_snapshot = store.snapshot_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="freeze before retention prune",
+            )
+            store.end_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="closeout after handoff",
+            )
+            store.soft_delete_session_snapshot_payload(
+                alpha_snapshot["session_snapshot_id"],
+                actor_id="reviewer",
+                reason="retention window expired",
+            )
+            beta_start = store.start_session(
+                "session://beta",
+                actor_id="hermes",
+                scope="project:beta",
+                summary="beta resume",
+                context_budget_tokens=128,
+            )
+            beta_snapshot = store.snapshot_session(
+                "session://beta",
+                actor_id="hermes",
+                scope="project:beta",
+                summary="beta retained",
+            )
+            gamma_start = store.start_session(
+                "session://gamma",
+                actor_id="opencode",
+                scope="project:gamma",
+                summary="gamma active",
+            )
+
+            report = build_session_lifecycle_rollup_report(store, limit=10)
+            summary = render_session_lifecycle_rollup_summary(report)
+
+        self.assertTrue(report["ok"])
+        self.assertEqual(report["count"], 3)
+        self.assertEqual(
+            report["event_kind_counts"],
+            {"start": 3, "checkpoint": 1, "snapshot": 2, "snapshot_soft_delete": 1, "end": 1},
+        )
+        self.assertEqual(report["payload_status_counts"], {"available": 1, "soft_deleted": 1})
+        self.assertEqual(report["verified_receipt_count"], 8)
+        self.assertEqual(report["failed_receipt_count"], 0)
+        self.assertEqual(report["linked_treeship_artifact_count"], 0)
+        self.assertEqual(report["sessions"][0]["verified_receipt_count"], 1)
+        self.assertEqual(report["sessions"][1]["verified_receipt_count"], 2)
+        self.assertEqual(report["sessions"][2]["verified_receipt_count"], 5)
+        self.assertIn("Session lifecycle rollup", summary)
+        self.assertIn("Lifecycle events: starts=3 checkpoints=1 snapshots=2 snapshot_soft_deletes=1 ends=1", summary)
+        self.assertIn("Snapshot payloads: 1 available, 1 soft-deleted", summary)
+        self.assertIn("Receipt provenance: 8 verified, 0 failed", summary)
+        self.assertIn("Linked Treeship artifacts: 0", summary)
+        self.assertIn("session://gamma: scope=project:gamma latest=start", summary)
+        self.assertIn("receipts=1 verified, 0 failed linked_artifacts=0 latest_receipt=verified", summary)
+        self.assertIn(f"latest_start={gamma_start['session_start_id']}", summary)
+        self.assertIn("session://beta: scope=project:beta latest=snapshot", summary)
+        self.assertIn(f"latest_start={beta_start['session_start_id']}", summary)
+        self.assertIn("context_budget_tokens=128", summary)
+        self.assertIn(f"latest_snapshot={beta_snapshot['session_snapshot_id']}", summary)
+        self.assertIn("payload=available", summary)
+        self.assertIn("session://alpha: scope=project:alpha latest=snapshot_soft_delete", summary)
+        self.assertIn("events=5", summary)
+        self.assertIn("context_budget_tokens=256", summary)
+        self.assertIn(f"latest_soft_deleted={alpha_snapshot['session_snapshot_id']}", summary)
+        self.assertIn("deleted_reason=retention window expired", summary)
+        self.assertIn("latest_end=", summary)
 
     def test_agent_pack_path_uses_project_local_default(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1270,6 +1511,104 @@ class CliOnboardingTest(unittest.TestCase):
         self.assertIsNone(result["treeship_path"])
         self.assertIn("none yet", readme)
 
+    def test_create_handoff_package_includes_session_lifecycle_rollup_for_context_boundary_review(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            store = MemoryStore(work / ".zerker" / "memory.sqlite")
+            store.remember(
+                "Production deploys require approval",
+                memory_type="policy",
+                scope="project",
+                source_kind="human",
+            )
+            store.start_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project",
+                summary="resume after compaction",
+                context_budget_tokens=256,
+            )
+            store.checkpoint_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project",
+                summary="checkpoint before handoff",
+            )
+            session_snapshot = store.snapshot_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project",
+                summary="snapshot before handoff",
+            )
+            store.soft_delete_session_snapshot_payload(
+                session_snapshot["session_snapshot_id"],
+                actor_id="codex",
+                reason="retention compacted before handoff",
+            )
+            store.end_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project",
+                summary="closeout after handoff",
+            )
+
+            result = create_handoff_package(
+                store,
+                providers_path=work / ".zerker" / "providers.json",
+                out_dir=work / ".zerker" / "handoff",
+                action_id=None,
+            )
+            summary = render_handoff_summary(result)
+            readme = Path(result["readme_path"]).read_text(encoding="utf-8")
+            manifest = json.loads(Path(result["manifest_path"]).read_text(encoding="utf-8"))
+
+        lifecycle_rollup = result["session_lifecycle_rollup"]
+        retention_rollup = result["session_retention_rollup"]
+        self.assertEqual(lifecycle_rollup["count"], 1)
+        self.assertEqual(lifecycle_rollup["event_kind_counts"]["start"], 1)
+        self.assertEqual(lifecycle_rollup["event_kind_counts"]["checkpoint"], 1)
+        self.assertEqual(lifecycle_rollup["event_kind_counts"]["snapshot"], 1)
+        self.assertEqual(lifecycle_rollup["event_kind_counts"]["snapshot_soft_delete"], 1)
+        self.assertEqual(lifecycle_rollup["event_kind_counts"]["end"], 1)
+        self.assertEqual(lifecycle_rollup["verified_receipt_count"], 5)
+        self.assertEqual(lifecycle_rollup["failed_receipt_count"], 0)
+        self.assertEqual(lifecycle_rollup["sessions"][0]["session_id"], "session://alpha")
+        self.assertEqual(lifecycle_rollup["sessions"][0]["latest_event_kind"], "end")
+        self.assertEqual(lifecycle_rollup["sessions"][0]["latest_payload_status"], "soft_deleted")
+        self.assertEqual(
+            lifecycle_rollup["sessions"][0]["latest_start_token_budget_hint"]["context_budget_tokens"],
+            256,
+        )
+        self.assertEqual(retention_rollup["count"], 1)
+        self.assertEqual(retention_rollup["retention_state_counts"]["soft_deleted_only"], 1)
+        self.assertEqual(retention_rollup["payload_status_counts"], {"available": 0, "soft_deleted": 1})
+        self.assertEqual(retention_rollup["sessions"][0]["session_id"], "session://alpha")
+        self.assertEqual(retention_rollup["sessions"][0]["retention_state"], "soft_deleted_only")
+        self.assertEqual(retention_rollup["sessions"][0]["latest_payload_status"], "soft_deleted")
+        self.assertEqual(retention_rollup["sessions"][0]["latest_soft_deleted_reason"], "retention compacted before handoff")
+        self.assertIn("## Session Lifecycle Continuity", readme)
+        self.assertIn("Session lifecycle rollup", readme)
+        self.assertIn("## Session Snapshot Retention", readme)
+        self.assertIn("Session snapshot retention", readme)
+        self.assertIn("soft_deleted_only=1", readme)
+        self.assertIn("retention compacted before handoff", readme)
+        self.assertEqual(manifest["session_lifecycle_rollup"]["count"], 1)
+        self.assertEqual(manifest["session_retention_rollup"]["count"], 1)
+        self.assertEqual(
+            manifest["session_lifecycle_rollup"]["sessions"][0]["latest_event_kind"],
+            "end",
+        )
+        self.assertEqual(
+            manifest["session_retention_rollup"]["sessions"][0]["latest_payload_status"],
+            "soft_deleted",
+        )
+        self.assertIn("Session lifecycle rollup", manifest["session_lifecycle_rollup_summary"])
+        self.assertIn("Session snapshot retention", manifest["session_retention_rollup_summary"])
+        self.assertIn("retention compacted before handoff", manifest["session_retention_rollup_summary"])
+        self.assertIn("Lifecycle sessions: 1", summary)
+        self.assertIn("Lifecycle events: starts=1 checkpoints=1 snapshots=1 snapshot_soft_deletes=1 ends=1", summary)
+        self.assertIn("Lifecycle receipt provenance: 5 verified, 0 failed", summary)
+
     def test_run_release_pack_refreshes_artifacts_and_prelaunch(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -1476,6 +1815,102 @@ class CliOnboardingTest(unittest.TestCase):
         self.assertEqual(manifest["public_verify_runbook_path"], "CLEAN_SHELL_PUBLIC_VERIFY.md")
         self.assertEqual(manifest["public_verify"]["runbook_path"], "CLEAN_SHELL_PUBLIC_VERIFY.md")
 
+    def test_run_launch_proof_mirrors_handoff_session_continuity_into_operator_packet_surfaces(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            previous_cwd = Path.cwd()
+            os.chdir(root)
+            try:
+                source_store = MemoryStore(root / ".zerker" / "memory.sqlite")
+                source_store.remember(
+                    "Production deploys require approval",
+                    memory_type="policy",
+                    scope="project",
+                    source_kind="human",
+                )
+                source_store.start_session(
+                    "session://alpha",
+                    actor_id="codex",
+                    scope="project",
+                    summary="resume after compaction",
+                    context_budget_tokens=256,
+                )
+                source_store.checkpoint_session(
+                    "session://alpha",
+                    actor_id="codex",
+                    scope="project",
+                    summary="checkpoint before launch proof",
+                )
+                session_snapshot = source_store.snapshot_session(
+                    "session://alpha",
+                    actor_id="codex",
+                    scope="project",
+                    summary="snapshot before launch proof",
+                )
+                source_store.soft_delete_session_snapshot_payload(
+                    session_snapshot["session_snapshot_id"],
+                    actor_id="reviewer",
+                    reason="retention compacted before operator packet",
+                )
+                source_store.end_session(
+                    "session://alpha",
+                    actor_id="codex",
+                    scope="project",
+                    summary="closeout before launch proof",
+                )
+                create_handoff_package(
+                    source_store,
+                    providers_path=root / ".zerker" / "providers.json",
+                    out_dir=root / ".zerker" / "handoff",
+                    action_id=None,
+                )
+                write_policy_template(root / ".zerker" / "policy.json", force=False)
+                write_provider_config_template(root / ".zerker" / "providers.json", force=False)
+
+                result = run_launch_proof(
+                    policy_path=root / ".zerker" / "policy.json",
+                    providers_path=root / ".zerker" / "providers.json",
+                    out_dir=root / ".zerker" / "launch-proof",
+                    agent_id="codex",
+                    scope="project",
+                    task="deploy service to production",
+                    bt_trace_path=Path("examples") / "bt_trace.jsonl",
+                )
+                manifest = json.loads(Path(result["manifest_path"]).read_text(encoding="utf-8"))
+                public_verify_summary = Path(result["public_verify_summary_path"]).read_text(encoding="utf-8")
+                operator_packet = verify_operator_packet_archive(Path(result["operator_packet_archive_path"]))
+                operator_packet_summary = render_operator_packet_summary(operator_packet)
+            finally:
+                os.chdir(previous_cwd)
+
+        self.assertEqual(manifest["session_lifecycle_rollup"]["count"], 1)
+        self.assertEqual(manifest["session_lifecycle_rollup"]["event_kind_counts"]["start"], 1)
+        self.assertEqual(manifest["session_lifecycle_rollup"]["event_kind_counts"]["checkpoint"], 1)
+        self.assertEqual(manifest["session_lifecycle_rollup"]["event_kind_counts"]["snapshot"], 1)
+        self.assertEqual(manifest["session_lifecycle_rollup"]["event_kind_counts"]["snapshot_soft_delete"], 1)
+        self.assertEqual(manifest["session_lifecycle_rollup"]["event_kind_counts"]["end"], 1)
+        self.assertEqual(manifest["session_lifecycle_rollup"]["verified_receipt_count"], 5)
+        self.assertEqual(manifest["session_retention_rollup"]["count"], 1)
+        self.assertEqual(manifest["session_retention_rollup"]["retention_state_counts"]["soft_deleted_only"], 1)
+        self.assertEqual(
+            manifest["session_retention_rollup"]["sessions"][0]["latest_soft_deleted_reason"],
+            "retention compacted before operator packet",
+        )
+        self.assertIn("Lifecycle sessions: 1", public_verify_summary)
+        self.assertIn("Lifecycle events: starts=1 checkpoints=1 snapshots=1 snapshot_soft_deletes=1 ends=1", public_verify_summary)
+        self.assertIn("Lifecycle receipt provenance: 5 verified, 0 failed", public_verify_summary)
+        self.assertIn("Latest lifecycle session: session://alpha latest=end payload=soft_deleted context_budget_tokens=256", public_verify_summary)
+        self.assertIn("Retention sessions: 1", public_verify_summary)
+        self.assertIn("Retention states: all_available=0 mixed=0 soft_deleted_only=1", public_verify_summary)
+        self.assertIn("Retention payloads: 0 available, 1 soft-deleted", public_verify_summary)
+        self.assertIn("retention compacted before operator packet", public_verify_summary)
+        self.assertEqual(operator_packet["session_lifecycle_rollup"]["count"], 1)
+        self.assertEqual(operator_packet["session_retention_rollup"]["count"], 1)
+        self.assertIn("Lifecycle sessions: 1", operator_packet_summary)
+        self.assertIn("Lifecycle receipt provenance: 5 verified, 0 failed", operator_packet_summary)
+        self.assertIn("Retention sessions: 1", operator_packet_summary)
+        self.assertIn("retention compacted before operator packet", operator_packet_summary)
+
     def test_restore_handoff_package_verifies_and_restores_snapshot(self):
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp)
@@ -1512,6 +1947,90 @@ class CliOnboardingTest(unittest.TestCase):
         self.assertIn("Treeship artifact: none", summary)
         self.assertIn("Restored memories: 1", summary)
 
+    def test_restore_handoff_package_surfaces_session_lifecycle_rollup_for_receive_side_review(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            source_store = MemoryStore(work / ".zerker" / "source.sqlite")
+            source_store.remember(
+                "Production deploys require approval",
+                memory_type="policy",
+                scope="project",
+                source_kind="human",
+            )
+            source_store.start_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project",
+                summary="resume after compaction",
+                context_budget_tokens=256,
+            )
+            source_store.checkpoint_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project",
+                summary="checkpoint before handoff",
+            )
+            session_snapshot = source_store.snapshot_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project",
+                summary="snapshot before handoff",
+            )
+            source_store.soft_delete_session_snapshot_payload(
+                session_snapshot["session_snapshot_id"],
+                actor_id="reviewer",
+                reason="retention compacted before handoff",
+            )
+            source_store.end_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project",
+                summary="closeout after handoff",
+            )
+            handoff = create_handoff_package(
+                source_store,
+                providers_path=work / ".zerker" / "providers.json",
+                out_dir=work / ".zerker" / "handoff",
+                action_id=None,
+            )
+
+            target_store = MemoryStore(work / ".zerker" / "restored.sqlite")
+            result = restore_handoff_package(target_store, handoff_dir=Path(handoff["out_dir"]))
+            summary = render_restore_summary(result)
+
+        lifecycle_rollup = result["session_lifecycle_rollup"]
+        retention_rollup = result["session_retention_rollup"]
+        self.assertEqual(lifecycle_rollup["count"], 1)
+        self.assertEqual(lifecycle_rollup["event_kind_counts"]["start"], 1)
+        self.assertEqual(lifecycle_rollup["event_kind_counts"]["checkpoint"], 1)
+        self.assertEqual(lifecycle_rollup["event_kind_counts"]["snapshot"], 1)
+        self.assertEqual(lifecycle_rollup["event_kind_counts"]["snapshot_soft_delete"], 1)
+        self.assertEqual(lifecycle_rollup["event_kind_counts"]["end"], 1)
+        self.assertEqual(lifecycle_rollup["verified_receipt_count"], 5)
+        self.assertEqual(lifecycle_rollup["failed_receipt_count"], 0)
+        self.assertEqual(lifecycle_rollup["sessions"][0]["session_id"], "session://alpha")
+        self.assertEqual(lifecycle_rollup["sessions"][0]["latest_event_kind"], "end")
+        self.assertEqual(lifecycle_rollup["sessions"][0]["latest_payload_status"], "soft_deleted")
+        self.assertEqual(
+            lifecycle_rollup["sessions"][0]["latest_start_token_budget_hint"]["context_budget_tokens"],
+            256,
+        )
+        self.assertEqual(retention_rollup["count"], 1)
+        self.assertEqual(retention_rollup["retention_state_counts"]["soft_deleted_only"], 1)
+        self.assertEqual(retention_rollup["payload_status_counts"], {"available": 0, "soft_deleted": 1})
+        self.assertEqual(retention_rollup["sessions"][0]["latest_payload_status"], "soft_deleted")
+        self.assertEqual(retention_rollup["sessions"][0]["latest_soft_deleted_reason"], "retention compacted before handoff")
+        self.assertIn("Lifecycle sessions: 1", summary)
+        self.assertIn("Lifecycle events: starts=1 checkpoints=1 snapshots=1 snapshot_soft_deletes=1 ends=1", summary)
+        self.assertIn("Lifecycle receipt provenance: 5 verified, 0 failed", summary)
+        self.assertIn("session://alpha latest=end payload=soft_deleted", summary)
+        self.assertIn("context_budget_tokens=256", summary)
+        self.assertIn("Retention sessions: 1", summary)
+        self.assertIn("Retention states: all_available=0 mixed=0 soft_deleted_only=1", summary)
+        self.assertIn("Retention payloads: 0 available, 1 soft-deleted", summary)
+        self.assertIn("retention compacted before handoff", summary)
+        self.assertNotIn("Session continuity: none", summary)
+
     def test_restore_snapshot_summary_only_verifies_and_restores_snapshot(self):
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp)
@@ -1544,6 +2063,82 @@ class CliOnboardingTest(unittest.TestCase):
         self.assertIn("Restore receipt verify: ok", summary)
         self.assertIn("Treeship artifact: none", summary)
         self.assertIn("Semantic truth: not guaranteed", summary)
+        self.assertIn(
+            "Session continuity: none (standalone snapshot restores do not carry lifecycle or retention history)",
+            summary,
+        )
+        self.assertNotIn("Lifecycle sessions:", summary)
+        self.assertNotIn("Retention sessions:", summary)
+
+    def test_snapshot_export_writes_adjacent_session_continuity_sidecar(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            db_path = work / ".zerker" / "memory.sqlite"
+            store = MemoryStore(db_path)
+            store.init()
+            store.remember(
+                "Production deploys require approval",
+                memory_type="policy",
+                scope="project:alpha",
+                source_kind="human",
+            )
+            store.start_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="start before raw snapshot export",
+                context_budget_tokens=256,
+            )
+            store.checkpoint_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="checkpoint before raw snapshot export",
+            )
+            session_snapshot = store.snapshot_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="snapshot before raw snapshot export",
+            )
+            store.soft_delete_session_snapshot_payload(
+                session_snapshot["session_snapshot_id"],
+                actor_id="reviewer",
+                reason="retention compacted before raw snapshot export",
+            )
+            store.end_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="end before raw snapshot export",
+            )
+            snapshot_path = work / ".zerker" / "snapshot.json"
+
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = main(["--db", str(db_path), "snapshot", "--out", str(snapshot_path)])
+
+            result = json.loads(output.getvalue())
+            continuity_path = Path(result["continuity_path"])
+            continuity_exists = continuity_path.exists()
+            continuity = json.loads(continuity_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(result["format"], "snapshot")
+        self.assertEqual(result["path"], str(snapshot_path))
+        self.assertTrue(continuity_exists)
+        self.assertEqual(continuity["schema"], "zerker.snapshot_continuity.v1")
+        self.assertEqual(continuity["snapshot_hash"], result["payload"]["snapshot_hash"])
+        self.assertEqual(continuity["session_lifecycle_rollup"]["count"], 1)
+        self.assertEqual(
+            continuity["session_lifecycle_rollup"]["event_kind_counts"],
+            {"start": 1, "checkpoint": 1, "snapshot": 1, "snapshot_soft_delete": 1, "end": 1},
+        )
+        self.assertEqual(continuity["session_retention_rollup"]["count"], 1)
+        self.assertEqual(
+            continuity["session_retention_rollup"]["retention_state_counts"],
+            {"all_available": 0, "mixed": 0, "soft_deleted_only": 1},
+        )
 
     def test_snapshot_parser_accepts_verify_summary_only(self):
         args = build_parser().parse_args(["snapshot", "verify", "/tmp/snapshot.json", "--summary-only"])
@@ -1552,6 +2147,2139 @@ class CliOnboardingTest(unittest.TestCase):
         self.assertEqual(args.snapshot_action, "verify")
         self.assertEqual(args.snapshot_path, Path("/tmp/snapshot.json"))
         self.assertTrue(args.summary_only)
+
+    def test_snapshot_verify_summary_only_surfaces_adjacent_session_continuity_sidecar(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            db_path = work / ".zerker" / "memory.sqlite"
+            store = MemoryStore(db_path)
+            store.init()
+            store.remember(
+                "Production deploys require approval",
+                memory_type="policy",
+                scope="project:alpha",
+                source_kind="human",
+            )
+            store.start_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="start before raw snapshot verify",
+                context_budget_tokens=256,
+            )
+            session_snapshot = store.snapshot_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="snapshot before raw snapshot verify",
+            )
+            store.soft_delete_session_snapshot_payload(
+                session_snapshot["session_snapshot_id"],
+                actor_id="reviewer",
+                reason="retention compacted before raw snapshot verify",
+            )
+            store.end_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="end before raw snapshot verify",
+            )
+            snapshot_path = work / ".zerker" / "snapshot.json"
+            export_output = io.StringIO()
+            with redirect_stdout(export_output):
+                export_exit_code = main(["--db", str(db_path), "snapshot", "--out", str(snapshot_path)])
+
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = main(["--db", str(db_path), "snapshot", "verify", str(snapshot_path), "--summary-only"])
+
+            summary = output.getvalue()
+
+        self.assertEqual(export_exit_code, 0)
+        self.assertEqual(exit_code, 0)
+        self.assertIn("Memory snapshot verify", summary)
+        self.assertIn(f"Snapshot: {snapshot_path}", summary)
+        self.assertIn(f"Session continuity sidecar: {snapshot_path.with_suffix('.continuity.json').resolve()}", summary)
+        self.assertIn("Session continuity verify: ok", summary)
+        self.assertIn("Lifecycle sessions: 1", summary)
+        self.assertIn("Lifecycle events: starts=1 checkpoints=0 snapshots=1 snapshot_soft_deletes=1 ends=1", summary)
+        self.assertIn("Retention sessions: 1", summary)
+        self.assertIn("Retention states: all_available=0 mixed=0 soft_deleted_only=1", summary)
+        self.assertIn("Latest lifecycle retention: retention compacted before raw snapshot verify", summary)
+        self.assertNotIn("Session continuity: none", summary)
+
+    def test_snapshot_verify_summary_only_reports_mismatched_session_continuity_sidecar(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            db_path = work / ".zerker" / "memory.sqlite"
+            store = MemoryStore(db_path)
+            store.init()
+            store.remember(
+                "Production deploys require approval",
+                memory_type="policy",
+                scope="project:alpha",
+                source_kind="human",
+            )
+            store.start_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="start before raw snapshot verify mismatch",
+                context_budget_tokens=256,
+            )
+            snapshot_path = work / ".zerker" / "snapshot.json"
+            export_output = io.StringIO()
+            with redirect_stdout(export_output):
+                export_exit_code = main(["--db", str(db_path), "snapshot", "--out", str(snapshot_path)])
+
+            continuity_path = snapshot_path.with_suffix(".continuity.json")
+            continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+            continuity_payload["snapshot_hash"] = "sha256:copied-sidecar"
+            continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = main(["--db", str(db_path), "snapshot", "verify", str(snapshot_path), "--summary-only"])
+
+            summary = output.getvalue()
+
+        self.assertEqual(export_exit_code, 0)
+        self.assertEqual(exit_code, 0)
+        self.assertIn("Memory snapshot verify", summary)
+        self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+        self.assertIn("Session continuity verify: failed", summary)
+        self.assertIn("Session continuity error: continuity sidecar snapshot hash mismatch", summary)
+        self.assertIn("expected", summary)
+        self.assertIn("got sha256:copied-sidecar", summary)
+        self.assertNotIn("Lifecycle sessions:", summary)
+
+    def test_snapshot_verify_summary_only_reports_missing_lifecycle_rollup_in_session_continuity_sidecar(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            db_path = work / ".zerker" / "memory.sqlite"
+            store = MemoryStore(db_path)
+            store.init()
+            store.remember(
+                "Production deploys require approval",
+                memory_type="policy",
+                scope="project:alpha",
+                source_kind="human",
+            )
+            store.start_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="start before raw snapshot verify truncated sidecar",
+                context_budget_tokens=256,
+            )
+            snapshot_path = work / ".zerker" / "snapshot.json"
+            export_output = io.StringIO()
+            with redirect_stdout(export_output):
+                export_exit_code = main(["--db", str(db_path), "snapshot", "--out", str(snapshot_path)])
+
+            continuity_path = snapshot_path.with_suffix(".continuity.json")
+            continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+            continuity_payload.pop("session_lifecycle_rollup", None)
+            continuity_payload.pop("session_lifecycle_rollup_summary", None)
+            continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = main(["--db", str(db_path), "snapshot", "verify", str(snapshot_path), "--summary-only"])
+
+            summary = output.getvalue()
+
+        self.assertEqual(export_exit_code, 0)
+        self.assertEqual(exit_code, 0)
+        self.assertIn("Memory snapshot verify", summary)
+        self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+        self.assertIn("Session continuity verify: failed", summary)
+        self.assertIn("Session continuity error: invalid continuity sidecar: missing session_lifecycle_rollup", summary)
+        self.assertNotIn("Lifecycle sessions:", summary)
+
+    def test_snapshot_verify_summary_only_reports_invalid_lifecycle_rollup_session_entry_in_session_continuity_sidecar(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            db_path = work / ".zerker" / "memory.sqlite"
+            store = MemoryStore(db_path)
+            store.init()
+            store.remember(
+                "Production deploys require approval",
+                memory_type="policy",
+                scope="project:alpha",
+                source_kind="human",
+            )
+            store.start_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="start before raw snapshot verify malformed lifecycle entry",
+                context_budget_tokens=256,
+            )
+            snapshot_path = work / ".zerker" / "snapshot.json"
+            export_output = io.StringIO()
+            with redirect_stdout(export_output):
+                export_exit_code = main(["--db", str(db_path), "snapshot", "--out", str(snapshot_path)])
+
+            continuity_path = snapshot_path.with_suffix(".continuity.json")
+            continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+            continuity_payload["session_lifecycle_rollup"]["sessions"] = ["bad-entry"]
+            continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = main(["--db", str(db_path), "snapshot", "verify", str(snapshot_path), "--summary-only"])
+
+            summary = output.getvalue()
+
+        self.assertEqual(export_exit_code, 0)
+        self.assertEqual(exit_code, 0)
+        self.assertIn("Memory snapshot verify", summary)
+        self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+        self.assertIn("Session continuity verify: failed", summary)
+        self.assertIn(
+            "Session continuity error: invalid continuity sidecar: session_lifecycle_rollup.sessions[0] must be an object",
+            summary,
+        )
+        self.assertNotIn("Lifecycle sessions:", summary)
+
+    def test_snapshot_verify_summary_only_reports_incoherent_lifecycle_rollup_count_in_session_continuity_sidecar(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            db_path = work / ".zerker" / "memory.sqlite"
+            store = MemoryStore(db_path)
+            store.init()
+            store.remember(
+                "Production deploys require approval",
+                memory_type="policy",
+                scope="project:alpha",
+                source_kind="human",
+            )
+            store.start_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="start before raw snapshot verify incoherent lifecycle count",
+                context_budget_tokens=256,
+            )
+            snapshot_path = work / ".zerker" / "snapshot.json"
+            export_output = io.StringIO()
+            with redirect_stdout(export_output):
+                export_exit_code = main(["--db", str(db_path), "snapshot", "--out", str(snapshot_path)])
+
+            continuity_path = snapshot_path.with_suffix(".continuity.json")
+            continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+            continuity_payload["session_lifecycle_rollup"]["count"] = 99
+            continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = main(["--db", str(db_path), "snapshot", "verify", str(snapshot_path), "--summary-only"])
+
+            summary = output.getvalue()
+
+        self.assertEqual(export_exit_code, 0)
+        self.assertEqual(exit_code, 0)
+        self.assertIn("Memory snapshot verify", summary)
+        self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+        self.assertIn("Session continuity verify: failed", summary)
+        self.assertIn(
+            "Session continuity error: invalid continuity sidecar: session_lifecycle_rollup.count must equal sessions length (99 != 1)",
+            summary,
+        )
+        self.assertNotIn("Lifecycle sessions:", summary)
+
+    def test_snapshot_verify_summary_only_reports_incoherent_lifecycle_event_totals_in_session_continuity_sidecar(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            db_path = work / ".zerker" / "memory.sqlite"
+            store = MemoryStore(db_path)
+            store.init()
+            store.remember(
+                "Production deploys require approval",
+                memory_type="policy",
+                scope="project:alpha",
+                source_kind="human",
+            )
+            store.start_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="start before raw snapshot verify incoherent lifecycle events",
+                context_budget_tokens=256,
+            )
+            snapshot_path = work / ".zerker" / "snapshot.json"
+            export_output = io.StringIO()
+            with redirect_stdout(export_output):
+                export_exit_code = main(["--db", str(db_path), "snapshot", "--out", str(snapshot_path)])
+
+            continuity_path = snapshot_path.with_suffix(".continuity.json")
+            continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+            continuity_payload["session_lifecycle_rollup"]["event_kind_counts"]["start"] = 7
+            continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = main(["--db", str(db_path), "snapshot", "verify", str(snapshot_path), "--summary-only"])
+
+            summary = output.getvalue()
+
+        self.assertEqual(export_exit_code, 0)
+        self.assertEqual(exit_code, 0)
+        self.assertIn("Memory snapshot verify", summary)
+        self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+        self.assertIn("Session continuity verify: failed", summary)
+        self.assertIn(
+            "Session continuity error: invalid continuity sidecar: session_lifecycle_rollup.event_kind_counts.start must equal summed session start_count (7 != 1)",
+            summary,
+        )
+        self.assertNotIn("Lifecycle sessions:", summary)
+
+    def test_snapshot_verify_summary_only_reports_incoherent_retention_payload_totals_in_session_continuity_sidecar(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            db_path = work / ".zerker" / "memory.sqlite"
+            store = MemoryStore(db_path)
+            store.init()
+            store.remember(
+                "Production deploys require approval",
+                memory_type="policy",
+                scope="project:alpha",
+                source_kind="human",
+            )
+            store.start_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="start before raw snapshot verify incoherent retention payload totals",
+                context_budget_tokens=256,
+            )
+            store.snapshot_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="snapshot before raw snapshot verify incoherent retention payload totals",
+            )
+            snapshot_path = work / ".zerker" / "snapshot.json"
+            export_output = io.StringIO()
+            with redirect_stdout(export_output):
+                export_exit_code = main(["--db", str(db_path), "snapshot", "--out", str(snapshot_path)])
+
+            continuity_path = snapshot_path.with_suffix(".continuity.json")
+            continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+            continuity_payload["session_retention_rollup"]["payload_status_counts"]["available"] = 7
+            continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = main(["--db", str(db_path), "snapshot", "verify", str(snapshot_path), "--summary-only"])
+
+            summary = output.getvalue()
+
+        self.assertEqual(export_exit_code, 0)
+        self.assertEqual(exit_code, 0)
+        self.assertIn("Memory snapshot verify", summary)
+        self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+        self.assertIn("Session continuity verify: failed", summary)
+        self.assertIn(
+            "Session continuity error: invalid continuity sidecar: session_retention_rollup.payload_status_counts.available must equal summed session available_payload_count (7 != 1)",
+            summary,
+        )
+        self.assertNotIn("Retention sessions:", summary)
+        self.assertNotIn("Lifecycle sessions:", summary)
+
+    def test_snapshot_verify_summary_only_reports_incoherent_retention_state_totals_in_session_continuity_sidecar(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            db_path = work / ".zerker" / "memory.sqlite"
+            store = MemoryStore(db_path)
+            store.init()
+            store.remember(
+                "Production deploys require approval",
+                memory_type="policy",
+                scope="project:alpha",
+                source_kind="human",
+            )
+            store.start_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="start before raw snapshot verify incoherent retention states",
+                context_budget_tokens=256,
+            )
+            store.snapshot_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="snapshot before raw snapshot verify incoherent retention states",
+            )
+            snapshot_path = work / ".zerker" / "snapshot.json"
+            export_output = io.StringIO()
+            with redirect_stdout(export_output):
+                export_exit_code = main(["--db", str(db_path), "snapshot", "--out", str(snapshot_path)])
+
+            continuity_path = snapshot_path.with_suffix(".continuity.json")
+            continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+            continuity_payload["session_retention_rollup"]["retention_state_counts"]["all_available"] = 0
+            continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = main(["--db", str(db_path), "snapshot", "verify", str(snapshot_path), "--summary-only"])
+
+            summary = output.getvalue()
+
+        self.assertEqual(export_exit_code, 0)
+        self.assertEqual(exit_code, 0)
+        self.assertIn("Memory snapshot verify", summary)
+        self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+        self.assertIn("Session continuity verify: failed", summary)
+        self.assertIn(
+            "Session continuity error: invalid continuity sidecar: session_retention_rollup.retention_state_counts.all_available must equal counted session retention_state=all_available (0 != 1)",
+            summary,
+        )
+        self.assertNotIn("Retention sessions:", summary)
+        self.assertNotIn("Lifecycle sessions:", summary)
+
+    def test_snapshot_verify_summary_only_reports_negative_retention_state_total_in_session_continuity_sidecar(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            db_path = work / ".zerker" / "memory.sqlite"
+            store = MemoryStore(db_path)
+            store.init()
+            store.remember(
+                "Production deploys require approval",
+                memory_type="policy",
+                scope="project:alpha",
+                source_kind="human",
+            )
+            store.start_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="start before raw snapshot verify negative retention state total",
+                context_budget_tokens=256,
+            )
+            store.snapshot_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="snapshot before raw snapshot verify negative retention state total",
+            )
+            snapshot_path = work / ".zerker" / "snapshot.json"
+            export_output = io.StringIO()
+            with redirect_stdout(export_output):
+                export_exit_code = main(["--db", str(db_path), "snapshot", "--out", str(snapshot_path)])
+
+            continuity_path = snapshot_path.with_suffix(".continuity.json")
+            continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+            continuity_payload["session_retention_rollup"]["retention_state_counts"]["all_available"] = -1
+            continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = main(["--db", str(db_path), "snapshot", "verify", str(snapshot_path), "--summary-only"])
+
+            summary = output.getvalue()
+
+        self.assertEqual(export_exit_code, 0)
+        self.assertEqual(exit_code, 0)
+        self.assertIn("Memory snapshot verify", summary)
+        self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+        self.assertIn("Session continuity verify: failed", summary)
+        self.assertIn(
+            "Session continuity error: invalid continuity sidecar: "
+            "session_retention_rollup.retention_state_counts.all_available must be non-negative",
+            summary,
+        )
+        self.assertNotIn("Retention sessions:", summary)
+        self.assertNotIn("Lifecycle sessions:", summary)
+
+    def test_snapshot_verify_summary_only_reports_negative_mixed_retention_state_total_in_session_continuity_sidecar(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            db_path = work / ".zerker" / "memory.sqlite"
+            store = MemoryStore(db_path)
+            store.init()
+            store.remember(
+                "Production deploys require approval",
+                memory_type="policy",
+                scope="project:alpha",
+                source_kind="human",
+            )
+            store.start_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="start before raw snapshot verify negative mixed retention state total",
+                context_budget_tokens=256,
+            )
+            session_snapshot = store.snapshot_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="snapshot before raw snapshot verify negative mixed retention state total",
+            )
+            store.soft_delete_session_snapshot_payload(
+                session_snapshot["session_snapshot_id"],
+                actor_id="codex",
+                reason="retention compacted before verify mixed total check",
+            )
+            snapshot_path = work / ".zerker" / "snapshot.json"
+            export_output = io.StringIO()
+            with redirect_stdout(export_output):
+                export_exit_code = main(["--db", str(db_path), "snapshot", "--out", str(snapshot_path)])
+
+            continuity_path = snapshot_path.with_suffix(".continuity.json")
+            continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+            continuity_payload["session_retention_rollup"]["retention_state_counts"]["mixed"] = -1
+            continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = main(["--db", str(db_path), "snapshot", "verify", str(snapshot_path), "--summary-only"])
+
+            summary = output.getvalue()
+
+        self.assertEqual(export_exit_code, 0)
+        self.assertEqual(exit_code, 0)
+        self.assertIn("Memory snapshot verify", summary)
+        self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+        self.assertIn("Session continuity verify: failed", summary)
+        self.assertIn(
+            "Session continuity error: invalid continuity sidecar: "
+            "session_retention_rollup.retention_state_counts.mixed must be non-negative",
+            summary,
+        )
+        self.assertNotIn("Retention sessions:", summary)
+        self.assertNotIn("Lifecycle sessions:", summary)
+
+    def test_snapshot_verify_summary_only_reports_negative_soft_deleted_only_retention_state_total_in_session_continuity_sidecar(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            db_path = work / ".zerker" / "memory.sqlite"
+            store = MemoryStore(db_path)
+            store.init()
+            store.remember(
+                "Production deploys require approval",
+                memory_type="policy",
+                scope="project:alpha",
+                source_kind="human",
+            )
+            store.start_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="start before raw snapshot verify negative soft-deleted-only retention state total",
+                context_budget_tokens=256,
+            )
+            session_snapshot = store.snapshot_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="snapshot before raw snapshot verify negative soft-deleted-only retention state total",
+            )
+            store.soft_delete_session_snapshot_payload(
+                session_snapshot["session_snapshot_id"],
+                actor_id="codex",
+                reason="retention compacted before verify soft-deleted total check",
+            )
+            snapshot_path = work / ".zerker" / "snapshot.json"
+            export_output = io.StringIO()
+            with redirect_stdout(export_output):
+                export_exit_code = main(["--db", str(db_path), "snapshot", "--out", str(snapshot_path)])
+
+            continuity_path = snapshot_path.with_suffix(".continuity.json")
+            continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+            continuity_payload["session_retention_rollup"]["retention_state_counts"]["soft_deleted_only"] = -1
+            continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = main(["--db", str(db_path), "snapshot", "verify", str(snapshot_path), "--summary-only"])
+
+            summary = output.getvalue()
+
+        self.assertEqual(export_exit_code, 0)
+        self.assertEqual(exit_code, 0)
+        self.assertIn("Memory snapshot verify", summary)
+        self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+        self.assertIn("Session continuity verify: failed", summary)
+        self.assertIn(
+            "Session continuity error: invalid continuity sidecar: "
+            "session_retention_rollup.retention_state_counts.soft_deleted_only must be non-negative",
+            summary,
+        )
+        self.assertNotIn("Retention sessions:", summary)
+        self.assertNotIn("Lifecycle sessions:", summary)
+
+    def test_snapshot_verify_summary_only_reports_negative_lifecycle_event_totals_in_session_continuity_sidecar(self):
+        count_fields = {
+            "start": "start_count",
+            "checkpoint": "checkpoint_count",
+            "snapshot": "snapshot_count",
+            "snapshot_soft_delete": "snapshot_soft_delete_count",
+            "end": "end_count",
+        }
+
+        for event_kind in count_fields:
+            with self.subTest(event_kind=event_kind):
+                with tempfile.TemporaryDirectory() as tmp:
+                    work = Path(tmp)
+                    db_path = work / ".zerker" / "memory.sqlite"
+                    store = MemoryStore(db_path)
+                    store.init()
+                    store.remember(
+                        "Production deploys require approval",
+                        memory_type="policy",
+                        scope="project:alpha",
+                        source_kind="human",
+                    )
+                    store.start_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"start before raw snapshot verify negative {event_kind} lifecycle total",
+                        context_budget_tokens=256,
+                    )
+                    store.checkpoint_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"checkpoint before raw snapshot verify negative {event_kind} lifecycle total",
+                    )
+                    session_snapshot = store.snapshot_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"snapshot before raw snapshot verify negative {event_kind} lifecycle total",
+                    )
+                    store.soft_delete_session_snapshot_payload(
+                        session_snapshot["session_snapshot_id"],
+                        actor_id="codex",
+                        reason=f"retention compacted before verify negative {event_kind} lifecycle total",
+                    )
+                    store.end_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"end before raw snapshot verify negative {event_kind} lifecycle total",
+                    )
+                    snapshot_path = work / ".zerker" / "snapshot.json"
+                    export_output = io.StringIO()
+                    with redirect_stdout(export_output):
+                        export_exit_code = main(["--db", str(db_path), "snapshot", "--out", str(snapshot_path)])
+
+                    continuity_path = snapshot_path.with_suffix(".continuity.json")
+                    continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+                    continuity_payload["session_lifecycle_rollup"]["event_kind_counts"][event_kind] = -1
+                    continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+                    output = io.StringIO()
+                    with redirect_stdout(output):
+                        exit_code = main(["--db", str(db_path), "snapshot", "verify", str(snapshot_path), "--summary-only"])
+
+                    summary = output.getvalue()
+
+                self.assertEqual(export_exit_code, 0)
+                self.assertEqual(exit_code, 0)
+                self.assertIn("Memory snapshot verify", summary)
+                self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+                self.assertIn("Session continuity verify: failed", summary)
+                self.assertIn(
+                    "Session continuity error: invalid continuity sidecar: "
+                    f"session_lifecycle_rollup.event_kind_counts.{event_kind} must be non-negative",
+                    summary,
+                )
+                self.assertNotIn("Retention sessions:", summary)
+                self.assertNotIn("Lifecycle sessions:", summary)
+
+    def test_snapshot_verify_summary_only_reports_negative_session_lifecycle_counts_in_session_continuity_sidecar(self):
+        count_fields = {
+            "start": "start_count",
+            "checkpoint": "checkpoint_count",
+            "snapshot": "snapshot_count",
+            "snapshot_soft_delete": "snapshot_soft_delete_count",
+            "end": "end_count",
+        }
+
+        for event_kind, session_field in count_fields.items():
+            with self.subTest(event_kind=event_kind):
+                with tempfile.TemporaryDirectory() as tmp:
+                    work = Path(tmp)
+                    db_path = work / ".zerker" / "memory.sqlite"
+                    store = MemoryStore(db_path)
+                    store.init()
+                    store.remember(
+                        "Production deploys require approval",
+                        memory_type="policy",
+                        scope="project:alpha",
+                        source_kind="human",
+                    )
+                    store.start_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"start before raw snapshot verify negative session {event_kind} lifecycle count",
+                        context_budget_tokens=256,
+                    )
+                    store.checkpoint_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"checkpoint before raw snapshot verify negative session {event_kind} lifecycle count",
+                    )
+                    session_snapshot = store.snapshot_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"snapshot before raw snapshot verify negative session {event_kind} lifecycle count",
+                    )
+                    store.soft_delete_session_snapshot_payload(
+                        session_snapshot["session_snapshot_id"],
+                        actor_id="codex",
+                        reason=f"retention compacted before verify negative session {event_kind} lifecycle count",
+                    )
+                    store.end_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"end before raw snapshot verify negative session {event_kind} lifecycle count",
+                    )
+                    snapshot_path = work / ".zerker" / "snapshot.json"
+                    export_output = io.StringIO()
+                    with redirect_stdout(export_output):
+                        export_exit_code = main(["--db", str(db_path), "snapshot", "--out", str(snapshot_path)])
+
+                    continuity_path = snapshot_path.with_suffix(".continuity.json")
+                    continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+                    continuity_payload["session_lifecycle_rollup"]["sessions"][0][session_field] = -1
+                    continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+                    output = io.StringIO()
+                    with redirect_stdout(output):
+                        exit_code = main(["--db", str(db_path), "snapshot", "verify", str(snapshot_path), "--summary-only"])
+
+                    summary = output.getvalue()
+
+                self.assertEqual(export_exit_code, 0)
+                self.assertEqual(exit_code, 0)
+                self.assertIn("Memory snapshot verify", summary)
+                self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+                self.assertIn("Session continuity verify: failed", summary)
+                self.assertIn(
+                    "Session continuity error: invalid continuity sidecar: "
+                    f"session_lifecycle_rollup.sessions[*].{session_field} must be non-negative",
+                    summary,
+                )
+                self.assertNotIn("Retention sessions:", summary)
+                self.assertNotIn("Lifecycle sessions:", summary)
+
+    def test_snapshot_verify_summary_only_reports_incoherent_session_latest_event_kind_in_session_continuity_sidecar(self):
+        count_fields = {
+            "start": "start_count",
+            "checkpoint": "checkpoint_count",
+            "snapshot": "snapshot_count",
+            "snapshot_soft_delete": "snapshot_soft_delete_count",
+            "end": "end_count",
+        }
+
+        for event_kind, session_field in count_fields.items():
+            with self.subTest(event_kind=event_kind):
+                with tempfile.TemporaryDirectory() as tmp:
+                    work = Path(tmp)
+                    db_path = work / ".zerker" / "memory.sqlite"
+                    store = MemoryStore(db_path)
+                    store.init()
+                    store.remember(
+                        "Production deploys require approval",
+                        memory_type="policy",
+                        scope="project:alpha",
+                        source_kind="human",
+                    )
+                    store.start_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"start before raw snapshot verify incoherent latest {event_kind} lifecycle row",
+                        context_budget_tokens=256,
+                    )
+                    store.checkpoint_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"checkpoint before raw snapshot verify incoherent latest {event_kind} lifecycle row",
+                    )
+                    session_snapshot = store.snapshot_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"snapshot before raw snapshot verify incoherent latest {event_kind} lifecycle row",
+                    )
+                    store.soft_delete_session_snapshot_payload(
+                        session_snapshot["session_snapshot_id"],
+                        actor_id="codex",
+                        reason=f"retention compacted before verify incoherent latest {event_kind} lifecycle row",
+                    )
+                    store.end_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"end before raw snapshot verify incoherent latest {event_kind} lifecycle row",
+                    )
+                    snapshot_path = work / ".zerker" / "snapshot.json"
+                    export_output = io.StringIO()
+                    with redirect_stdout(export_output):
+                        export_exit_code = main(["--db", str(db_path), "snapshot", "--out", str(snapshot_path)])
+
+                    continuity_path = snapshot_path.with_suffix(".continuity.json")
+                    continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+                    continuity_payload["session_lifecycle_rollup"]["sessions"][0]["latest_event_kind"] = event_kind
+                    continuity_payload["session_lifecycle_rollup"]["sessions"][0][session_field] = 0
+                    continuity_payload["session_lifecycle_rollup"]["event_kind_counts"][event_kind] = 0
+                    continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+                    output = io.StringIO()
+                    with redirect_stdout(output):
+                        exit_code = main(["--db", str(db_path), "snapshot", "verify", str(snapshot_path), "--summary-only"])
+
+                    summary = output.getvalue()
+
+                self.assertEqual(export_exit_code, 0)
+                self.assertEqual(exit_code, 0)
+                self.assertIn("Memory snapshot verify", summary)
+                self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+                self.assertIn("Session continuity verify: failed", summary)
+                self.assertIn(
+                    "Session continuity error: invalid continuity sidecar: "
+                    f"session_lifecycle_rollup.sessions[*].latest_event_kind={event_kind} requires {session_field} > 0",
+                    summary,
+                )
+                self.assertNotIn("Retention sessions:", summary)
+                self.assertNotIn("Lifecycle sessions:", summary)
+
+    def test_snapshot_verify_summary_only_reports_missing_latest_event_identifier_in_session_continuity_sidecar(self):
+        identifier_fields = {
+            "start": "latest_start_session_start_id",
+            "checkpoint": "latest_checkpoint_id",
+            "snapshot": "latest_session_snapshot_id",
+            "snapshot_soft_delete": "latest_soft_deleted_session_snapshot_id",
+            "end": "latest_session_end_id",
+        }
+
+        for event_kind, identifier_field in identifier_fields.items():
+            with self.subTest(event_kind=event_kind):
+                with tempfile.TemporaryDirectory() as tmp:
+                    work = Path(tmp)
+                    db_path = work / ".zerker" / "memory.sqlite"
+                    store = MemoryStore(db_path)
+                    store.init()
+                    store.remember(
+                        "Production deploys require approval",
+                        memory_type="policy",
+                        scope="project:alpha",
+                        source_kind="human",
+                    )
+                    store.start_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"start before raw snapshot verify missing latest {event_kind} identifier",
+                        context_budget_tokens=256,
+                    )
+                    store.checkpoint_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"checkpoint before raw snapshot verify missing latest {event_kind} identifier",
+                    )
+                    session_snapshot = store.snapshot_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"snapshot before raw snapshot verify missing latest {event_kind} identifier",
+                    )
+                    store.soft_delete_session_snapshot_payload(
+                        session_snapshot["session_snapshot_id"],
+                        actor_id="codex",
+                        reason=f"retention compacted before verify missing latest {event_kind} identifier",
+                    )
+                    store.end_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"end before raw snapshot verify missing latest {event_kind} identifier",
+                    )
+                    snapshot_path = work / ".zerker" / "snapshot.json"
+                    export_output = io.StringIO()
+                    with redirect_stdout(export_output):
+                        export_exit_code = main(["--db", str(db_path), "snapshot", "--out", str(snapshot_path)])
+
+                    continuity_path = snapshot_path.with_suffix(".continuity.json")
+                    continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+                    continuity_payload["session_lifecycle_rollup"]["sessions"][0]["latest_event_kind"] = event_kind
+                    continuity_payload["session_lifecycle_rollup"]["sessions"][0][identifier_field] = None
+                    continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+                    output = io.StringIO()
+                    with redirect_stdout(output):
+                        exit_code = main(["--db", str(db_path), "snapshot", "verify", str(snapshot_path), "--summary-only"])
+
+                    summary = output.getvalue()
+
+                self.assertEqual(export_exit_code, 0)
+                self.assertEqual(exit_code, 0)
+                self.assertIn("Memory snapshot verify", summary)
+                self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+                self.assertIn("Session continuity verify: failed", summary)
+                self.assertIn(
+                    "Session continuity error: invalid continuity sidecar: "
+                    f"session_lifecycle_rollup.sessions[*].latest_event_kind={event_kind} "
+                    f"requires {identifier_field}",
+                    summary,
+                )
+                self.assertNotIn("Retention sessions:", summary)
+                self.assertNotIn("Lifecycle sessions:", summary)
+
+    def test_snapshot_verify_summary_only_reports_mismatched_latest_lifecycle_id_in_session_continuity_sidecar(self):
+        identifier_fields = {
+            "start": "latest_start_session_start_id",
+            "checkpoint": "latest_checkpoint_id",
+            "snapshot": "latest_session_snapshot_id",
+            "snapshot_soft_delete": "latest_soft_deleted_session_snapshot_id",
+            "end": "latest_session_end_id",
+        }
+        root_fields = {
+            "start": "latest_start_root",
+            "checkpoint": "latest_checkpoint_root",
+            "snapshot": "latest_session_snapshot_root",
+            "snapshot_soft_delete": "latest_soft_delete_root",
+            "end": "latest_session_end_root",
+        }
+
+        for event_kind, identifier_field in identifier_fields.items():
+            with self.subTest(event_kind=event_kind):
+                with tempfile.TemporaryDirectory() as tmp:
+                    work = Path(tmp)
+                    db_path = work / ".zerker" / "memory.sqlite"
+                    store = MemoryStore(db_path)
+                    store.init()
+                    store.remember(
+                        "Production deploys require approval",
+                        memory_type="policy",
+                        scope="project:alpha",
+                        source_kind="human",
+                    )
+                    store.start_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"start before raw snapshot verify mismatched latest lifecycle id for {event_kind}",
+                        context_budget_tokens=256,
+                    )
+                    store.checkpoint_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"checkpoint before raw snapshot verify mismatched latest lifecycle id for {event_kind}",
+                    )
+                    session_snapshot = store.snapshot_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"snapshot before raw snapshot verify mismatched latest lifecycle id for {event_kind}",
+                    )
+                    store.soft_delete_session_snapshot_payload(
+                        session_snapshot["session_snapshot_id"],
+                        actor_id="codex",
+                        reason=f"retention compacted before verify mismatched latest lifecycle id for {event_kind}",
+                    )
+                    store.end_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"end before raw snapshot verify mismatched latest lifecycle id for {event_kind}",
+                    )
+                    snapshot_path = work / ".zerker" / "snapshot.json"
+                    export_output = io.StringIO()
+                    with redirect_stdout(export_output):
+                        export_exit_code = main(["--db", str(db_path), "snapshot", "--out", str(snapshot_path)])
+
+                    continuity_path = snapshot_path.with_suffix(".continuity.json")
+                    continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+                    continuity_payload["session_lifecycle_rollup"]["sessions"][0]["latest_event_kind"] = event_kind
+                    continuity_payload["session_lifecycle_rollup"]["sessions"][0]["latest_status_root"] = (
+                        continuity_payload["session_lifecycle_rollup"]["sessions"][0][root_fields[event_kind]]
+                    )
+                    continuity_payload["session_lifecycle_rollup"]["sessions"][0]["latest_lifecycle_id"] = (
+                        f"mismatched-{event_kind}-lifecycle-id"
+                    )
+                    continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+                    output = io.StringIO()
+                    with redirect_stdout(output):
+                        exit_code = main(["--db", str(db_path), "snapshot", "verify", str(snapshot_path), "--summary-only"])
+
+                    summary = output.getvalue()
+
+                self.assertEqual(export_exit_code, 0)
+                self.assertEqual(exit_code, 0)
+                self.assertIn("Memory snapshot verify", summary)
+                self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+                self.assertIn("Session continuity verify: failed", summary)
+                self.assertIn(
+                    "Session continuity error: invalid continuity sidecar: "
+                    "session_lifecycle_rollup.sessions[*].latest_lifecycle_id must equal "
+                    f"{identifier_field} when latest_event_kind={event_kind}",
+                    summary,
+                )
+                self.assertNotIn("Retention sessions:", summary)
+                self.assertNotIn("Lifecycle sessions:", summary)
+
+    def test_snapshot_verify_summary_only_reports_missing_latest_event_root_in_session_continuity_sidecar(self):
+        identifier_fields = {
+            "start": "latest_start_session_start_id",
+            "checkpoint": "latest_checkpoint_id",
+            "snapshot": "latest_session_snapshot_id",
+            "snapshot_soft_delete": "latest_soft_deleted_session_snapshot_id",
+            "end": "latest_session_end_id",
+        }
+        root_fields = {
+            "start": "latest_start_root",
+            "checkpoint": "latest_checkpoint_root",
+            "snapshot": "latest_session_snapshot_root",
+            "snapshot_soft_delete": "latest_soft_delete_root",
+            "end": "latest_session_end_root",
+        }
+
+        for event_kind, root_field in root_fields.items():
+            with self.subTest(event_kind=event_kind):
+                with tempfile.TemporaryDirectory() as tmp:
+                    work = Path(tmp)
+                    db_path = work / ".zerker" / "memory.sqlite"
+                    store = MemoryStore(db_path)
+                    store.init()
+                    store.remember(
+                        "Production deploys require approval",
+                        memory_type="policy",
+                        scope="project:alpha",
+                        source_kind="human",
+                    )
+                    store.start_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"start before raw snapshot verify missing latest {event_kind} root",
+                        context_budget_tokens=256,
+                    )
+                    store.checkpoint_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"checkpoint before raw snapshot verify missing latest {event_kind} root",
+                    )
+                    session_snapshot = store.snapshot_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"snapshot before raw snapshot verify missing latest {event_kind} root",
+                    )
+                    store.soft_delete_session_snapshot_payload(
+                        session_snapshot["session_snapshot_id"],
+                        actor_id="codex",
+                        reason=f"retention compacted before verify missing latest {event_kind} root",
+                    )
+                    store.end_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"end before raw snapshot verify missing latest {event_kind} root",
+                    )
+                    snapshot_path = work / ".zerker" / "snapshot.json"
+                    export_output = io.StringIO()
+                    with redirect_stdout(export_output):
+                        export_exit_code = main(["--db", str(db_path), "snapshot", "--out", str(snapshot_path)])
+
+                    continuity_path = snapshot_path.with_suffix(".continuity.json")
+                    continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+                    continuity_payload["session_lifecycle_rollup"]["sessions"][0]["latest_event_kind"] = event_kind
+                    continuity_payload["session_lifecycle_rollup"]["sessions"][0]["latest_lifecycle_id"] = (
+                        continuity_payload["session_lifecycle_rollup"]["sessions"][0][identifier_fields[event_kind]]
+                    )
+                    continuity_payload["session_lifecycle_rollup"]["sessions"][0][root_field] = None
+                    continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+                    output = io.StringIO()
+                    with redirect_stdout(output):
+                        exit_code = main(["--db", str(db_path), "snapshot", "verify", str(snapshot_path), "--summary-only"])
+
+                    summary = output.getvalue()
+
+                self.assertEqual(export_exit_code, 0)
+                self.assertEqual(exit_code, 0)
+                self.assertIn("Memory snapshot verify", summary)
+                self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+                self.assertIn("Session continuity verify: failed", summary)
+                self.assertIn(
+                    "Session continuity error: invalid continuity sidecar: "
+                    f"session_lifecycle_rollup.sessions[*].latest_event_kind={event_kind} "
+                    f"requires {root_field}",
+                    summary,
+                )
+                self.assertNotIn("Retention sessions:", summary)
+                self.assertNotIn("Lifecycle sessions:", summary)
+
+    def test_snapshot_verify_summary_only_reports_mismatched_latest_status_root_in_session_continuity_sidecar(self):
+        identifier_fields = {
+            "start": "latest_start_session_start_id",
+            "checkpoint": "latest_checkpoint_id",
+            "snapshot": "latest_session_snapshot_id",
+            "snapshot_soft_delete": "latest_soft_deleted_session_snapshot_id",
+            "end": "latest_session_end_id",
+        }
+        root_fields = {
+            "start": "latest_start_root",
+            "checkpoint": "latest_checkpoint_root",
+            "snapshot": "latest_session_snapshot_root",
+            "snapshot_soft_delete": "latest_soft_delete_root",
+            "end": "latest_session_end_root",
+        }
+
+        for event_kind, root_field in root_fields.items():
+            with self.subTest(event_kind=event_kind):
+                with tempfile.TemporaryDirectory() as tmp:
+                    work = Path(tmp)
+                    db_path = work / ".zerker" / "memory.sqlite"
+                    store = MemoryStore(db_path)
+                    store.init()
+                    store.remember(
+                        "Production deploys require approval",
+                        memory_type="policy",
+                        scope="project:alpha",
+                        source_kind="human",
+                    )
+                    store.start_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"start before raw snapshot verify mismatched latest status root for {event_kind}",
+                        context_budget_tokens=256,
+                    )
+                    store.checkpoint_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"checkpoint before raw snapshot verify mismatched latest status root for {event_kind}",
+                    )
+                    session_snapshot = store.snapshot_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"snapshot before raw snapshot verify mismatched latest status root for {event_kind}",
+                    )
+                    store.soft_delete_session_snapshot_payload(
+                        session_snapshot["session_snapshot_id"],
+                        actor_id="codex",
+                        reason=f"retention compacted before verify mismatched latest status root for {event_kind}",
+                    )
+                    store.end_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"end before raw snapshot verify mismatched latest status root for {event_kind}",
+                    )
+                    snapshot_path = work / ".zerker" / "snapshot.json"
+                    export_output = io.StringIO()
+                    with redirect_stdout(export_output):
+                        export_exit_code = main(["--db", str(db_path), "snapshot", "--out", str(snapshot_path)])
+
+                    continuity_path = snapshot_path.with_suffix(".continuity.json")
+                    continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+                    continuity_payload["session_lifecycle_rollup"]["sessions"][0]["latest_event_kind"] = event_kind
+                    continuity_payload["session_lifecycle_rollup"]["sessions"][0]["latest_lifecycle_id"] = (
+                        continuity_payload["session_lifecycle_rollup"]["sessions"][0][identifier_fields[event_kind]]
+                    )
+                    continuity_payload["session_lifecycle_rollup"]["sessions"][0]["latest_status_root"] = "sha256:mismatched-status-root"
+                    continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+                    output = io.StringIO()
+                    with redirect_stdout(output):
+                        exit_code = main(["--db", str(db_path), "snapshot", "verify", str(snapshot_path), "--summary-only"])
+
+                    summary = output.getvalue()
+
+                self.assertEqual(export_exit_code, 0)
+                self.assertEqual(exit_code, 0)
+                self.assertIn("Memory snapshot verify", summary)
+                self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+                self.assertIn("Session continuity verify: failed", summary)
+                self.assertIn(
+                    "Session continuity error: invalid continuity sidecar: "
+                    "session_lifecycle_rollup.sessions[*].latest_status_root must equal "
+                    f"{root_field} when latest_event_kind={event_kind}",
+                    summary,
+                )
+                self.assertNotIn("Retention sessions:", summary)
+                self.assertNotIn("Lifecycle sessions:", summary)
+
+    def test_snapshot_verify_summary_only_reports_mismatched_latest_event_created_at_in_session_continuity_sidecar(self):
+        identifier_fields = {
+            "start": "latest_start_session_start_id",
+            "checkpoint": "latest_checkpoint_id",
+            "snapshot": "latest_session_snapshot_id",
+            "snapshot_soft_delete": "latest_soft_deleted_session_snapshot_id",
+            "end": "latest_session_end_id",
+        }
+        root_fields = {
+            "start": "latest_start_root",
+            "checkpoint": "latest_checkpoint_root",
+            "snapshot": "latest_session_snapshot_root",
+            "snapshot_soft_delete": "latest_soft_delete_root",
+            "end": "latest_session_end_root",
+        }
+        created_at_fields = {
+            "start": "latest_start_created_at",
+            "checkpoint": "latest_checkpoint_created_at",
+            "snapshot": "latest_session_snapshot_created_at",
+            "snapshot_soft_delete": "latest_soft_deleted_deleted_at",
+            "end": "latest_session_end_created_at",
+        }
+
+        for event_kind, created_at_field in created_at_fields.items():
+            with self.subTest(event_kind=event_kind):
+                with tempfile.TemporaryDirectory() as tmp:
+                    work = Path(tmp)
+                    db_path = work / ".zerker" / "memory.sqlite"
+                    store = MemoryStore(db_path)
+                    store.init()
+                    store.remember(
+                        "Production deploys require approval",
+                        memory_type="policy",
+                        scope="project:alpha",
+                        source_kind="human",
+                    )
+                    store.start_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"start before raw snapshot verify mismatched latest event created_at for {event_kind}",
+                        context_budget_tokens=256,
+                    )
+                    store.checkpoint_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"checkpoint before raw snapshot verify mismatched latest event created_at for {event_kind}",
+                    )
+                    session_snapshot = store.snapshot_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"snapshot before raw snapshot verify mismatched latest event created_at for {event_kind}",
+                    )
+                    store.soft_delete_session_snapshot_payload(
+                        session_snapshot["session_snapshot_id"],
+                        actor_id="codex",
+                        reason=f"retention compacted before verify mismatched latest event created_at for {event_kind}",
+                    )
+                    store.end_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"end before raw snapshot verify mismatched latest event created_at for {event_kind}",
+                    )
+                    snapshot_path = work / ".zerker" / "snapshot.json"
+                    export_output = io.StringIO()
+                    with redirect_stdout(export_output):
+                        export_exit_code = main(["--db", str(db_path), "snapshot", "--out", str(snapshot_path)])
+
+                    continuity_path = snapshot_path.with_suffix(".continuity.json")
+                    continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+                    continuity_payload["session_lifecycle_rollup"]["sessions"][0]["latest_event_kind"] = event_kind
+                    continuity_payload["session_lifecycle_rollup"]["sessions"][0]["latest_lifecycle_id"] = (
+                        continuity_payload["session_lifecycle_rollup"]["sessions"][0][identifier_fields[event_kind]]
+                    )
+                    continuity_payload["session_lifecycle_rollup"]["sessions"][0]["latest_status_root"] = (
+                        continuity_payload["session_lifecycle_rollup"]["sessions"][0][root_fields[event_kind]]
+                    )
+                    continuity_payload["session_lifecycle_rollup"]["sessions"][0]["latest_event_created_at"] = (
+                        f"mismatched-{event_kind}-created-at"
+                    )
+                    continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+                    output = io.StringIO()
+                    with redirect_stdout(output):
+                        exit_code = main(["--db", str(db_path), "snapshot", "verify", str(snapshot_path), "--summary-only"])
+
+                    summary = output.getvalue()
+
+                self.assertEqual(export_exit_code, 0)
+                self.assertEqual(exit_code, 0)
+                self.assertIn("Memory snapshot verify", summary)
+                self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+                self.assertIn("Session continuity verify: failed", summary)
+                self.assertIn(
+                    "Session continuity error: invalid continuity sidecar: "
+                    "session_lifecycle_rollup.sessions[*].latest_event_created_at must equal "
+                    f"{created_at_field} when latest_event_kind={event_kind}",
+                    summary,
+                )
+                self.assertNotIn("Retention sessions:", summary)
+                self.assertNotIn("Lifecycle sessions:", summary)
+
+    def test_snapshot_verify_summary_only_reports_incoherent_lifecycle_receipt_provenance_totals_in_session_continuity_sidecar(self):
+        count_totals = {
+            "verified_receipt_count": 1,
+            "failed_receipt_count": 0,
+            "linked_treeship_artifact_count": 0,
+        }
+
+        for count_field, session_total in count_totals.items():
+            with self.subTest(count_field=count_field):
+                with tempfile.TemporaryDirectory() as tmp:
+                    work = Path(tmp)
+                    db_path = work / ".zerker" / "memory.sqlite"
+                    store = MemoryStore(db_path)
+                    store.init()
+                    store.remember(
+                        "Production deploys require approval",
+                        memory_type="policy",
+                        scope="project:alpha",
+                        source_kind="human",
+                    )
+                    store.start_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"start before raw snapshot verify incoherent {count_field}",
+                        context_budget_tokens=256,
+                    )
+                    snapshot_path = work / ".zerker" / "snapshot.json"
+                    export_output = io.StringIO()
+                    with redirect_stdout(export_output):
+                        export_exit_code = main(["--db", str(db_path), "snapshot", "--out", str(snapshot_path)])
+
+                    continuity_path = snapshot_path.with_suffix(".continuity.json")
+                    continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+                    continuity_payload["session_lifecycle_rollup"][count_field] = 7
+                    continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+                    output = io.StringIO()
+                    with redirect_stdout(output):
+                        exit_code = main(["--db", str(db_path), "snapshot", "verify", str(snapshot_path), "--summary-only"])
+
+                    summary = output.getvalue()
+
+                self.assertEqual(export_exit_code, 0)
+                self.assertEqual(exit_code, 0)
+                self.assertIn("Memory snapshot verify", summary)
+                self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+                self.assertIn("Session continuity verify: failed", summary)
+                self.assertIn(
+                    "Session continuity error: invalid continuity sidecar: "
+                    f"session_lifecycle_rollup.{count_field} must equal summed session {count_field} "
+                    f"(7 != {session_total})",
+                    summary,
+                )
+                self.assertNotIn("Retention sessions:", summary)
+                self.assertNotIn("Lifecycle sessions:", summary)
+
+    def test_snapshot_verify_summary_only_reports_negative_lifecycle_receipt_provenance_counts_in_session_continuity_sidecar(self):
+        count_fields = (
+            "verified_receipt_count",
+            "failed_receipt_count",
+            "linked_treeship_artifact_count",
+        )
+
+        for count_field in count_fields:
+            with self.subTest(count_field=count_field):
+                with tempfile.TemporaryDirectory() as tmp:
+                    work = Path(tmp)
+                    db_path = work / ".zerker" / "memory.sqlite"
+                    store = MemoryStore(db_path)
+                    store.init()
+                    store.remember(
+                        "Production deploys require approval",
+                        memory_type="policy",
+                        scope="project:alpha",
+                        source_kind="human",
+                    )
+                    store.start_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"start before raw snapshot verify negative {count_field}",
+                        context_budget_tokens=256,
+                    )
+                    snapshot_path = work / ".zerker" / "snapshot.json"
+                    export_output = io.StringIO()
+                    with redirect_stdout(export_output):
+                        export_exit_code = main(["--db", str(db_path), "snapshot", "--out", str(snapshot_path)])
+
+                    continuity_path = snapshot_path.with_suffix(".continuity.json")
+                    continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+                    continuity_payload["session_lifecycle_rollup"][count_field] = -1
+                    continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+                    output = io.StringIO()
+                    with redirect_stdout(output):
+                        exit_code = main(["--db", str(db_path), "snapshot", "verify", str(snapshot_path), "--summary-only"])
+
+                    summary = output.getvalue()
+
+                self.assertEqual(export_exit_code, 0)
+                self.assertEqual(exit_code, 0)
+                self.assertIn("Memory snapshot verify", summary)
+                self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+                self.assertIn("Session continuity verify: failed", summary)
+                self.assertIn(
+                    "Session continuity error: invalid continuity sidecar: "
+                    f"session_lifecycle_rollup.{count_field} must be non-negative",
+                    summary,
+                )
+                self.assertNotIn("Retention sessions:", summary)
+                self.assertNotIn("Lifecycle sessions:", summary)
+
+    def test_snapshot_verify_summary_only_reports_negative_session_lifecycle_receipt_provenance_counts_in_session_continuity_sidecar(self):
+        count_fields = (
+            "verified_receipt_count",
+            "failed_receipt_count",
+            "linked_treeship_artifact_count",
+        )
+
+        for count_field in count_fields:
+            with self.subTest(count_field=count_field):
+                with tempfile.TemporaryDirectory() as tmp:
+                    work = Path(tmp)
+                    db_path = work / ".zerker" / "memory.sqlite"
+                    store = MemoryStore(db_path)
+                    store.init()
+                    store.remember(
+                        "Production deploys require approval",
+                        memory_type="policy",
+                        scope="project:alpha",
+                        source_kind="human",
+                    )
+                    store.start_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"start before raw snapshot verify negative session {count_field}",
+                        context_budget_tokens=256,
+                    )
+                    snapshot_path = work / ".zerker" / "snapshot.json"
+                    export_output = io.StringIO()
+                    with redirect_stdout(export_output):
+                        export_exit_code = main(["--db", str(db_path), "snapshot", "--out", str(snapshot_path)])
+
+                    continuity_path = snapshot_path.with_suffix(".continuity.json")
+                    continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+                    continuity_payload["session_lifecycle_rollup"][count_field] = 0
+                    continuity_payload["session_lifecycle_rollup"]["sessions"][0][count_field] = -1
+                    continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+                    output = io.StringIO()
+                    with redirect_stdout(output):
+                        exit_code = main(["--db", str(db_path), "snapshot", "verify", str(snapshot_path), "--summary-only"])
+
+                    summary = output.getvalue()
+
+                self.assertEqual(export_exit_code, 0)
+                self.assertEqual(exit_code, 0)
+                self.assertIn("Memory snapshot verify", summary)
+                self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+                self.assertIn("Session continuity verify: failed", summary)
+                self.assertIn(
+                    "Session continuity error: invalid continuity sidecar: "
+                    f"session_lifecycle_rollup.sessions[*].{count_field} must be non-negative",
+                    summary,
+                )
+                self.assertNotIn("Retention sessions:", summary)
+                self.assertNotIn("Lifecycle sessions:", summary)
+
+    def test_snapshot_verify_summary_only_reports_negative_latest_start_context_budget_hint_in_session_continuity_sidecar(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            db_path = work / ".zerker" / "memory.sqlite"
+            store = MemoryStore(db_path)
+            store.init()
+            store.remember(
+                "Production deploys require approval",
+                memory_type="policy",
+                scope="project:alpha",
+                source_kind="human",
+            )
+            store.start_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="start before raw snapshot verify negative latest start context budget hint",
+                context_budget_tokens=256,
+            )
+            snapshot_path = work / ".zerker" / "snapshot.json"
+            export_output = io.StringIO()
+            with redirect_stdout(export_output):
+                export_exit_code = main(["--db", str(db_path), "snapshot", "--out", str(snapshot_path)])
+
+            continuity_path = snapshot_path.with_suffix(".continuity.json")
+            continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+            continuity_payload["session_lifecycle_rollup"]["sessions"][0]["latest_start_token_budget_hint"] = {
+                "context_budget_tokens": -1
+            }
+            continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = main(["--db", str(db_path), "snapshot", "verify", str(snapshot_path), "--summary-only"])
+
+            summary = output.getvalue()
+
+        self.assertEqual(export_exit_code, 0)
+        self.assertEqual(exit_code, 0)
+        self.assertIn("Memory snapshot verify", summary)
+        self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+        self.assertIn("Session continuity verify: failed", summary)
+        self.assertIn(
+            "Session continuity error: invalid continuity sidecar: "
+            "session_lifecycle_rollup.sessions[*].latest_start_token_budget_hint.context_budget_tokens "
+            "must be non-negative",
+            summary,
+        )
+        self.assertNotIn("Retention sessions:", summary)
+        self.assertNotIn("Lifecycle sessions:", summary)
+
+    def test_snapshot_verify_summary_only_reports_malformed_latest_start_token_budget_hint_payloads_in_session_continuity_sidecar(self):
+        cases = (
+            (
+                ["not", "an", "object"],
+                "session_lifecycle_rollup.sessions[*].latest_start_token_budget_hint must be an object",
+            ),
+            (
+                {"context_budget_tokens": "256"},
+                "session_lifecycle_rollup.sessions[*].latest_start_token_budget_hint.context_budget_tokens must be an integer",
+            ),
+            (
+                {"context_budget_tokens": True},
+                "session_lifecycle_rollup.sessions[*].latest_start_token_budget_hint.context_budget_tokens must be an integer",
+            ),
+        )
+
+        for latest_start_token_budget_hint, expected_error in cases:
+            with self.subTest(latest_start_token_budget_hint=latest_start_token_budget_hint):
+                with tempfile.TemporaryDirectory() as tmp:
+                    work = Path(tmp)
+                    db_path = work / ".zerker" / "memory.sqlite"
+                    store = MemoryStore(db_path)
+                    store.init()
+                    store.remember(
+                        "Production deploys require approval",
+                        memory_type="policy",
+                        scope="project:alpha",
+                        source_kind="human",
+                    )
+                    store.start_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary="start before raw snapshot verify malformed latest start token budget hint",
+                        context_budget_tokens=256,
+                    )
+                    snapshot_path = work / ".zerker" / "snapshot.json"
+                    export_output = io.StringIO()
+                    with redirect_stdout(export_output):
+                        export_exit_code = main(["--db", str(db_path), "snapshot", "--out", str(snapshot_path)])
+
+                    continuity_path = snapshot_path.with_suffix(".continuity.json")
+                    continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+                    continuity_payload["session_lifecycle_rollup"]["sessions"][0][
+                        "latest_start_token_budget_hint"
+                    ] = latest_start_token_budget_hint
+                    continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+                    output = io.StringIO()
+                    with redirect_stdout(output):
+                        exit_code = main(["--db", str(db_path), "snapshot", "verify", str(snapshot_path), "--summary-only"])
+
+                    summary = output.getvalue()
+
+                self.assertEqual(export_exit_code, 0)
+                self.assertEqual(exit_code, 0)
+                self.assertIn("Memory snapshot verify", summary)
+                self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+                self.assertIn("Session continuity verify: failed", summary)
+                self.assertIn(f"Session continuity error: invalid continuity sidecar: {expected_error}", summary)
+                self.assertNotIn("Retention sessions:", summary)
+                self.assertNotIn("Lifecycle sessions:", summary)
+
+    def test_snapshot_verify_summary_only_reports_unknown_session_retention_state_in_session_continuity_sidecar(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            db_path = work / ".zerker" / "memory.sqlite"
+            store = MemoryStore(db_path)
+            store.init()
+            store.remember(
+                "Production deploys require approval",
+                memory_type="policy",
+                scope="project:alpha",
+                source_kind="human",
+            )
+            store.start_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="start before raw snapshot verify unknown retention state",
+                context_budget_tokens=256,
+            )
+            store.snapshot_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="snapshot before raw snapshot verify unknown retention state",
+            )
+            snapshot_path = work / ".zerker" / "snapshot.json"
+            export_output = io.StringIO()
+            with redirect_stdout(export_output):
+                export_exit_code = main(["--db", str(db_path), "snapshot", "--out", str(snapshot_path)])
+
+            continuity_path = snapshot_path.with_suffix(".continuity.json")
+            continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+            continuity_payload["session_retention_rollup"]["sessions"][0]["retention_state"] = "archived"
+            continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = main(["--db", str(db_path), "snapshot", "verify", str(snapshot_path), "--summary-only"])
+
+            summary = output.getvalue()
+
+        self.assertEqual(export_exit_code, 0)
+        self.assertEqual(exit_code, 0)
+        self.assertIn("Memory snapshot verify", summary)
+        self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+        self.assertIn("Session continuity verify: failed", summary)
+        self.assertIn(
+            "Session continuity error: invalid continuity sidecar: "
+            "session_retention_rollup.sessions[*].retention_state must be one of "
+            "[all_available, mixed, soft_deleted_only]",
+            summary,
+        )
+        self.assertNotIn("Retention sessions:", summary)
+        self.assertNotIn("Lifecycle sessions:", summary)
+
+    def test_snapshot_verify_summary_only_reports_unknown_session_payload_status_in_session_continuity_sidecar(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            db_path = work / ".zerker" / "memory.sqlite"
+            store = MemoryStore(db_path)
+            store.init()
+            store.remember(
+                "Production deploys require approval",
+                memory_type="policy",
+                scope="project:alpha",
+                source_kind="human",
+            )
+            store.start_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="start before raw snapshot verify unknown payload status",
+                context_budget_tokens=256,
+            )
+            store.snapshot_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="snapshot before raw snapshot verify unknown payload status",
+            )
+            snapshot_path = work / ".zerker" / "snapshot.json"
+            export_output = io.StringIO()
+            with redirect_stdout(export_output):
+                export_exit_code = main(["--db", str(db_path), "snapshot", "--out", str(snapshot_path)])
+
+            continuity_path = snapshot_path.with_suffix(".continuity.json")
+            continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+            continuity_payload["session_retention_rollup"]["sessions"][0]["latest_payload_status"] = "archived"
+            continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = main(["--db", str(db_path), "snapshot", "verify", str(snapshot_path), "--summary-only"])
+
+            summary = output.getvalue()
+
+        self.assertEqual(export_exit_code, 0)
+        self.assertEqual(exit_code, 0)
+        self.assertIn("Memory snapshot verify", summary)
+        self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+        self.assertIn("Session continuity verify: failed", summary)
+        self.assertIn(
+            "Session continuity error: invalid continuity sidecar: "
+            "session_retention_rollup.sessions[*].latest_payload_status must be one of "
+            "[available, soft_deleted]",
+            summary,
+        )
+        self.assertNotIn("Retention sessions:", summary)
+        self.assertNotIn("Lifecycle sessions:", summary)
+
+    def test_snapshot_verify_summary_only_reports_incoherent_session_payload_status_counts_in_session_continuity_sidecar(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            db_path = work / ".zerker" / "memory.sqlite"
+            store = MemoryStore(db_path)
+            store.init()
+            store.remember(
+                "Production deploys require approval",
+                memory_type="policy",
+                scope="project:alpha",
+                source_kind="human",
+            )
+            store.start_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="start before raw snapshot verify incoherent payload status counts",
+                context_budget_tokens=256,
+            )
+            store.snapshot_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="snapshot before raw snapshot verify incoherent payload status counts",
+            )
+            snapshot_path = work / ".zerker" / "snapshot.json"
+            export_output = io.StringIO()
+            with redirect_stdout(export_output):
+                export_exit_code = main(["--db", str(db_path), "snapshot", "--out", str(snapshot_path)])
+
+            continuity_path = snapshot_path.with_suffix(".continuity.json")
+            continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+            session = continuity_payload["session_retention_rollup"]["sessions"][0]
+            session["latest_payload_status"] = "available"
+            session["available_payload_count"] = 0
+            session["soft_deleted_payload_count"] = 1
+            session["retention_state"] = "soft_deleted_only"
+            continuity_payload["session_retention_rollup"]["payload_status_counts"] = {
+                "available": 0,
+                "soft_deleted": 1,
+            }
+            continuity_payload["session_retention_rollup"]["retention_state_counts"] = {
+                "all_available": 0,
+                "mixed": 0,
+                "soft_deleted_only": 1,
+            }
+            continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = main(["--db", str(db_path), "snapshot", "verify", str(snapshot_path), "--summary-only"])
+
+            summary = output.getvalue()
+
+        self.assertEqual(export_exit_code, 0)
+        self.assertEqual(exit_code, 0)
+        self.assertIn("Memory snapshot verify", summary)
+        self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+        self.assertIn("Session continuity verify: failed", summary)
+        self.assertIn(
+            "Session continuity error: invalid continuity sidecar: "
+            "session_retention_rollup.sessions[*].latest_payload_status=available requires available_payload_count > 0",
+            summary,
+        )
+        self.assertNotIn("Retention sessions:", summary)
+        self.assertNotIn("Lifecycle sessions:", summary)
+
+    def test_snapshot_verify_summary_only_reports_incoherent_session_retention_state_counts_in_session_continuity_sidecar(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            db_path = work / ".zerker" / "memory.sqlite"
+            store = MemoryStore(db_path)
+            store.init()
+            store.remember(
+                "Production deploys require approval",
+                memory_type="policy",
+                scope="project:alpha",
+                source_kind="human",
+            )
+            store.start_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="start before raw snapshot verify incoherent retention state counts",
+                context_budget_tokens=256,
+            )
+            store.snapshot_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="snapshot before raw snapshot verify incoherent retention state counts",
+            )
+            snapshot_path = work / ".zerker" / "snapshot.json"
+            export_output = io.StringIO()
+            with redirect_stdout(export_output):
+                export_exit_code = main(["--db", str(db_path), "snapshot", "--out", str(snapshot_path)])
+
+            continuity_path = snapshot_path.with_suffix(".continuity.json")
+            continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+            session = continuity_payload["session_retention_rollup"]["sessions"][0]
+            session["latest_payload_status"] = "soft_deleted"
+            session["available_payload_count"] = 0
+            session["soft_deleted_payload_count"] = 1
+            session["retention_state"] = "all_available"
+            continuity_payload["session_retention_rollup"]["payload_status_counts"] = {
+                "available": 0,
+                "soft_deleted": 1,
+            }
+            continuity_payload["session_retention_rollup"]["retention_state_counts"] = {
+                "all_available": 1,
+                "mixed": 0,
+                "soft_deleted_only": 0,
+            }
+            continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = main(["--db", str(db_path), "snapshot", "verify", str(snapshot_path), "--summary-only"])
+
+            summary = output.getvalue()
+
+        self.assertEqual(export_exit_code, 0)
+        self.assertEqual(exit_code, 0)
+        self.assertIn("Memory snapshot verify", summary)
+        self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+        self.assertIn("Session continuity verify: failed", summary)
+        self.assertIn(
+            "Session continuity error: invalid continuity sidecar: "
+            "session_retention_rollup.sessions[*].retention_state=all_available must match "
+            "available_payload_count=0 and soft_deleted_payload_count=1 (expected soft_deleted_only)",
+            summary,
+        )
+        self.assertNotIn("Retention sessions:", summary)
+        self.assertNotIn("Lifecycle sessions:", summary)
+
+    def test_snapshot_verify_summary_only_reports_zero_payload_session_row_in_session_continuity_sidecar(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            db_path = work / ".zerker" / "memory.sqlite"
+            store = MemoryStore(db_path)
+            store.init()
+            store.remember(
+                "Production deploys require approval",
+                memory_type="policy",
+                scope="project:alpha",
+                source_kind="human",
+            )
+            store.start_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="start before raw snapshot verify zero-payload session row",
+                context_budget_tokens=256,
+            )
+            store.snapshot_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="snapshot before raw snapshot verify zero-payload session row",
+            )
+            snapshot_path = work / ".zerker" / "snapshot.json"
+            export_output = io.StringIO()
+            with redirect_stdout(export_output):
+                export_exit_code = main(["--db", str(db_path), "snapshot", "--out", str(snapshot_path)])
+
+            continuity_path = snapshot_path.with_suffix(".continuity.json")
+            continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+            session = continuity_payload["session_retention_rollup"]["sessions"][0]
+            session["latest_payload_status"] = "available"
+            session["available_payload_count"] = 0
+            session["soft_deleted_payload_count"] = 0
+            session["retention_state"] = "all_available"
+            continuity_payload["session_retention_rollup"]["payload_status_counts"] = {
+                "available": 0,
+                "soft_deleted": 0,
+            }
+            continuity_payload["session_retention_rollup"]["retention_state_counts"] = {
+                "all_available": 1,
+                "mixed": 0,
+                "soft_deleted_only": 0,
+            }
+            continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = main(["--db", str(db_path), "snapshot", "verify", str(snapshot_path), "--summary-only"])
+
+            summary = output.getvalue()
+
+        self.assertEqual(export_exit_code, 0)
+        self.assertEqual(exit_code, 0)
+        self.assertIn("Memory snapshot verify", summary)
+        self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+        self.assertIn("Session continuity verify: failed", summary)
+        self.assertIn(
+            "Session continuity error: invalid continuity sidecar: "
+            "session_retention_rollup.sessions[*] must report at least one available or soft_deleted payload",
+            summary,
+        )
+        self.assertNotIn("Retention sessions:", summary)
+        self.assertNotIn("Lifecycle sessions:", summary)
+
+    def test_snapshot_verify_summary_only_reports_negative_available_payload_count_in_session_continuity_sidecar(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            db_path = work / ".zerker" / "memory.sqlite"
+            store = MemoryStore(db_path)
+            store.init()
+            store.remember(
+                "Production deploys require approval",
+                memory_type="policy",
+                scope="project:alpha",
+                source_kind="human",
+            )
+            store.start_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="start before raw snapshot verify negative available payload count",
+                context_budget_tokens=256,
+            )
+            store.snapshot_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="snapshot before raw snapshot verify negative available payload count",
+            )
+            snapshot_path = work / ".zerker" / "snapshot.json"
+            export_output = io.StringIO()
+            with redirect_stdout(export_output):
+                export_exit_code = main(["--db", str(db_path), "snapshot", "--out", str(snapshot_path)])
+
+            continuity_path = snapshot_path.with_suffix(".continuity.json")
+            continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+            session = continuity_payload["session_retention_rollup"]["sessions"][0]
+            session["latest_payload_status"] = "soft_deleted"
+            session["available_payload_count"] = -1
+            session["soft_deleted_payload_count"] = 1
+            session["retention_state"] = "soft_deleted_only"
+            continuity_payload["session_retention_rollup"]["payload_status_counts"] = {
+                "available": -1,
+                "soft_deleted": 1,
+            }
+            continuity_payload["session_retention_rollup"]["retention_state_counts"] = {
+                "all_available": 0,
+                "mixed": 0,
+                "soft_deleted_only": 1,
+            }
+            continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = main(["--db", str(db_path), "snapshot", "verify", str(snapshot_path), "--summary-only"])
+
+            summary = output.getvalue()
+
+        self.assertEqual(export_exit_code, 0)
+        self.assertEqual(exit_code, 0)
+        self.assertIn("Memory snapshot verify", summary)
+        self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+        self.assertIn("Session continuity verify: failed", summary)
+        self.assertIn(
+            "Session continuity error: invalid continuity sidecar: "
+            "session_retention_rollup.sessions[*].available_payload_count must be non-negative",
+            summary,
+        )
+        self.assertNotIn("Retention sessions:", summary)
+        self.assertNotIn("Lifecycle sessions:", summary)
+
+    def test_snapshot_verify_summary_only_reports_negative_soft_deleted_payload_count_in_session_continuity_sidecar(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            db_path = work / ".zerker" / "memory.sqlite"
+            store = MemoryStore(db_path)
+            store.init()
+            store.remember(
+                "Production deploys require approval",
+                memory_type="policy",
+                scope="project:alpha",
+                source_kind="human",
+            )
+            store.start_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="start before raw snapshot verify negative soft-deleted payload count",
+                context_budget_tokens=256,
+            )
+            store.snapshot_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="snapshot before raw snapshot verify negative soft-deleted payload count",
+            )
+            snapshot_path = work / ".zerker" / "snapshot.json"
+            export_output = io.StringIO()
+            with redirect_stdout(export_output):
+                export_exit_code = main(["--db", str(db_path), "snapshot", "--out", str(snapshot_path)])
+
+            continuity_path = snapshot_path.with_suffix(".continuity.json")
+            continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+            session = continuity_payload["session_retention_rollup"]["sessions"][0]
+            session["latest_payload_status"] = "available"
+            session["available_payload_count"] = 1
+            session["soft_deleted_payload_count"] = -1
+            session["retention_state"] = "all_available"
+            continuity_payload["session_retention_rollup"]["payload_status_counts"] = {
+                "available": 1,
+                "soft_deleted": -1,
+            }
+            continuity_payload["session_retention_rollup"]["retention_state_counts"] = {
+                "all_available": 1,
+                "mixed": 0,
+                "soft_deleted_only": 0,
+            }
+            continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = main(["--db", str(db_path), "snapshot", "verify", str(snapshot_path), "--summary-only"])
+
+            summary = output.getvalue()
+
+        self.assertEqual(export_exit_code, 0)
+        self.assertEqual(exit_code, 0)
+        self.assertIn("Memory snapshot verify", summary)
+        self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+        self.assertIn("Session continuity verify: failed", summary)
+        self.assertIn(
+            "Session continuity error: invalid continuity sidecar: "
+            "session_retention_rollup.sessions[*].soft_deleted_payload_count must be non-negative",
+            summary,
+        )
+        self.assertNotIn("Retention sessions:", summary)
+        self.assertNotIn("Lifecycle sessions:", summary)
+
+    def test_snapshot_verify_summary_only_reports_negative_available_payload_status_total_in_session_continuity_sidecar(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            db_path = work / ".zerker" / "memory.sqlite"
+            store = MemoryStore(db_path)
+            store.init()
+            store.remember(
+                "Production deploys require approval",
+                memory_type="policy",
+                scope="project:alpha",
+                source_kind="human",
+            )
+            store.start_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="start before raw snapshot verify negative available payload-status total",
+                context_budget_tokens=256,
+            )
+            store.snapshot_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="snapshot before raw snapshot verify negative available payload-status total",
+            )
+            snapshot_path = work / ".zerker" / "snapshot.json"
+            export_output = io.StringIO()
+            with redirect_stdout(export_output):
+                export_exit_code = main(["--db", str(db_path), "snapshot", "--out", str(snapshot_path)])
+
+            continuity_path = snapshot_path.with_suffix(".continuity.json")
+            continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+            continuity_payload["session_retention_rollup"]["payload_status_counts"] = {
+                "available": -1,
+                "soft_deleted": 0,
+            }
+            continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = main(["--db", str(db_path), "snapshot", "verify", str(snapshot_path), "--summary-only"])
+
+            summary = output.getvalue()
+
+        self.assertEqual(export_exit_code, 0)
+        self.assertEqual(exit_code, 0)
+        self.assertIn("Memory snapshot verify", summary)
+        self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+        self.assertIn("Session continuity verify: failed", summary)
+        self.assertIn(
+            "Session continuity error: invalid continuity sidecar: "
+            "session_retention_rollup.payload_status_counts.available must be non-negative",
+            summary,
+        )
+        self.assertNotIn("Retention sessions:", summary)
+        self.assertNotIn("Lifecycle sessions:", summary)
+
+    def test_snapshot_verify_summary_only_reports_negative_soft_deleted_payload_status_total_in_session_continuity_sidecar(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            db_path = work / ".zerker" / "memory.sqlite"
+            store = MemoryStore(db_path)
+            store.init()
+            store.remember(
+                "Production deploys require approval",
+                memory_type="policy",
+                scope="project:alpha",
+                source_kind="human",
+            )
+            store.start_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="start before raw snapshot verify negative soft-deleted payload-status total",
+                context_budget_tokens=256,
+            )
+            store.snapshot_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="snapshot before raw snapshot verify negative soft-deleted payload-status total",
+            )
+            snapshot_path = work / ".zerker" / "snapshot.json"
+            export_output = io.StringIO()
+            with redirect_stdout(export_output):
+                export_exit_code = main(["--db", str(db_path), "snapshot", "--out", str(snapshot_path)])
+
+            continuity_path = snapshot_path.with_suffix(".continuity.json")
+            continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+            session = continuity_payload["session_retention_rollup"]["sessions"][0]
+            session["latest_payload_status"] = "soft_deleted"
+            session["available_payload_count"] = 0
+            session["soft_deleted_payload_count"] = 1
+            session["retention_state"] = "soft_deleted_only"
+            continuity_payload["session_retention_rollup"]["payload_status_counts"] = {
+                "available": 0,
+                "soft_deleted": -1,
+            }
+            continuity_payload["session_retention_rollup"]["retention_state_counts"] = {
+                "all_available": 0,
+                "mixed": 0,
+                "soft_deleted_only": 1,
+            }
+            continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = main(["--db", str(db_path), "snapshot", "verify", str(snapshot_path), "--summary-only"])
+
+            summary = output.getvalue()
+
+        self.assertEqual(export_exit_code, 0)
+        self.assertEqual(exit_code, 0)
+        self.assertIn("Memory snapshot verify", summary)
+        self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+        self.assertIn("Session continuity verify: failed", summary)
+        self.assertIn(
+            "Session continuity error: invalid continuity sidecar: "
+            "session_retention_rollup.payload_status_counts.soft_deleted must be non-negative",
+            summary,
+        )
+        self.assertNotIn("Retention sessions:", summary)
+        self.assertNotIn("Lifecycle sessions:", summary)
 
     def test_snapshot_verify_summary_only_surfaces_verified_export_provenance(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1602,9 +4330,2360 @@ class CliOnboardingTest(unittest.TestCase):
         self.assertIn("Write receipt chains: 1", summary)
         self.assertIn("Write receipt verify: ok (2/2 verified)", summary)
         self.assertIn("Verified write transitions: 1", summary)
+        self.assertIn("Provenance anchors: 1 verified", summary)
+        self.assertIn(f"Provenance memory: {memory.id}", summary)
+        self.assertIn("Provenance actor: codex", summary)
+        self.assertIn(f"Provenance digest: sha256:{memory.content_hash}", summary)
+        self.assertIn("Provenance roots:", summary)
+        self.assertIn("Provenance Treeship artifact: art_write_1", summary)
         self.assertIn("Treeship artifacts: art_write_1, art_write_2", summary)
         self.assertIn("Trusted provenance: verified", summary)
         self.assertIn("Semantic truth: not guaranteed", summary)
+
+    def test_snapshot_verify_summary_only_explains_intervening_write_continuity(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "memory.sqlite"
+            store = MemoryStore(db_path)
+            store.init()
+            memory = store.remember(
+                "Staging deploys require manual SSH",
+                memory_type="semantic",
+                scope="project",
+                source_kind="agent",
+                actor_id="codex",
+                actor_uri="agent://codex/session-b",
+                session_id="session://beta",
+                source_uri="conversation://session-b/message-4",
+                parent_action_id="act_review",
+                environment_hash="sha256:env_fixture",
+            )
+            store.remember(
+                "Unrelated runbook note",
+                memory_type="semantic",
+                scope="project",
+                source_kind="agent",
+                actor_id="codex",
+            )
+            store.reject(memory.id, actor_id="reviewer", reason="superseded runbook")
+            snapshot_path = Path(tmp) / "snapshot.json"
+            snapshot_path.write_text(json.dumps(store.snapshot()), encoding="utf-8")
+
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = main(["--db", str(db_path), "snapshot", "verify", str(snapshot_path), "--summary-only"])
+
+            summary = output.getvalue()
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("Snapshot verify: ok", summary)
+        self.assertIn("Write receipt verify: ok (3/3 verified)", summary)
+        self.assertIn("Verified write transitions: 1", summary)
+        self.assertIn("Intervening events: 1", summary)
+        self.assertIn("Intervening other-memory events: 1", summary)
+        self.assertIn("Continuity basis: prior receipt link plus snapshot previous event root", summary)
+        self.assertIn("Trusted provenance: verified", summary)
+        self.assertIn("Semantic truth: not guaranteed", summary)
+
+    def test_restore_snapshot_summary_only_surfaces_adjacent_session_continuity_sidecar(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            source_db_path = work / ".zerker" / "source.sqlite"
+            source_store = MemoryStore(source_db_path)
+            source_store.init()
+            source_store.remember(
+                "Production deploys require approval",
+                memory_type="policy",
+                scope="project:alpha",
+                source_kind="human",
+            )
+            source_store.start_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="start before raw snapshot restore",
+                context_budget_tokens=256,
+            )
+            session_snapshot = source_store.snapshot_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="snapshot before raw snapshot restore",
+            )
+            source_store.soft_delete_session_snapshot_payload(
+                session_snapshot["session_snapshot_id"],
+                actor_id="reviewer",
+                reason="retention compacted before raw snapshot restore",
+            )
+            source_store.end_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="end before raw snapshot restore",
+            )
+            snapshot_path = work / ".zerker" / "snapshot.json"
+            export_output = io.StringIO()
+            with redirect_stdout(export_output):
+                export_exit_code = main(["--db", str(source_db_path), "snapshot", "--out", str(snapshot_path)])
+            db_path = work / ".zerker" / "restored.sqlite"
+
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = main(["--db", str(db_path), "restore", str(snapshot_path), "--summary-only"])
+
+            summary = output.getvalue()
+            restored_store = MemoryStore(db_path)
+
+        self.assertEqual(export_exit_code, 0)
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(restored_store.stats()["memory_count"], 1)
+        self.assertIn("Zerker Memory restore", summary)
+        self.assertIn(f"Source: {snapshot_path.resolve()}", summary)
+        self.assertIn(f"Snapshot: {snapshot_path.resolve()}", summary)
+        self.assertIn(f"Session continuity sidecar: {snapshot_path.with_suffix('.continuity.json').resolve()}", summary)
+        self.assertIn("Session continuity verify: ok", summary)
+        self.assertIn("Lifecycle sessions: 1", summary)
+        self.assertIn("Lifecycle events: starts=1 checkpoints=0 snapshots=1 snapshot_soft_deletes=1 ends=1", summary)
+        self.assertIn("Retention sessions: 1", summary)
+        self.assertIn("Retention states: all_available=0 mixed=0 soft_deleted_only=1", summary)
+        self.assertIn("Latest lifecycle retention: retention compacted before raw snapshot restore", summary)
+        self.assertNotIn("Session continuity: none", summary)
+
+    def test_restore_snapshot_file_writes_local_workspace_restore_continuity_anchor(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            source_db_path = work / ".zerker" / "source.sqlite"
+            source_store = MemoryStore(source_db_path)
+            source_store.init()
+            source_store.remember(
+                "Production deploys require approval",
+                memory_type="policy",
+                scope="project:alpha",
+                source_kind="human",
+            )
+            source_store.start_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="start before raw snapshot restore",
+                context_budget_tokens=256,
+            )
+            source_store.snapshot_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="snapshot before raw snapshot restore",
+            )
+            source_store.end_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="end before raw snapshot restore",
+            )
+            snapshot_path = work / ".zerker" / "snapshot.json"
+            with redirect_stdout(io.StringIO()):
+                export_exit_code = main(["--db", str(source_db_path), "snapshot", "--out", str(snapshot_path)])
+            db_path = work / ".zerker" / "restored.sqlite"
+            restored_store = MemoryStore(db_path)
+
+            result = restore_snapshot_file(restored_store, snapshot_path=snapshot_path)
+
+            anchor = result["workspace_restore_continuity"]
+            anchor_path = Path(anchor["path"])
+            anchor_exists = anchor_path.exists()
+            anchor_payload = json.loads(anchor_path.read_text(encoding="utf-8"))
+            snapshot_payload = json.loads(snapshot_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(export_exit_code, 0)
+        self.assertTrue(anchor_exists)
+        self.assertEqual(anchor_payload["schema"], "zerker.workspace_restore_continuity.v1")
+        self.assertEqual(anchor_payload["kind"], "local_snapshot_restore")
+        self.assertEqual(anchor_payload["snapshot_path"], str(snapshot_path.resolve()))
+        self.assertEqual(anchor_payload["snapshot_hash"], snapshot_payload["snapshot_hash"])
+        self.assertEqual(anchor_payload["snapshot_merkle_root"], snapshot_payload["merkle_root"])
+        self.assertEqual(anchor_payload["restore_receipt_id"], result["restore"]["receipt"]["receipt_id"])
+        self.assertEqual(anchor_payload["restore_receipt_hash"], result["restore"]["receipt"]["receipt_hash"])
+        self.assertEqual(anchor_payload["restore_actor_uri"], "actor://snapshot_restore")
+        self.assertEqual(
+            anchor_payload["continuity_sidecar_path"],
+            str(snapshot_path.with_suffix(".continuity.json").resolve()),
+        )
+        self.assertTrue(anchor_payload["continuity_sidecar_ok"])
+
+    def test_restore_snapshot_summary_only_reports_mismatched_session_continuity_sidecar(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            source_db_path = work / ".zerker" / "source.sqlite"
+            source_store = MemoryStore(source_db_path)
+            source_store.init()
+            source_store.remember(
+                "Production deploys require approval",
+                memory_type="policy",
+                scope="project:alpha",
+                source_kind="human",
+            )
+            source_store.start_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="start before raw snapshot restore mismatch",
+                context_budget_tokens=256,
+            )
+            snapshot_path = work / ".zerker" / "snapshot.json"
+            export_output = io.StringIO()
+            with redirect_stdout(export_output):
+                export_exit_code = main(["--db", str(source_db_path), "snapshot", "--out", str(snapshot_path)])
+
+            continuity_path = snapshot_path.with_suffix(".continuity.json")
+            continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+            continuity_payload["snapshot_merkle_root"] = "root://copied-sidecar"
+            continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+            db_path = work / ".zerker" / "restored.sqlite"
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = main(["--db", str(db_path), "restore", str(snapshot_path), "--summary-only"])
+
+            summary = output.getvalue()
+            restored_store = MemoryStore(db_path)
+
+        self.assertEqual(export_exit_code, 0)
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(restored_store.stats()["memory_count"], 1)
+        self.assertIn("Zerker Memory restore", summary)
+        self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+        self.assertIn("Session continuity verify: failed", summary)
+        self.assertIn("Session continuity error: continuity sidecar snapshot Merkle root mismatch", summary)
+
+    def test_restore_snapshot_summary_only_reports_invalid_retention_rollup_in_session_continuity_sidecar(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            source_db_path = work / ".zerker" / "source.sqlite"
+            source_store = MemoryStore(source_db_path)
+            source_store.init()
+            source_store.remember(
+                "Production deploys require approval",
+                memory_type="policy",
+                scope="project:alpha",
+                source_kind="human",
+            )
+            source_store.start_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="start before raw snapshot restore invalid sidecar",
+                context_budget_tokens=256,
+            )
+            snapshot_path = work / ".zerker" / "snapshot.json"
+            export_output = io.StringIO()
+            with redirect_stdout(export_output):
+                export_exit_code = main(["--db", str(source_db_path), "snapshot", "--out", str(snapshot_path)])
+
+            continuity_path = snapshot_path.with_suffix(".continuity.json")
+            continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+            continuity_payload["session_retention_rollup"] = []
+            continuity_payload["session_retention_rollup_summary"] = "bad sidecar"
+            continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+            db_path = work / ".zerker" / "restored.sqlite"
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = main(["--db", str(db_path), "restore", str(snapshot_path), "--summary-only"])
+
+            summary = output.getvalue()
+            restored_store = MemoryStore(db_path)
+
+        self.assertEqual(export_exit_code, 0)
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(restored_store.stats()["memory_count"], 1)
+        self.assertIn("Zerker Memory restore", summary)
+        self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+        self.assertIn("Session continuity verify: failed", summary)
+        self.assertIn("Session continuity error: invalid continuity sidecar: session_retention_rollup must be an object", summary)
+        self.assertNotIn("Retention sessions:", summary)
+        self.assertNotIn("Lifecycle sessions:", summary)
+
+    def test_restore_snapshot_summary_only_reports_invalid_retention_rollup_session_entry_in_session_continuity_sidecar(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            source_db_path = work / ".zerker" / "source.sqlite"
+            source_store = MemoryStore(source_db_path)
+            source_store.init()
+            source_store.remember(
+                "Production deploys require approval",
+                memory_type="policy",
+                scope="project:alpha",
+                source_kind="human",
+            )
+            source_store.start_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="start before raw snapshot restore malformed retention entry",
+                context_budget_tokens=256,
+            )
+            snapshot_path = work / ".zerker" / "snapshot.json"
+            export_output = io.StringIO()
+            with redirect_stdout(export_output):
+                export_exit_code = main(["--db", str(source_db_path), "snapshot", "--out", str(snapshot_path)])
+
+            continuity_path = snapshot_path.with_suffix(".continuity.json")
+            continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+            continuity_payload["session_retention_rollup"]["sessions"] = ["bad-entry"]
+            continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+            db_path = work / ".zerker" / "restored.sqlite"
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = main(["--db", str(db_path), "restore", str(snapshot_path), "--summary-only"])
+
+            summary = output.getvalue()
+            restored_store = MemoryStore(db_path)
+
+        self.assertEqual(export_exit_code, 0)
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(restored_store.stats()["memory_count"], 1)
+        self.assertIn("Zerker Memory restore", summary)
+        self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+        self.assertIn("Session continuity verify: failed", summary)
+        self.assertIn(
+            "Session continuity error: invalid continuity sidecar: session_retention_rollup.sessions[0] must be an object",
+            summary,
+        )
+        self.assertNotIn("Retention sessions:", summary)
+        self.assertNotIn("Lifecycle sessions:", summary)
+
+    def test_restore_snapshot_summary_only_reports_incoherent_retention_rollup_count_in_session_continuity_sidecar(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            source_db_path = work / ".zerker" / "source.sqlite"
+            source_store = MemoryStore(source_db_path)
+            source_store.init()
+            source_store.remember(
+                "Production deploys require approval",
+                memory_type="policy",
+                scope="project:alpha",
+                source_kind="human",
+            )
+            source_store.start_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="start before raw snapshot restore incoherent retention count",
+                context_budget_tokens=256,
+            )
+            source_store.snapshot_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="snapshot before raw snapshot restore incoherent retention count",
+            )
+            snapshot_path = work / ".zerker" / "snapshot.json"
+            export_output = io.StringIO()
+            with redirect_stdout(export_output):
+                export_exit_code = main(["--db", str(source_db_path), "snapshot", "--out", str(snapshot_path)])
+
+            continuity_path = snapshot_path.with_suffix(".continuity.json")
+            continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+            continuity_payload["session_retention_rollup"]["count"] = 42
+            continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+            db_path = work / ".zerker" / "restored.sqlite"
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = main(["--db", str(db_path), "restore", str(snapshot_path), "--summary-only"])
+
+            summary = output.getvalue()
+            restored_store = MemoryStore(db_path)
+
+        self.assertEqual(export_exit_code, 0)
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(restored_store.stats()["memory_count"], 1)
+        self.assertIn("Zerker Memory restore", summary)
+        self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+        self.assertIn("Session continuity verify: failed", summary)
+        self.assertIn(
+            "Session continuity error: invalid continuity sidecar: session_retention_rollup.count must equal sessions length (42 != 1)",
+            summary,
+        )
+        self.assertNotIn("Retention sessions:", summary)
+        self.assertNotIn("Lifecycle sessions:", summary)
+
+    def test_restore_snapshot_summary_only_reports_incoherent_lifecycle_event_totals_in_session_continuity_sidecar(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            source_db_path = work / ".zerker" / "source.sqlite"
+            source_store = MemoryStore(source_db_path)
+            source_store.init()
+            source_store.remember(
+                "Production deploys require approval",
+                memory_type="policy",
+                scope="project:alpha",
+                source_kind="human",
+            )
+            source_store.start_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="start before raw snapshot restore incoherent lifecycle events",
+                context_budget_tokens=256,
+            )
+            snapshot_path = work / ".zerker" / "snapshot.json"
+            export_output = io.StringIO()
+            with redirect_stdout(export_output):
+                export_exit_code = main(["--db", str(source_db_path), "snapshot", "--out", str(snapshot_path)])
+
+            continuity_path = snapshot_path.with_suffix(".continuity.json")
+            continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+            continuity_payload["session_lifecycle_rollup"]["event_kind_counts"]["start"] = 0
+            continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+            db_path = work / ".zerker" / "restored.sqlite"
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = main(["--db", str(db_path), "restore", str(snapshot_path), "--summary-only"])
+
+            summary = output.getvalue()
+            restored_store = MemoryStore(db_path)
+
+        self.assertEqual(export_exit_code, 0)
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(restored_store.stats()["memory_count"], 1)
+        self.assertIn("Zerker Memory restore", summary)
+        self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+        self.assertIn("Session continuity verify: failed", summary)
+        self.assertIn(
+            "Session continuity error: invalid continuity sidecar: session_lifecycle_rollup.event_kind_counts.start must equal summed session start_count (0 != 1)",
+            summary,
+        )
+        self.assertNotIn("Retention sessions:", summary)
+        self.assertNotIn("Lifecycle sessions:", summary)
+
+    def test_restore_snapshot_summary_only_reports_incoherent_retention_payload_totals_in_session_continuity_sidecar(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            source_db_path = work / ".zerker" / "source.sqlite"
+            source_store = MemoryStore(source_db_path)
+            source_store.init()
+            source_store.remember(
+                "Production deploys require approval",
+                memory_type="policy",
+                scope="project:alpha",
+                source_kind="human",
+            )
+            source_store.start_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="start before raw snapshot restore incoherent retention payload totals",
+                context_budget_tokens=256,
+            )
+            source_store.snapshot_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="snapshot before raw snapshot restore incoherent retention payload totals",
+            )
+            snapshot_path = work / ".zerker" / "snapshot.json"
+            export_output = io.StringIO()
+            with redirect_stdout(export_output):
+                export_exit_code = main(["--db", str(source_db_path), "snapshot", "--out", str(snapshot_path)])
+
+            continuity_path = snapshot_path.with_suffix(".continuity.json")
+            continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+            continuity_payload["session_retention_rollup"]["payload_status_counts"]["available"] = 0
+            continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+            db_path = work / ".zerker" / "restored.sqlite"
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = main(["--db", str(db_path), "restore", str(snapshot_path), "--summary-only"])
+
+            summary = output.getvalue()
+            restored_store = MemoryStore(db_path)
+
+        self.assertEqual(export_exit_code, 0)
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(restored_store.stats()["memory_count"], 1)
+        self.assertIn("Zerker Memory restore", summary)
+        self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+        self.assertIn("Session continuity verify: failed", summary)
+        self.assertIn(
+            "Session continuity error: invalid continuity sidecar: session_retention_rollup.payload_status_counts.available must equal summed session available_payload_count (0 != 1)",
+            summary,
+        )
+        self.assertNotIn("Retention sessions:", summary)
+        self.assertNotIn("Lifecycle sessions:", summary)
+
+    def test_restore_snapshot_summary_only_reports_incoherent_retention_state_totals_in_session_continuity_sidecar(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            source_db_path = work / ".zerker" / "source.sqlite"
+            source_store = MemoryStore(source_db_path)
+            source_store.init()
+            source_store.remember(
+                "Production deploys require approval",
+                memory_type="policy",
+                scope="project:alpha",
+                source_kind="human",
+            )
+            source_store.start_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="start before raw snapshot restore incoherent retention states",
+                context_budget_tokens=256,
+            )
+            source_store.snapshot_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="snapshot before raw snapshot restore incoherent retention states",
+            )
+            snapshot_path = work / ".zerker" / "snapshot.json"
+            export_output = io.StringIO()
+            with redirect_stdout(export_output):
+                export_exit_code = main(["--db", str(source_db_path), "snapshot", "--out", str(snapshot_path)])
+
+            continuity_path = snapshot_path.with_suffix(".continuity.json")
+            continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+            continuity_payload["session_retention_rollup"]["retention_state_counts"]["all_available"] = 2
+            continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+            db_path = work / ".zerker" / "restored.sqlite"
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = main(["--db", str(db_path), "restore", str(snapshot_path), "--summary-only"])
+
+            summary = output.getvalue()
+            restored_store = MemoryStore(db_path)
+
+        self.assertEqual(export_exit_code, 0)
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(restored_store.stats()["memory_count"], 1)
+        self.assertIn("Zerker Memory restore", summary)
+        self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+        self.assertIn("Session continuity verify: failed", summary)
+        self.assertIn(
+            "Session continuity error: invalid continuity sidecar: session_retention_rollup.retention_state_counts.all_available must equal counted session retention_state=all_available (2 != 1)",
+            summary,
+        )
+        self.assertNotIn("Retention sessions:", summary)
+        self.assertNotIn("Lifecycle sessions:", summary)
+
+    def test_restore_snapshot_summary_only_reports_negative_retention_state_total_in_session_continuity_sidecar(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            source_db_path = work / ".zerker" / "source.sqlite"
+            source_store = MemoryStore(source_db_path)
+            source_store.init()
+            source_store.remember(
+                "Production deploys require approval",
+                memory_type="policy",
+                scope="project:alpha",
+                source_kind="human",
+            )
+            source_store.start_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="start before raw snapshot restore negative retention state total",
+                context_budget_tokens=256,
+            )
+            source_store.snapshot_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="snapshot before raw snapshot restore negative retention state total",
+            )
+            snapshot_path = work / ".zerker" / "snapshot.json"
+            export_output = io.StringIO()
+            with redirect_stdout(export_output):
+                export_exit_code = main(["--db", str(source_db_path), "snapshot", "--out", str(snapshot_path)])
+
+            continuity_path = snapshot_path.with_suffix(".continuity.json")
+            continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+            continuity_payload["session_retention_rollup"]["retention_state_counts"]["all_available"] = -1
+            continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+            db_path = work / ".zerker" / "restored.sqlite"
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = main(["--db", str(db_path), "restore", str(snapshot_path), "--summary-only"])
+
+            summary = output.getvalue()
+            restored_store = MemoryStore(db_path)
+
+        self.assertEqual(export_exit_code, 0)
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(restored_store.stats()["memory_count"], 1)
+        self.assertIn("Zerker Memory restore", summary)
+        self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+        self.assertIn("Session continuity verify: failed", summary)
+        self.assertIn(
+            "Session continuity error: invalid continuity sidecar: "
+            "session_retention_rollup.retention_state_counts.all_available must be non-negative",
+            summary,
+        )
+        self.assertNotIn("Retention sessions:", summary)
+        self.assertNotIn("Lifecycle sessions:", summary)
+
+    def test_restore_snapshot_summary_only_reports_negative_mixed_retention_state_total_in_session_continuity_sidecar(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            source_db_path = work / ".zerker" / "source.sqlite"
+            source_store = MemoryStore(source_db_path)
+            source_store.init()
+            source_store.remember(
+                "Production deploys require approval",
+                memory_type="policy",
+                scope="project:alpha",
+                source_kind="human",
+            )
+            source_store.start_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="start before raw snapshot restore negative mixed retention state total",
+                context_budget_tokens=256,
+            )
+            session_snapshot = source_store.snapshot_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="snapshot before raw snapshot restore negative mixed retention state total",
+            )
+            source_store.soft_delete_session_snapshot_payload(
+                session_snapshot["session_snapshot_id"],
+                actor_id="codex",
+                reason="retention compacted before restore mixed total check",
+            )
+            snapshot_path = work / ".zerker" / "snapshot.json"
+            export_output = io.StringIO()
+            with redirect_stdout(export_output):
+                export_exit_code = main(["--db", str(source_db_path), "snapshot", "--out", str(snapshot_path)])
+
+            continuity_path = snapshot_path.with_suffix(".continuity.json")
+            continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+            continuity_payload["session_retention_rollup"]["retention_state_counts"]["mixed"] = -1
+            continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+            db_path = work / ".zerker" / "restored.sqlite"
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = main(["--db", str(db_path), "restore", str(snapshot_path), "--summary-only"])
+
+            summary = output.getvalue()
+            restored_store = MemoryStore(db_path)
+
+        self.assertEqual(export_exit_code, 0)
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(restored_store.stats()["memory_count"], 1)
+        self.assertIn("Zerker Memory restore", summary)
+        self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+        self.assertIn("Session continuity verify: failed", summary)
+        self.assertIn(
+            "Session continuity error: invalid continuity sidecar: "
+            "session_retention_rollup.retention_state_counts.mixed must be non-negative",
+            summary,
+        )
+        self.assertNotIn("Retention sessions:", summary)
+        self.assertNotIn("Lifecycle sessions:", summary)
+
+    def test_restore_snapshot_summary_only_reports_negative_soft_deleted_only_retention_state_total_in_session_continuity_sidecar(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            source_db_path = work / ".zerker" / "source.sqlite"
+            source_store = MemoryStore(source_db_path)
+            source_store.init()
+            source_store.remember(
+                "Production deploys require approval",
+                memory_type="policy",
+                scope="project:alpha",
+                source_kind="human",
+            )
+            source_store.start_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="start before raw snapshot restore negative soft-deleted-only retention state total",
+                context_budget_tokens=256,
+            )
+            session_snapshot = source_store.snapshot_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="snapshot before raw snapshot restore negative soft-deleted-only retention state total",
+            )
+            source_store.soft_delete_session_snapshot_payload(
+                session_snapshot["session_snapshot_id"],
+                actor_id="codex",
+                reason="retention compacted before restore soft-deleted total check",
+            )
+            snapshot_path = work / ".zerker" / "snapshot.json"
+            export_output = io.StringIO()
+            with redirect_stdout(export_output):
+                export_exit_code = main(["--db", str(source_db_path), "snapshot", "--out", str(snapshot_path)])
+
+            continuity_path = snapshot_path.with_suffix(".continuity.json")
+            continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+            continuity_payload["session_retention_rollup"]["retention_state_counts"]["soft_deleted_only"] = -1
+            continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+            db_path = work / ".zerker" / "restored.sqlite"
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = main(["--db", str(db_path), "restore", str(snapshot_path), "--summary-only"])
+
+            summary = output.getvalue()
+            restored_store = MemoryStore(db_path)
+
+        self.assertEqual(export_exit_code, 0)
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(restored_store.stats()["memory_count"], 1)
+        self.assertIn("Zerker Memory restore", summary)
+        self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+        self.assertIn("Session continuity verify: failed", summary)
+        self.assertIn(
+            "Session continuity error: invalid continuity sidecar: "
+            "session_retention_rollup.retention_state_counts.soft_deleted_only must be non-negative",
+            summary,
+        )
+        self.assertNotIn("Retention sessions:", summary)
+        self.assertNotIn("Lifecycle sessions:", summary)
+
+    def test_restore_snapshot_summary_only_reports_incoherent_lifecycle_receipt_provenance_totals_in_session_continuity_sidecar(self):
+        count_totals = {
+            "verified_receipt_count": 1,
+            "failed_receipt_count": 0,
+            "linked_treeship_artifact_count": 0,
+        }
+
+        for count_field, session_total in count_totals.items():
+            with self.subTest(count_field=count_field):
+                with tempfile.TemporaryDirectory() as tmp:
+                    work = Path(tmp)
+                    source_db_path = work / ".zerker" / "source.sqlite"
+                    source_store = MemoryStore(source_db_path)
+                    source_store.init()
+                    source_store.remember(
+                        "Production deploys require approval",
+                        memory_type="policy",
+                        scope="project:alpha",
+                        source_kind="human",
+                    )
+                    source_store.start_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"start before raw snapshot restore incoherent {count_field}",
+                        context_budget_tokens=256,
+                    )
+                    snapshot_path = work / ".zerker" / "snapshot.json"
+                    export_output = io.StringIO()
+                    with redirect_stdout(export_output):
+                        export_exit_code = main(["--db", str(source_db_path), "snapshot", "--out", str(snapshot_path)])
+
+                    continuity_path = snapshot_path.with_suffix(".continuity.json")
+                    continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+                    continuity_payload["session_lifecycle_rollup"][count_field] = 7
+                    continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+                    db_path = work / ".zerker" / "restored.sqlite"
+                    output = io.StringIO()
+                    with redirect_stdout(output):
+                        exit_code = main(["--db", str(db_path), "restore", str(snapshot_path), "--summary-only"])
+
+                    summary = output.getvalue()
+                    restored_store = MemoryStore(db_path)
+
+                self.assertEqual(export_exit_code, 0)
+                self.assertEqual(exit_code, 0)
+                self.assertEqual(restored_store.stats()["memory_count"], 1)
+                self.assertIn("Zerker Memory restore", summary)
+                self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+                self.assertIn("Session continuity verify: failed", summary)
+                self.assertIn(
+                    "Session continuity error: invalid continuity sidecar: "
+                    f"session_lifecycle_rollup.{count_field} must equal summed session {count_field} "
+                    f"(7 != {session_total})",
+                    summary,
+                )
+                self.assertNotIn("Retention sessions:", summary)
+                self.assertNotIn("Lifecycle sessions:", summary)
+
+    def test_restore_snapshot_summary_only_reports_negative_lifecycle_receipt_provenance_counts_in_session_continuity_sidecar(self):
+        count_fields = (
+            "verified_receipt_count",
+            "failed_receipt_count",
+            "linked_treeship_artifact_count",
+        )
+
+        for count_field in count_fields:
+            with self.subTest(count_field=count_field):
+                with tempfile.TemporaryDirectory() as tmp:
+                    work = Path(tmp)
+                    source_db_path = work / ".zerker" / "source.sqlite"
+                    source_store = MemoryStore(source_db_path)
+                    source_store.init()
+                    source_store.remember(
+                        "Production deploys require approval",
+                        memory_type="policy",
+                        scope="project:alpha",
+                        source_kind="human",
+                    )
+                    source_store.start_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"start before raw snapshot restore negative {count_field}",
+                        context_budget_tokens=256,
+                    )
+                    snapshot_path = work / ".zerker" / "snapshot.json"
+                    export_output = io.StringIO()
+                    with redirect_stdout(export_output):
+                        export_exit_code = main(["--db", str(source_db_path), "snapshot", "--out", str(snapshot_path)])
+
+                    continuity_path = snapshot_path.with_suffix(".continuity.json")
+                    continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+                    continuity_payload["session_lifecycle_rollup"][count_field] = -1
+                    continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+                    db_path = work / ".zerker" / "restored.sqlite"
+                    output = io.StringIO()
+                    with redirect_stdout(output):
+                        exit_code = main(["--db", str(db_path), "restore", str(snapshot_path), "--summary-only"])
+
+                    summary = output.getvalue()
+                    restored_store = MemoryStore(db_path)
+
+                self.assertEqual(export_exit_code, 0)
+                self.assertEqual(exit_code, 0)
+                self.assertEqual(restored_store.stats()["memory_count"], 1)
+                self.assertIn("Zerker Memory restore", summary)
+                self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+                self.assertIn("Session continuity verify: failed", summary)
+                self.assertIn(
+                    "Session continuity error: invalid continuity sidecar: "
+                    f"session_lifecycle_rollup.{count_field} must be non-negative",
+                    summary,
+                )
+                self.assertNotIn("Retention sessions:", summary)
+                self.assertNotIn("Lifecycle sessions:", summary)
+
+    def test_restore_snapshot_summary_only_reports_negative_session_lifecycle_receipt_provenance_counts_in_session_continuity_sidecar(self):
+        count_fields = (
+            "verified_receipt_count",
+            "failed_receipt_count",
+            "linked_treeship_artifact_count",
+        )
+
+        for count_field in count_fields:
+            with self.subTest(count_field=count_field):
+                with tempfile.TemporaryDirectory() as tmp:
+                    work = Path(tmp)
+                    source_db_path = work / ".zerker" / "source.sqlite"
+                    source_store = MemoryStore(source_db_path)
+                    source_store.init()
+                    source_store.remember(
+                        "Production deploys require approval",
+                        memory_type="policy",
+                        scope="project:alpha",
+                        source_kind="human",
+                    )
+                    source_store.start_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"start before raw snapshot restore negative session {count_field}",
+                        context_budget_tokens=256,
+                    )
+                    snapshot_path = work / ".zerker" / "snapshot.json"
+                    export_output = io.StringIO()
+                    with redirect_stdout(export_output):
+                        export_exit_code = main(["--db", str(source_db_path), "snapshot", "--out", str(snapshot_path)])
+
+                    continuity_path = snapshot_path.with_suffix(".continuity.json")
+                    continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+                    continuity_payload["session_lifecycle_rollup"][count_field] = 0
+                    continuity_payload["session_lifecycle_rollup"]["sessions"][0][count_field] = -1
+                    continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+                    db_path = work / ".zerker" / "restored.sqlite"
+                    output = io.StringIO()
+                    with redirect_stdout(output):
+                        exit_code = main(["--db", str(db_path), "restore", str(snapshot_path), "--summary-only"])
+
+                    summary = output.getvalue()
+                    restored_store = MemoryStore(db_path)
+
+                self.assertEqual(export_exit_code, 0)
+                self.assertEqual(exit_code, 0)
+                self.assertEqual(restored_store.stats()["memory_count"], 1)
+                self.assertIn("Zerker Memory restore", summary)
+                self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+                self.assertIn("Session continuity verify: failed", summary)
+                self.assertIn(
+                    "Session continuity error: invalid continuity sidecar: "
+                    f"session_lifecycle_rollup.sessions[*].{count_field} must be non-negative",
+                    summary,
+                )
+                self.assertNotIn("Retention sessions:", summary)
+                self.assertNotIn("Lifecycle sessions:", summary)
+
+    def test_restore_snapshot_summary_only_reports_negative_latest_start_context_budget_hint_in_session_continuity_sidecar(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            source_db_path = work / ".zerker" / "source.sqlite"
+            source_store = MemoryStore(source_db_path)
+            source_store.init()
+            source_store.remember(
+                "Production deploys require approval",
+                memory_type="policy",
+                scope="project:alpha",
+                source_kind="human",
+            )
+            source_store.start_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="start before raw snapshot restore negative latest start context budget hint",
+                context_budget_tokens=256,
+            )
+            snapshot_path = work / ".zerker" / "snapshot.json"
+            export_output = io.StringIO()
+            with redirect_stdout(export_output):
+                export_exit_code = main(["--db", str(source_db_path), "snapshot", "--out", str(snapshot_path)])
+
+            continuity_path = snapshot_path.with_suffix(".continuity.json")
+            continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+            continuity_payload["session_lifecycle_rollup"]["sessions"][0]["latest_start_token_budget_hint"] = {
+                "context_budget_tokens": -1
+            }
+            continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+            db_path = work / ".zerker" / "restored.sqlite"
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = main(["--db", str(db_path), "restore", str(snapshot_path), "--summary-only"])
+
+            summary = output.getvalue()
+            restored_store = MemoryStore(db_path)
+
+        self.assertEqual(export_exit_code, 0)
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(restored_store.stats()["memory_count"], 1)
+        self.assertIn("Zerker Memory restore", summary)
+        self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+        self.assertIn("Session continuity verify: failed", summary)
+        self.assertIn(
+            "Session continuity error: invalid continuity sidecar: "
+            "session_lifecycle_rollup.sessions[*].latest_start_token_budget_hint.context_budget_tokens "
+            "must be non-negative",
+            summary,
+        )
+        self.assertNotIn("Retention sessions:", summary)
+        self.assertNotIn("Lifecycle sessions:", summary)
+
+    def test_restore_snapshot_summary_only_reports_malformed_latest_start_token_budget_hint_payloads_in_session_continuity_sidecar(self):
+        cases = (
+            (
+                ["not", "an", "object"],
+                "session_lifecycle_rollup.sessions[*].latest_start_token_budget_hint must be an object",
+            ),
+            (
+                {"context_budget_tokens": "256"},
+                "session_lifecycle_rollup.sessions[*].latest_start_token_budget_hint.context_budget_tokens must be an integer",
+            ),
+            (
+                {"context_budget_tokens": True},
+                "session_lifecycle_rollup.sessions[*].latest_start_token_budget_hint.context_budget_tokens must be an integer",
+            ),
+        )
+
+        for latest_start_token_budget_hint, expected_error in cases:
+            with self.subTest(latest_start_token_budget_hint=latest_start_token_budget_hint):
+                with tempfile.TemporaryDirectory() as tmp:
+                    work = Path(tmp)
+                    source_db_path = work / ".zerker" / "source.sqlite"
+                    source_store = MemoryStore(source_db_path)
+                    source_store.init()
+                    source_store.remember(
+                        "Production deploys require approval",
+                        memory_type="policy",
+                        scope="project:alpha",
+                        source_kind="human",
+                    )
+                    source_store.start_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary="start before raw snapshot restore malformed latest start token budget hint",
+                        context_budget_tokens=256,
+                    )
+                    snapshot_path = work / ".zerker" / "snapshot.json"
+                    export_output = io.StringIO()
+                    with redirect_stdout(export_output):
+                        export_exit_code = main(["--db", str(source_db_path), "snapshot", "--out", str(snapshot_path)])
+
+                    continuity_path = snapshot_path.with_suffix(".continuity.json")
+                    continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+                    continuity_payload["session_lifecycle_rollup"]["sessions"][0][
+                        "latest_start_token_budget_hint"
+                    ] = latest_start_token_budget_hint
+                    continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+                    db_path = work / ".zerker" / "restored.sqlite"
+                    output = io.StringIO()
+                    with redirect_stdout(output):
+                        exit_code = main(["--db", str(db_path), "restore", str(snapshot_path), "--summary-only"])
+
+                    summary = output.getvalue()
+                    restored_store = MemoryStore(db_path)
+
+                self.assertEqual(export_exit_code, 0)
+                self.assertEqual(exit_code, 0)
+                self.assertEqual(restored_store.stats()["memory_count"], 1)
+                self.assertIn("Zerker Memory restore", summary)
+                self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+                self.assertIn("Session continuity verify: failed", summary)
+                self.assertIn(f"Session continuity error: invalid continuity sidecar: {expected_error}", summary)
+                self.assertNotIn("Retention sessions:", summary)
+                self.assertNotIn("Lifecycle sessions:", summary)
+
+    def test_restore_snapshot_summary_only_reports_negative_lifecycle_event_totals_in_session_continuity_sidecar(self):
+        count_fields = {
+            "start": "start_count",
+            "checkpoint": "checkpoint_count",
+            "snapshot": "snapshot_count",
+            "snapshot_soft_delete": "snapshot_soft_delete_count",
+            "end": "end_count",
+        }
+
+        for event_kind in count_fields:
+            with self.subTest(event_kind=event_kind):
+                with tempfile.TemporaryDirectory() as tmp:
+                    work = Path(tmp)
+                    source_db_path = work / ".zerker" / "source.sqlite"
+                    source_store = MemoryStore(source_db_path)
+                    source_store.init()
+                    source_store.remember(
+                        "Production deploys require approval",
+                        memory_type="policy",
+                        scope="project:alpha",
+                        source_kind="human",
+                    )
+                    source_store.start_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"start before raw snapshot restore negative {event_kind} lifecycle total",
+                        context_budget_tokens=256,
+                    )
+                    source_store.checkpoint_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"checkpoint before raw snapshot restore negative {event_kind} lifecycle total",
+                    )
+                    session_snapshot = source_store.snapshot_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"snapshot before raw snapshot restore negative {event_kind} lifecycle total",
+                    )
+                    source_store.soft_delete_session_snapshot_payload(
+                        session_snapshot["session_snapshot_id"],
+                        actor_id="codex",
+                        reason=f"retention compacted before restore negative {event_kind} lifecycle total",
+                    )
+                    source_store.end_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"end before raw snapshot restore negative {event_kind} lifecycle total",
+                    )
+                    snapshot_path = work / ".zerker" / "snapshot.json"
+                    export_output = io.StringIO()
+                    with redirect_stdout(export_output):
+                        export_exit_code = main(["--db", str(source_db_path), "snapshot", "--out", str(snapshot_path)])
+
+                    continuity_path = snapshot_path.with_suffix(".continuity.json")
+                    continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+                    continuity_payload["session_lifecycle_rollup"]["event_kind_counts"][event_kind] = -1
+                    continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+                    db_path = work / ".zerker" / "restored.sqlite"
+                    output = io.StringIO()
+                    with redirect_stdout(output):
+                        exit_code = main(["--db", str(db_path), "restore", str(snapshot_path), "--summary-only"])
+
+                    summary = output.getvalue()
+                    restored_store = MemoryStore(db_path)
+
+                self.assertEqual(export_exit_code, 0)
+                self.assertEqual(exit_code, 0)
+                self.assertEqual(restored_store.stats()["memory_count"], 1)
+                self.assertIn("Zerker Memory restore", summary)
+                self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+                self.assertIn("Session continuity verify: failed", summary)
+                self.assertIn(
+                    "Session continuity error: invalid continuity sidecar: "
+                    f"session_lifecycle_rollup.event_kind_counts.{event_kind} must be non-negative",
+                    summary,
+                )
+                self.assertNotIn("Retention sessions:", summary)
+                self.assertNotIn("Lifecycle sessions:", summary)
+
+    def test_restore_snapshot_summary_only_reports_negative_session_lifecycle_counts_in_session_continuity_sidecar(self):
+        count_fields = {
+            "start": "start_count",
+            "checkpoint": "checkpoint_count",
+            "snapshot": "snapshot_count",
+            "snapshot_soft_delete": "snapshot_soft_delete_count",
+            "end": "end_count",
+        }
+
+        for event_kind, session_field in count_fields.items():
+            with self.subTest(event_kind=event_kind):
+                with tempfile.TemporaryDirectory() as tmp:
+                    work = Path(tmp)
+                    source_db_path = work / ".zerker" / "source.sqlite"
+                    source_store = MemoryStore(source_db_path)
+                    source_store.init()
+                    source_store.remember(
+                        "Production deploys require approval",
+                        memory_type="policy",
+                        scope="project:alpha",
+                        source_kind="human",
+                    )
+                    source_store.start_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"start before raw snapshot restore negative session {event_kind} lifecycle count",
+                        context_budget_tokens=256,
+                    )
+                    source_store.checkpoint_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"checkpoint before raw snapshot restore negative session {event_kind} lifecycle count",
+                    )
+                    session_snapshot = source_store.snapshot_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"snapshot before raw snapshot restore negative session {event_kind} lifecycle count",
+                    )
+                    source_store.soft_delete_session_snapshot_payload(
+                        session_snapshot["session_snapshot_id"],
+                        actor_id="codex",
+                        reason=f"retention compacted before restore negative session {event_kind} lifecycle count",
+                    )
+                    source_store.end_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"end before raw snapshot restore negative session {event_kind} lifecycle count",
+                    )
+                    snapshot_path = work / ".zerker" / "snapshot.json"
+                    export_output = io.StringIO()
+                    with redirect_stdout(export_output):
+                        export_exit_code = main(["--db", str(source_db_path), "snapshot", "--out", str(snapshot_path)])
+
+                    continuity_path = snapshot_path.with_suffix(".continuity.json")
+                    continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+                    continuity_payload["session_lifecycle_rollup"]["sessions"][0][session_field] = -1
+                    continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+                    db_path = work / ".zerker" / "restored.sqlite"
+                    output = io.StringIO()
+                    with redirect_stdout(output):
+                        exit_code = main(["--db", str(db_path), "restore", str(snapshot_path), "--summary-only"])
+
+                    summary = output.getvalue()
+                    restored_store = MemoryStore(db_path)
+
+                self.assertEqual(export_exit_code, 0)
+                self.assertEqual(exit_code, 0)
+                self.assertEqual(restored_store.stats()["memory_count"], 1)
+                self.assertIn("Zerker Memory restore", summary)
+                self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+                self.assertIn("Session continuity verify: failed", summary)
+                self.assertIn(
+                    "Session continuity error: invalid continuity sidecar: "
+                    f"session_lifecycle_rollup.sessions[*].{session_field} must be non-negative",
+                    summary,
+                )
+                self.assertNotIn("Retention sessions:", summary)
+                self.assertNotIn("Lifecycle sessions:", summary)
+
+    def test_restore_snapshot_summary_only_reports_incoherent_session_latest_event_kind_in_session_continuity_sidecar(self):
+        count_fields = {
+            "start": "start_count",
+            "checkpoint": "checkpoint_count",
+            "snapshot": "snapshot_count",
+            "snapshot_soft_delete": "snapshot_soft_delete_count",
+            "end": "end_count",
+        }
+
+        for event_kind, session_field in count_fields.items():
+            with self.subTest(event_kind=event_kind):
+                with tempfile.TemporaryDirectory() as tmp:
+                    work = Path(tmp)
+                    source_db_path = work / ".zerker" / "source.sqlite"
+                    source_store = MemoryStore(source_db_path)
+                    source_store.init()
+                    source_store.remember(
+                        "Production deploys require approval",
+                        memory_type="policy",
+                        scope="project:alpha",
+                        source_kind="human",
+                    )
+                    source_store.start_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"start before raw snapshot restore incoherent latest {event_kind} lifecycle row",
+                        context_budget_tokens=256,
+                    )
+                    source_store.checkpoint_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"checkpoint before raw snapshot restore incoherent latest {event_kind} lifecycle row",
+                    )
+                    session_snapshot = source_store.snapshot_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"snapshot before raw snapshot restore incoherent latest {event_kind} lifecycle row",
+                    )
+                    source_store.soft_delete_session_snapshot_payload(
+                        session_snapshot["session_snapshot_id"],
+                        actor_id="codex",
+                        reason=f"retention compacted before restore incoherent latest {event_kind} lifecycle row",
+                    )
+                    source_store.end_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"end before raw snapshot restore incoherent latest {event_kind} lifecycle row",
+                    )
+                    snapshot_path = work / ".zerker" / "snapshot.json"
+                    export_output = io.StringIO()
+                    with redirect_stdout(export_output):
+                        export_exit_code = main(["--db", str(source_db_path), "snapshot", "--out", str(snapshot_path)])
+
+                    continuity_path = snapshot_path.with_suffix(".continuity.json")
+                    continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+                    continuity_payload["session_lifecycle_rollup"]["sessions"][0]["latest_event_kind"] = event_kind
+                    continuity_payload["session_lifecycle_rollup"]["sessions"][0][session_field] = 0
+                    continuity_payload["session_lifecycle_rollup"]["event_kind_counts"][event_kind] = 0
+                    continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+                    db_path = work / ".zerker" / "restored.sqlite"
+                    output = io.StringIO()
+                    with redirect_stdout(output):
+                        exit_code = main(["--db", str(db_path), "restore", str(snapshot_path), "--summary-only"])
+
+                    summary = output.getvalue()
+                    restored_store = MemoryStore(db_path)
+
+                self.assertEqual(export_exit_code, 0)
+                self.assertEqual(exit_code, 0)
+                self.assertEqual(restored_store.stats()["memory_count"], 1)
+                self.assertIn("Zerker Memory restore", summary)
+                self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+                self.assertIn("Session continuity verify: failed", summary)
+                self.assertIn(
+                    "Session continuity error: invalid continuity sidecar: "
+                    f"session_lifecycle_rollup.sessions[*].latest_event_kind={event_kind} requires {session_field} > 0",
+                    summary,
+                )
+                self.assertNotIn("Retention sessions:", summary)
+                self.assertNotIn("Lifecycle sessions:", summary)
+
+    def test_restore_snapshot_summary_only_reports_missing_latest_event_identifier_in_session_continuity_sidecar(self):
+        identifier_fields = {
+            "start": "latest_start_session_start_id",
+            "checkpoint": "latest_checkpoint_id",
+            "snapshot": "latest_session_snapshot_id",
+            "snapshot_soft_delete": "latest_soft_deleted_session_snapshot_id",
+            "end": "latest_session_end_id",
+        }
+
+        for event_kind, identifier_field in identifier_fields.items():
+            with self.subTest(event_kind=event_kind):
+                with tempfile.TemporaryDirectory() as tmp:
+                    work = Path(tmp)
+                    source_db_path = work / ".zerker" / "source.sqlite"
+                    source_store = MemoryStore(source_db_path)
+                    source_store.init()
+                    source_store.remember(
+                        "Production deploys require approval",
+                        memory_type="policy",
+                        scope="project:alpha",
+                        source_kind="human",
+                    )
+                    source_store.start_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"start before raw snapshot restore missing latest {event_kind} identifier",
+                        context_budget_tokens=256,
+                    )
+                    source_store.checkpoint_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"checkpoint before raw snapshot restore missing latest {event_kind} identifier",
+                    )
+                    session_snapshot = source_store.snapshot_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"snapshot before raw snapshot restore missing latest {event_kind} identifier",
+                    )
+                    source_store.soft_delete_session_snapshot_payload(
+                        session_snapshot["session_snapshot_id"],
+                        actor_id="codex",
+                        reason=f"retention compacted before restore missing latest {event_kind} identifier",
+                    )
+                    source_store.end_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"end before raw snapshot restore missing latest {event_kind} identifier",
+                    )
+                    snapshot_path = work / ".zerker" / "snapshot.json"
+                    export_output = io.StringIO()
+                    with redirect_stdout(export_output):
+                        export_exit_code = main(["--db", str(source_db_path), "snapshot", "--out", str(snapshot_path)])
+
+                    continuity_path = snapshot_path.with_suffix(".continuity.json")
+                    continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+                    continuity_payload["session_lifecycle_rollup"]["sessions"][0]["latest_event_kind"] = event_kind
+                    continuity_payload["session_lifecycle_rollup"]["sessions"][0][identifier_field] = None
+                    continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+                    db_path = work / ".zerker" / "restored.sqlite"
+                    output = io.StringIO()
+                    with redirect_stdout(output):
+                        exit_code = main(["--db", str(db_path), "restore", str(snapshot_path), "--summary-only"])
+
+                    summary = output.getvalue()
+                    restored_store = MemoryStore(db_path)
+
+                self.assertEqual(export_exit_code, 0)
+                self.assertEqual(exit_code, 0)
+                self.assertEqual(restored_store.stats()["memory_count"], 1)
+                self.assertIn("Zerker Memory restore", summary)
+                self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+                self.assertIn("Session continuity verify: failed", summary)
+                self.assertIn(
+                    "Session continuity error: invalid continuity sidecar: "
+                    f"session_lifecycle_rollup.sessions[*].latest_event_kind={event_kind} "
+                    f"requires {identifier_field}",
+                    summary,
+                )
+                self.assertNotIn("Retention sessions:", summary)
+                self.assertNotIn("Lifecycle sessions:", summary)
+
+    def test_restore_snapshot_summary_only_reports_mismatched_latest_lifecycle_id_in_session_continuity_sidecar(self):
+        identifier_fields = {
+            "start": "latest_start_session_start_id",
+            "checkpoint": "latest_checkpoint_id",
+            "snapshot": "latest_session_snapshot_id",
+            "snapshot_soft_delete": "latest_soft_deleted_session_snapshot_id",
+            "end": "latest_session_end_id",
+        }
+        root_fields = {
+            "start": "latest_start_root",
+            "checkpoint": "latest_checkpoint_root",
+            "snapshot": "latest_session_snapshot_root",
+            "snapshot_soft_delete": "latest_soft_delete_root",
+            "end": "latest_session_end_root",
+        }
+
+        for event_kind, identifier_field in identifier_fields.items():
+            with self.subTest(event_kind=event_kind):
+                with tempfile.TemporaryDirectory() as tmp:
+                    work = Path(tmp)
+                    source_db_path = work / ".zerker" / "source.sqlite"
+                    source_store = MemoryStore(source_db_path)
+                    source_store.init()
+                    source_store.remember(
+                        "Production deploys require approval",
+                        memory_type="policy",
+                        scope="project:alpha",
+                        source_kind="human",
+                    )
+                    source_store.start_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"start before raw snapshot restore mismatched latest lifecycle id for {event_kind}",
+                        context_budget_tokens=256,
+                    )
+                    source_store.checkpoint_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"checkpoint before raw snapshot restore mismatched latest lifecycle id for {event_kind}",
+                    )
+                    session_snapshot = source_store.snapshot_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"snapshot before raw snapshot restore mismatched latest lifecycle id for {event_kind}",
+                    )
+                    source_store.soft_delete_session_snapshot_payload(
+                        session_snapshot["session_snapshot_id"],
+                        actor_id="codex",
+                        reason=f"retention compacted before restore mismatched latest lifecycle id for {event_kind}",
+                    )
+                    source_store.end_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"end before raw snapshot restore mismatched latest lifecycle id for {event_kind}",
+                    )
+                    snapshot_path = work / ".zerker" / "snapshot.json"
+                    export_output = io.StringIO()
+                    with redirect_stdout(export_output):
+                        export_exit_code = main(["--db", str(source_db_path), "snapshot", "--out", str(snapshot_path)])
+
+                    continuity_path = snapshot_path.with_suffix(".continuity.json")
+                    continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+                    continuity_payload["session_lifecycle_rollup"]["sessions"][0]["latest_event_kind"] = event_kind
+                    continuity_payload["session_lifecycle_rollup"]["sessions"][0]["latest_status_root"] = (
+                        continuity_payload["session_lifecycle_rollup"]["sessions"][0][root_fields[event_kind]]
+                    )
+                    continuity_payload["session_lifecycle_rollup"]["sessions"][0]["latest_lifecycle_id"] = (
+                        f"mismatched-{event_kind}-lifecycle-id"
+                    )
+                    continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+                    db_path = work / ".zerker" / "restored.sqlite"
+                    output = io.StringIO()
+                    with redirect_stdout(output):
+                        exit_code = main(["--db", str(db_path), "restore", str(snapshot_path), "--summary-only"])
+
+                    summary = output.getvalue()
+                    restored_store = MemoryStore(db_path)
+
+                self.assertEqual(export_exit_code, 0)
+                self.assertEqual(exit_code, 0)
+                self.assertEqual(restored_store.stats()["memory_count"], 1)
+                self.assertIn("Zerker Memory restore", summary)
+                self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+                self.assertIn("Session continuity verify: failed", summary)
+                self.assertIn(
+                    "Session continuity error: invalid continuity sidecar: "
+                    "session_lifecycle_rollup.sessions[*].latest_lifecycle_id must equal "
+                    f"{identifier_field} when latest_event_kind={event_kind}",
+                    summary,
+                )
+                self.assertNotIn("Retention sessions:", summary)
+                self.assertNotIn("Lifecycle sessions:", summary)
+
+    def test_restore_snapshot_summary_only_reports_missing_latest_event_root_in_session_continuity_sidecar(self):
+        identifier_fields = {
+            "start": "latest_start_session_start_id",
+            "checkpoint": "latest_checkpoint_id",
+            "snapshot": "latest_session_snapshot_id",
+            "snapshot_soft_delete": "latest_soft_deleted_session_snapshot_id",
+            "end": "latest_session_end_id",
+        }
+        root_fields = {
+            "start": "latest_start_root",
+            "checkpoint": "latest_checkpoint_root",
+            "snapshot": "latest_session_snapshot_root",
+            "snapshot_soft_delete": "latest_soft_delete_root",
+            "end": "latest_session_end_root",
+        }
+
+        for event_kind, root_field in root_fields.items():
+            with self.subTest(event_kind=event_kind):
+                with tempfile.TemporaryDirectory() as tmp:
+                    work = Path(tmp)
+                    source_db_path = work / ".zerker" / "source.sqlite"
+                    source_store = MemoryStore(source_db_path)
+                    source_store.init()
+                    source_store.remember(
+                        "Production deploys require approval",
+                        memory_type="policy",
+                        scope="project:alpha",
+                        source_kind="human",
+                    )
+                    source_store.start_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"start before raw snapshot restore missing latest {event_kind} root",
+                        context_budget_tokens=256,
+                    )
+                    source_store.checkpoint_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"checkpoint before raw snapshot restore missing latest {event_kind} root",
+                    )
+                    session_snapshot = source_store.snapshot_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"snapshot before raw snapshot restore missing latest {event_kind} root",
+                    )
+                    source_store.soft_delete_session_snapshot_payload(
+                        session_snapshot["session_snapshot_id"],
+                        actor_id="codex",
+                        reason=f"retention compacted before restore missing latest {event_kind} root",
+                    )
+                    source_store.end_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"end before raw snapshot restore missing latest {event_kind} root",
+                    )
+                    snapshot_path = work / ".zerker" / "snapshot.json"
+                    export_output = io.StringIO()
+                    with redirect_stdout(export_output):
+                        export_exit_code = main(["--db", str(source_db_path), "snapshot", "--out", str(snapshot_path)])
+
+                    continuity_path = snapshot_path.with_suffix(".continuity.json")
+                    continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+                    continuity_payload["session_lifecycle_rollup"]["sessions"][0]["latest_event_kind"] = event_kind
+                    continuity_payload["session_lifecycle_rollup"]["sessions"][0]["latest_lifecycle_id"] = (
+                        continuity_payload["session_lifecycle_rollup"]["sessions"][0][identifier_fields[event_kind]]
+                    )
+                    continuity_payload["session_lifecycle_rollup"]["sessions"][0][root_field] = None
+                    continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+                    db_path = work / ".zerker" / "restored.sqlite"
+                    output = io.StringIO()
+                    with redirect_stdout(output):
+                        exit_code = main(["--db", str(db_path), "restore", str(snapshot_path), "--summary-only"])
+
+                    summary = output.getvalue()
+                    restored_store = MemoryStore(db_path)
+
+                self.assertEqual(export_exit_code, 0)
+                self.assertEqual(exit_code, 0)
+                self.assertEqual(restored_store.stats()["memory_count"], 1)
+                self.assertIn("Zerker Memory restore", summary)
+                self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+                self.assertIn("Session continuity verify: failed", summary)
+                self.assertIn(
+                    "Session continuity error: invalid continuity sidecar: "
+                    f"session_lifecycle_rollup.sessions[*].latest_event_kind={event_kind} "
+                    f"requires {root_field}",
+                    summary,
+                )
+                self.assertNotIn("Retention sessions:", summary)
+                self.assertNotIn("Lifecycle sessions:", summary)
+
+    def test_restore_snapshot_summary_only_reports_mismatched_latest_status_root_in_session_continuity_sidecar(self):
+        identifier_fields = {
+            "start": "latest_start_session_start_id",
+            "checkpoint": "latest_checkpoint_id",
+            "snapshot": "latest_session_snapshot_id",
+            "snapshot_soft_delete": "latest_soft_deleted_session_snapshot_id",
+            "end": "latest_session_end_id",
+        }
+        root_fields = {
+            "start": "latest_start_root",
+            "checkpoint": "latest_checkpoint_root",
+            "snapshot": "latest_session_snapshot_root",
+            "snapshot_soft_delete": "latest_soft_delete_root",
+            "end": "latest_session_end_root",
+        }
+
+        for event_kind, root_field in root_fields.items():
+            with self.subTest(event_kind=event_kind):
+                with tempfile.TemporaryDirectory() as tmp:
+                    work = Path(tmp)
+                    source_db_path = work / ".zerker" / "source.sqlite"
+                    source_store = MemoryStore(source_db_path)
+                    source_store.init()
+                    source_store.remember(
+                        "Production deploys require approval",
+                        memory_type="policy",
+                        scope="project:alpha",
+                        source_kind="human",
+                    )
+                    source_store.start_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"start before raw snapshot restore mismatched latest status root for {event_kind}",
+                        context_budget_tokens=256,
+                    )
+                    source_store.checkpoint_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"checkpoint before raw snapshot restore mismatched latest status root for {event_kind}",
+                    )
+                    session_snapshot = source_store.snapshot_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"snapshot before raw snapshot restore mismatched latest status root for {event_kind}",
+                    )
+                    source_store.soft_delete_session_snapshot_payload(
+                        session_snapshot["session_snapshot_id"],
+                        actor_id="codex",
+                        reason=f"retention compacted before restore mismatched latest status root for {event_kind}",
+                    )
+                    source_store.end_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"end before raw snapshot restore mismatched latest status root for {event_kind}",
+                    )
+                    snapshot_path = work / ".zerker" / "snapshot.json"
+                    export_output = io.StringIO()
+                    with redirect_stdout(export_output):
+                        export_exit_code = main(["--db", str(source_db_path), "snapshot", "--out", str(snapshot_path)])
+
+                    continuity_path = snapshot_path.with_suffix(".continuity.json")
+                    continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+                    continuity_payload["session_lifecycle_rollup"]["sessions"][0]["latest_event_kind"] = event_kind
+                    continuity_payload["session_lifecycle_rollup"]["sessions"][0]["latest_lifecycle_id"] = (
+                        continuity_payload["session_lifecycle_rollup"]["sessions"][0][identifier_fields[event_kind]]
+                    )
+                    continuity_payload["session_lifecycle_rollup"]["sessions"][0]["latest_status_root"] = "sha256:mismatched-status-root"
+                    continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+                    db_path = work / ".zerker" / "restored.sqlite"
+                    output = io.StringIO()
+                    with redirect_stdout(output):
+                        exit_code = main(["--db", str(db_path), "restore", str(snapshot_path), "--summary-only"])
+
+                    summary = output.getvalue()
+                    restored_store = MemoryStore(db_path)
+
+                self.assertEqual(export_exit_code, 0)
+                self.assertEqual(exit_code, 0)
+                self.assertEqual(restored_store.stats()["memory_count"], 1)
+                self.assertIn("Zerker Memory restore", summary)
+                self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+                self.assertIn("Session continuity verify: failed", summary)
+                self.assertIn(
+                    "Session continuity error: invalid continuity sidecar: "
+                    "session_lifecycle_rollup.sessions[*].latest_status_root must equal "
+                    f"{root_field} when latest_event_kind={event_kind}",
+                    summary,
+                )
+                self.assertNotIn("Retention sessions:", summary)
+                self.assertNotIn("Lifecycle sessions:", summary)
+
+    def test_restore_snapshot_summary_only_reports_mismatched_latest_event_created_at_in_session_continuity_sidecar(self):
+        identifier_fields = {
+            "start": "latest_start_session_start_id",
+            "checkpoint": "latest_checkpoint_id",
+            "snapshot": "latest_session_snapshot_id",
+            "snapshot_soft_delete": "latest_soft_deleted_session_snapshot_id",
+            "end": "latest_session_end_id",
+        }
+        root_fields = {
+            "start": "latest_start_root",
+            "checkpoint": "latest_checkpoint_root",
+            "snapshot": "latest_session_snapshot_root",
+            "snapshot_soft_delete": "latest_soft_delete_root",
+            "end": "latest_session_end_root",
+        }
+        created_at_fields = {
+            "start": "latest_start_created_at",
+            "checkpoint": "latest_checkpoint_created_at",
+            "snapshot": "latest_session_snapshot_created_at",
+            "snapshot_soft_delete": "latest_soft_deleted_deleted_at",
+            "end": "latest_session_end_created_at",
+        }
+
+        for event_kind, created_at_field in created_at_fields.items():
+            with self.subTest(event_kind=event_kind):
+                with tempfile.TemporaryDirectory() as tmp:
+                    work = Path(tmp)
+                    source_db_path = work / ".zerker" / "source.sqlite"
+                    source_store = MemoryStore(source_db_path)
+                    source_store.init()
+                    source_store.remember(
+                        "Production deploys require approval",
+                        memory_type="policy",
+                        scope="project:alpha",
+                        source_kind="human",
+                    )
+                    source_store.start_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"start before raw snapshot restore mismatched latest event created_at for {event_kind}",
+                        context_budget_tokens=256,
+                    )
+                    source_store.checkpoint_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"checkpoint before raw snapshot restore mismatched latest event created_at for {event_kind}",
+                    )
+                    session_snapshot = source_store.snapshot_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"snapshot before raw snapshot restore mismatched latest event created_at for {event_kind}",
+                    )
+                    source_store.soft_delete_session_snapshot_payload(
+                        session_snapshot["session_snapshot_id"],
+                        actor_id="codex",
+                        reason=f"retention compacted before restore mismatched latest event created_at for {event_kind}",
+                    )
+                    source_store.end_session(
+                        "session://alpha",
+                        actor_id="codex",
+                        scope="project:alpha",
+                        summary=f"end before raw snapshot restore mismatched latest event created_at for {event_kind}",
+                    )
+                    snapshot_path = work / ".zerker" / "snapshot.json"
+                    export_output = io.StringIO()
+                    with redirect_stdout(export_output):
+                        export_exit_code = main(["--db", str(source_db_path), "snapshot", "--out", str(snapshot_path)])
+
+                    continuity_path = snapshot_path.with_suffix(".continuity.json")
+                    continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+                    continuity_payload["session_lifecycle_rollup"]["sessions"][0]["latest_event_kind"] = event_kind
+                    continuity_payload["session_lifecycle_rollup"]["sessions"][0]["latest_lifecycle_id"] = (
+                        continuity_payload["session_lifecycle_rollup"]["sessions"][0][identifier_fields[event_kind]]
+                    )
+                    continuity_payload["session_lifecycle_rollup"]["sessions"][0]["latest_status_root"] = (
+                        continuity_payload["session_lifecycle_rollup"]["sessions"][0][root_fields[event_kind]]
+                    )
+                    continuity_payload["session_lifecycle_rollup"]["sessions"][0]["latest_event_created_at"] = (
+                        f"mismatched-{event_kind}-created-at"
+                    )
+                    continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+                    db_path = work / ".zerker" / "restored.sqlite"
+                    output = io.StringIO()
+                    with redirect_stdout(output):
+                        exit_code = main(["--db", str(db_path), "restore", str(snapshot_path), "--summary-only"])
+
+                    summary = output.getvalue()
+                    restored_store = MemoryStore(db_path)
+
+                self.assertEqual(export_exit_code, 0)
+                self.assertEqual(exit_code, 0)
+                self.assertEqual(restored_store.stats()["memory_count"], 1)
+                self.assertIn("Zerker Memory restore", summary)
+                self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+                self.assertIn("Session continuity verify: failed", summary)
+                self.assertIn(
+                    "Session continuity error: invalid continuity sidecar: "
+                    "session_lifecycle_rollup.sessions[*].latest_event_created_at must equal "
+                    f"{created_at_field} when latest_event_kind={event_kind}",
+                    summary,
+                )
+                self.assertNotIn("Retention sessions:", summary)
+                self.assertNotIn("Lifecycle sessions:", summary)
+
+    def test_restore_snapshot_summary_only_reports_unknown_session_retention_state_in_session_continuity_sidecar(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            source_db_path = work / ".zerker" / "source.sqlite"
+            source_store = MemoryStore(source_db_path)
+            source_store.init()
+            source_store.remember(
+                "Production deploys require approval",
+                memory_type="policy",
+                scope="project:alpha",
+                source_kind="human",
+            )
+            source_store.start_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="start before raw snapshot restore unknown retention state",
+                context_budget_tokens=256,
+            )
+            source_store.snapshot_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="snapshot before raw snapshot restore unknown retention state",
+            )
+            snapshot_path = work / ".zerker" / "snapshot.json"
+            export_output = io.StringIO()
+            with redirect_stdout(export_output):
+                export_exit_code = main(["--db", str(source_db_path), "snapshot", "--out", str(snapshot_path)])
+
+            continuity_path = snapshot_path.with_suffix(".continuity.json")
+            continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+            continuity_payload["session_retention_rollup"]["sessions"][0]["retention_state"] = "archived"
+            continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+            db_path = work / ".zerker" / "restored.sqlite"
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = main(["--db", str(db_path), "restore", str(snapshot_path), "--summary-only"])
+
+            summary = output.getvalue()
+            restored_store = MemoryStore(db_path)
+
+        self.assertEqual(export_exit_code, 0)
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(restored_store.stats()["memory_count"], 1)
+        self.assertIn("Zerker Memory restore", summary)
+        self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+        self.assertIn("Session continuity verify: failed", summary)
+        self.assertIn(
+            "Session continuity error: invalid continuity sidecar: "
+            "session_retention_rollup.sessions[*].retention_state must be one of "
+            "[all_available, mixed, soft_deleted_only]",
+            summary,
+        )
+        self.assertNotIn("Retention sessions:", summary)
+        self.assertNotIn("Lifecycle sessions:", summary)
+
+    def test_restore_snapshot_summary_only_reports_unknown_session_payload_status_in_session_continuity_sidecar(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            source_db_path = work / ".zerker" / "source.sqlite"
+            source_store = MemoryStore(source_db_path)
+            source_store.init()
+            source_store.remember(
+                "Production deploys require approval",
+                memory_type="policy",
+                scope="project:alpha",
+                source_kind="human",
+            )
+            source_store.start_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="start before raw snapshot restore unknown payload status",
+                context_budget_tokens=256,
+            )
+            source_store.snapshot_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="snapshot before raw snapshot restore unknown payload status",
+            )
+            snapshot_path = work / ".zerker" / "snapshot.json"
+            export_output = io.StringIO()
+            with redirect_stdout(export_output):
+                export_exit_code = main(["--db", str(source_db_path), "snapshot", "--out", str(snapshot_path)])
+
+            continuity_path = snapshot_path.with_suffix(".continuity.json")
+            continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+            continuity_payload["session_retention_rollup"]["sessions"][0]["latest_payload_status"] = "archived"
+            continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+            db_path = work / ".zerker" / "restored.sqlite"
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = main(["--db", str(db_path), "restore", str(snapshot_path), "--summary-only"])
+
+            summary = output.getvalue()
+            restored_store = MemoryStore(db_path)
+
+        self.assertEqual(export_exit_code, 0)
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(restored_store.stats()["memory_count"], 1)
+        self.assertIn("Zerker Memory restore", summary)
+        self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+        self.assertIn("Session continuity verify: failed", summary)
+        self.assertIn(
+            "Session continuity error: invalid continuity sidecar: "
+            "session_retention_rollup.sessions[*].latest_payload_status must be one of "
+            "[available, soft_deleted]",
+            summary,
+        )
+        self.assertNotIn("Retention sessions:", summary)
+        self.assertNotIn("Lifecycle sessions:", summary)
+
+    def test_restore_snapshot_summary_only_reports_incoherent_session_payload_status_counts_in_session_continuity_sidecar(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            source_db_path = work / ".zerker" / "source.sqlite"
+            source_store = MemoryStore(source_db_path)
+            source_store.init()
+            source_store.remember(
+                "Production deploys require approval",
+                memory_type="policy",
+                scope="project:alpha",
+                source_kind="human",
+            )
+            source_store.start_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="start before raw snapshot restore incoherent payload status counts",
+                context_budget_tokens=256,
+            )
+            source_store.snapshot_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="snapshot before raw snapshot restore incoherent payload status counts",
+            )
+            snapshot_path = work / ".zerker" / "snapshot.json"
+            export_output = io.StringIO()
+            with redirect_stdout(export_output):
+                export_exit_code = main(["--db", str(source_db_path), "snapshot", "--out", str(snapshot_path)])
+
+            continuity_path = snapshot_path.with_suffix(".continuity.json")
+            continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+            session = continuity_payload["session_retention_rollup"]["sessions"][0]
+            session["latest_payload_status"] = "soft_deleted"
+            session["available_payload_count"] = 1
+            session["soft_deleted_payload_count"] = 0
+            session["retention_state"] = "all_available"
+            continuity_payload["session_retention_rollup"]["payload_status_counts"] = {
+                "available": 1,
+                "soft_deleted": 0,
+            }
+            continuity_payload["session_retention_rollup"]["retention_state_counts"] = {
+                "all_available": 1,
+                "mixed": 0,
+                "soft_deleted_only": 0,
+            }
+            continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+            db_path = work / ".zerker" / "restored.sqlite"
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = main(["--db", str(db_path), "restore", str(snapshot_path), "--summary-only"])
+
+            summary = output.getvalue()
+            restored_store = MemoryStore(db_path)
+
+        self.assertEqual(export_exit_code, 0)
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(restored_store.stats()["memory_count"], 1)
+        self.assertIn("Zerker Memory restore", summary)
+        self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+        self.assertIn("Session continuity verify: failed", summary)
+        self.assertIn(
+            "Session continuity error: invalid continuity sidecar: "
+            "session_retention_rollup.sessions[*].latest_payload_status=soft_deleted requires soft_deleted_payload_count > 0",
+            summary,
+        )
+        self.assertNotIn("Retention sessions:", summary)
+        self.assertNotIn("Lifecycle sessions:", summary)
+
+    def test_restore_snapshot_summary_only_reports_incoherent_session_retention_state_counts_in_session_continuity_sidecar(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            source_db_path = work / ".zerker" / "source.sqlite"
+            source_store = MemoryStore(source_db_path)
+            source_store.init()
+            source_store.remember(
+                "Production deploys require approval",
+                memory_type="policy",
+                scope="project:alpha",
+                source_kind="human",
+            )
+            source_store.start_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="start before raw snapshot restore incoherent retention state counts",
+                context_budget_tokens=256,
+            )
+            source_store.snapshot_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="snapshot before raw snapshot restore incoherent retention state counts",
+            )
+            snapshot_path = work / ".zerker" / "snapshot.json"
+            export_output = io.StringIO()
+            with redirect_stdout(export_output):
+                export_exit_code = main(["--db", str(source_db_path), "snapshot", "--out", str(snapshot_path)])
+
+            continuity_path = snapshot_path.with_suffix(".continuity.json")
+            continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+            session = continuity_payload["session_retention_rollup"]["sessions"][0]
+            session["latest_payload_status"] = "available"
+            session["available_payload_count"] = 1
+            session["soft_deleted_payload_count"] = 0
+            session["retention_state"] = "soft_deleted_only"
+            continuity_payload["session_retention_rollup"]["payload_status_counts"] = {
+                "available": 1,
+                "soft_deleted": 0,
+            }
+            continuity_payload["session_retention_rollup"]["retention_state_counts"] = {
+                "all_available": 0,
+                "mixed": 0,
+                "soft_deleted_only": 1,
+            }
+            continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+            db_path = work / ".zerker" / "restored.sqlite"
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = main(["--db", str(db_path), "restore", str(snapshot_path), "--summary-only"])
+
+            summary = output.getvalue()
+            restored_store = MemoryStore(db_path)
+
+        self.assertEqual(export_exit_code, 0)
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(restored_store.stats()["memory_count"], 1)
+        self.assertIn("Zerker Memory restore", summary)
+        self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+        self.assertIn("Session continuity verify: failed", summary)
+        self.assertIn(
+            "Session continuity error: invalid continuity sidecar: "
+            "session_retention_rollup.sessions[*].retention_state=soft_deleted_only must match "
+            "available_payload_count=1 and soft_deleted_payload_count=0 (expected all_available)",
+            summary,
+        )
+        self.assertNotIn("Retention sessions:", summary)
+        self.assertNotIn("Lifecycle sessions:", summary)
+
+    def test_restore_snapshot_summary_only_reports_zero_payload_session_row_in_session_continuity_sidecar(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            source_db_path = work / ".zerker" / "source.sqlite"
+            source_store = MemoryStore(source_db_path)
+            source_store.init()
+            source_store.remember(
+                "Production deploys require approval",
+                memory_type="policy",
+                scope="project:alpha",
+                source_kind="human",
+            )
+            source_store.start_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="start before raw snapshot restore zero-payload session row",
+                context_budget_tokens=256,
+            )
+            source_store.snapshot_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="snapshot before raw snapshot restore zero-payload session row",
+            )
+            snapshot_path = work / ".zerker" / "snapshot.json"
+            export_output = io.StringIO()
+            with redirect_stdout(export_output):
+                export_exit_code = main(["--db", str(source_db_path), "snapshot", "--out", str(snapshot_path)])
+
+            continuity_path = snapshot_path.with_suffix(".continuity.json")
+            continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+            session = continuity_payload["session_retention_rollup"]["sessions"][0]
+            session["latest_payload_status"] = "available"
+            session["available_payload_count"] = 0
+            session["soft_deleted_payload_count"] = 0
+            session["retention_state"] = "all_available"
+            continuity_payload["session_retention_rollup"]["payload_status_counts"] = {
+                "available": 0,
+                "soft_deleted": 0,
+            }
+            continuity_payload["session_retention_rollup"]["retention_state_counts"] = {
+                "all_available": 1,
+                "mixed": 0,
+                "soft_deleted_only": 0,
+            }
+            continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+            db_path = work / ".zerker" / "restored.sqlite"
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = main(["--db", str(db_path), "restore", str(snapshot_path), "--summary-only"])
+
+            summary = output.getvalue()
+            restored_store = MemoryStore(db_path)
+
+        self.assertEqual(export_exit_code, 0)
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(restored_store.stats()["memory_count"], 1)
+        self.assertIn("Zerker Memory restore", summary)
+        self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+        self.assertIn("Session continuity verify: failed", summary)
+        self.assertIn(
+            "Session continuity error: invalid continuity sidecar: "
+            "session_retention_rollup.sessions[*] must report at least one available or soft_deleted payload",
+            summary,
+        )
+        self.assertNotIn("Retention sessions:", summary)
+        self.assertNotIn("Lifecycle sessions:", summary)
+
+    def test_restore_snapshot_summary_only_reports_negative_available_payload_count_in_session_continuity_sidecar(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            source_db_path = work / ".zerker" / "source.sqlite"
+            source_store = MemoryStore(source_db_path)
+            source_store.init()
+            source_store.remember(
+                "Production deploys require approval",
+                memory_type="policy",
+                scope="project:alpha",
+                source_kind="human",
+            )
+            source_store.start_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="start before raw snapshot restore negative available payload count",
+                context_budget_tokens=256,
+            )
+            source_store.snapshot_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="snapshot before raw snapshot restore negative available payload count",
+            )
+            snapshot_path = work / ".zerker" / "snapshot.json"
+            export_output = io.StringIO()
+            with redirect_stdout(export_output):
+                export_exit_code = main(["--db", str(source_db_path), "snapshot", "--out", str(snapshot_path)])
+
+            continuity_path = snapshot_path.with_suffix(".continuity.json")
+            continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+            session = continuity_payload["session_retention_rollup"]["sessions"][0]
+            session["latest_payload_status"] = "soft_deleted"
+            session["available_payload_count"] = -1
+            session["soft_deleted_payload_count"] = 1
+            session["retention_state"] = "soft_deleted_only"
+            continuity_payload["session_retention_rollup"]["payload_status_counts"] = {
+                "available": -1,
+                "soft_deleted": 1,
+            }
+            continuity_payload["session_retention_rollup"]["retention_state_counts"] = {
+                "all_available": 0,
+                "mixed": 0,
+                "soft_deleted_only": 1,
+            }
+            continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+            db_path = work / ".zerker" / "restored.sqlite"
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = main(["--db", str(db_path), "restore", str(snapshot_path), "--summary-only"])
+
+            summary = output.getvalue()
+            restored_store = MemoryStore(db_path)
+
+        self.assertEqual(export_exit_code, 0)
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(restored_store.stats()["memory_count"], 1)
+        self.assertIn("Zerker Memory restore", summary)
+        self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+        self.assertIn("Session continuity verify: failed", summary)
+        self.assertIn(
+            "Session continuity error: invalid continuity sidecar: "
+            "session_retention_rollup.sessions[*].available_payload_count must be non-negative",
+            summary,
+        )
+        self.assertNotIn("Retention sessions:", summary)
+        self.assertNotIn("Lifecycle sessions:", summary)
+
+    def test_restore_snapshot_summary_only_reports_negative_soft_deleted_payload_count_in_session_continuity_sidecar(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            source_db_path = work / ".zerker" / "source.sqlite"
+            source_store = MemoryStore(source_db_path)
+            source_store.init()
+            source_store.remember(
+                "Production deploys require approval",
+                memory_type="policy",
+                scope="project:alpha",
+                source_kind="human",
+            )
+            source_store.start_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="start before raw snapshot restore negative soft-deleted payload count",
+                context_budget_tokens=256,
+            )
+            source_store.snapshot_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="snapshot before raw snapshot restore negative soft-deleted payload count",
+            )
+            snapshot_path = work / ".zerker" / "snapshot.json"
+            export_output = io.StringIO()
+            with redirect_stdout(export_output):
+                export_exit_code = main(["--db", str(source_db_path), "snapshot", "--out", str(snapshot_path)])
+
+            continuity_path = snapshot_path.with_suffix(".continuity.json")
+            continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+            session = continuity_payload["session_retention_rollup"]["sessions"][0]
+            session["latest_payload_status"] = "available"
+            session["available_payload_count"] = 1
+            session["soft_deleted_payload_count"] = -1
+            session["retention_state"] = "all_available"
+            continuity_payload["session_retention_rollup"]["payload_status_counts"] = {
+                "available": 1,
+                "soft_deleted": -1,
+            }
+            continuity_payload["session_retention_rollup"]["retention_state_counts"] = {
+                "all_available": 1,
+                "mixed": 0,
+                "soft_deleted_only": 0,
+            }
+            continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+            db_path = work / ".zerker" / "restored.sqlite"
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = main(["--db", str(db_path), "restore", str(snapshot_path), "--summary-only"])
+
+            summary = output.getvalue()
+            restored_store = MemoryStore(db_path)
+
+        self.assertEqual(export_exit_code, 0)
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(restored_store.stats()["memory_count"], 1)
+        self.assertIn("Zerker Memory restore", summary)
+        self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+        self.assertIn("Session continuity verify: failed", summary)
+        self.assertIn(
+            "Session continuity error: invalid continuity sidecar: "
+            "session_retention_rollup.sessions[*].soft_deleted_payload_count must be non-negative",
+            summary,
+        )
+        self.assertNotIn("Retention sessions:", summary)
+        self.assertNotIn("Lifecycle sessions:", summary)
+
+    def test_restore_snapshot_summary_only_reports_negative_available_payload_status_total_in_session_continuity_sidecar(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            source_db_path = work / ".zerker" / "source.sqlite"
+            source_store = MemoryStore(source_db_path)
+            source_store.init()
+            source_store.remember(
+                "Production deploys require approval",
+                memory_type="policy",
+                scope="project:alpha",
+                source_kind="human",
+            )
+            source_store.start_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="start before raw snapshot restore negative available payload-status total",
+                context_budget_tokens=256,
+            )
+            source_store.snapshot_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="snapshot before raw snapshot restore negative available payload-status total",
+            )
+            snapshot_path = work / ".zerker" / "snapshot.json"
+            export_output = io.StringIO()
+            with redirect_stdout(export_output):
+                export_exit_code = main(["--db", str(source_db_path), "snapshot", "--out", str(snapshot_path)])
+
+            continuity_path = snapshot_path.with_suffix(".continuity.json")
+            continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+            continuity_payload["session_retention_rollup"]["payload_status_counts"] = {
+                "available": -1,
+                "soft_deleted": 0,
+            }
+            continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+            db_path = work / ".zerker" / "restored.sqlite"
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = main(["--db", str(db_path), "restore", str(snapshot_path), "--summary-only"])
+
+            summary = output.getvalue()
+            restored_store = MemoryStore(db_path)
+
+        self.assertEqual(export_exit_code, 0)
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(restored_store.stats()["memory_count"], 1)
+        self.assertIn("Zerker Memory restore", summary)
+        self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+        self.assertIn("Session continuity verify: failed", summary)
+        self.assertIn(
+            "Session continuity error: invalid continuity sidecar: "
+            "session_retention_rollup.payload_status_counts.available must be non-negative",
+            summary,
+        )
+        self.assertNotIn("Retention sessions:", summary)
+        self.assertNotIn("Lifecycle sessions:", summary)
+
+    def test_restore_snapshot_summary_only_reports_negative_soft_deleted_payload_status_total_in_session_continuity_sidecar(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            source_db_path = work / ".zerker" / "source.sqlite"
+            source_store = MemoryStore(source_db_path)
+            source_store.init()
+            source_store.remember(
+                "Production deploys require approval",
+                memory_type="policy",
+                scope="project:alpha",
+                source_kind="human",
+            )
+            source_store.start_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="start before raw snapshot restore negative soft-deleted payload-status total",
+                context_budget_tokens=256,
+            )
+            source_store.snapshot_session(
+                "session://alpha",
+                actor_id="codex",
+                scope="project:alpha",
+                summary="snapshot before raw snapshot restore negative soft-deleted payload-status total",
+            )
+            snapshot_path = work / ".zerker" / "snapshot.json"
+            export_output = io.StringIO()
+            with redirect_stdout(export_output):
+                export_exit_code = main(["--db", str(source_db_path), "snapshot", "--out", str(snapshot_path)])
+
+            continuity_path = snapshot_path.with_suffix(".continuity.json")
+            continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+            session = continuity_payload["session_retention_rollup"]["sessions"][0]
+            session["latest_payload_status"] = "soft_deleted"
+            session["available_payload_count"] = 0
+            session["soft_deleted_payload_count"] = 1
+            session["retention_state"] = "soft_deleted_only"
+            continuity_payload["session_retention_rollup"]["payload_status_counts"] = {
+                "available": 0,
+                "soft_deleted": -1,
+            }
+            continuity_payload["session_retention_rollup"]["retention_state_counts"] = {
+                "all_available": 0,
+                "mixed": 0,
+                "soft_deleted_only": 1,
+            }
+            continuity_path.write_text(json.dumps(continuity_payload, indent=2), encoding="utf-8")
+
+            db_path = work / ".zerker" / "restored.sqlite"
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = main(["--db", str(db_path), "restore", str(snapshot_path), "--summary-only"])
+
+            summary = output.getvalue()
+            restored_store = MemoryStore(db_path)
+
+        self.assertEqual(export_exit_code, 0)
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(restored_store.stats()["memory_count"], 1)
+        self.assertIn("Zerker Memory restore", summary)
+        self.assertIn(f"Session continuity sidecar: {continuity_path.resolve()}", summary)
+        self.assertIn("Session continuity verify: failed", summary)
+        self.assertIn(
+            "Session continuity error: invalid continuity sidecar: "
+            "session_retention_rollup.payload_status_counts.soft_deleted must be non-negative",
+            summary,
+        )
+        self.assertNotIn("Retention sessions:", summary)
+        self.assertNotIn("Lifecycle sessions:", summary)
 
     def test_lineage_summary_only_surfaces_verified_write_receipt_chain(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1657,6 +6736,46 @@ class CliOnboardingTest(unittest.TestCase):
         self.assertIn("Trusted provenance: verified", summary)
         self.assertIn("Semantic truth: not guaranteed", summary)
 
+    def test_lineage_summary_only_explains_intervening_write_continuity(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "memory.sqlite"
+            store = MemoryStore(db_path)
+            store.init()
+            memory = store.remember(
+                "Staging deploys require manual SSH",
+                memory_type="semantic",
+                scope="project",
+                source_kind="agent",
+                actor_id="codex",
+                actor_uri="agent://codex/session-b",
+                session_id="session://beta",
+                source_uri="conversation://session-b/message-4",
+                parent_action_id="act_review",
+                environment_hash="sha256:env_fixture",
+            )
+            store.remember(
+                "Unrelated runbook note",
+                memory_type="semantic",
+                scope="project",
+                source_kind="agent",
+                actor_id="codex",
+            )
+            store.reject(memory.id, actor_id="reviewer", reason="superseded runbook")
+
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = main(["--db", str(db_path), "lineage", memory.id, "--summary-only"])
+
+            summary = output.getvalue()
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("Write receipt chain verify: ok", summary)
+        self.assertIn("Continuity basis: prior receipt link + live previous event root", summary)
+        self.assertIn("Intervening events: 1", summary)
+        self.assertIn("Intervening other-memory events: 1", summary)
+        self.assertIn("Trusted provenance: verified", summary)
+        self.assertIn("Semantic truth: not guaranteed", summary)
+
     def test_bundle_verify_summary_only_surfaces_verified_supporting_provenance(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_path = Path(tmp) / "memory.sqlite"
@@ -1705,6 +6824,11 @@ class CliOnboardingTest(unittest.TestCase):
         self.assertIn("Supporting provenance verify: ok", summary)
         self.assertIn("Memory tree verify: ok", summary)
         self.assertIn("Treeship artifacts: art_write_1", summary)
+        self.assertIn("Provenance memory:", summary)
+        self.assertIn("Provenance actor: codex", summary)
+        self.assertIn("Provenance digest:", summary)
+        self.assertIn("Provenance roots:", summary)
+        self.assertIn("Provenance Treeship artifact: art_write_1", summary)
         self.assertIn("Trusted provenance: verified", summary)
         self.assertIn("Semantic truth: not guaranteed", summary)
 
@@ -2790,6 +7914,121 @@ class CliOnboardingTest(unittest.TestCase):
             self.assertIn("Expected public repo: https://github.com/zerkerlabs/zmem", summary)
             self.assertIn("Expected raw install URL: https://raw.githubusercontent.com/zerkerlabs/zmem/main/install.sh", summary)
             self.assertIn("Return packet finalize: FINALIZE_RETURN_PACKET.sh", summary)
+
+    def test_verify_return_packet_archive_mirrors_handoff_session_continuity(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            previous_cwd = Path.cwd()
+            os.chdir(root)
+            try:
+                source_store = MemoryStore(root / ".zerker" / "memory.sqlite")
+                source_store.init()
+                source_store.remember(
+                    "Production deploys require approval",
+                    memory_type="policy",
+                    scope="project",
+                    source_kind="human",
+                    status="active",
+                )
+                source_store.start_session(
+                    "session://alpha",
+                    actor_id="codex",
+                    scope="project",
+                    summary="launch proof continuity session",
+                    context_budget_tokens=256,
+                )
+                source_store.checkpoint_session(
+                    "session://alpha",
+                    actor_id="codex",
+                    scope="project",
+                    summary="checkpoint before return packet",
+                )
+                session_snapshot = source_store.snapshot_session(
+                    "session://alpha",
+                    actor_id="codex",
+                    scope="project",
+                    summary="snapshot before return packet",
+                )
+                source_store.soft_delete_session_snapshot_payload(
+                    session_snapshot["session_snapshot_id"],
+                    actor_id="reviewer",
+                    reason="retention compacted before return packet",
+                )
+                source_store.end_session(
+                    "session://alpha",
+                    actor_id="codex",
+                    scope="project",
+                    summary="closeout before return packet",
+                )
+                create_handoff_package(
+                    source_store,
+                    providers_path=root / ".zerker" / "providers.json",
+                    out_dir=root / ".zerker" / "handoff",
+                    action_id=None,
+                )
+                write_policy_template(root / ".zerker" / "policy.json", force=False)
+                write_provider_config_template(root / ".zerker" / "providers.json", force=False)
+                launch_proof = run_launch_proof(
+                    policy_path=root / ".zerker" / "policy.json",
+                    providers_path=root / ".zerker" / "providers.json",
+                    out_dir=root / ".zerker" / "launch-proof",
+                    agent_id="codex",
+                    scope="project",
+                    task="deploy service to production",
+                    bt_trace_path=Path("examples") / "bt_trace.jsonl",
+                )
+                manifest = json.loads(Path(launch_proof["manifest_path"]).read_text(encoding="utf-8"))
+                for log_name in PUBLIC_VERIFY_LOG_FILENAMES:
+                    (root / ".zerker" / "launch-proof" / "public-verify-logs" / log_name).write_text("ok\n", encoding="utf-8")
+                for asset in manifest["launch_assets"]:
+                    asset_path = root / ".zerker" / "launch-proof" / asset["output_path"]
+                    asset_path.parent.mkdir(parents=True, exist_ok=True)
+                    asset_path.write_text("asset\n", encoding="utf-8")
+                Path(launch_proof["public_verify_result_path"]).write_text(
+                    json.dumps(
+                        {
+                            "schema": "zerker.public_verify_result.v1",
+                            "ok": True,
+                            "exit_code": 0,
+                            "details": "all clean-shell checks passed",
+                            "failed_steps": [],
+                            "install_mode": "venv-pth",
+                        }
+                    )
+                    + "\n",
+                    encoding="utf-8",
+                )
+                write_return_packet_archive(
+                    root=root / ".zerker" / "launch-proof",
+                    archive_path=Path(launch_proof["return_packet_archive_path"]),
+                )
+                result = verify_return_packet_archive(Path(launch_proof["return_packet_archive_path"]))
+                summary = render_return_packet_summary(result)
+            finally:
+                os.chdir(previous_cwd)
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["session_lifecycle_rollup"]["count"], 1)
+        self.assertEqual(result["session_lifecycle_rollup"]["event_kind_counts"]["start"], 1)
+        self.assertEqual(result["session_lifecycle_rollup"]["event_kind_counts"]["checkpoint"], 1)
+        self.assertEqual(result["session_lifecycle_rollup"]["event_kind_counts"]["snapshot"], 1)
+        self.assertEqual(result["session_lifecycle_rollup"]["event_kind_counts"]["snapshot_soft_delete"], 1)
+        self.assertEqual(result["session_lifecycle_rollup"]["event_kind_counts"]["end"], 1)
+        self.assertEqual(result["session_lifecycle_rollup"]["verified_receipt_count"], 5)
+        self.assertEqual(result["session_retention_rollup"]["count"], 1)
+        self.assertEqual(result["session_retention_rollup"]["retention_state_counts"]["soft_deleted_only"], 1)
+        self.assertEqual(
+            result["session_retention_rollup"]["sessions"][0]["latest_soft_deleted_reason"],
+            "retention compacted before return packet",
+        )
+        self.assertIn("Lifecycle sessions: 1", summary)
+        self.assertIn("Lifecycle events: starts=1 checkpoints=1 snapshots=1 snapshot_soft_deletes=1 ends=1", summary)
+        self.assertIn("Lifecycle receipt provenance: 5 verified, 0 failed", summary)
+        self.assertIn("Latest lifecycle session: session://alpha latest=end payload=soft_deleted context_budget_tokens=256", summary)
+        self.assertIn("Retention sessions: 1", summary)
+        self.assertIn("Retention states: all_available=0 mixed=0 soft_deleted_only=1", summary)
+        self.assertIn("Retention payloads: 0 available, 1 soft-deleted", summary)
+        self.assertIn("Latest retention reason: retention compacted before return packet", summary)
 
     def test_verify_return_packet_archive_reports_missing_logs(self):
         with tempfile.TemporaryDirectory() as tmp:

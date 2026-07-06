@@ -11,7 +11,9 @@ from zerker_memory.consolidation import (
     transition_consolidation_job,
 )
 from zerker_memory.consolidation_unwind import (
+    CONSOLIDATION_RETRY_GROUP_REPORT_SCHEMA,
     CONSOLIDATION_RETRY_GUIDANCE_SCHEMA,
+    consolidation_retry_group_report,
     CONSOLIDATION_UNWIND_PLAN_SCHEMA,
     consolidation_retry_guidance,
     consolidation_unwind_plan,
@@ -204,6 +206,78 @@ class ConsolidationUnwindPlanTest(unittest.TestCase):
         self.assertTrue(guidance["steps"][0]["retryable_now"])
         self.assertEqual(guidance["steps"][0]["blocking_reasons"], [])
         self.assertEqual(guidance["steps"][0]["retry_action"], "recreate-missing-summary")
+
+    def test_retry_group_report_groups_shared_impacts_across_multiple_children(self):
+        with TemporaryDirectory() as tmp:
+            job_ledger_path, summary_ledger_path = self._build_verified_nested_ledgers(Path(tmp))
+
+            report = consolidation_retry_group_report(
+                job_ledger_path,
+                summary_ledger_path,
+                ["memory:turn:101", "memory:turn:102"],
+            )
+
+        self.assertEqual(report["schema"], CONSOLIDATION_RETRY_GROUP_REPORT_SCHEMA)
+        self.assertEqual(report["requested_child_ids"], ["memory:turn:101", "memory:turn:102"])
+        self.assertEqual(report["child_report_count"], 2)
+        self.assertEqual(report["impacted_summary_count"], 2)
+        self.assertEqual(report["shared_impacted_summary_count"], 2)
+        self.assertEqual(report["ready_summary_ids"], ["summary:session:alpha"])
+        self.assertEqual(report["blocked_summary_ids"], ["summary:day:2026-06-23:zmem"])
+
+        groups_by_summary_id = {group["summary_id"]: group for group in report["groups"]}
+        session_group = groups_by_summary_id["summary:session:alpha"]
+        self.assertEqual(session_group["dependency_group_status"], "retryable-now")
+        self.assertEqual(session_group["child_ids"], ["memory:turn:101", "memory:turn:102"])
+        self.assertEqual(session_group["ready_child_ids"], ["memory:turn:101", "memory:turn:102"])
+        self.assertEqual(session_group["blocked_child_ids"], [])
+        self.assertEqual(session_group["direct_child_ids"], ["memory:turn:101", "memory:turn:102"])
+        self.assertEqual(session_group["root_child_ids"], [])
+        self.assertEqual(session_group["retry_actions"], ["rematerialize-local-summary"])
+        self.assertEqual(session_group["blocking_reasons"], [])
+        self.assertTrue(session_group["shared_dependency_group"])
+
+        day_group = groups_by_summary_id["summary:day:2026-06-23:zmem"]
+        self.assertEqual(day_group["dependency_group_status"], "blocked")
+        self.assertEqual(day_group["child_ids"], ["memory:turn:101", "memory:turn:102"])
+        self.assertEqual(day_group["ready_child_ids"], [])
+        self.assertEqual(day_group["blocked_child_ids"], ["memory:turn:101", "memory:turn:102"])
+        self.assertEqual(day_group["direct_child_ids"], [])
+        self.assertEqual(day_group["root_child_ids"], ["memory:turn:101", "memory:turn:102"])
+        self.assertEqual(day_group["retry_actions"], ["wait-for-dependent-summary-repair"])
+        self.assertEqual(day_group["blocked_by_summary_ids"], ["summary:session:alpha"])
+
+    def test_retry_group_report_dedupes_requested_children_and_keeps_orphans_out_of_groups(self):
+        with TemporaryDirectory() as tmp:
+            job_ledger_path, summary_ledger_path = self._build_verified_nested_ledgers(Path(tmp))
+
+            report = consolidation_retry_group_report(
+                job_ledger_path,
+                summary_ledger_path,
+                ["summary:session:alpha", "memory:turn:999", "summary:session:alpha"],
+            )
+
+        self.assertEqual(report["requested_child_ids"], ["summary:session:alpha", "memory:turn:999"])
+        self.assertEqual(report["child_report_count"], 2)
+        self.assertEqual(report["impacted_summary_count"], 1)
+        self.assertEqual(report["shared_impacted_summary_count"], 0)
+        self.assertEqual(report["ready_summary_ids"], [])
+        self.assertEqual(report["blocked_summary_ids"], ["summary:day:2026-06-23:zmem"])
+
+        child_reports = {report["child_id"]: report for report in report["child_reports"]}
+        self.assertEqual(child_reports["summary:session:alpha"]["child_kind"], "nested_summary")
+        self.assertEqual(child_reports["summary:session:alpha"]["child_retry_action"], "repair-child-summary-first")
+        self.assertEqual(child_reports["summary:session:alpha"]["impacted_summary_ids"], ["summary:day:2026-06-23:zmem"])
+        self.assertEqual(child_reports["memory:turn:999"]["child_kind"], "orphan_child")
+        self.assertEqual(child_reports["memory:turn:999"]["child_retry_action"], "no-dependent-summaries")
+        self.assertEqual(child_reports["memory:turn:999"]["impacted_summary_ids"], [])
+
+        group = report["groups"][0]
+        self.assertEqual(group["summary_id"], "summary:day:2026-06-23:zmem")
+        self.assertEqual(group["child_ids"], ["summary:session:alpha"])
+        self.assertEqual(group["child_kinds"], ["nested_summary"])
+        self.assertEqual(group["blocking_reasons"], ["nested-child-summary-needs-repair"])
+        self.assertEqual(group["retry_actions"], ["wait-for-child-summary-repair"])
 
     def _build_verified_nested_ledgers(self, root: Path) -> tuple[Path, Path]:
         job_ledger_path = root / "jobs.jsonl"

@@ -1,7 +1,9 @@
 import json
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 from unittest import mock
 
 from zerker_memory.exporter import export_bundle, export_snapshot
@@ -32,6 +34,11 @@ class SnapshotTest(unittest.TestCase):
         self.assertEqual(snapshot["receipt_count"], 1)
         self.assertEqual(snapshot["write_receipt_count"], 1)
         self.assertEqual(snapshot["write_receipts"][0]["memory_id"], snapshot["memories"][0]["id"])
+        self.assertEqual(snapshot["write_receipts"][0]["treeship_statement"]["evidence"]["prior_merkle_root"], merkle_root([]))
+        self.assertEqual(
+            snapshot["write_receipts"][0]["treeship_statement"]["evidence"]["new_merkle_root"],
+            snapshot["write_receipts"][0]["merkle_root"],
+        )
         self.assertGreaterEqual(snapshot["event_count"], 2)
         self.assertEqual(snapshot["merkle_root"], self.store.current_merkle_root())
 
@@ -426,6 +433,278 @@ class SnapshotTest(unittest.TestCase):
         self.assertEqual(result["verified_write_receipt_count"], 3)
         self.assertEqual(result["verified_write_receipt_transition_count"], 1)
 
+    def test_verify_snapshot_surfaces_intervening_write_continuity_counts(self):
+        memory = self.store.remember(
+            "Staging deploys require manual SSH",
+            memory_type="semantic",
+            scope="project",
+            source_kind="agent",
+            actor_id="codex",
+            actor_uri="agent://codex/session-b",
+            session_id="session://beta",
+            source_uri="conversation://session-b/message-4",
+            parent_action_id="act_review",
+            environment_hash="sha256:env_fixture",
+        )
+        self.store.remember(
+            "Unrelated runbook note",
+            memory_type="semantic",
+            scope="project",
+            source_kind="agent",
+            actor_id="codex",
+        )
+        self.store.reject(memory.id, actor_id="reviewer", reason="superseded runbook")
+
+        result = self.store.verify_snapshot(self.store.snapshot())
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["write_receipt_chain_count"], 2)
+        self.assertEqual(result["verified_write_receipt_transition_count"], 1)
+        self.assertEqual(result["total_intervening_event_count"], 1)
+        self.assertEqual(result["total_intervening_other_memory_event_count"], 1)
+        self.assertEqual(len(result["write_receipt_chains"]), 2)
+        memory_chain = next(item for item in result["write_receipt_chains"] if item["memory_id"] == memory.id)
+        self.assertTrue(memory_chain["ok"])
+        self.assertEqual(memory_chain["receipt_count"], 2)
+        self.assertEqual(memory_chain["total_intervening_event_count"], 1)
+        self.assertEqual(memory_chain["total_intervening_other_memory_event_count"], 1)
+        self.assertEqual(len(memory_chain["transitions"]), 1)
+        transition = memory_chain["transitions"][0]
+        self.assertEqual(transition["continuity_basis"], "prior_receipt_link_plus_snapshot_previous_event_root")
+        self.assertEqual(transition["intervening_event_count"], 1)
+        self.assertEqual(transition["intervening_other_memory_event_count"], 1)
+        self.assertTrue(transition["trusted_provenance_verified"])
+        self.assertFalse(transition["semantic_truth_guaranteed"])
+
+    def test_verify_snapshot_surfaces_provenance_anchor_summary(self):
+        memory = self.store.remember(
+            "Production deploys require approval",
+            memory_type="policy",
+            scope="project",
+            source_kind="agent",
+            actor_id="codex",
+            actor_uri="agent://codex/session-a",
+            session_id="session://alpha",
+            source_uri="conversation://session-a/message-17",
+            parent_action_id="act_prompt_injection",
+            environment_hash="sha256:env_fixture",
+        )
+        self.store.promote(memory.id, actor_id="reviewer")
+
+        result = self.store.verify_snapshot(self.store.snapshot())
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["provenance_receipt_count"], 1)
+        self.assertEqual(result["verified_provenance_receipt_count"], 1)
+        self.assertEqual(len(result["provenance_receipts"]), 1)
+        provenance = result["provenance_receipts"][0]
+        self.assertEqual(provenance["memory_id"], memory.id)
+        self.assertEqual(provenance["actor_id"], "codex")
+        self.assertEqual(provenance["actor_uri"], "agent://codex/session-a")
+        self.assertEqual(provenance["content_digest"], f"sha256:{memory.content_hash}")
+        self.assertEqual(provenance["prior_merkle_root"], merkle_root([]))
+        self.assertEqual(provenance["new_merkle_root"], provenance["merkle_root"])
+        self.assertEqual(provenance["treeship_artifact_id"], None)
+        self.assertTrue(provenance["trusted_provenance_verified"])
+        self.assertFalse(provenance["semantic_truth_guaranteed"])
+
+    def test_verify_snapshot_surfaces_parent_supersession_transition_summary(self):
+        stale = self.store.remember(
+            "Status page owner is Alice.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            actor_id="reporter",
+            actor_uri="agent://reporter/session-a",
+            session_id="session://alpha",
+            source_uri="conversation://session-a/message-3",
+            parent_action_id="act_capture_stale",
+            environment_hash="sha256:env_fixture",
+            status="active",
+        )
+        current = self.store.remember(
+            "Status page owner is Alice Chen.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="agent",
+            actor_id="codex",
+            actor_uri="agent://codex/session-b",
+            session_id="session://beta",
+            source_uri="conversation://session-b/message-4",
+            parent_action_id="act_capture_current",
+            environment_hash="sha256:env_fixture",
+            parents=[stale.id],
+        )
+        self.store.promote(current.id, actor_id="reviewer")
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z", stale.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-15T00:00:00Z", "2024-02-01T00:00:00Z", current.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = ?",
+            ("2024-01-01T00:00:00Z", stale.id, "OBSERVED"),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = ?",
+            ("2024-01-15T00:00:00Z", current.id, "PROPOSED"),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = ?",
+            ("2024-02-01T00:00:00Z", current.id, "PROMOTED"),
+        )
+        self.store.conn.commit()
+
+        result = self.store.verify_snapshot(self.store.snapshot())
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["supersession_transition_count"], 1)
+        self.assertEqual(result["verified_supersession_transition_count"], 1)
+        self.assertEqual(len(result["supersession_transitions"]), 1)
+        transition = result["supersession_transitions"][0]
+        current_receipts = self.store.memory_write_receipts(current.id)
+        anchor_receipt = current_receipts[-1]
+        self.assertEqual(transition["superseded_memory_id"], stale.id)
+        self.assertEqual(transition["superseding_memory_ids"], [current.id])
+        self.assertEqual(transition["superseded_at"], "2024-02-01T00:00:00Z")
+        self.assertEqual(transition["supersession_reasons"], ["active-child-candidate"])
+        self.assertEqual(transition["anchor_memory_id"], current.id)
+        self.assertEqual(transition["anchor_receipt_id"], anchor_receipt["receipt_id"])
+        self.assertEqual(transition["anchor_receipt_hash"], anchor_receipt["receipt_hash"])
+        self.assertEqual(transition["anchor_receipt_kind"], "zerker.memory.mutation_receipt")
+        self.assertEqual(transition["anchor_event_hash"], anchor_receipt["event_hash"])
+        self.assertEqual(transition["actor_id"], "reviewer")
+        self.assertEqual(transition["actor_uri"], "actor://reviewer")
+        self.assertEqual(transition["content_digest"], f"sha256:{current.content_hash}")
+        self.assertEqual(
+            transition["prior_merkle_root"],
+            anchor_receipt["treeship_statement"]["evidence"]["prior_merkle_root"],
+        )
+        self.assertEqual(transition["new_merkle_root"], anchor_receipt["merkle_root"])
+        self.assertEqual(transition["treeship_artifact_id"], None)
+        self.assertTrue(transition["trusted_provenance_verified"])
+        self.assertFalse(transition["semantic_truth_guaranteed"])
+
+    def test_verify_snapshot_surfaces_explicit_update_supersession_transition_summary(self):
+        stale = self.store.remember(
+            "Deploy target is Staging.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        current = self.store.remember(
+            "Deploy target changed to Production.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        shared_timestamp = "2024-02-01T00:00:00Z"
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id IN (?, ?)",
+            (shared_timestamp, shared_timestamp, stale.id, current.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            (shared_timestamp, stale.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            (shared_timestamp, current.id),
+        )
+        self.store.conn.commit()
+
+        result = self.store.verify_snapshot(self.store.snapshot())
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["supersession_transition_count"], 1)
+        self.assertEqual(result["verified_supersession_transition_count"], 1)
+        self.assertEqual(len(result["supersession_transitions"]), 1)
+        transition = result["supersession_transitions"][0]
+        anchor_receipt = self.store.memory_write_receipts(current.id)[-1]
+        self.assertEqual(transition["superseded_memory_id"], stale.id)
+        self.assertEqual(transition["superseding_memory_ids"], [current.id])
+        self.assertEqual(transition["superseded_at"], shared_timestamp)
+        self.assertEqual(transition["supersession_reasons"], ["explicit-update-candidate"])
+        self.assertEqual(transition["anchor_memory_id"], current.id)
+        self.assertEqual(transition["anchor_receipt_id"], anchor_receipt["receipt_id"])
+        self.assertEqual(transition["anchor_receipt_hash"], anchor_receipt["receipt_hash"])
+        self.assertEqual(transition["anchor_receipt_kind"], "zerker.memory.write_provenance")
+        self.assertEqual(transition["anchor_event_hash"], anchor_receipt["event_hash"])
+        self.assertEqual(transition["actor_id"], "human")
+        self.assertEqual(transition["actor_uri"], "actor://human")
+        self.assertEqual(transition["content_digest"], f"sha256:{current.content_hash}")
+        self.assertEqual(
+            transition["prior_merkle_root"],
+            anchor_receipt["treeship_statement"]["evidence"]["prior_merkle_root"],
+        )
+        self.assertEqual(transition["new_merkle_root"], anchor_receipt["merkle_root"])
+        self.assertEqual(transition["treeship_artifact_id"], None)
+        self.assertTrue(transition["trusted_provenance_verified"])
+        self.assertFalse(transition["semantic_truth_guaranteed"])
+
+    def test_verify_snapshot_surfaces_subject_lookup_restatement_supersession_transition_summary(self):
+        stale = self.store.remember(
+            "Incident owner is Alice.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        current = self.store.remember(
+            "Incident owner is Alice Chen.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-10T00:00:00Z", "2024-01-10T00:00:00Z", stale.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-02-15T00:00:00Z", "2024-02-15T00:00:00Z", current.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-10T00:00:00Z", stale.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-02-15T00:00:00Z", current.id),
+        )
+        self.store.conn.commit()
+
+        result = self.store.verify_snapshot(self.store.snapshot())
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["supersession_transition_count"], 1)
+        self.assertEqual(result["verified_supersession_transition_count"], 1)
+        self.assertEqual(len(result["supersession_transitions"]), 1)
+        transition = result["supersession_transitions"][0]
+        anchor_receipt = self.store.memory_write_receipts(current.id)[-1]
+        self.assertEqual(transition["superseded_memory_id"], stale.id)
+        self.assertEqual(transition["superseding_memory_ids"], [current.id])
+        self.assertEqual(transition["superseded_at"], "2024-02-15T00:00:00Z")
+        self.assertEqual(transition["supersession_reasons"], ["subject-lookup-restatement"])
+        self.assertEqual(transition["anchor_memory_id"], current.id)
+        self.assertEqual(transition["anchor_receipt_id"], anchor_receipt["receipt_id"])
+        self.assertEqual(transition["anchor_receipt_hash"], anchor_receipt["receipt_hash"])
+        self.assertEqual(transition["anchor_receipt_kind"], "zerker.memory.write_provenance")
+        self.assertEqual(transition["anchor_event_hash"], anchor_receipt["event_hash"])
+        self.assertEqual(transition["actor_id"], "human")
+        self.assertEqual(transition["actor_uri"], "actor://human")
+        self.assertEqual(transition["content_digest"], f"sha256:{current.content_hash}")
+        self.assertEqual(
+            transition["prior_merkle_root"],
+            anchor_receipt["treeship_statement"]["evidence"]["prior_merkle_root"],
+        )
+        self.assertEqual(transition["new_merkle_root"], anchor_receipt["merkle_root"])
+        self.assertEqual(transition["treeship_artifact_id"], None)
+        self.assertTrue(transition["trusted_provenance_verified"])
+        self.assertFalse(transition["semantic_truth_guaranteed"])
+
     def test_verify_snapshot_rejects_tampered_write_receipt_chain(self):
         memory = self.store.remember(
             "Production deploys require approval",
@@ -444,6 +723,37 @@ class SnapshotTest(unittest.TestCase):
 
         tampered = json.loads(json.dumps(snapshot))
         tampered_receipt = tampered["write_receipts"][1]
+        tampered_receipt["treeship_statement"]["evidence"]["prior_merkle_root"] = "bad-root"
+        stripped_statement = json.loads(json.dumps(tampered_receipt["treeship_statement"]))
+        stripped_statement.pop("attestation", None)
+        tampered_hash_input = dict(tampered_receipt["treeship_statement"]["source"]["receipt"])
+        tampered_hash_input["treeship_statement"] = stripped_statement
+        tampered_receipt["receipt_hash"] = sha256_text(stable_json(tampered_hash_input))
+        tampered["snapshot_hash"] = sha256_text(stable_json({k: v for k, v in tampered.items() if k != "snapshot_hash"}))
+
+        result = self.store.verify_snapshot(tampered)
+
+        self.assertFalse(result["ok"])
+        self.assertIn("snapshot write receipt chain invalid", result["error"])
+        self.assertIn("prior_merkle_root mismatch", result["error"])
+
+    def test_verify_snapshot_rejects_tampered_first_provenance_prior_merkle_root(self):
+        self.store.remember(
+            "Production deploys require approval",
+            memory_type="policy",
+            scope="project",
+            source_kind="agent",
+            actor_id="codex",
+            actor_uri="agent://codex/session-a",
+            session_id="session://alpha",
+            source_uri="conversation://session-a/message-17",
+            parent_action_id="act_prompt_injection",
+            environment_hash="sha256:env_fixture",
+        )
+        snapshot = self.store.snapshot()
+
+        tampered = json.loads(json.dumps(snapshot))
+        tampered_receipt = tampered["write_receipts"][0]
         tampered_receipt["treeship_statement"]["evidence"]["prior_merkle_root"] = "bad-root"
         stripped_statement = json.loads(json.dumps(tampered_receipt["treeship_statement"]))
         stripped_statement.pop("attestation", None)
@@ -583,6 +893,56 @@ class SnapshotTest(unittest.TestCase):
         self.assertEqual(result["proof_event_count"], bundle["proof"]["event_count"])
         self.assertTrue(result["proof_verified"])
 
+    def test_verify_bundle_surfaces_supporting_provenance_anchor_summary(self):
+        store = MemoryStore(Path(self.tmp.name) / "attested-bundle.sqlite", treeship_auto_sign=True)
+        store.init()
+        signed_provenance = subprocess.CompletedProcess(
+            args=["treeship"],
+            returncode=0,
+            stdout='{"id":"art_write_bundle","kind":"memory.write","signed":"2026-06-24T05:27:53Z","status":"ok","system":"system://zmem"}',
+            stderr="",
+        )
+        with patch("zerker_memory.treeship.shutil.which", return_value="/usr/local/bin/treeship"):
+            with patch("zerker_memory.treeship.subprocess.run", return_value=signed_provenance):
+                memory = store.remember(
+                    "Production deploys require approval",
+                    memory_type="policy",
+                    scope="project",
+                    source_kind="agent",
+                    actor_id="codex",
+                    actor_uri="agent://codex/session-a",
+                    session_id="session://alpha",
+                    source_uri="conversation://session-a/message-17",
+                    parent_action_id="act_prompt_injection",
+                    environment_hash="sha256:env_fixture",
+                    status="active",
+                )
+
+        receipt = store.inject("deploy service to production", agent_id="codex", risk="high", scope="project")
+        bundle = store.receipt_bundle(receipt["action_id"])
+
+        result = store.verify_bundle(bundle)
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["supporting_write_receipt_count"], 1)
+        self.assertEqual(result["verified_supporting_write_receipt_count"], 1)
+        self.assertTrue(result["supporting_provenance_verified"])
+        self.assertEqual(len(result["supporting_provenance_receipts"]), 1)
+        provenance = result["supporting_provenance_receipts"][0]
+        self.assertEqual(provenance["memory_id"], memory.id)
+        self.assertEqual(provenance["actor_id"], "codex")
+        self.assertEqual(provenance["actor_uri"], "agent://codex/session-a")
+        self.assertEqual(provenance["content_digest"], f"sha256:{memory.content_hash}")
+        self.assertEqual(provenance["prior_merkle_root"], merkle_root([]))
+        self.assertEqual(provenance["new_merkle_root"], provenance["merkle_root"])
+        self.assertEqual(provenance["treeship_artifact_id"], "art_write_bundle")
+        self.assertTrue(provenance["trusted_provenance_verified"])
+        self.assertFalse(provenance["semantic_truth_guaranteed"])
+        self.assertEqual(len(result["attestation_artifacts"]), 1)
+        self.assertEqual(result["attestation_artifacts"][0]["artifact_id"], "art_write_bundle")
+        self.assertTrue(result["trusted_provenance_verified"])
+        self.assertFalse(result["semantic_truth_guaranteed"])
+
     def test_verify_bundle_reports_tampering(self):
         self.store.remember(
             "Production deploys require approval",
@@ -598,6 +958,158 @@ class SnapshotTest(unittest.TestCase):
 
         self.assertFalse(result["ok"])
         self.assertEqual(result["error"], "bundle_hash mismatch")
+
+    def test_verify_bundle_rejects_tampered_supporting_write_receipt(self):
+        self.store.remember(
+            "Production deploys require approval",
+            memory_type="policy",
+            scope="project",
+            source_kind="agent",
+            actor_id="codex",
+            actor_uri="agent://codex/session-a",
+            session_id="session://alpha",
+            source_uri="conversation://session-a/message-17",
+            parent_action_id="act_prompt_injection",
+            environment_hash="sha256:env_fixture",
+            status="active",
+        )
+        receipt = self.store.inject("deploy service to production", agent_id="codex", risk="high", scope="project")
+        bundle = self.store.receipt_bundle(receipt["action_id"])
+        supporting_receipt = bundle["supporting_memory_write_receipts"][bundle["supporting_memory_ids"][0]]
+        supporting_receipt["treeship_statement"]["object"]["status"] = "quarantined"
+        stripped_statement = json.loads(json.dumps(supporting_receipt["treeship_statement"]))
+        stripped_statement.pop("attestation", None)
+        tampered_hash_input = dict(supporting_receipt["treeship_statement"]["source"]["receipt"])
+        tampered_hash_input["treeship_statement"] = stripped_statement
+        supporting_receipt["receipt_hash"] = sha256_text(stable_json(tampered_hash_input))
+        bundle["bundle_hash"] = sha256_text(stable_json({k: v for k, v in bundle.items() if k != "bundle_hash"}))
+
+        result = self.store.verify_bundle(bundle)
+
+        self.assertFalse(result["ok"])
+        self.assertFalse(result["supporting_provenance_verified"])
+        self.assertEqual(result["supporting_write_receipt_count"], 1)
+        self.assertEqual(result["verified_supporting_write_receipt_count"], 0)
+        self.assertIn("supporting write receipt", result["error"])
+        self.assertIn("status mismatch", result["error"])
+
+    def test_verify_bundle_rejects_supporting_write_receipt_key_missing_from_declared_supporting_ids(self):
+        self.store.remember(
+            "Production deploys require approval",
+            memory_type="policy",
+            scope="project",
+            source_kind="agent",
+            actor_id="codex",
+            actor_uri="agent://codex/session-a",
+            session_id="session://alpha",
+            source_uri="conversation://session-a/message-17",
+            parent_action_id="act_prompt_injection",
+            environment_hash="sha256:env_fixture",
+            status="active",
+        )
+        receipt = self.store.inject("deploy service to production", agent_id="codex", risk="high", scope="project")
+        bundle = self.store.receipt_bundle(receipt["action_id"])
+        memory_id = bundle["supporting_memory_ids"][0]
+        supporting_receipt = bundle["supporting_memory_write_receipts"].pop(memory_id)
+        bundle["supporting_memory_write_receipts"]["mem_forged"] = supporting_receipt
+        bundle["bundle_hash"] = sha256_text(stable_json({k: v for k, v in bundle.items() if k != "bundle_hash"}))
+
+        result = self.store.verify_bundle(bundle)
+
+        self.assertFalse(result["ok"])
+        self.assertFalse(result["supporting_provenance_verified"])
+        self.assertFalse(result["trusted_provenance_verified"])
+        self.assertEqual(result["supporting_write_receipt_count"], 1)
+        self.assertEqual(result["verified_supporting_write_receipt_count"], 0)
+        self.assertEqual(result["error"], "bundle supporting write receipt key missing from supporting_memory_ids")
+
+    def test_verify_bundle_rejects_supporting_write_receipt_key_memory_id_mismatch(self):
+        self.store.remember(
+            "Production deploys require approval",
+            memory_type="policy",
+            scope="project",
+            source_kind="agent",
+            actor_id="codex",
+            actor_uri="agent://codex/session-a",
+            session_id="session://alpha",
+            source_uri="conversation://session-a/message-17",
+            parent_action_id="act_prompt_injection",
+            environment_hash="sha256:env_fixture",
+            status="active",
+        )
+        receipt = self.store.inject("deploy service to production", agent_id="codex", risk="high", scope="project")
+        bundle = self.store.receipt_bundle(receipt["action_id"])
+        memory_id = bundle["supporting_memory_ids"][0]
+        supporting_receipt = bundle["supporting_memory_write_receipts"].pop(memory_id)
+        forged_key = "mem_forged"
+        bundle["supporting_memory_ids"] = [forged_key]
+        bundle["supporting_memory_write_receipts"][forged_key] = supporting_receipt
+        bundle["bundle_hash"] = sha256_text(stable_json({k: v for k, v in bundle.items() if k != "bundle_hash"}))
+
+        result = self.store.verify_bundle(bundle)
+
+        self.assertFalse(result["ok"])
+        self.assertFalse(result["supporting_provenance_verified"])
+        self.assertFalse(result["trusted_provenance_verified"])
+        self.assertEqual(result["supporting_write_receipt_count"], 1)
+        self.assertEqual(result["verified_supporting_write_receipt_count"], 0)
+        self.assertEqual(result["error"], "bundle supporting write receipt memory_id mismatch")
+
+    def test_verify_bundle_rejects_supporting_memory_entry_missing_from_declared_supporting_ids(self):
+        self.store.remember(
+            "Production deploys require approval",
+            memory_type="policy",
+            scope="project",
+            source_kind="agent",
+            actor_id="codex",
+            actor_uri="agent://codex/session-a",
+            session_id="session://alpha",
+            source_uri="conversation://session-a/message-17",
+            parent_action_id="act_prompt_injection",
+            environment_hash="sha256:env_fixture",
+            status="active",
+        )
+        receipt = self.store.inject("deploy service to production", agent_id="codex", risk="high", scope="project")
+        bundle = self.store.receipt_bundle(receipt["action_id"])
+        bundle["supporting_memories"][0]["id"] = "mem_forged"
+        bundle["bundle_hash"] = sha256_text(stable_json({k: v for k, v in bundle.items() if k != "bundle_hash"}))
+
+        result = self.store.verify_bundle(bundle)
+
+        self.assertFalse(result["ok"])
+        self.assertFalse(result["supporting_provenance_verified"])
+        self.assertFalse(result["trusted_provenance_verified"])
+        self.assertEqual(result["supporting_write_receipt_count"], 1)
+        self.assertEqual(result["verified_supporting_write_receipt_count"], 1)
+        self.assertEqual(result["error"], "bundle supporting memory id missing from supporting_memory_ids")
+
+    def test_verify_bundle_rejects_duplicate_supporting_memory_entries(self):
+        self.store.remember(
+            "Production deploys require approval",
+            memory_type="policy",
+            scope="project",
+            source_kind="agent",
+            actor_id="codex",
+            actor_uri="agent://codex/session-a",
+            session_id="session://alpha",
+            source_uri="conversation://session-a/message-17",
+            parent_action_id="act_prompt_injection",
+            environment_hash="sha256:env_fixture",
+            status="active",
+        )
+        receipt = self.store.inject("deploy service to production", agent_id="codex", risk="high", scope="project")
+        bundle = self.store.receipt_bundle(receipt["action_id"])
+        bundle["supporting_memories"].append(json.loads(json.dumps(bundle["supporting_memories"][0])))
+        bundle["bundle_hash"] = sha256_text(stable_json({k: v for k, v in bundle.items() if k != "bundle_hash"}))
+
+        result = self.store.verify_bundle(bundle)
+
+        self.assertFalse(result["ok"])
+        self.assertFalse(result["supporting_provenance_verified"])
+        self.assertFalse(result["trusted_provenance_verified"])
+        self.assertEqual(result["supporting_write_receipt_count"], 1)
+        self.assertEqual(result["verified_supporting_write_receipt_count"], 1)
+        self.assertEqual(result["error"], "bundle supporting memory id is duplicated")
 
     def test_verify_bundle_rejects_proof_event_count_mismatch(self):
         self.store.remember(

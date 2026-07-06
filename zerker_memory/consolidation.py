@@ -14,6 +14,12 @@ CONSOLIDATION_LINEAGE_FIXTURE_SCHEMA = "zerker.consolidation_lineage_fixture.v1"
 CONSOLIDATION_LINEAGE_KIND = "source-child-to-summary"
 CONSOLIDATION_JOB_SCHEMA = "zerker.consolidation_job.v1"
 CONSOLIDATION_RECALL_PLAN_SCHEMA = "zerker.consolidation_recall_plan.v1"
+CONSOLIDATION_RECALL_PLAN_REPORT_SCHEMA = "zerker.consolidation_recall_plan_report.v1"
+CONSOLIDATION_RECALL_PLAN_LEDGER_REPORT_SCHEMA = "zerker.consolidation_recall_plan_ledger_report.v1"
+CONSOLIDATION_PROFILE_AGGREGATION_FIXTURE_SCHEMA = "zerker.consolidation_profile_aggregation_fixture.v1"
+CONSOLIDATION_PROFILE_AGGREGATION_REPORT_SCHEMA = "zerker.consolidation_profile_aggregation_report.v1"
+CONSOLIDATION_PROFILE_PLANNER_REPORT_SCHEMA = "zerker.consolidation_profile_planner_report.v1"
+CONSOLIDATION_PROFILE_PLANNER_LEDGER_REPORT_SCHEMA = "zerker.consolidation_profile_planner_ledger_report.v1"
 CONSOLIDATION_SUMMARY_SCHEMA = "zerker.consolidation_summary.v1"
 CONSOLIDATION_AUDIT_RECORD_SCHEMA = "zerker.consolidation_audit_record.v1"
 CONSOLIDATION_AUDIT_REPORT_SCHEMA = "zerker.consolidation_audit_report.v1"
@@ -105,6 +111,7 @@ class ConsolidationPlanCandidate:
     source_child_ids: tuple[str, ...]
     min_source_children: int
     source_children_stable: bool
+    source_children_materialized: bool
     has_open_recall_gap: bool
 
     def to_dict(self) -> dict[str, Any]:
@@ -118,6 +125,7 @@ class ConsolidationPlanCandidate:
                 "kind": "child-count-stability-recall-gap",
                 "min_source_children": self.min_source_children,
                 "source_children_stable": self.source_children_stable,
+                "source_children_materialized": self.source_children_materialized,
                 "has_open_recall_gap": self.has_open_recall_gap,
             },
         }
@@ -178,6 +186,7 @@ def consolidation_recall_planner_fixture() -> dict[str, Any]:
             source_child_ids=("memory:turn:101", "memory:turn:102", "memory:turn:103"),
             min_source_children=3,
             source_children_stable=True,
+            source_children_materialized=True,
             has_open_recall_gap=True,
         ),
         ConsolidationPlanCandidate(
@@ -191,6 +200,7 @@ def consolidation_recall_planner_fixture() -> dict[str, Any]:
             ),
             min_source_children=2,
             source_children_stable=True,
+            source_children_materialized=True,
             has_open_recall_gap=True,
         ),
         ConsolidationPlanCandidate(
@@ -204,6 +214,7 @@ def consolidation_recall_planner_fixture() -> dict[str, Any]:
             ),
             min_source_children=2,
             source_children_stable=False,
+            source_children_materialized=False,
             has_open_recall_gap=True,
         ),
         ConsolidationPlanCandidate(
@@ -217,6 +228,7 @@ def consolidation_recall_planner_fixture() -> dict[str, Any]:
             ),
             min_source_children=2,
             source_children_stable=True,
+            source_children_materialized=True,
             has_open_recall_gap=False,
         ),
     ]
@@ -239,6 +251,579 @@ def consolidation_recall_planner_fixture() -> dict[str, Any]:
             "hosted_llm": False,
         },
     }
+
+
+def consolidation_profile_aggregation_fixture() -> dict[str, Any]:
+    return {
+        "schema": CONSOLIDATION_PROFILE_AGGREGATION_FIXTURE_SCHEMA,
+        "fixture_id": "local-consolidation-profile-aggregation-fixture-v1",
+        "levels_schema": CONSOLIDATION_LEVEL_SCHEMA,
+        "levels": consolidation_levels(),
+        "targets": [
+            {
+                "candidate_id": "candidate:profile-project:person:mallory",
+                "subject_id": "person:mallory",
+                "subject_kind": "person",
+                "scope": "project:zmem/profile-project/person:mallory",
+                "summary_level": "profile_project",
+                "source_level": "week",
+                "min_source_children": 2,
+                "source_children_stable": True,
+                "source_children_materialized": True,
+                "has_open_recall_gap": True,
+            },
+            {
+                "candidate_id": "candidate:profile-project:project:zmem",
+                "subject_id": "project:zmem",
+                "subject_kind": "project",
+                "scope": "project:zmem/profile-project/project:zmem",
+                "summary_level": "profile_project",
+                "source_level": "week",
+                "min_source_children": 2,
+                "source_children_stable": True,
+                "source_children_materialized": True,
+                "has_open_recall_gap": True,
+            },
+            {
+                "candidate_id": "candidate:profile-project:person:ada",
+                "subject_id": "person:ada",
+                "subject_kind": "person",
+                "scope": "project:zmem/profile-project/person:ada",
+                "summary_level": "profile_project",
+                "source_level": "week",
+                "min_source_children": 2,
+                "source_children_stable": True,
+                "source_children_materialized": True,
+                "has_open_recall_gap": True,
+            },
+        ],
+        "claims": [
+            {
+                "claim_id": "claim:mallory:week25:deploy-owner",
+                "summary_id": "summary:week:2026-w25:zmem",
+                "subject_id": "person:mallory",
+                "subject_kind": "person",
+                "facet": "deploy-owner",
+                "statement": "Mallory owned deploy approvals during the first launch week.",
+            },
+            {
+                "claim_id": "claim:mallory:week26:deploy-owner",
+                "summary_id": "summary:week:2026-w26:zmem",
+                "subject_id": "person:mallory",
+                "subject_kind": "person",
+                "facet": "deploy-owner",
+                "statement": "Mallory still owned deploy approvals during the following week.",
+            },
+            {
+                "claim_id": "claim:mallory:week26:rollback-contact",
+                "summary_id": "summary:week:2026-w26:zmem",
+                "subject_id": "person:mallory",
+                "subject_kind": "person",
+                "facet": "rollback-contact",
+                "statement": "Mallory became the rollback contact for payment-routing work.",
+            },
+            {
+                "claim_id": "claim:zmem:week25:benchmark-status",
+                "summary_id": "summary:week:2026-w25:zmem",
+                "subject_id": "project:zmem",
+                "subject_kind": "project",
+                "facet": "benchmark-status",
+                "statement": "ZMem still lacked reproduced benchmark deltas in week 25.",
+            },
+            {
+                "claim_id": "claim:zmem:week26:benchmark-status",
+                "summary_id": "summary:week:2026-w26:zmem",
+                "subject_id": "project:zmem",
+                "subject_kind": "project",
+                "facet": "benchmark-status",
+                "statement": "ZMem still required reproduced benchmark deltas in week 26.",
+            },
+            {
+                "claim_id": "claim:zmem:week26:proof-wedge",
+                "summary_id": "summary:week:2026-w26:zmem",
+                "subject_id": "project:zmem",
+                "subject_kind": "project",
+                "facet": "proof-wedge",
+                "statement": "ZMem kept the proof-backed local-first memory wedge in week 26.",
+            },
+            {
+                "claim_id": "claim:ada:week26:reviewer",
+                "summary_id": "summary:week:2026-w26:zmem",
+                "subject_id": "person:ada",
+                "subject_kind": "person",
+                "facet": "reviewer",
+                "statement": "Ada reviewed the launch-week consolidation notes.",
+            },
+        ],
+    }
+
+
+def consolidation_profile_aggregation_report(fixture: dict[str, Any]) -> dict[str, Any]:
+    if fixture.get("schema") != CONSOLIDATION_PROFILE_AGGREGATION_FIXTURE_SCHEMA:
+        raise ValueError("unsupported consolidation profile aggregation fixture schema")
+    _validate_levels_fixture(fixture.get("levels", []))
+
+    claims_by_subject_id: dict[str, list[dict[str, Any]]] = {}
+    for claim in fixture.get("claims", []):
+        claims_by_subject_id.setdefault(claim["subject_id"], []).append(deepcopy(claim))
+
+    records: list[dict[str, Any]] = []
+    ready_candidates: list[dict[str, Any]] = []
+    for target in fixture.get("targets", []):
+        subject_claims = claims_by_subject_id.get(target["subject_id"], [])
+        source_summary_ids = _dedupe_preserving_order(claim["summary_id"] for claim in subject_claims)
+        facet_ids = _dedupe_preserving_order(claim["facet"] for claim in subject_claims)
+        claim_ids = [claim["claim_id"] for claim in subject_claims]
+        decision = _profile_aggregation_decision(target, source_summary_ids)
+        candidate = None
+        if decision == "ready":
+            candidate = {
+                "candidate_id": target["candidate_id"],
+                "scope": target["scope"],
+                "summary_level": target["summary_level"],
+                "source_level": target["source_level"],
+                "source_child_ids": source_summary_ids,
+                "trigger": {
+                    "kind": "profile-fact-aggregation",
+                    "min_source_children": target["min_source_children"],
+                    "source_children_stable": target["source_children_stable"],
+                    "source_children_materialized": target["source_children_materialized"],
+                    "has_open_recall_gap": target["has_open_recall_gap"],
+                },
+            }
+            ready_candidates.append(deepcopy(candidate))
+        records.append(
+            {
+                "candidate_id": target["candidate_id"],
+                "subject_id": target["subject_id"],
+                "subject_kind": target["subject_kind"],
+                "scope": target["scope"],
+                "summary_level": target["summary_level"],
+                "source_level": target["source_level"],
+                "source_summary_ids": source_summary_ids,
+                "source_summary_count": len(source_summary_ids),
+                "facet_ids": facet_ids,
+                "facet_count": len(facet_ids),
+                "claim_ids": claim_ids,
+                "claim_count": len(claim_ids),
+                "decision_reason": decision,
+                "candidate": candidate,
+            }
+        )
+
+    return {
+        "schema": CONSOLIDATION_PROFILE_AGGREGATION_REPORT_SCHEMA,
+        "fixture_id": fixture["fixture_id"],
+        "record_count": len(records),
+        "ready_candidate_count": len(ready_candidates),
+        "skipped_candidate_count": len(records) - len(ready_candidates),
+        "ready_candidates": ready_candidates,
+        "records": records,
+    }
+
+
+def merge_profile_aggregation_candidates_into_recall_planner(
+    planner_fixture: dict[str, Any],
+    aggregation_report: dict[str, Any],
+) -> dict[str, Any]:
+    if planner_fixture.get("schema") != CONSOLIDATION_RECALL_PLAN_SCHEMA:
+        raise ValueError("unsupported consolidation recall plan schema")
+    if aggregation_report.get("schema") != CONSOLIDATION_PROFILE_AGGREGATION_REPORT_SCHEMA:
+        raise ValueError("unsupported consolidation profile aggregation report schema")
+    _validate_levels_fixture(planner_fixture.get("levels", []))
+
+    merged_fixture = deepcopy(planner_fixture)
+    existing_candidates_by_id = {
+        candidate["candidate_id"]: deepcopy(candidate) for candidate in merged_fixture.get("candidates", [])
+    }
+    for candidate_payload in aggregation_report.get("ready_candidates", []):
+        _candidate_from_dict(candidate_payload)
+        existing_candidate = existing_candidates_by_id.get(candidate_payload["candidate_id"])
+        if existing_candidate is None:
+            merged_fixture.setdefault("candidates", []).append(deepcopy(candidate_payload))
+            existing_candidates_by_id[candidate_payload["candidate_id"]] = deepcopy(candidate_payload)
+            continue
+        if existing_candidate != candidate_payload:
+            raise ValueError(
+                f"consolidation planner candidate id collision: {candidate_payload['candidate_id']}"
+            )
+    return merged_fixture
+
+
+def consolidation_profile_aggregation_planner_report(
+    planner_fixture: dict[str, Any],
+    aggregation_fixture: dict[str, Any],
+    *,
+    planned_at: str,
+    existing_jobs: list[ConsolidationJobRecord] | None = None,
+) -> dict[str, Any]:
+    aggregation_report = consolidation_profile_aggregation_report(aggregation_fixture)
+    return _consolidation_profile_planner_report_from_aggregation_report(
+        planner_fixture,
+        aggregation_report,
+        planned_at=planned_at,
+        existing_jobs=existing_jobs,
+        schema=CONSOLIDATION_PROFILE_PLANNER_REPORT_SCHEMA,
+    )
+
+
+def consolidation_profile_aggregation_planner_ledger_report(
+    planner_fixture: dict[str, Any],
+    aggregation_fixture: dict[str, Any],
+    *,
+    planned_at: str,
+    job_ledger_path: Path,
+    summary_ledger_path: Path,
+) -> dict[str, Any]:
+    aggregation_report = consolidation_profile_aggregation_report(aggregation_fixture)
+    latest_summaries = latest_consolidation_summaries(summary_ledger_path)
+    existing_jobs = load_consolidation_job_records(job_ledger_path)
+    summary_audit_state = _summary_audit_state_by_summary_id(
+        consolidation_audit_report(job_ledger_path, summary_ledger_path)["records"]
+    )
+    report = _consolidation_profile_planner_report_from_aggregation_report(
+        planner_fixture,
+        _profile_aggregation_report_with_summary_ledger_state(
+            aggregation_report,
+            latest_summaries=latest_summaries,
+            summary_audit_state=summary_audit_state,
+        ),
+        planned_at=planned_at,
+        existing_jobs=existing_jobs,
+        schema=CONSOLIDATION_PROFILE_PLANNER_LEDGER_REPORT_SCHEMA,
+    )
+    report["job_history_count"] = len(existing_jobs)
+    report["materialized_summary_count"] = len(latest_summaries)
+    return report
+
+
+def _consolidation_profile_planner_report_from_aggregation_report(
+    planner_fixture: dict[str, Any],
+    aggregation_report: dict[str, Any],
+    *,
+    planned_at: str,
+    existing_jobs: list[ConsolidationJobRecord] | None,
+    schema: str,
+) -> dict[str, Any]:
+    merged_fixture = merge_profile_aggregation_candidates_into_recall_planner(
+        planner_fixture,
+        aggregation_report,
+    )
+    planner_report = consolidation_recall_plan_report(
+        merged_fixture,
+        planned_at=planned_at,
+        existing_jobs=existing_jobs,
+    )
+    planner_records_by_candidate_id = {
+        record["candidate_id"]: deepcopy(record) for record in planner_report["records"]
+    }
+
+    profile_planned_jobs: list[dict[str, Any]] = []
+    records: list[dict[str, Any]] = []
+    queued_candidate_count = 0
+    blocked_ready_candidate_count = 0
+    for aggregation_record in aggregation_report["records"]:
+        candidate_payload = aggregation_record["candidate"]
+        planner_record = None
+        planner_decision = "not-applicable"
+        planner_decision_reason = "aggregation-not-ready"
+        planner_planned_job_id = None
+        planner_retrying_terminal_job = False
+        planner_latest_matching_job = None
+        if candidate_payload is not None:
+            planner_record = planner_records_by_candidate_id.get(aggregation_record["candidate_id"])
+            if planner_record is None:
+                raise ValueError(
+                    "merged consolidation planner report is missing a ready aggregation candidate"
+                )
+            planner_decision = planner_record["decision"]
+            planner_decision_reason = planner_record["decision_reason"]
+            planner_planned_job_id = planner_record["planned_job_id"]
+            planner_retrying_terminal_job = planner_record["retrying_terminal_job"]
+            planner_latest_matching_job = deepcopy(planner_record["latest_matching_job"])
+            if planner_record["planned_job_id"] is not None:
+                queued_candidate_count += 1
+                profile_planned_jobs.append(
+                    next(
+                        deepcopy(job)
+                        for job in planner_report["planned_jobs"]
+                        if job["job_id"] == planner_record["planned_job_id"]
+                    )
+                )
+            else:
+                blocked_ready_candidate_count += 1
+        records.append(
+            {
+                **deepcopy(aggregation_record),
+                "planner_decision": planner_decision,
+                "planner_decision_reason": planner_decision_reason,
+                "planner_planned_job_id": planner_planned_job_id,
+                "planner_retrying_terminal_job": planner_retrying_terminal_job,
+                "planner_latest_matching_job": planner_latest_matching_job,
+            }
+        )
+
+    return {
+        "schema": schema,
+        "fixture_id": aggregation_report["fixture_id"],
+        "planner_id": planner_fixture["planner_id"],
+        "planned_at": planned_at,
+        "record_count": len(records),
+        "ready_candidate_count": aggregation_report["ready_candidate_count"],
+        "queued_candidate_count": queued_candidate_count,
+        "blocked_ready_candidate_count": blocked_ready_candidate_count,
+        "skipped_candidate_count": aggregation_report["skipped_candidate_count"],
+        "planned_jobs": profile_planned_jobs,
+        "records": records,
+    }
+
+
+def _profile_aggregation_report_with_summary_ledger_state(
+    aggregation_report: dict[str, Any],
+    *,
+    latest_summaries: dict[str, dict[str, Any]],
+    summary_audit_state: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    materialized_summary_ids = set(latest_summaries)
+    adjusted_report = deepcopy(aggregation_report)
+    adjusted_ready_candidates: list[dict[str, Any]] = []
+
+    for record in adjusted_report["records"]:
+        source_summary_ids = list(record.get("source_summary_ids", []))
+        record["source_summary_dependencies"] = _source_summary_dependencies(
+            source_summary_ids,
+            latest_summaries=latest_summaries,
+            summary_audit_state=summary_audit_state,
+        )
+        record["materialized_source_summary_ids"] = [
+            summary_id for summary_id in source_summary_ids if summary_id in materialized_summary_ids
+        ]
+        record["missing_source_summary_ids"] = [
+            summary_id for summary_id in source_summary_ids if summary_id not in materialized_summary_ids
+        ]
+        record["source_summary_audit_statuses"] = {
+            summary_id: summary_audit_state.get(summary_id, {}).get("audit_status", "unknown")
+            for summary_id in record["materialized_source_summary_ids"]
+        }
+        record["verified_source_summary_ids"] = [
+            summary_id
+            for summary_id in record["materialized_source_summary_ids"]
+            if record["source_summary_audit_statuses"][summary_id] == "verified"
+        ]
+        record["unverified_source_summary_ids"] = [
+            summary_id
+            for summary_id in record["materialized_source_summary_ids"]
+            if record["source_summary_audit_statuses"][summary_id] != "verified"
+        ]
+        record["source_summary_gate_reason"] = _source_summary_gate_reason(record)
+        candidate = record.get("candidate")
+        if candidate is None:
+            continue
+        candidate["trigger"]["source_children_materialized"] = (
+            record["source_summary_gate_reason"] == "all-source-summaries-verified"
+        )
+        candidate["trigger"]["source_children_verified"] = not record["unverified_source_summary_ids"]
+        adjusted_ready_candidates.append(deepcopy(candidate))
+
+    adjusted_report["ready_candidates"] = adjusted_ready_candidates
+    return adjusted_report
+
+
+def _summary_audit_state_by_summary_id(audit_records: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    state: dict[str, dict[str, Any]] = {}
+    for record in audit_records:
+        summaries_by_id = {
+            summary["summary_id"]: summary for summary in record.get("summaries", [])
+        }
+        summary_ids = _dedupe_preserving_order(
+            list(record.get("expected_output_summary_ids", []))
+            + list(record.get("materialized_summary_ids", []))
+        )
+        for summary_id in summary_ids:
+            summary_view = summaries_by_id.get(summary_id, {})
+            state[summary_id] = {
+                "job_id": record["job_id"],
+                "job_status": record["status"],
+                "job_completed_at": record.get("completed_at"),
+                "audit_status": record["audit_status"],
+                "summary_level": record["summary_level"],
+                "source_level": record["source_level"],
+                "source_child_ids": list(record.get("source_child_ids", [])),
+                "source_child_count": len(record.get("source_child_ids", [])),
+                "non_blocking": record.get("non_blocking"),
+                "lineage_kind": record.get("lineage_kind"),
+                "reversible": record.get("reversible"),
+                "expected_output_summary_ids": list(record.get("expected_output_summary_ids", [])),
+                "materialized_summary_ids": list(record.get("materialized_summary_ids", [])),
+                "missing_output_summary_ids": list(record.get("missing_output_summary_ids", [])),
+                "unexpected_output_summary_ids": list(record.get("unexpected_output_summary_ids", [])),
+                "summary_scope_mismatches": list(record.get("summary_scope_mismatches", [])),
+                "summary_mismatch_reasons": list(
+                    record.get("summary_mismatch_reasons", {}).get(summary_id, [])
+                ),
+                "materialized_job_id": summary_view.get("job_id"),
+                "materialized_created_at": summary_view.get("created_at"),
+            }
+    return state
+
+
+def _recall_plan_fixture_with_summary_ledger_state(
+    fixture: dict[str, Any],
+    *,
+    latest_summaries: dict[str, dict[str, Any]],
+    summary_audit_state: dict[str, dict[str, Any]],
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    adjusted_fixture = deepcopy(fixture)
+    adjusted_candidates: list[dict[str, Any]] = []
+    candidate_records: list[dict[str, Any]] = []
+
+    for candidate_payload in fixture.get("candidates", []):
+        candidate = deepcopy(candidate_payload)
+        source_summary_ids = list(candidate.get("source_child_ids", [])) if candidate["source_level"] != "turn" else []
+        if source_summary_ids:
+            source_summary_dependencies = _source_summary_dependencies(
+                source_summary_ids,
+                latest_summaries=latest_summaries,
+                summary_audit_state=summary_audit_state,
+            )
+            materialized_source_summary_ids = [
+                summary_id for summary_id in source_summary_ids if summary_id in latest_summaries
+            ]
+            missing_source_summary_ids = [
+                summary_id for summary_id in source_summary_ids if summary_id not in latest_summaries
+            ]
+            source_summary_audit_statuses = {
+                summary_id: summary_audit_state.get(summary_id, {}).get("audit_status", "unknown")
+                for summary_id in materialized_source_summary_ids
+            }
+            verified_source_summary_ids = [
+                summary_id
+                for summary_id in materialized_source_summary_ids
+                if source_summary_audit_statuses[summary_id] == "verified"
+            ]
+            unverified_source_summary_ids = [
+                summary_id
+                for summary_id in materialized_source_summary_ids
+                if source_summary_audit_statuses[summary_id] != "verified"
+            ]
+            source_summary_gate_reason = _source_summary_gate_reason(
+                {
+                    "missing_source_summary_ids": missing_source_summary_ids,
+                    "unverified_source_summary_ids": unverified_source_summary_ids,
+                }
+            )
+            candidate["trigger"]["source_children_materialized"] = (
+                source_summary_gate_reason == "all-source-summaries-verified"
+            )
+            candidate["trigger"]["source_children_verified"] = not unverified_source_summary_ids
+        else:
+            source_summary_dependencies = []
+            materialized_source_summary_ids = []
+            missing_source_summary_ids = []
+            verified_source_summary_ids = []
+            unverified_source_summary_ids = []
+            source_summary_audit_statuses = {}
+            source_summary_gate_reason = "leaf-source-children"
+
+        adjusted_candidates.append(candidate)
+        candidate_records.append(
+            {
+                "candidate_id": candidate["candidate_id"],
+                "materialized_source_summary_ids": materialized_source_summary_ids,
+                "missing_source_summary_ids": missing_source_summary_ids,
+                "verified_source_summary_ids": verified_source_summary_ids,
+                "unverified_source_summary_ids": unverified_source_summary_ids,
+                "source_summary_audit_statuses": source_summary_audit_statuses,
+                "source_summary_gate_reason": source_summary_gate_reason,
+                "source_summary_dependencies": source_summary_dependencies,
+            }
+        )
+
+    adjusted_fixture["candidates"] = adjusted_candidates
+    return adjusted_fixture, candidate_records
+
+
+def _source_summary_gate_reason(record: dict[str, Any]) -> str:
+    if record["missing_source_summary_ids"]:
+        return "missing-source-summaries"
+    if record["unverified_source_summary_ids"]:
+        return "unverified-source-summaries"
+    return "all-source-summaries-verified"
+
+
+def _source_summary_dependencies(
+    source_summary_ids: list[str],
+    *,
+    latest_summaries: dict[str, dict[str, Any]],
+    summary_audit_state: dict[str, dict[str, Any]],
+) -> list[dict[str, Any]]:
+    dependencies: list[dict[str, Any]] = []
+    for summary_id in source_summary_ids:
+        summary = latest_summaries.get(summary_id)
+        audit_state = summary_audit_state.get(summary_id, {})
+        materialized = summary is not None
+        audit_status = audit_state.get("audit_status", "missing" if not materialized else "unknown")
+        if materialized and audit_status == "verified":
+            gate_status = "verified"
+        elif materialized:
+            gate_status = "unverified"
+        else:
+            gate_status = "missing"
+        dependencies.append(
+            {
+                "summary_id": summary_id,
+                "materialized": materialized,
+                "gate_status": gate_status,
+                "audit_status": audit_status,
+                "job_id": audit_state.get("job_id"),
+                "job_status": audit_state.get("job_status"),
+                "job_completed_at": audit_state.get("job_completed_at"),
+                "summary_level": (summary or {}).get("summary_level") or audit_state.get("summary_level"),
+                "source_level": (summary or {}).get("source_level") or audit_state.get("source_level"),
+                "source_child_ids": list((summary or {}).get("source_child_ids") or audit_state.get("source_child_ids", [])),
+                "source_child_count": (summary or {}).get("source_child_count", audit_state.get("source_child_count", 0)),
+                "non_blocking": (summary or {}).get("non_blocking", audit_state.get("non_blocking")),
+                "lineage_kind": (summary or {}).get("lineage_kind") or audit_state.get("lineage_kind"),
+                "reversible": (summary or {}).get("reversible", audit_state.get("reversible")),
+                "expected_output_summary_ids": list(audit_state.get("expected_output_summary_ids", [])),
+                "materialized_summary_ids": list(audit_state.get("materialized_summary_ids", [])),
+                "missing_output_summary_ids": list(audit_state.get("missing_output_summary_ids", [])),
+                "unexpected_output_summary_ids": list(audit_state.get("unexpected_output_summary_ids", [])),
+                **(
+                    {
+                        "materialized_job_id": (summary or {}).get("job_id")
+                        or audit_state.get("materialized_job_id")
+                    }
+                    if ((summary or {}).get("job_id") or audit_state.get("materialized_job_id"))
+                    else {}
+                ),
+                **(
+                    {
+                        "materialized_created_at": (summary or {}).get("created_at")
+                        or audit_state.get("materialized_created_at")
+                    }
+                    if ((summary or {}).get("created_at") or audit_state.get("materialized_created_at"))
+                    else {}
+                ),
+                **(
+                    {"source_child_digests": deepcopy(summary.get("source_child_digests"))}
+                    if isinstance((summary or {}).get("source_child_digests"), dict)
+                    else {}
+                ),
+                "content_digest": (summary or {}).get("content_digest"),
+                **(
+                    {"mismatch_reasons": list(audit_state.get("summary_mismatch_reasons", []))}
+                    if audit_state.get("summary_mismatch_reasons")
+                    else {}
+                ),
+                **(
+                    {"summary_scope_mismatches": list(audit_state.get("summary_scope_mismatches", []))}
+                    if audit_state.get("summary_scope_mismatches")
+                    else {}
+                ),
+            }
+        )
+    return dependencies
 
 
 def source_child_ids_for_summary(fixture: dict[str, Any], summary_id: str) -> list[str]:
@@ -424,33 +1009,113 @@ def plan_consolidation_jobs(
     planned_jobs: list[ConsolidationJobRecord] = []
     for candidate_payload in fixture.get("candidates", []):
         candidate = _candidate_from_dict(candidate_payload)
-        if len(candidate.source_child_ids) < candidate.min_source_children:
-            continue
-        if not candidate.source_children_stable:
-            continue
-        if not candidate.has_open_recall_gap:
-            continue
         latest_job = matching_jobs.get(_job_candidate_signature(candidate))
-        if latest_job and latest_job.status in {"pending", "running", "completed"}:
+        decision = _candidate_queue_decision(candidate, latest_job)
+        if not decision["queue"]:
             continue
-        planned_jobs.append(
-            create_consolidation_job(
-                scope=candidate.scope,
-                summary_level=candidate.summary_level,
-                source_level=candidate.source_level,
-                source_child_ids=list(candidate.source_child_ids),
-                created_at=planned_at,
-                job_id=f"consolidation-job:planned:{candidate.candidate_id}",
-                summarizer={
-                    "kind": "local-recall-planner-placeholder",
-                    "hosted_llm": False,
-                    "model_id": None,
-                    "planner_id": fixture["planner_id"],
-                    "candidate_id": candidate.candidate_id,
-                },
-            )
-        )
+        planned_jobs.append(_planned_job_for_candidate(candidate, planned_at=planned_at, planner_id=fixture["planner_id"]))
     return planned_jobs
+
+
+def consolidation_recall_plan_report(
+    fixture: dict[str, Any],
+    *,
+    planned_at: str,
+    existing_jobs: list[ConsolidationJobRecord] | None = None,
+) -> dict[str, Any]:
+    if fixture.get("schema") != CONSOLIDATION_RECALL_PLAN_SCHEMA:
+        raise ValueError("unsupported consolidation recall plan schema")
+    _validate_levels_fixture(fixture.get("levels", []))
+
+    matching_jobs = _latest_jobs_by_candidate_signature(existing_jobs or [])
+    planned_jobs: list[ConsolidationJobRecord] = []
+    records: list[dict[str, Any]] = []
+    for candidate_payload in fixture.get("candidates", []):
+        candidate = _candidate_from_dict(candidate_payload)
+        latest_job = matching_jobs.get(_job_candidate_signature(candidate))
+        decision = _candidate_queue_decision(candidate, latest_job)
+        planned_job = None
+        if decision["queue"]:
+            planned_job = _planned_job_for_candidate(candidate, planned_at=planned_at, planner_id=fixture["planner_id"])
+            planned_jobs.append(planned_job)
+        records.append(
+            {
+                **candidate.to_dict(),
+                "decision": "queued" if decision["queue"] else "skipped",
+                "decision_reason": decision["reason"],
+                "retrying_terminal_job": decision["retrying_terminal_job"],
+                "planned_job_id": None if planned_job is None else planned_job.job_id,
+                "latest_matching_job": _job_report_view(latest_job),
+            }
+        )
+
+    return {
+        "schema": CONSOLIDATION_RECALL_PLAN_REPORT_SCHEMA,
+        "planner_id": fixture["planner_id"],
+        "planned_at": planned_at,
+        "candidate_count": len(records),
+        "queued_job_count": len(planned_jobs),
+        "skipped_candidate_count": len(records) - len(planned_jobs),
+        "planned_jobs": [job.to_dict() for job in planned_jobs],
+        "records": records,
+    }
+
+
+def consolidation_recall_plan_ledger_report(
+    fixture: dict[str, Any],
+    *,
+    planned_at: str,
+    job_ledger_path: Path,
+    summary_ledger_path: Path,
+) -> dict[str, Any]:
+    if fixture.get("schema") != CONSOLIDATION_RECALL_PLAN_SCHEMA:
+        raise ValueError("unsupported consolidation recall plan schema")
+    _validate_levels_fixture(fixture.get("levels", []))
+
+    latest_summaries = latest_consolidation_summaries(summary_ledger_path)
+    existing_jobs = load_consolidation_job_records(job_ledger_path)
+    summary_audit_state = _summary_audit_state_by_summary_id(
+        consolidation_audit_report(job_ledger_path, summary_ledger_path)["records"]
+    )
+    adjusted_fixture, candidate_records = _recall_plan_fixture_with_summary_ledger_state(
+        fixture,
+        latest_summaries=latest_summaries,
+        summary_audit_state=summary_audit_state,
+    )
+    planner_report = consolidation_recall_plan_report(
+        adjusted_fixture,
+        planned_at=planned_at,
+        existing_jobs=existing_jobs,
+    )
+    candidate_records_by_id = {
+        record["candidate_id"]: deepcopy(record) for record in candidate_records
+    }
+
+    records: list[dict[str, Any]] = []
+    for planner_record in planner_report["records"]:
+        candidate_record = candidate_records_by_id.get(planner_record["candidate_id"])
+        if candidate_record is None:
+            raise ValueError("ledger-backed consolidation planner report is missing a candidate record")
+        records.append(
+            {
+                **deepcopy(planner_record),
+                "materialized_source_summary_ids": candidate_record["materialized_source_summary_ids"],
+                "missing_source_summary_ids": candidate_record["missing_source_summary_ids"],
+                "verified_source_summary_ids": candidate_record["verified_source_summary_ids"],
+                "unverified_source_summary_ids": candidate_record["unverified_source_summary_ids"],
+                "source_summary_audit_statuses": deepcopy(candidate_record["source_summary_audit_statuses"]),
+                "source_summary_gate_reason": candidate_record["source_summary_gate_reason"],
+                "source_summary_dependencies": deepcopy(candidate_record["source_summary_dependencies"]),
+            }
+        )
+
+    return {
+        **planner_report,
+        "schema": CONSOLIDATION_RECALL_PLAN_LEDGER_REPORT_SCHEMA,
+        "job_history_count": len(existing_jobs),
+        "materialized_summary_count": len(latest_summaries),
+        "records": records,
+    }
 
 
 def materialize_consolidation_summary(
@@ -552,7 +1217,15 @@ def consolidation_audit_report(
     verified_record_count = 0
     incomplete_record_count = 0
     for job in latest_jobs.values():
-        records.append(_consolidation_audit_record(job, summaries_by_job.get(job.job_id, [])))
+        job_summaries = list(summaries_by_job.get(job.job_id, []))
+        seen_summary_ids = {summary["summary_id"] for summary in job_summaries}
+        for summary_id in job.output_summary_ids:
+            summary = latest_summaries.get(summary_id)
+            if summary is None or summary_id in seen_summary_ids:
+                continue
+            job_summaries.append(deepcopy(summary))
+            seen_summary_ids.add(summary_id)
+        records.append(_consolidation_audit_record(job, job_summaries))
         if records[-1]["audit_status"] == "verified":
             verified_record_count += 1
         elif records[-1]["audit_status"] != "not-materialized":
@@ -644,6 +1317,7 @@ def _candidate_from_dict(payload: dict[str, Any]) -> ConsolidationPlanCandidate:
         source_child_ids=tuple(payload["source_child_ids"]),
         min_source_children=trigger["min_source_children"],
         source_children_stable=trigger["source_children_stable"],
+        source_children_materialized=trigger.get("source_children_materialized", True),
         has_open_recall_gap=trigger["has_open_recall_gap"],
     )
     _validate_plan_candidate(candidate)
@@ -699,6 +1373,85 @@ def _latest_jobs_by_candidate_signature(
     for job in jobs:
         latest[_existing_job_signature(job)] = job
     return latest
+
+
+def _candidate_queue_decision(
+    candidate: ConsolidationPlanCandidate,
+    latest_job: ConsolidationJobRecord | None,
+) -> dict[str, Any]:
+    if len(candidate.source_child_ids) < candidate.min_source_children:
+        return {"queue": False, "reason": "insufficient-source-children", "retrying_terminal_job": False}
+    if not candidate.source_children_stable:
+        return {"queue": False, "reason": "source-children-not-stable", "retrying_terminal_job": False}
+    if candidate.source_level != "turn" and not candidate.source_children_materialized:
+        return {"queue": False, "reason": "source-summaries-not-materialized", "retrying_terminal_job": False}
+    if not candidate.has_open_recall_gap:
+        return {"queue": False, "reason": "no-open-recall-gap", "retrying_terminal_job": False}
+    if latest_job is None:
+        return {"queue": True, "reason": "ready", "retrying_terminal_job": False}
+    if latest_job.status in {"pending", "running", "completed"}:
+        return {
+            "queue": False,
+            "reason": f"existing-{latest_job.status}-job",
+            "retrying_terminal_job": False,
+        }
+    return {
+        "queue": True,
+        "reason": f"retry-after-{latest_job.status}-job",
+        "retrying_terminal_job": True,
+    }
+
+
+def _profile_aggregation_decision(target: dict[str, Any], source_summary_ids: list[str]) -> str:
+    if len(source_summary_ids) < target["min_source_children"]:
+        return "insufficient-source-summaries"
+    if not target["source_children_stable"]:
+        return "source-children-not-stable"
+    if not target["source_children_materialized"]:
+        return "source-summaries-not-materialized"
+    if not target["has_open_recall_gap"]:
+        return "no-open-recall-gap"
+    return "ready"
+
+
+def _dedupe_preserving_order(values: Any) -> list[Any]:
+    return list(dict.fromkeys(values))
+
+
+def _planned_job_for_candidate(
+    candidate: ConsolidationPlanCandidate,
+    *,
+    planned_at: str,
+    planner_id: str,
+) -> ConsolidationJobRecord:
+    return create_consolidation_job(
+        scope=candidate.scope,
+        summary_level=candidate.summary_level,
+        source_level=candidate.source_level,
+        source_child_ids=list(candidate.source_child_ids),
+        created_at=planned_at,
+        job_id=f"consolidation-job:planned:{candidate.candidate_id}",
+        summarizer={
+            "kind": "local-recall-planner-placeholder",
+            "hosted_llm": False,
+            "model_id": None,
+            "planner_id": planner_id,
+            "candidate_id": candidate.candidate_id,
+        },
+    )
+
+
+def _job_report_view(job: ConsolidationJobRecord | None) -> dict[str, Any] | None:
+    if job is None:
+        return None
+    return {
+        "job_id": job.job_id,
+        "status": job.status,
+        "updated_at": job.updated_at,
+        "completed_at": job.completed_at,
+        "output_summary_ids": list(job.output_summary_ids),
+        "error": job.error,
+    }
 
 
 def _validate_job_record(job: ConsolidationJobRecord) -> None:
@@ -840,15 +1593,14 @@ def _consolidation_audit_record(
     unexpected_output_summary_ids = [
         summary_id for summary_id in materialized_summary_ids if summary_id not in expected_output_summary_ids
     ]
-    summary_scope_mismatches = [
-        summary["summary_id"]
-        for summary in ordered_summaries
-        if summary.get("scope") != job.scope
-        or summary.get("summary_level") != job.summary_level
-        or summary.get("source_level") != job.source_level
-        or summary.get("source_child_ids") != list(job.source_child_ids)
-        or summary.get("lineage_kind") != job.lineage_kind
-    ]
+    summary_scope_mismatches: list[str] = []
+    summary_mismatch_reasons: dict[str, list[str]] = {}
+    for summary in ordered_summaries:
+        mismatch_reasons = _summary_mismatch_reasons(summary, job)
+        if not mismatch_reasons:
+            continue
+        summary_scope_mismatches.append(summary["summary_id"])
+        summary_mismatch_reasons[summary["summary_id"]] = mismatch_reasons
 
     if job.status != "completed":
         audit_status = "not-materialized" if not materialized_summary_ids else "unexpected-summary"
@@ -864,6 +1616,7 @@ def _consolidation_audit_record(
         "job_id": job.job_id,
         "scope": job.scope,
         "status": job.status,
+        "completed_at": job.completed_at,
         "summary_level": job.summary_level,
         "source_level": job.source_level,
         "source_child_ids": list(job.source_child_ids),
@@ -872,6 +1625,7 @@ def _consolidation_audit_record(
         "missing_output_summary_ids": missing_output_summary_ids,
         "unexpected_output_summary_ids": unexpected_output_summary_ids,
         "summary_scope_mismatches": summary_scope_mismatches,
+        "summary_mismatch_reasons": summary_mismatch_reasons,
         "non_blocking": job.non_blocking,
         "reversible": job.reversible,
         "lineage_kind": job.lineage_kind,
@@ -879,6 +1633,7 @@ def _consolidation_audit_record(
         "summaries": [
             {
                 "summary_id": summary["summary_id"],
+                "job_id": summary["job_id"],
                 "content_digest": summary["content_digest"],
                 "source_child_count": summary["source_child_count"],
                 "source_child_ids": list(summary["source_child_ids"]),
@@ -887,6 +1642,65 @@ def _consolidation_audit_record(
             for summary in ordered_summaries
         ],
     }
+
+
+def _summary_mismatch_reasons(summary: dict[str, Any], job: ConsolidationJobRecord) -> list[str]:
+    mismatch_reasons: list[str] = []
+    if summary.get("job_id") != job.job_id:
+        mismatch_reasons.append("job-id-mismatch")
+    if summary.get("scope") != job.scope:
+        mismatch_reasons.append("scope-mismatch")
+    if summary.get("summary_level") != job.summary_level:
+        mismatch_reasons.append("summary-level-mismatch")
+    if summary.get("source_level") != job.source_level:
+        mismatch_reasons.append("source-level-mismatch")
+    if summary.get("source_child_ids") != list(job.source_child_ids):
+        mismatch_reasons.append("source-child-ids-mismatch")
+    if summary.get("source_child_count") != len(job.source_child_ids):
+        mismatch_reasons.append("source-child-count-mismatch")
+    if not _summary_has_valid_source_child_digests(summary, job):
+        mismatch_reasons.append("source-child-digests-mismatch")
+    if not _summary_has_valid_content_digest(summary):
+        mismatch_reasons.append("content-digest-mismatch")
+    created_at = summary.get("created_at")
+    if not isinstance(created_at, str) or not created_at:
+        mismatch_reasons.append("created-at-missing")
+    elif job.completed_at is not None and created_at < job.completed_at:
+        mismatch_reasons.append("created-at-before-job-completed")
+    if summary.get("non_blocking") is not True:
+        mismatch_reasons.append("non-blocking-required")
+    if summary.get("lineage_kind") != job.lineage_kind:
+        mismatch_reasons.append("lineage-kind-mismatch")
+    if summary.get("reversible") is not True:
+        mismatch_reasons.append("reversible-required")
+    if summary.get("summarizer", {}).get("hosted_llm"):
+        mismatch_reasons.append("hosted-llm-disallowed")
+    return mismatch_reasons
+
+
+def _summary_has_valid_source_child_digests(
+    summary: dict[str, Any],
+    job: ConsolidationJobRecord,
+) -> bool:
+    source_child_digests = summary.get("source_child_digests")
+    if not isinstance(source_child_digests, dict):
+        return False
+    if set(source_child_digests) != set(job.source_child_ids):
+        return False
+    return all(
+        isinstance(source_child_digests[child_id], str) and source_child_digests[child_id].startswith("sha256:")
+        for child_id in job.source_child_ids
+    )
+
+
+def _summary_has_valid_content_digest(summary: dict[str, Any]) -> bool:
+    summary_text = summary.get("summary_text")
+    content_digest = summary.get("content_digest")
+    if not isinstance(summary_text, str) or not summary_text.strip():
+        return False
+    if not isinstance(content_digest, str) or not content_digest.startswith("sha256:"):
+        return False
+    return content_digest == _sha256_text(summary_text)
 
 
 def _build_consolidation_lineage_node(
@@ -946,9 +1760,15 @@ def _build_consolidation_lineage_node(
     return {
         "kind": "summary",
         "summary_id": summary_id,
+        "job_id": summary["job_id"],
+        "created_at": summary["created_at"],
+        "summarizer": deepcopy(summary.get("summarizer", {})),
+        "non_blocking": summary["non_blocking"],
+        "reversible": summary["reversible"],
         "summary_level": summary["summary_level"],
         "source_level": summary["source_level"],
         "source_child_ids": list(summary["source_child_ids"]),
+        "source_child_digests": deepcopy(summary.get("source_child_digests", {})),
         "content_digest": summary["content_digest"],
         "leaf_source_child_ids": list(dict.fromkeys(leaf_source_child_ids)),
         "transitive_summary_ids": list(dict.fromkeys(transitive_summary_ids)),
@@ -990,6 +1810,7 @@ def _collect_reverse_lineage_paths(
             {
                 "summary_ids": list(chain),
                 "summary_levels": [summaries_by_id[item]["summary_level"] for item in chain],
+                "summary_nodes": [_reverse_lineage_summary_node(summaries_by_id[item]) for item in chain],
                 "root_summary_id": summary_id,
             }
         )
@@ -1004,6 +1825,7 @@ def _collect_reverse_lineage_paths(
                 {
                     "summary_ids": list(chain),
                     "summary_levels": [summaries_by_id[item]["summary_level"] for item in chain],
+                    "summary_nodes": [_reverse_lineage_summary_node(summaries_by_id[item]) for item in chain],
                     "cycle_summary_id": parent_summary_id,
                 }
             )
@@ -1026,6 +1848,23 @@ def _collect_reverse_lineage_paths(
             {
                 "summary_ids": list(chain),
                 "summary_levels": [summaries_by_id[item]["summary_level"] for item in chain],
+                "summary_nodes": [_reverse_lineage_summary_node(summaries_by_id[item]) for item in chain],
                 "root_summary_id": summary_id,
             }
         )
+
+
+def _reverse_lineage_summary_node(summary: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "summary_id": summary["summary_id"],
+        "job_id": summary["job_id"],
+        "created_at": summary["created_at"],
+        "summarizer": deepcopy(summary.get("summarizer", {})),
+        "non_blocking": summary["non_blocking"],
+        "reversible": summary["reversible"],
+        "summary_level": summary["summary_level"],
+        "source_level": summary["source_level"],
+        "source_child_ids": list(summary["source_child_ids"]),
+        "source_child_digests": deepcopy(summary.get("source_child_digests", {})),
+        "content_digest": summary["content_digest"],
+    }

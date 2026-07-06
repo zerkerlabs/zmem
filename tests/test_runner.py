@@ -142,6 +142,84 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(temporal["withheld_temporal_graph"][learned.id]["temporal_state"], "learned")
         self.assertEqual(temporal["selected_temporal_graph"][future.id]["temporal_state"], "future")
 
+    def test_build_context_preserves_explicit_temporal_state_group_graphs(self):
+        learned = self.store.remember(
+            "Release freeze owner is Mallory.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="agent",
+        )
+        stale = self.store.remember(
+            "Status page owner is Alice.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        current = self.store.remember(
+            "Status page owner is Alice Chen.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            parents=[stale.id],
+        )
+        future = self.store.remember(
+            "Roadmap owner is Priya.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            status="active",
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-05T00:00:00Z", "2024-01-05T00:00:00Z", learned.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z", stale.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-02-01T00:00:00Z", "2024-02-01T00:00:00Z", current.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2099-01-01T00:00:00Z", "2099-01-01T00:00:00Z", future.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'PROPOSED'",
+            ("2024-01-05T00:00:00Z", learned.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-01T00:00:00Z", stale.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-02-01T00:00:00Z", current.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2099-01-01T00:00:00Z", future.id),
+        )
+        self.store.conn.commit()
+
+        receipt = self.store.inject("owner", agent_id="codex", risk="low", scope="project")
+        context = build_context(receipt)
+        temporal = context["temporal"]
+
+        self.assertCountEqual(list(temporal["history_temporal_graph"]), [learned.id, stale.id, current.id])
+        self.assertEqual(list(temporal["current_temporal_graph"]), [current.id])
+        self.assertEqual(list(temporal["superseded_temporal_graph"]), [stale.id])
+        self.assertEqual(list(temporal["learned_temporal_graph"]), [learned.id])
+        self.assertEqual(list(temporal["future_temporal_graph"]), [future.id])
+        self.assertEqual(temporal["history_temporal_graph"][learned.id]["temporal_state"], "learned")
+        self.assertEqual(temporal["history_temporal_graph"][stale.id]["temporal_state"], "superseded")
+        self.assertEqual(temporal["history_temporal_graph"][current.id]["temporal_state"], "current")
+        self.assertEqual(temporal["current_temporal_graph"][current.id]["temporal_state"], "current")
+        self.assertEqual(temporal["superseded_temporal_graph"][stale.id]["temporal_resolution_kind"], "supersession")
+        self.assertIsNone(temporal["learned_temporal_graph"][learned.id]["valid_from"])
+        self.assertEqual(temporal["future_temporal_graph"][future.id]["valid_from"], "2099-01-01T00:00:00Z")
+
     def test_build_context_preserves_unlearned_temporal_id_groups_when_present(self):
         receipt = {
             "action_id": "act_temporal_context",
@@ -159,6 +237,22 @@ class RunnerTest(unittest.TestCase):
                     "unlearned_memory_ids": ["mem_rejected"],
                     "learned_memory_ids": [],
                     "superseded_memory_ids": [],
+                    "history_temporal_graph": {
+                        "mem_rejected": {
+                            "memory_id": "mem_rejected",
+                            "temporal_state": "unlearned",
+                        }
+                    },
+                    "current_temporal_graph": {},
+                    "future_temporal_graph": {},
+                    "superseded_temporal_graph": {},
+                    "unlearned_temporal_graph": {
+                        "mem_rejected": {
+                            "memory_id": "mem_rejected",
+                            "temporal_state": "unlearned",
+                        }
+                    },
+                    "learned_temporal_graph": {},
                     "resolved_current_memory_ids": [],
                     "dropped_current_memory_ids": [],
                     "abstained_current_memory_ids": [],
@@ -179,6 +273,8 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(context["temporal"]["future_memory_ids"], [])
         self.assertEqual(context["temporal"]["learned_memory_ids"], [])
         self.assertEqual(context["temporal"]["unlearned_memory_ids"], ["mem_rejected"])
+        self.assertEqual(context["temporal"]["history_temporal_graph"]["mem_rejected"]["temporal_state"], "unlearned")
+        self.assertEqual(context["temporal"]["unlearned_temporal_graph"]["mem_rejected"]["temporal_state"], "unlearned")
 
     def test_build_context_preserves_current_vs_history_temporal_envelopes(self):
         unrelated = self.store.remember(
@@ -248,6 +344,3486 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(temporal["injected_temporal_graph"][current.id]["temporal_state"], "current")
         self.assertIsNone(temporal["injected_temporal_graph"][current.id]["temporal_resolution_kind"])
         self.assertEqual(temporal["injected_temporal_graph"][current.id]["temporal_resolution_reasons"], [])
+
+    def test_build_context_preserves_temporal_serial_metadata_for_current_vs_history_envelopes(self):
+        unrelated = self.store.remember(
+            "Alice owns the billing exporter.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        stale = self.store.remember(
+            "Status page owner is Alice.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        current = self.store.remember(
+            "Status page owner is Alice Chen.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            parents=[stale.id],
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-15T00:00:00Z", "2024-01-15T00:00:00Z", unrelated.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z", stale.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-02-01T00:00:00Z", "2024-02-01T00:00:00Z", current.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-15T00:00:00Z", unrelated.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-01T00:00:00Z", stale.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-02-01T00:00:00Z", current.id),
+        )
+        self.store.conn.commit()
+
+        receipt = self.store.inject("previous status page owner", agent_id="codex", risk="low", scope="project")
+        context = build_context(receipt)
+        temporal = context["temporal"]
+        receipt_temporal = receipt["retrieval"]["temporal"]
+        stale_serial = receipt_temporal["history_temporal_graph"][stale.id]["serial"]
+        current_serial = receipt_temporal["history_temporal_graph"][current.id]["serial"]
+
+        self.assertEqual(temporal["selected_ids"], [stale.id, current.id])
+        self.assertNotIn(unrelated.id, temporal["selected_temporal_graph"])
+        self.assertLess(stale_serial, current_serial)
+        self.assertEqual(temporal["history_temporal_graph"][stale.id]["serial"], stale_serial)
+        self.assertEqual(temporal["history_temporal_graph"][current.id]["serial"], current_serial)
+        self.assertLess(
+            temporal["history_temporal_graph"][stale.id]["serial"],
+            temporal["history_temporal_graph"][current.id]["serial"],
+        )
+        self.assertEqual(temporal["selected_temporal_graph"][stale.id]["serial"], stale_serial)
+        self.assertEqual(temporal["selected_temporal_graph"][current.id]["serial"], current_serial)
+        self.assertEqual(temporal["injected_temporal_graph"][stale.id]["serial"], stale_serial)
+        self.assertEqual(temporal["injected_temporal_graph"][current.id]["serial"], current_serial)
+        self.assertEqual(temporal["injected_temporal_graph"][stale.id]["temporal_state"], "superseded")
+        self.assertEqual(temporal["injected_temporal_graph"][current.id]["temporal_state"], "current")
+
+    def test_build_context_preserves_current_vs_history_ordering_metadata(self):
+        unrelated = self.store.remember(
+            "Alice owns the billing exporter.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        stale = self.store.remember(
+            "Status page owner is Alice.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        current = self.store.remember(
+            "Status page owner is Alice Chen.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            parents=[stale.id],
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-15T00:00:00Z", "2024-01-15T00:00:00Z", unrelated.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z", stale.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-02-01T00:00:00Z", "2024-02-01T00:00:00Z", current.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-15T00:00:00Z", unrelated.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-01T00:00:00Z", stale.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-02-01T00:00:00Z", current.id),
+        )
+        self.store.conn.commit()
+
+        receipt = self.store.inject("previous status page owner", agent_id="codex", risk="low", scope="project")
+        context = build_context(receipt)
+        temporal = context["temporal"]
+        receipt_temporal = receipt["retrieval"]["temporal"]
+        current_ordering = temporal["current_ordering"]
+        history_ordering = temporal["history_ordering"]
+
+        self.assertEqual(temporal["selected_ids"], [stale.id, current.id])
+        self.assertEqual(current_ordering, receipt_temporal["current_ordering"])
+        self.assertEqual(history_ordering, receipt_temporal["history_ordering"])
+        self.assertFalse(current_ordering["applied"])
+        self.assertFalse(current_ordering["pass_through"])
+        self.assertEqual(current_ordering["basis"], "retrieval_rank")
+        self.assertEqual(current_ordering["source"], "baseline")
+        self.assertEqual(current_ordering["reason"], "current-only-retrieval-rank")
+        self.assertEqual(
+            current_ordering["selected_current_rankings"],
+            [{"memory_id": current.id, "rank": 2}],
+        )
+        self.assertEqual(
+            current_ordering["considered_current_rankings"],
+            [{"memory_id": current.id, "rank": 2, "selected": True}],
+        )
+        self.assertTrue(history_ordering["applied"])
+        self.assertFalse(history_ordering["pass_through"])
+        self.assertEqual(history_ordering["basis"], "historical_selection_rank")
+        self.assertEqual(history_ordering["source"], "temporal_history_selection")
+        self.assertEqual(history_ordering["reason"], "history-query-terms")
+        self.assertEqual(
+            history_ordering["selected_history_rankings"],
+            [
+                {"memory_id": stale.id, "rank": 1},
+                {"memory_id": current.id, "rank": 2},
+            ],
+        )
+        self.assertEqual(
+            history_ordering["considered_history_rankings"],
+            [
+                {"memory_id": stale.id, "rank": 1, "selected": True},
+                {"memory_id": current.id, "rank": 2, "selected": True},
+            ],
+        )
+        self.assertNotIn(unrelated.id, temporal["selected_temporal_graph"])
+
+    def test_build_context_preserves_current_only_identity_ordering_metadata(self):
+        unrelated = self.store.remember(
+            "Alice owns the billing exporter.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        stale = self.store.remember(
+            "Status page owner is Alice.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        current = self.store.remember(
+            "Status page owner is Alice Chen.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            parents=[stale.id],
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-15T00:00:00Z", "2024-01-15T00:00:00Z", unrelated.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z", stale.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-02-01T00:00:00Z", "2024-02-01T00:00:00Z", current.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-15T00:00:00Z", unrelated.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-01T00:00:00Z", stale.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-02-01T00:00:00Z", current.id),
+        )
+        self.store.conn.commit()
+
+        receipt = self.store.inject("current status page owner", agent_id="codex", risk="low", scope="project")
+        context = build_context(receipt)
+        temporal = context["temporal"]
+        receipt_temporal = receipt["retrieval"]["temporal"]
+        current_ordering = temporal["current_ordering"]
+        history_ordering = temporal["history_ordering"]
+
+        self.assertEqual(temporal["selected_ids"], [current.id])
+        self.assertEqual(current_ordering, receipt_temporal["current_ordering"])
+        self.assertEqual(history_ordering, receipt_temporal["history_ordering"])
+        self.assertTrue(current_ordering["applied"])
+        self.assertFalse(current_ordering["pass_through"])
+        self.assertEqual(current_ordering["basis"], "retrieval_rank")
+        self.assertEqual(current_ordering["source"], "baseline")
+        self.assertEqual(current_ordering["reason"], "current-only-retrieval-rank")
+        self.assertEqual(
+            current_ordering["selected_current_rankings"],
+            [{"memory_id": current.id, "rank": 2}],
+        )
+        self.assertEqual(
+            current_ordering["considered_current_rankings"],
+            [{"memory_id": current.id, "rank": 2, "selected": True}],
+        )
+        self.assertFalse(history_ordering["applied"])
+        self.assertFalse(history_ordering["pass_through"])
+        self.assertEqual(history_ordering["basis"], "history_conflict_abstention_rank")
+        self.assertEqual(history_ordering["source"], "temporal_history_conflict_abstention")
+        self.assertEqual(history_ordering["reason"], "current-query-terms")
+        self.assertEqual(history_ordering["selected_history_rankings"], [])
+        self.assertEqual(history_ordering["considered_history_rankings"], [])
+        self.assertEqual(temporal["selected_temporal_graph"][current.id]["temporal_state"], "current")
+        self.assertNotIn(unrelated.id, temporal["selected_temporal_graph"])
+        self.assertNotIn(stale.id, temporal["selected_temporal_graph"])
+
+    def test_build_context_preserves_bitemporal_identity_metadata_for_current_vs_history_envelopes(self):
+        unrelated = self.store.remember(
+            "Alice owns the billing exporter.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        stale = self.store.remember(
+            "Status page owner is Alice.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            actor_uri="agent://codex/session-january",
+            session_id="session://january",
+        )
+        current = self.store.remember(
+            "Status page owner is Alice Chen.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            actor_uri="agent://codex/session-february",
+            session_id="session://february",
+            parents=[stale.id],
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-15T00:00:00Z", "2024-01-15T00:00:00Z", unrelated.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z", stale.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-02-01T00:00:00Z", "2024-02-01T00:00:00Z", current.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-15T00:00:00Z", unrelated.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-01T00:00:00Z", stale.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-02-01T00:00:00Z", current.id),
+        )
+        self.store.conn.commit()
+
+        receipt = self.store.inject("previous status page owner", agent_id="codex", risk="low", scope="project")
+        context = build_context(receipt)
+        temporal = context["temporal"]
+        receipt_temporal = receipt["retrieval"]["temporal"]
+        history_graph = temporal["history_temporal_graph"]
+        selected_graph = temporal["selected_temporal_graph"]
+
+        self.assertEqual(temporal["selected_ids"], [stale.id, current.id])
+        self.assertNotIn(unrelated.id, history_graph)
+        self.assertNotIn(unrelated.id, selected_graph)
+
+        self.assertEqual(history_graph[stale.id]["learned_at"], "2024-01-01T00:00:00Z")
+        self.assertEqual(history_graph[stale.id]["valid_from"], "2024-01-01T00:00:00Z")
+        self.assertEqual(history_graph[stale.id]["valid_to"], "2024-02-01T00:00:00Z")
+        self.assertEqual(history_graph[stale.id]["superseded_at"], "2024-02-01T00:00:00Z")
+        self.assertEqual(history_graph[stale.id]["superseded_by_ids"], [current.id])
+        self.assertEqual(history_graph[stale.id]["temporal_state"], "superseded")
+        self.assertEqual(history_graph[stale.id]["temporal_resolution_kind"], "supersession")
+
+        self.assertEqual(history_graph[current.id]["learned_at"], "2024-02-01T00:00:00Z")
+        self.assertEqual(history_graph[current.id]["valid_from"], "2024-02-01T00:00:00Z")
+        self.assertIsNone(history_graph[current.id]["valid_to"])
+        self.assertIsNone(history_graph[current.id]["superseded_at"])
+        self.assertEqual(history_graph[current.id]["superseded_by_ids"], [])
+        self.assertEqual(history_graph[current.id]["temporal_state"], "current")
+        self.assertIsNone(history_graph[current.id]["temporal_resolution_kind"])
+
+        self.assertEqual(selected_graph[stale.id]["valid_to"], "2024-02-01T00:00:00Z")
+        self.assertEqual(selected_graph[stale.id]["superseded_by_ids"], [current.id])
+        self.assertEqual(selected_graph[current.id]["valid_from"], "2024-02-01T00:00:00Z")
+        self.assertEqual(selected_graph[current.id]["temporal_state"], "current")
+
+        self.assertEqual(history_graph[stale.id], receipt_temporal["history_temporal_graph"][stale.id])
+        self.assertEqual(history_graph[current.id], receipt_temporal["history_temporal_graph"][current.id])
+        self.assertEqual(selected_graph[stale.id], receipt_temporal["selected_temporal_graph"][stale.id])
+        self.assertEqual(selected_graph[current.id], receipt_temporal["selected_temporal_graph"][current.id])
+
+    def test_build_context_preserves_full_bitemporal_identity_temporal_graph(self):
+        unrelated = self.store.remember(
+            "Alice owns the billing exporter.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        stale = self.store.remember(
+            "Status page owner is Alice.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            actor_uri="agent://codex/session-january",
+            session_id="session://january",
+        )
+        current = self.store.remember(
+            "Status page owner is Alice Chen.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            actor_uri="agent://codex/session-february",
+            session_id="session://february",
+            parents=[stale.id],
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-15T00:00:00Z", "2024-01-15T00:00:00Z", unrelated.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z", stale.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-02-01T00:00:00Z", "2024-02-01T00:00:00Z", current.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-15T00:00:00Z", unrelated.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-01T00:00:00Z", stale.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-02-01T00:00:00Z", current.id),
+        )
+        self.store.conn.commit()
+
+        receipt = self.store.inject("previous status page owner", agent_id="codex", risk="low", scope="project")
+        context = build_context(receipt)
+        temporal = context["temporal"]
+        receipt_temporal = receipt["retrieval"]["temporal"]
+        temporal_graph = temporal["temporal_graph"]
+
+        self.assertCountEqual(list(temporal_graph), [stale.id, current.id])
+        self.assertNotIn(unrelated.id, temporal_graph)
+        self.assertEqual(temporal_graph[stale.id]["learned_at"], "2024-01-01T00:00:00Z")
+        self.assertEqual(temporal_graph[stale.id]["valid_from"], "2024-01-01T00:00:00Z")
+        self.assertEqual(temporal_graph[stale.id]["valid_to"], "2024-02-01T00:00:00Z")
+        self.assertEqual(temporal_graph[stale.id]["superseded_at"], "2024-02-01T00:00:00Z")
+        self.assertEqual(temporal_graph[stale.id]["superseded_by_ids"], [current.id])
+        self.assertEqual(temporal_graph[stale.id]["temporal_state"], "superseded")
+        self.assertEqual(temporal_graph[current.id]["learned_at"], "2024-02-01T00:00:00Z")
+        self.assertEqual(temporal_graph[current.id]["valid_from"], "2024-02-01T00:00:00Z")
+        self.assertIsNone(temporal_graph[current.id]["valid_to"])
+        self.assertIsNone(temporal_graph[current.id]["superseded_at"])
+        self.assertEqual(temporal_graph[current.id]["superseded_by_ids"], [])
+        self.assertEqual(temporal_graph[current.id]["temporal_state"], "current")
+        self.assertEqual(temporal_graph, receipt_temporal["temporal_graph"])
+
+    def test_build_context_preserves_bitemporal_identity_metadata_for_current_vs_future_envelopes(self):
+        unrelated = self.store.remember(
+            "Alice owns the billing exporter.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        current = self.store.remember(
+            "Status page owner is Alice.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            actor_uri="agent://codex/session-january",
+            session_id="session://january",
+        )
+        future = self.store.remember(
+            "Status page owner is Alice Chen.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            actor_uri="agent://codex/session-february",
+            session_id="session://february",
+            parents=[current.id],
+            status="active",
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-15T00:00:00Z", "2024-01-15T00:00:00Z", unrelated.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z", current.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2099-01-01T00:00:00Z", "2099-01-01T00:00:00Z", future.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-15T00:00:00Z", unrelated.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-01T00:00:00Z", current.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2099-01-01T00:00:00Z", future.id),
+        )
+        self.store.conn.commit()
+
+        receipt = self.store.inject("status page owner", agent_id="codex", risk="low", scope="project")
+        context = build_context(receipt)
+        temporal = context["temporal"]
+        receipt_temporal = receipt["retrieval"]["temporal"]
+        current_graph = temporal["current_temporal_graph"]
+        future_graph = temporal["future_temporal_graph"]
+        selected_graph = temporal["selected_temporal_graph"]
+
+        self.assertEqual(temporal["selected_ids"], [future.id])
+        self.assertEqual(temporal["current_memory_ids"], [current.id])
+        self.assertEqual(temporal["future_memory_ids"], [future.id])
+        self.assertNotIn(unrelated.id, current_graph)
+        self.assertNotIn(unrelated.id, future_graph)
+        self.assertNotIn(unrelated.id, selected_graph)
+
+        self.assertEqual(current_graph[current.id]["learned_at"], "2024-01-01T00:00:00Z")
+        self.assertEqual(current_graph[current.id]["valid_from"], "2024-01-01T00:00:00Z")
+        self.assertEqual(current_graph[current.id]["valid_to"], "2099-01-01T00:00:00Z")
+        self.assertEqual(current_graph[current.id]["superseded_at"], "2099-01-01T00:00:00Z")
+        self.assertEqual(current_graph[current.id]["superseded_by_ids"], [future.id])
+        self.assertEqual(current_graph[current.id]["temporal_state"], "current")
+        self.assertEqual(current_graph[current.id]["current_resolution"], "selected")
+        self.assertIsNone(current_graph[current.id]["temporal_resolution_kind"])
+
+        self.assertEqual(future_graph[future.id]["learned_at"], "2099-01-01T00:00:00Z")
+        self.assertEqual(future_graph[future.id]["valid_from"], "2099-01-01T00:00:00Z")
+        self.assertIsNone(future_graph[future.id]["valid_to"])
+        self.assertIsNone(future_graph[future.id]["superseded_at"])
+        self.assertEqual(future_graph[future.id]["superseded_by_ids"], [])
+        self.assertEqual(future_graph[future.id]["status_at_query"], "future")
+        self.assertEqual(future_graph[future.id]["temporal_state"], "future")
+        self.assertIsNone(future_graph[future.id]["current_resolution"])
+        self.assertIsNone(future_graph[future.id]["temporal_resolution_kind"])
+
+        self.assertEqual(selected_graph[future.id]["valid_from"], "2099-01-01T00:00:00Z")
+        self.assertEqual(selected_graph[future.id]["temporal_state"], "future")
+
+        self.assertEqual(current_graph[current.id], receipt_temporal["current_temporal_graph"][current.id])
+        self.assertEqual(future_graph[future.id], receipt_temporal["future_temporal_graph"][future.id])
+        self.assertEqual(selected_graph[future.id], receipt_temporal["selected_temporal_graph"][future.id])
+
+    def test_build_context_preserves_bitemporal_identity_metadata_for_learned_only_query_envelopes(self):
+        unrelated = self.store.remember(
+            "Alice owns the billing exporter.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        current = self.store.remember(
+            "Status page owner is Alice.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            actor_uri="agent://codex/session-january",
+            session_id="session://january",
+        )
+        learned = self.store.remember(
+            "Status page owner is Alice Chen.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="agent",
+            actor_uri="agent://codex/session-february",
+            session_id="session://february",
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-15T00:00:00Z", "2024-01-15T00:00:00Z", unrelated.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z", current.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-02-01T00:00:00Z", "2024-02-01T00:00:00Z", learned.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-15T00:00:00Z", unrelated.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-01T00:00:00Z", current.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'PROPOSED'",
+            ("2024-02-01T00:00:00Z", learned.id),
+        )
+        self.store.conn.commit()
+
+        snapshot = self.store.query_at(
+            "2024-02-20T00:00:00Z",
+            scope="project",
+            search_query="status page owner",
+            learned_only=True,
+        )
+        context = build_context(
+            {
+                "action_id": "act_temporal_context",
+                "task": "learned temporal passthrough",
+                "risk": "low",
+                "merkle_root": "root_fixture",
+                "policy_checks": [],
+                "memories": [],
+                "retrieval": {"temporal": snapshot},
+            }
+        )
+        temporal = context["temporal"]
+        history_graph = temporal["history_temporal_graph"]
+        learned_graph = temporal["learned_temporal_graph"]
+
+        self.assertEqual(temporal["history_memory_ids"], [learned.id])
+        self.assertEqual(temporal["current_memory_ids"], [])
+        self.assertEqual(temporal["future_memory_ids"], [])
+        self.assertEqual(temporal["superseded_memory_ids"], [])
+        self.assertEqual(temporal["unlearned_memory_ids"], [])
+        self.assertEqual(temporal["learned_memory_ids"], [learned.id])
+        self.assertEqual(temporal["selected_ids"], [learned.id])
+        self.assertEqual(temporal["selection_strategy"], "learned_only_v1")
+        self.assertEqual(temporal["selection_reason"], "explicit-learned-only-filter")
+        self.assertNotIn(unrelated.id, history_graph)
+        self.assertNotIn(current.id, history_graph)
+        self.assertEqual(temporal["current_temporal_graph"], {})
+        self.assertEqual(temporal["future_temporal_graph"], {})
+        self.assertEqual(temporal["superseded_temporal_graph"], {})
+        self.assertEqual(temporal["unlearned_temporal_graph"], {})
+        history_ordering = temporal["history_ordering"]
+
+        self.assertEqual(history_graph[learned.id]["learned_at"], "2024-02-01T00:00:00Z")
+        self.assertIsNone(history_graph[learned.id]["valid_from"])
+        self.assertIsNone(history_graph[learned.id]["valid_to"])
+        self.assertIsNone(history_graph[learned.id]["superseded_at"])
+        self.assertEqual(history_graph[learned.id]["superseded_by_ids"], [])
+        self.assertEqual(history_graph[learned.id]["status_at_query"], "quarantined")
+        self.assertEqual(history_graph[learned.id]["temporal_state"], "learned")
+        self.assertIsNone(history_graph[learned.id]["current_resolution"])
+        self.assertIsNone(history_graph[learned.id]["temporal_resolution_kind"])
+        self.assertEqual(history_graph[learned.id]["temporal_resolution_reasons"], [])
+
+        self.assertEqual(history_ordering, snapshot["history_ordering"])
+        self.assertTrue(history_ordering["applied"])
+        self.assertFalse(history_ordering["pass_through"])
+        self.assertEqual(history_ordering["basis"], "historical_selection_rank")
+        self.assertEqual(history_ordering["source"], "temporal_history_selection")
+        self.assertEqual(history_ordering["reason"], "explicit-learned-only-filter")
+        self.assertEqual(
+            history_ordering["selected_history_rankings"],
+            [{"memory_id": learned.id, "rank": 1}],
+        )
+        self.assertEqual(
+            history_ordering["considered_history_rankings"],
+            [{"memory_id": learned.id, "rank": 1, "selected": True}],
+        )
+        receipt_metadata = temporal["current_history_receipt_metadata"]
+        self.assertEqual(receipt_metadata["filter"], "learned_only")
+        self.assertEqual(receipt_metadata["base_history_memory_ids"], [current.id, learned.id])
+        self.assertEqual(receipt_metadata["base_current_memory_ids"], [current.id])
+        self.assertEqual(receipt_metadata["included_history_memory_ids"], [learned.id])
+        self.assertEqual(receipt_metadata["included_current_memory_ids"], [])
+        self.assertEqual(receipt_metadata["omitted_history_memory_ids"], [current.id])
+        self.assertEqual(receipt_metadata["omitted_current_memory_ids"], [current.id])
+        self.assertEqual(receipt_metadata, snapshot["current_history_receipt_metadata"])
+        self.assertEqual(learned_graph[learned.id], snapshot["learned_temporal_graph"][learned.id])
+        self.assertEqual(history_graph[learned.id], snapshot["history_temporal_graph"][learned.id])
+
+    def test_build_context_preserves_query_at_identity_snapshot_controls_for_learned_empty_subset(self):
+        unrelated = self.store.remember(
+            "Alice owns the billing exporter.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        stale = self.store.remember(
+            "Status page owner is Alice.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            actor_uri="agent://codex/session-january",
+            session_id="session://january",
+        )
+        current = self.store.remember(
+            "Status page owner is Alice Chen.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            actor_uri="agent://codex/session-february",
+            session_id="session://february",
+            parents=[stale.id],
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-15T00:00:00Z", "2024-01-15T00:00:00Z", unrelated.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z", stale.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-02-01T00:00:00Z", "2024-02-01T00:00:00Z", current.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-15T00:00:00Z", unrelated.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-01T00:00:00Z", stale.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-02-01T00:00:00Z", current.id),
+        )
+        self.store.conn.commit()
+
+        snapshot = self.store.query_at(
+            "2024-02-20T00:00:00Z",
+            scope="project",
+            search_query="status page owner",
+            learned_only=True,
+        )
+        context = build_context(
+            {
+                "action_id": "act_temporal_context",
+                "task": "learned temporal passthrough",
+                "risk": "low",
+                "merkle_root": "root_fixture",
+                "policy_checks": [],
+                "memories": [],
+                "retrieval": {"temporal": snapshot},
+            }
+        )
+        temporal = context["temporal"]
+
+        self.assertEqual(temporal["query_at"], "2024-02-20T00:00:00Z")
+        self.assertEqual(temporal["scope"], "project")
+        self.assertEqual(temporal["search_query"], "status page owner")
+        self.assertTrue(temporal["include_abstained_current"])
+        self.assertEqual(temporal["current_resolution"], "all")
+        self.assertTrue(temporal["learned_only"])
+        self.assertFalse(temporal["unlearned_only"])
+        self.assertFalse(temporal["superseded_only"])
+        self.assertFalse(temporal["future_only"])
+        self.assertEqual(temporal["selected_ids"], [])
+        self.assertEqual(temporal["selection_strategy"], "learned_only_v1")
+        self.assertEqual(temporal["selection_reason"], "explicit-learned-only-filter")
+
+        self.assertEqual(temporal["history_memory_ids"], [])
+        self.assertEqual(temporal["current_memory_ids"], [])
+        self.assertEqual(temporal["resolved_current_memory_ids"], [])
+        self.assertEqual(temporal["dropped_current_memory_ids"], [])
+        self.assertEqual(temporal["abstained_current_memory_ids"], [])
+        self.assertEqual(temporal["future_memory_ids"], [])
+        self.assertEqual(temporal["superseded_memory_ids"], [])
+        self.assertEqual(temporal["unlearned_memory_ids"], [])
+        self.assertEqual(temporal["learned_memory_ids"], [])
+        self.assertEqual(temporal["temporal_graph"], {})
+        self.assertEqual(temporal["history_temporal_graph"], {})
+        self.assertEqual(temporal["current_temporal_graph"], {})
+        self.assertEqual(temporal["future_temporal_graph"], {})
+        self.assertEqual(temporal["superseded_temporal_graph"], {})
+        self.assertEqual(temporal["unlearned_temporal_graph"], {})
+        self.assertEqual(temporal["learned_temporal_graph"], {})
+        history_ordering = temporal["history_ordering"]
+
+        self.assertEqual(history_ordering, snapshot["history_ordering"])
+        self.assertTrue(history_ordering["applied"])
+        self.assertFalse(history_ordering["pass_through"])
+        self.assertEqual(history_ordering["basis"], "historical_selection_rank")
+        self.assertEqual(history_ordering["source"], "temporal_history_selection")
+        self.assertEqual(history_ordering["reason"], "explicit-learned-only-filter")
+        self.assertEqual(history_ordering["selected_history_rankings"], [])
+        self.assertEqual(history_ordering["considered_history_rankings"], [])
+        receipt_metadata = temporal["current_history_receipt_metadata"]
+        self.assertEqual(receipt_metadata["filter"], "learned_only")
+        self.assertEqual(receipt_metadata["base_history_memory_ids"], [stale.id, current.id])
+        self.assertEqual(receipt_metadata["base_current_memory_ids"], [current.id])
+        self.assertEqual(receipt_metadata["included_history_memory_ids"], [])
+        self.assertEqual(receipt_metadata["included_current_memory_ids"], [])
+        self.assertEqual(receipt_metadata["omitted_history_memory_ids"], [stale.id, current.id])
+        self.assertEqual(receipt_metadata["omitted_current_memory_ids"], [current.id])
+        self.assertEqual(receipt_metadata, snapshot["current_history_receipt_metadata"])
+
+    def test_build_context_preserves_query_at_no_search_identity_snapshot_controls_for_learned_empty_subset(self):
+        unrelated = self.store.remember(
+            "Alice owns the billing exporter.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        stale = self.store.remember(
+            "Status page owner is Alice.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            actor_uri="agent://codex/session-january",
+            session_id="session://january",
+        )
+        current = self.store.remember(
+            "Status page owner is Alice Chen.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            actor_uri="agent://codex/session-february",
+            session_id="session://february",
+            parents=[stale.id],
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-15T00:00:00Z", "2024-01-15T00:00:00Z", unrelated.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z", stale.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-02-01T00:00:00Z", "2024-02-01T00:00:00Z", current.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-15T00:00:00Z", unrelated.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-01T00:00:00Z", stale.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-02-01T00:00:00Z", current.id),
+        )
+        self.store.conn.commit()
+
+        snapshot = self.store.query_at(
+            "2024-02-20T00:00:00Z",
+            scope="project",
+            learned_only=True,
+        )
+        context = build_context(
+            {
+                "action_id": "act_temporal_context",
+                "task": "learned no-search temporal passthrough",
+                "risk": "low",
+                "merkle_root": "root_fixture",
+                "policy_checks": [],
+                "memories": [],
+                "retrieval": {"temporal": snapshot},
+            }
+        )
+        temporal = context["temporal"]
+
+        self.assertEqual(temporal["query_at"], "2024-02-20T00:00:00Z")
+        self.assertEqual(temporal["scope"], "project")
+        self.assertNotIn("search_query", temporal)
+        self.assertTrue(temporal["include_abstained_current"])
+        self.assertEqual(temporal["current_resolution"], "all")
+        self.assertTrue(temporal["learned_only"])
+        self.assertFalse(temporal["unlearned_only"])
+        self.assertFalse(temporal["superseded_only"])
+        self.assertFalse(temporal["future_only"])
+        self.assertEqual(temporal["selected_ids"], [])
+        self.assertEqual(temporal["selection_strategy"], "learned_only_v1")
+        self.assertEqual(temporal["selection_reason"], "explicit-learned-only-filter")
+        self.assertEqual(temporal["history_memory_ids"], [])
+        self.assertEqual(temporal["current_memory_ids"], [])
+        self.assertEqual(temporal["future_memory_ids"], [])
+        self.assertEqual(temporal["superseded_memory_ids"], [])
+        self.assertEqual(temporal["unlearned_memory_ids"], [])
+        self.assertEqual(temporal["learned_memory_ids"], [])
+        self.assertEqual(temporal["temporal_graph"], {})
+        self.assertEqual(temporal["history_temporal_graph"], {})
+        self.assertEqual(temporal["current_temporal_graph"], {})
+        self.assertEqual(temporal["future_temporal_graph"], {})
+        self.assertEqual(temporal["superseded_temporal_graph"], {})
+        self.assertEqual(temporal["unlearned_temporal_graph"], {})
+        self.assertEqual(temporal["learned_temporal_graph"], {})
+        history_ordering = temporal["history_ordering"]
+
+        self.assertEqual(history_ordering, snapshot["history_ordering"])
+        self.assertTrue(history_ordering["applied"])
+        self.assertFalse(history_ordering["pass_through"])
+        self.assertEqual(history_ordering["basis"], "historical_selection_rank")
+        self.assertEqual(history_ordering["source"], "temporal_history_selection")
+        self.assertEqual(history_ordering["reason"], "explicit-learned-only-filter")
+        self.assertEqual(history_ordering["selected_history_rankings"], [])
+        self.assertEqual(history_ordering["considered_history_rankings"], [])
+        receipt_metadata = temporal["current_history_receipt_metadata"]
+        self.assertEqual(receipt_metadata["filter"], "learned_only")
+        self.assertCountEqual(receipt_metadata["base_history_memory_ids"], [unrelated.id, stale.id, current.id])
+        self.assertCountEqual(receipt_metadata["base_current_memory_ids"], [unrelated.id, current.id])
+        self.assertEqual(receipt_metadata["included_history_memory_ids"], [])
+        self.assertEqual(receipt_metadata["included_current_memory_ids"], [])
+        self.assertCountEqual(receipt_metadata["omitted_history_memory_ids"], [unrelated.id, stale.id, current.id])
+        self.assertCountEqual(receipt_metadata["omitted_current_memory_ids"], [unrelated.id, current.id])
+        self.assertEqual(receipt_metadata, snapshot["current_history_receipt_metadata"])
+
+    def test_build_context_preserves_query_at_no_search_learned_scope_bitemporal_fields(self):
+        unrelated = self.store.remember(
+            "Alice owns the billing exporter.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        current = self.store.remember(
+            "Status page owner is Alice.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            actor_uri="agent://codex/session-january",
+            session_id="session://january",
+        )
+        learned = self.store.remember(
+            "Status page owner is Alice Chen.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="agent",
+            actor_uri="agent://codex/session-february",
+            session_id="session://february",
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-15T00:00:00Z", "2024-01-15T00:00:00Z", unrelated.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z", current.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-02-01T00:00:00Z", "2024-02-01T00:00:00Z", learned.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-15T00:00:00Z", unrelated.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-01T00:00:00Z", current.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'PROPOSED'",
+            ("2024-02-01T00:00:00Z", learned.id),
+        )
+        self.store.conn.commit()
+
+        snapshot = self.store.query_at(
+            "2024-02-20T00:00:00Z",
+            scope="project",
+            learned_only=True,
+        )
+        context = build_context(
+            {
+                "action_id": "act_temporal_context",
+                "task": "learned no-search temporal passthrough",
+                "risk": "low",
+                "merkle_root": "root_fixture",
+                "policy_checks": [],
+                "memories": [],
+                "retrieval": {"temporal": snapshot},
+            }
+        )
+        temporal = context["temporal"]
+        history_graph = temporal["history_temporal_graph"]
+        learned_graph = temporal["learned_temporal_graph"]
+
+        self.assertEqual(temporal["query_at"], "2024-02-20T00:00:00Z")
+        self.assertEqual(temporal["scope"], "project")
+        self.assertNotIn("search_query", temporal)
+        self.assertTrue(temporal["include_abstained_current"])
+        self.assertEqual(temporal["current_resolution"], "all")
+        self.assertTrue(temporal["learned_only"])
+        self.assertFalse(temporal["unlearned_only"])
+        self.assertFalse(temporal["superseded_only"])
+        self.assertFalse(temporal["future_only"])
+        self.assertEqual(temporal["history_memory_ids"], [learned.id])
+        self.assertEqual(temporal["current_memory_ids"], [])
+        self.assertEqual(temporal["future_memory_ids"], [])
+        self.assertEqual(temporal["superseded_memory_ids"], [])
+        self.assertEqual(temporal["unlearned_memory_ids"], [])
+        self.assertEqual(temporal["learned_memory_ids"], [learned.id])
+        self.assertEqual(temporal["selected_ids"], [learned.id])
+        self.assertEqual(temporal["selection_strategy"], "learned_only_v1")
+        self.assertEqual(temporal["selection_reason"], "explicit-learned-only-filter")
+        self.assertNotIn(unrelated.id, history_graph)
+        self.assertNotIn(current.id, history_graph)
+        self.assertEqual(temporal["current_temporal_graph"], {})
+        self.assertEqual(temporal["future_temporal_graph"], {})
+        self.assertEqual(temporal["superseded_temporal_graph"], {})
+        self.assertEqual(temporal["unlearned_temporal_graph"], {})
+        self.assertEqual(temporal["abstained_temporal_graph"], {})
+        self.assertEqual(temporal["dropped_current_temporal_graph"], {})
+        history_ordering = temporal["history_ordering"]
+
+        self.assertEqual(history_graph[learned.id]["learned_at"], "2024-02-01T00:00:00Z")
+        self.assertIsNone(history_graph[learned.id]["valid_from"])
+        self.assertIsNone(history_graph[learned.id]["valid_to"])
+        self.assertIsNone(history_graph[learned.id]["superseded_at"])
+        self.assertIsNone(history_graph[learned.id]["unlearned_at"])
+        self.assertEqual(history_graph[learned.id]["superseded_by_ids"], [])
+        self.assertEqual(history_graph[learned.id]["status_at_query"], "quarantined")
+        self.assertEqual(history_graph[learned.id]["temporal_state"], "learned")
+        self.assertIsNone(history_graph[learned.id]["current_resolution"])
+        self.assertIsNone(history_graph[learned.id]["temporal_resolution_kind"])
+        self.assertEqual(history_graph[learned.id]["temporal_resolution_reasons"], [])
+
+        self.assertEqual(history_ordering, snapshot["history_ordering"])
+        self.assertTrue(history_ordering["applied"])
+        self.assertFalse(history_ordering["pass_through"])
+        self.assertEqual(history_ordering["basis"], "historical_selection_rank")
+        self.assertEqual(history_ordering["source"], "temporal_history_selection")
+        self.assertEqual(history_ordering["reason"], "explicit-learned-only-filter")
+        self.assertEqual(
+            history_ordering["selected_history_rankings"],
+            [{"memory_id": learned.id, "rank": 1}],
+        )
+        self.assertEqual(
+            history_ordering["considered_history_rankings"],
+            [{"memory_id": learned.id, "rank": 1, "selected": True}],
+        )
+        receipt_metadata = temporal["current_history_receipt_metadata"]
+        self.assertEqual(receipt_metadata["filter"], "learned_only")
+        self.assertCountEqual(receipt_metadata["base_history_memory_ids"], [unrelated.id, current.id, learned.id])
+        self.assertCountEqual(receipt_metadata["base_current_memory_ids"], [unrelated.id, current.id])
+        self.assertEqual(receipt_metadata["included_history_memory_ids"], [learned.id])
+        self.assertEqual(receipt_metadata["included_current_memory_ids"], [])
+        self.assertCountEqual(receipt_metadata["omitted_history_memory_ids"], [unrelated.id, current.id])
+        self.assertCountEqual(receipt_metadata["omitted_current_memory_ids"], [unrelated.id, current.id])
+        self.assertEqual(receipt_metadata, snapshot["current_history_receipt_metadata"])
+        self.assertEqual(learned_graph[learned.id], snapshot["learned_temporal_graph"][learned.id])
+        self.assertEqual(history_graph[learned.id], snapshot["history_temporal_graph"][learned.id])
+
+    def test_build_context_preserves_query_at_identity_snapshot_controls_for_unlearned_empty_subset(self):
+        unrelated = self.store.remember(
+            "Alice owns the billing exporter.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        stale = self.store.remember(
+            "Status page owner is Alice.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            actor_uri="agent://codex/session-january",
+            session_id="session://january",
+        )
+        current = self.store.remember(
+            "Status page owner is Alice Chen.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            actor_uri="agent://codex/session-february",
+            session_id="session://february",
+            parents=[stale.id],
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-15T00:00:00Z", "2024-01-15T00:00:00Z", unrelated.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z", stale.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-02-01T00:00:00Z", "2024-02-01T00:00:00Z", current.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-15T00:00:00Z", unrelated.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-01T00:00:00Z", stale.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-02-01T00:00:00Z", current.id),
+        )
+        self.store.conn.commit()
+
+        snapshot = self.store.query_at(
+            "2024-02-20T00:00:00Z",
+            scope="project",
+            search_query="status page owner",
+            unlearned_only=True,
+        )
+        context = build_context(
+            {
+                "action_id": "act_temporal_context",
+                "task": "unlearned temporal passthrough",
+                "risk": "low",
+                "merkle_root": "root_fixture",
+                "policy_checks": [],
+                "memories": [],
+                "retrieval": {"temporal": snapshot},
+            }
+        )
+        temporal = context["temporal"]
+
+        self.assertEqual(temporal["query_at"], "2024-02-20T00:00:00Z")
+        self.assertEqual(temporal["scope"], "project")
+        self.assertEqual(temporal["search_query"], "status page owner")
+        self.assertTrue(temporal["include_abstained_current"])
+        self.assertEqual(temporal["current_resolution"], "all")
+        self.assertFalse(temporal["learned_only"])
+        self.assertTrue(temporal["unlearned_only"])
+        self.assertFalse(temporal["superseded_only"])
+        self.assertFalse(temporal["future_only"])
+        self.assertEqual(temporal["selected_ids"], [])
+        self.assertEqual(temporal["selection_strategy"], "unlearned_only_v1")
+        self.assertEqual(temporal["selection_reason"], "explicit-unlearned-only-filter")
+
+        self.assertEqual(temporal["history_memory_ids"], [])
+        self.assertEqual(temporal["current_memory_ids"], [])
+        self.assertEqual(temporal["resolved_current_memory_ids"], [])
+        self.assertEqual(temporal["dropped_current_memory_ids"], [])
+        self.assertEqual(temporal["abstained_current_memory_ids"], [])
+        self.assertEqual(temporal["future_memory_ids"], [])
+        self.assertEqual(temporal["superseded_memory_ids"], [])
+        self.assertEqual(temporal["unlearned_memory_ids"], [])
+        self.assertEqual(temporal["learned_memory_ids"], [])
+        self.assertEqual(temporal["history_temporal_graph"], {})
+        self.assertEqual(temporal["current_temporal_graph"], {})
+        self.assertEqual(temporal["future_temporal_graph"], {})
+        self.assertEqual(temporal["superseded_temporal_graph"], {})
+        self.assertEqual(temporal["unlearned_temporal_graph"], {})
+        self.assertEqual(temporal["learned_temporal_graph"], {})
+        self.assertEqual(temporal["selected_temporal_graph"], {})
+        self.assertEqual(temporal["abstained_temporal_graph"], {})
+        self.assertEqual(temporal["dropped_current_temporal_graph"], {})
+        history_ordering = temporal["history_ordering"]
+
+        self.assertEqual(history_ordering, snapshot["history_ordering"])
+        self.assertTrue(history_ordering["applied"])
+        self.assertFalse(history_ordering["pass_through"])
+        self.assertEqual(history_ordering["basis"], "historical_selection_rank")
+        self.assertEqual(history_ordering["source"], "temporal_history_selection")
+        self.assertEqual(history_ordering["reason"], "explicit-unlearned-only-filter")
+        self.assertEqual(history_ordering["selected_history_rankings"], [])
+        self.assertEqual(history_ordering["considered_history_rankings"], [])
+        receipt_metadata = temporal["current_history_receipt_metadata"]
+        self.assertEqual(receipt_metadata["filter"], "unlearned_only")
+        self.assertEqual(receipt_metadata["base_history_memory_ids"], [stale.id, current.id])
+        self.assertEqual(receipt_metadata["base_current_memory_ids"], [current.id])
+        self.assertEqual(receipt_metadata["included_history_memory_ids"], [])
+        self.assertEqual(receipt_metadata["included_current_memory_ids"], [])
+        self.assertEqual(receipt_metadata["omitted_history_memory_ids"], [stale.id, current.id])
+        self.assertEqual(receipt_metadata["omitted_current_memory_ids"], [current.id])
+        self.assertEqual(receipt_metadata, snapshot["current_history_receipt_metadata"])
+        self.assertEqual(temporal["conflict_sets"], [])
+        self.assertFalse(temporal["abstention"]["applied"])
+        self.assertNotIn(unrelated.id, temporal["history_temporal_graph"])
+        self.assertNotIn(stale.id, temporal["history_temporal_graph"])
+        self.assertNotIn(current.id, temporal["history_temporal_graph"])
+
+    def test_build_context_preserves_query_at_no_search_identity_snapshot_controls_for_unlearned_empty_subset(self):
+        unrelated = self.store.remember(
+            "Alice owns the billing exporter.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        stale = self.store.remember(
+            "Status page owner is Alice.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            actor_uri="agent://codex/session-january",
+            session_id="session://january",
+        )
+        current = self.store.remember(
+            "Status page owner is Alice Chen.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            actor_uri="agent://codex/session-february",
+            session_id="session://february",
+            parents=[stale.id],
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-15T00:00:00Z", "2024-01-15T00:00:00Z", unrelated.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z", stale.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-02-01T00:00:00Z", "2024-02-01T00:00:00Z", current.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-15T00:00:00Z", unrelated.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-01T00:00:00Z", stale.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-02-01T00:00:00Z", current.id),
+        )
+        self.store.conn.commit()
+
+        snapshot = self.store.query_at(
+            "2024-02-20T00:00:00Z",
+            scope="project",
+            unlearned_only=True,
+        )
+        context = build_context(
+            {
+                "action_id": "act_temporal_context",
+                "task": "unlearned no-search temporal passthrough",
+                "risk": "low",
+                "merkle_root": "root_fixture",
+                "policy_checks": [],
+                "memories": [],
+                "retrieval": {"temporal": snapshot},
+            }
+        )
+        temporal = context["temporal"]
+
+        self.assertEqual(temporal["query_at"], "2024-02-20T00:00:00Z")
+        self.assertEqual(temporal["scope"], "project")
+        self.assertNotIn("search_query", temporal)
+        self.assertTrue(temporal["include_abstained_current"])
+        self.assertEqual(temporal["current_resolution"], "all")
+        self.assertFalse(temporal["learned_only"])
+        self.assertTrue(temporal["unlearned_only"])
+        self.assertFalse(temporal["superseded_only"])
+        self.assertFalse(temporal["future_only"])
+        self.assertEqual(temporal["selected_ids"], [])
+        self.assertEqual(temporal["selection_strategy"], "unlearned_only_v1")
+        self.assertEqual(temporal["selection_reason"], "explicit-unlearned-only-filter")
+        self.assertEqual(temporal["history_memory_ids"], [])
+        self.assertEqual(temporal["current_memory_ids"], [])
+        self.assertEqual(temporal["future_memory_ids"], [])
+        self.assertEqual(temporal["superseded_memory_ids"], [])
+        self.assertEqual(temporal["unlearned_memory_ids"], [])
+        self.assertEqual(temporal["learned_memory_ids"], [])
+        self.assertEqual(temporal["history_temporal_graph"], {})
+        self.assertEqual(temporal["current_temporal_graph"], {})
+        self.assertEqual(temporal["future_temporal_graph"], {})
+        self.assertEqual(temporal["superseded_temporal_graph"], {})
+        self.assertEqual(temporal["unlearned_temporal_graph"], {})
+        self.assertEqual(temporal["learned_temporal_graph"], {})
+        self.assertEqual(temporal["selected_temporal_graph"], {})
+        self.assertEqual(temporal["abstained_temporal_graph"], {})
+        self.assertEqual(temporal["dropped_current_temporal_graph"], {})
+        history_ordering = temporal["history_ordering"]
+
+        self.assertEqual(history_ordering, snapshot["history_ordering"])
+        self.assertTrue(history_ordering["applied"])
+        self.assertFalse(history_ordering["pass_through"])
+        self.assertEqual(history_ordering["basis"], "historical_selection_rank")
+        self.assertEqual(history_ordering["source"], "temporal_history_selection")
+        self.assertEqual(history_ordering["reason"], "explicit-unlearned-only-filter")
+        self.assertEqual(history_ordering["selected_history_rankings"], [])
+        self.assertEqual(history_ordering["considered_history_rankings"], [])
+        receipt_metadata = temporal["current_history_receipt_metadata"]
+        self.assertEqual(receipt_metadata["filter"], "unlearned_only")
+        self.assertCountEqual(receipt_metadata["base_history_memory_ids"], [unrelated.id, stale.id, current.id])
+        self.assertCountEqual(receipt_metadata["base_current_memory_ids"], [unrelated.id, current.id])
+        self.assertEqual(receipt_metadata["included_history_memory_ids"], [])
+        self.assertEqual(receipt_metadata["included_current_memory_ids"], [])
+        self.assertCountEqual(receipt_metadata["omitted_history_memory_ids"], [unrelated.id, stale.id, current.id])
+        self.assertCountEqual(receipt_metadata["omitted_current_memory_ids"], [unrelated.id, current.id])
+        self.assertEqual(receipt_metadata, snapshot["current_history_receipt_metadata"])
+        self.assertEqual(temporal["conflict_sets"], [])
+        self.assertFalse(temporal["abstention"]["applied"])
+
+    def test_build_context_preserves_unlearned_selection_metadata_for_query_at_subset(self):
+        revoked = self.store.remember(
+            "Release checklist owner was Alex.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            status="active",
+        )
+        forgotten = self.store.remember(
+            "Temporary outage snack was ramen.",
+            memory_type="episodic",
+            scope="project",
+            source_kind="human",
+            status="active",
+        )
+        rejected = self.store.remember(
+            "Release freeze owner is Mallory.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="agent",
+        )
+        current = self.store.remember(
+            "Status page owner is Alice Chen.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            status="active",
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z", revoked.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-02T00:00:00Z", "2024-01-02T00:00:00Z", forgotten.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-03T00:00:00Z", "2024-01-03T00:00:00Z", rejected.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-02-01T00:00:00Z", "2024-02-01T00:00:00Z", current.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-01T00:00:00Z", revoked.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-02T00:00:00Z", forgotten.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'PROPOSED'",
+            ("2024-01-03T00:00:00Z", rejected.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-02-01T00:00:00Z", current.id),
+        )
+        self.store.conn.commit()
+
+        self.store.revoke(revoked.id, actor_id="reviewer", reason="source evidence was wrong")
+        self.store.forget(forgotten.id, actor_id="reviewer")
+        self.store.reject(rejected.id, actor_id="reviewer", reason="superseded staffing plan")
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'REVOKED'",
+            ("2024-02-10T00:00:00Z", revoked.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'FORGOTTEN'",
+            ("2024-02-11T00:00:00Z", forgotten.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'REJECTED'",
+            ("2024-02-12T00:00:00Z", rejected.id),
+        )
+        self.store.conn.commit()
+
+        snapshot = self.store.query_at(
+            "2024-02-20T00:00:00Z",
+            scope="project",
+            unlearned_only=True,
+        )
+        context = build_context(
+            {
+                "action_id": "act_temporal_context",
+                "task": "unlearned temporal passthrough",
+                "risk": "low",
+                "merkle_root": "root_fixture",
+                "policy_checks": [],
+                "memories": [],
+                "retrieval": {"temporal": snapshot},
+            }
+        )
+        temporal = context["temporal"]
+        history_graph = temporal["history_temporal_graph"]
+        unlearned_graph = temporal["unlearned_temporal_graph"]
+
+        self.assertEqual(temporal["history_memory_ids"], [revoked.id, forgotten.id, rejected.id])
+        self.assertEqual(temporal["current_memory_ids"], [])
+        self.assertEqual(temporal["future_memory_ids"], [])
+        self.assertEqual(temporal["superseded_memory_ids"], [])
+        self.assertEqual(temporal["unlearned_memory_ids"], [revoked.id, forgotten.id, rejected.id])
+        self.assertEqual(temporal["learned_memory_ids"], [])
+        self.assertEqual(temporal["selected_ids"], [revoked.id, forgotten.id, rejected.id])
+        self.assertEqual(temporal["selection_strategy"], "unlearned_only_v1")
+        self.assertEqual(temporal["selection_reason"], "explicit-unlearned-only-filter")
+        self.assertNotIn(current.id, history_graph)
+        self.assertEqual(temporal["current_temporal_graph"], {})
+        self.assertEqual(temporal["future_temporal_graph"], {})
+        self.assertEqual(temporal["superseded_temporal_graph"], {})
+        self.assertEqual(temporal["learned_temporal_graph"], {})
+        history_ordering = temporal["history_ordering"]
+
+        self.assertEqual(history_ordering, snapshot["history_ordering"])
+        self.assertTrue(history_ordering["applied"])
+        self.assertFalse(history_ordering["pass_through"])
+        self.assertEqual(history_ordering["basis"], "historical_selection_rank")
+        self.assertEqual(history_ordering["source"], "temporal_history_selection")
+        self.assertEqual(history_ordering["reason"], "explicit-unlearned-only-filter")
+        self.assertEqual(
+            history_ordering["selected_history_rankings"],
+            [
+                {"memory_id": revoked.id, "rank": 1},
+                {"memory_id": forgotten.id, "rank": 2},
+                {"memory_id": rejected.id, "rank": 3},
+            ],
+        )
+        self.assertEqual(
+            history_ordering["considered_history_rankings"],
+            [
+                {"memory_id": revoked.id, "rank": 1, "selected": True},
+                {"memory_id": forgotten.id, "rank": 2, "selected": True},
+                {"memory_id": rejected.id, "rank": 3, "selected": True},
+            ],
+        )
+        receipt_metadata = temporal["current_history_receipt_metadata"]
+        self.assertEqual(receipt_metadata["filter"], "unlearned_only")
+        self.assertEqual(receipt_metadata["base_history_memory_ids"], [revoked.id, forgotten.id, rejected.id, current.id])
+        self.assertEqual(receipt_metadata["base_current_memory_ids"], [current.id])
+        self.assertEqual(receipt_metadata["included_history_memory_ids"], [revoked.id, forgotten.id, rejected.id])
+        self.assertEqual(receipt_metadata["included_current_memory_ids"], [])
+        self.assertEqual(receipt_metadata["omitted_history_memory_ids"], [current.id])
+        self.assertEqual(receipt_metadata["omitted_current_memory_ids"], [current.id])
+        self.assertEqual(receipt_metadata, snapshot["current_history_receipt_metadata"])
+
+        self.assertEqual(history_graph[revoked.id]["temporal_resolution_reasons"], ["revoked"])
+        self.assertEqual(history_graph[forgotten.id]["temporal_resolution_reasons"], ["forgotten"])
+        self.assertEqual(history_graph[rejected.id]["temporal_resolution_reasons"], ["deprecated"])
+        self.assertEqual(history_graph[revoked.id]["learned_at"], "2024-01-01T00:00:00Z")
+        self.assertEqual(history_graph[revoked.id]["valid_from"], "2024-01-01T00:00:00Z")
+        self.assertEqual(history_graph[revoked.id]["valid_to"], "2024-02-10T00:00:00Z")
+        self.assertEqual(history_graph[revoked.id]["unlearned_at"], "2024-02-10T00:00:00Z")
+        self.assertIsNone(history_graph[revoked.id]["superseded_at"])
+        self.assertEqual(history_graph[forgotten.id]["learned_at"], "2024-01-02T00:00:00Z")
+        self.assertEqual(history_graph[forgotten.id]["valid_from"], "2024-01-02T00:00:00Z")
+        self.assertEqual(history_graph[forgotten.id]["valid_to"], "2024-02-11T00:00:00Z")
+        self.assertEqual(history_graph[forgotten.id]["unlearned_at"], "2024-02-11T00:00:00Z")
+        self.assertIsNone(history_graph[forgotten.id]["superseded_at"])
+        self.assertEqual(history_graph[rejected.id]["learned_at"], "2024-01-03T00:00:00Z")
+        self.assertIsNone(history_graph[rejected.id]["valid_from"])
+        self.assertEqual(history_graph[rejected.id]["valid_to"], "2024-02-12T00:00:00Z")
+        self.assertEqual(history_graph[rejected.id]["unlearned_at"], "2024-02-12T00:00:00Z")
+        self.assertIsNone(history_graph[rejected.id]["superseded_at"])
+        self.assertEqual(unlearned_graph[revoked.id], snapshot["unlearned_temporal_graph"][revoked.id])
+        self.assertEqual(unlearned_graph[forgotten.id], snapshot["unlearned_temporal_graph"][forgotten.id])
+        self.assertEqual(unlearned_graph[rejected.id], snapshot["unlearned_temporal_graph"][rejected.id])
+
+    def test_build_context_preserves_query_at_identity_snapshot_controls_for_selected_current_subset(self):
+        unrelated = self.store.remember(
+            "Alice owns the billing exporter.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        stale = self.store.remember(
+            "Status page owner is Alice.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            actor_uri="agent://codex/session-january",
+            session_id="session://january",
+        )
+        current = self.store.remember(
+            "Status page owner is Alice Chen.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            actor_uri="agent://codex/session-february",
+            session_id="session://february",
+            parents=[stale.id],
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-15T00:00:00Z", "2024-01-15T00:00:00Z", unrelated.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z", stale.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-02-01T00:00:00Z", "2024-02-01T00:00:00Z", current.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-15T00:00:00Z", unrelated.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-01T00:00:00Z", stale.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-02-01T00:00:00Z", current.id),
+        )
+        self.store.conn.commit()
+
+        snapshot = self.store.query_at(
+            "2024-02-20T00:00:00Z",
+            scope="project",
+            search_query="status page owner",
+            current_resolution="selected",
+        )
+        context = build_context(
+            {
+                "action_id": "act_temporal_context",
+                "task": "selected current temporal passthrough",
+                "risk": "low",
+                "merkle_root": "root_fixture",
+                "policy_checks": [],
+                "memories": [],
+                "retrieval": {"temporal": snapshot},
+            }
+        )
+        temporal = context["temporal"]
+        history_graph = temporal["history_temporal_graph"]
+        current_graph = temporal["current_temporal_graph"]
+        selected_graph = temporal["selected_temporal_graph"]
+
+        self.assertEqual(temporal["query_at"], "2024-02-20T00:00:00Z")
+        self.assertEqual(temporal["scope"], "project")
+        self.assertEqual(temporal["search_query"], "status page owner")
+        self.assertTrue(temporal["include_abstained_current"])
+        self.assertEqual(temporal["current_resolution"], "selected")
+        self.assertFalse(temporal["learned_only"])
+        self.assertFalse(temporal["unlearned_only"])
+        self.assertFalse(temporal["superseded_only"])
+        self.assertFalse(temporal["future_only"])
+        self.assertEqual(temporal["selected_ids"], [current.id])
+        self.assertEqual(temporal["selection_strategy"], "current_only_v1")
+        self.assertEqual(temporal["selection_reason"], "default-current-only")
+        self.assertEqual(
+            temporal["current_history_receipt_metadata"],
+            {
+                "filter": "current_resolution:selected",
+                "base_history_memory_ids": [stale.id, current.id],
+                "base_current_memory_ids": [current.id],
+                "included_history_memory_ids": [current.id],
+                "included_current_memory_ids": [current.id],
+                "omitted_history_memory_ids": [stale.id],
+                "omitted_current_memory_ids": [],
+            },
+        )
+
+        self.assertEqual(temporal["history_memory_ids"], [current.id])
+        self.assertEqual(temporal["current_memory_ids"], [current.id])
+        self.assertEqual(temporal["resolved_current_memory_ids"], [current.id])
+        self.assertEqual(temporal["dropped_current_memory_ids"], [])
+        self.assertEqual(temporal["abstained_current_memory_ids"], [])
+        self.assertEqual(temporal["superseded_memory_ids"], [])
+        self.assertNotIn(unrelated.id, history_graph)
+        self.assertNotIn(stale.id, history_graph)
+        self.assertEqual(history_graph[current.id]["temporal_state"], "current")
+        self.assertEqual(history_graph[current.id]["current_resolution"], "selected")
+        self.assertEqual(current_graph[current.id], snapshot["current_temporal_graph"][current.id])
+        self.assertEqual(selected_graph[current.id], snapshot["selected_temporal_graph"][current.id])
+        current_ordering = temporal["current_ordering"]
+        history_ordering = temporal["history_ordering"]
+
+        self.assertEqual(current_ordering, snapshot["current_ordering"])
+        self.assertEqual(history_ordering, snapshot["history_ordering"])
+        self.assertTrue(current_ordering["applied"])
+        self.assertFalse(current_ordering["pass_through"])
+        self.assertEqual(current_ordering["basis"], "retrieval_rank")
+        self.assertEqual(current_ordering["source"], "baseline")
+        self.assertEqual(current_ordering["reason"], "current-only-retrieval-rank")
+        self.assertEqual(
+            current_ordering["selected_current_rankings"],
+            [{"memory_id": current.id, "rank": 2}],
+        )
+        self.assertEqual(
+            current_ordering["considered_current_rankings"],
+            [{"memory_id": current.id, "rank": 2, "selected": True}],
+        )
+        self.assertFalse(history_ordering["applied"])
+        self.assertFalse(history_ordering["pass_through"])
+        self.assertEqual(history_ordering["basis"], "history_conflict_abstention_rank")
+        self.assertEqual(history_ordering["source"], "temporal_history_conflict_abstention")
+        self.assertEqual(history_ordering["reason"], "default-current-only")
+        self.assertEqual(history_ordering["selected_history_rankings"], [])
+        self.assertEqual(history_ordering["considered_history_rankings"], [])
+
+    def test_build_context_preserves_query_at_selected_snapshot_receipt_metadata_for_empty_current_conflict(self):
+        first = self.store.remember(
+            "Incident owner is Alex.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        second = self.store.remember(
+            "Incident owner is Priya.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="system",
+            trust=0.95,
+            authority="medium",
+            status="active",
+        )
+        shared_timestamp = "2024-02-01T00:00:00Z"
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            (shared_timestamp, shared_timestamp, first.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            (shared_timestamp, shared_timestamp, second.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            (shared_timestamp, first.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            (shared_timestamp, second.id),
+        )
+        self.store.conn.commit()
+
+        snapshot = self.store.query_at(
+            "2024-02-20T00:00:00Z",
+            scope="project",
+            current_resolution="selected",
+        )
+        context = build_context(
+            {
+                "action_id": "act_temporal_context",
+                "task": "selected current empty temporal passthrough",
+                "risk": "low",
+                "merkle_root": "root_fixture",
+                "policy_checks": [],
+                "memories": [],
+                "retrieval": {"temporal": snapshot},
+            }
+        )
+        temporal = context["temporal"]
+
+        self.assertEqual(temporal["query_at"], "2024-02-20T00:00:00Z")
+        self.assertEqual(temporal["scope"], "project")
+        self.assertEqual(temporal["current_resolution"], "selected")
+        self.assertEqual(temporal["history_memory_ids"], [])
+        self.assertEqual(temporal["current_memory_ids"], [])
+        receipt_metadata = temporal["current_history_receipt_metadata"]
+        self.assertEqual(receipt_metadata["filter"], "current_resolution:selected")
+        self.assertCountEqual(receipt_metadata["base_history_memory_ids"], [first.id, second.id])
+        self.assertCountEqual(receipt_metadata["base_current_memory_ids"], [first.id, second.id])
+        self.assertEqual(receipt_metadata["included_history_memory_ids"], [])
+        self.assertEqual(receipt_metadata["included_current_memory_ids"], [])
+        self.assertCountEqual(receipt_metadata["omitted_history_memory_ids"], [first.id, second.id])
+        self.assertCountEqual(receipt_metadata["omitted_current_memory_ids"], [first.id, second.id])
+        self.assertEqual(receipt_metadata, snapshot["current_history_receipt_metadata"])
+        self.assertNotIn("selection_strategy", temporal)
+        self.assertNotIn("current_ordering", temporal)
+
+    def test_build_context_preserves_query_at_no_search_selected_scope_identity_bitemporal_fields(self):
+        unrelated = self.store.remember(
+            "Alice owns the billing exporter.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        stale = self.store.remember(
+            "Status page owner is Alice.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            actor_uri="agent://codex/session-january",
+            session_id="session://january",
+        )
+        current = self.store.remember(
+            "Status page owner is Alice Chen.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            actor_uri="agent://codex/session-february",
+            session_id="session://february",
+            parents=[stale.id],
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-15T00:00:00Z", "2024-01-15T00:00:00Z", unrelated.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z", stale.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-02-01T00:00:00Z", "2024-02-01T00:00:00Z", current.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-15T00:00:00Z", unrelated.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-01T00:00:00Z", stale.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-02-01T00:00:00Z", current.id),
+        )
+        self.store.conn.commit()
+
+        snapshot = self.store.query_at(
+            "2024-02-20T00:00:00Z",
+            scope="project",
+            current_resolution="selected",
+        )
+        context = build_context(
+            {
+                "action_id": "act_temporal_context",
+                "task": "no-search selected current temporal passthrough",
+                "risk": "low",
+                "merkle_root": "root_fixture",
+                "policy_checks": [],
+                "memories": [],
+                "retrieval": {"temporal": snapshot},
+            }
+        )
+        temporal = context["temporal"]
+        history_graph = temporal["history_temporal_graph"]
+        current_graph = temporal["current_temporal_graph"]
+        selected_graph = temporal["selected_temporal_graph"]
+
+        self.assertEqual(temporal["query_at"], "2024-02-20T00:00:00Z")
+        self.assertEqual(temporal["scope"], "project")
+        self.assertNotIn("search_query", temporal)
+        self.assertEqual(temporal["current_resolution"], "selected")
+        self.assertEqual(temporal["history_memory_ids"], [unrelated.id, current.id])
+        self.assertEqual(temporal["current_memory_ids"], [unrelated.id, current.id])
+        self.assertEqual(temporal["resolved_current_memory_ids"], [unrelated.id, current.id])
+        self.assertEqual(temporal["dropped_current_memory_ids"], [])
+        self.assertEqual(temporal["abstained_current_memory_ids"], [])
+        self.assertEqual(temporal["future_memory_ids"], [])
+        self.assertEqual(temporal["superseded_memory_ids"], [])
+        self.assertEqual(temporal["unlearned_memory_ids"], [])
+        self.assertEqual(temporal["learned_memory_ids"], [])
+        self.assertEqual(temporal["selected_ids"], [unrelated.id, current.id])
+        self.assertEqual(temporal["selection_strategy"], "current_only_v1")
+        self.assertEqual(temporal["selection_reason"], "default-current-only")
+        self.assertNotIn(stale.id, history_graph)
+        self.assertEqual(history_graph, current_graph)
+        self.assertEqual(history_graph, selected_graph)
+        self.assertEqual(temporal["future_temporal_graph"], {})
+        self.assertEqual(temporal["superseded_temporal_graph"], {})
+        self.assertEqual(temporal["unlearned_temporal_graph"], {})
+        self.assertEqual(temporal["learned_temporal_graph"], {})
+        self.assertEqual(temporal["abstained_temporal_graph"], {})
+        self.assertEqual(temporal["dropped_current_temporal_graph"], {})
+        receipt_metadata = temporal["current_history_receipt_metadata"]
+        self.assertEqual(receipt_metadata["filter"], "current_resolution:selected")
+        self.assertCountEqual(receipt_metadata["base_history_memory_ids"], [unrelated.id, stale.id, current.id])
+        self.assertCountEqual(receipt_metadata["base_current_memory_ids"], [unrelated.id, current.id])
+        self.assertEqual(receipt_metadata["included_history_memory_ids"], [unrelated.id, current.id])
+        self.assertEqual(receipt_metadata["included_current_memory_ids"], [unrelated.id, current.id])
+        self.assertEqual(receipt_metadata["omitted_history_memory_ids"], [stale.id])
+        self.assertEqual(receipt_metadata["omitted_current_memory_ids"], [])
+        self.assertEqual(receipt_metadata, snapshot["current_history_receipt_metadata"])
+        current_ordering = temporal["current_ordering"]
+        history_ordering = temporal["history_ordering"]
+        self.assertEqual(current_ordering, snapshot["current_ordering"])
+        self.assertEqual(history_ordering, snapshot["history_ordering"])
+        self.assertTrue(current_ordering["applied"])
+        self.assertFalse(current_ordering["pass_through"])
+        self.assertEqual(current_ordering["basis"], "retrieval_rank")
+        self.assertEqual(current_ordering["source"], "baseline")
+        self.assertEqual(current_ordering["reason"], "current-only-retrieval-rank")
+        self.assertCountEqual(
+            current_ordering["selected_current_rankings"],
+            [
+                {"memory_id": unrelated.id, "rank": 2},
+                {"memory_id": current.id, "rank": 3},
+            ],
+        )
+        self.assertCountEqual(
+            current_ordering["considered_current_rankings"],
+            [
+                {"memory_id": unrelated.id, "rank": 2, "selected": True},
+                {"memory_id": current.id, "rank": 3, "selected": True},
+            ],
+        )
+        self.assertFalse(history_ordering["applied"])
+        self.assertFalse(history_ordering["pass_through"])
+        self.assertEqual(history_ordering["basis"], "history_conflict_abstention_rank")
+        self.assertEqual(history_ordering["source"], "temporal_history_conflict_abstention")
+        self.assertEqual(history_ordering["reason"], "default-current-only")
+        self.assertEqual(history_ordering["selected_history_rankings"], [])
+        self.assertEqual(history_ordering["considered_history_rankings"], [])
+        self.assertEqual(history_graph[unrelated.id]["temporal_state"], "current")
+        self.assertEqual(history_graph[unrelated.id]["learned_at"], "2024-01-15T00:00:00Z")
+        self.assertEqual(history_graph[unrelated.id]["valid_from"], "2024-01-15T00:00:00Z")
+        self.assertIsNone(history_graph[unrelated.id]["valid_to"])
+        self.assertIsNone(history_graph[unrelated.id]["superseded_at"])
+        self.assertEqual(history_graph[unrelated.id]["superseded_by_ids"], [])
+        self.assertEqual(history_graph[unrelated.id]["current_resolution"], "selected")
+        self.assertIsNone(history_graph[unrelated.id]["temporal_resolution_kind"])
+        self.assertEqual(history_graph[unrelated.id]["temporal_resolution_reasons"], [])
+        self.assertEqual(history_graph[current.id]["temporal_state"], "current")
+        self.assertEqual(history_graph[current.id]["learned_at"], "2024-02-01T00:00:00Z")
+        self.assertEqual(history_graph[current.id]["valid_from"], "2024-02-01T00:00:00Z")
+        self.assertIsNone(history_graph[current.id]["valid_to"])
+        self.assertIsNone(history_graph[current.id]["superseded_at"])
+        self.assertEqual(history_graph[current.id]["superseded_by_ids"], [])
+        self.assertEqual(history_graph[current.id]["current_resolution"], "selected")
+        self.assertIsNone(history_graph[current.id]["temporal_resolution_kind"])
+        self.assertEqual(history_graph[current.id]["temporal_resolution_reasons"], [])
+        self.assertEqual(current_graph[current.id], snapshot["current_temporal_graph"][current.id])
+        self.assertEqual(selected_graph[current.id], snapshot["selected_temporal_graph"][current.id])
+
+    def test_build_context_preserves_query_at_no_search_selected_scope_pre_activation_identity_metadata(self):
+        unrelated = self.store.remember(
+            "Alice owns the billing exporter.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        current = self.store.remember(
+            "Status page owner is Alice.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            actor_uri="agent://codex/session-january",
+            session_id="session://january",
+        )
+        future = self.store.remember(
+            "Status page owner is Alice Chen.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            actor_uri="agent://codex/session-february",
+            session_id="session://february",
+            parents=[current.id],
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-15T00:00:00Z", "2024-01-15T00:00:00Z", unrelated.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z", current.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-02-01T00:00:00Z", "2024-02-01T00:00:00Z", future.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-15T00:00:00Z", unrelated.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-01T00:00:00Z", current.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-02-01T00:00:00Z", future.id),
+        )
+        self.store.conn.commit()
+
+        snapshot = self.store.query_at(
+            "2024-01-20T00:00:00Z",
+            scope="project",
+            current_resolution="selected",
+        )
+        context = build_context(
+            {
+                "action_id": "act_temporal_context",
+                "task": "no-search selected pre-activation temporal passthrough",
+                "risk": "low",
+                "merkle_root": "root_fixture",
+                "policy_checks": [],
+                "memories": [],
+                "retrieval": {"temporal": snapshot},
+            }
+        )
+        temporal = context["temporal"]
+        history_graph = temporal["history_temporal_graph"]
+        current_graph = temporal["current_temporal_graph"]
+        selected_graph = temporal["selected_temporal_graph"]
+
+        self.assertEqual(temporal["query_at"], "2024-01-20T00:00:00Z")
+        self.assertEqual(temporal["scope"], "project")
+        self.assertNotIn("search_query", temporal)
+        self.assertEqual(temporal["current_resolution"], "selected")
+        self.assertEqual(temporal["history_memory_ids"], [current.id, unrelated.id])
+        self.assertEqual(temporal["current_memory_ids"], [current.id, unrelated.id])
+        self.assertEqual(temporal["resolved_current_memory_ids"], [current.id, unrelated.id])
+        self.assertEqual(temporal["dropped_current_memory_ids"], [])
+        self.assertEqual(temporal["abstained_current_memory_ids"], [])
+        self.assertEqual(temporal["future_memory_ids"], [])
+        self.assertEqual(temporal["superseded_memory_ids"], [])
+        self.assertEqual(temporal["unlearned_memory_ids"], [])
+        self.assertEqual(temporal["learned_memory_ids"], [])
+        self.assertEqual(temporal["selected_ids"], [current.id, unrelated.id])
+        self.assertEqual(temporal["selection_strategy"], "current_only_v1")
+        self.assertEqual(temporal["selection_reason"], "default-current-only")
+        self.assertNotIn(future.id, history_graph)
+        self.assertEqual(history_graph, current_graph)
+        self.assertEqual(history_graph, selected_graph)
+        self.assertEqual(temporal["future_temporal_graph"], {})
+        self.assertEqual(temporal["superseded_temporal_graph"], {})
+        self.assertEqual(temporal["unlearned_temporal_graph"], {})
+        self.assertEqual(temporal["learned_temporal_graph"], {})
+        self.assertEqual(temporal["abstained_temporal_graph"], {})
+        self.assertEqual(temporal["dropped_current_temporal_graph"], {})
+        receipt_metadata = temporal["current_history_receipt_metadata"]
+        self.assertEqual(receipt_metadata["filter"], "current_resolution:selected")
+        self.assertEqual(receipt_metadata["base_history_memory_ids"], [current.id, unrelated.id])
+        self.assertEqual(receipt_metadata["base_current_memory_ids"], [current.id, unrelated.id])
+        self.assertEqual(receipt_metadata["included_history_memory_ids"], [current.id, unrelated.id])
+        self.assertEqual(receipt_metadata["included_current_memory_ids"], [current.id, unrelated.id])
+        self.assertEqual(receipt_metadata["omitted_history_memory_ids"], [])
+        self.assertEqual(receipt_metadata["omitted_current_memory_ids"], [])
+        self.assertEqual(receipt_metadata, snapshot["current_history_receipt_metadata"])
+        current_ordering = temporal["current_ordering"]
+        history_ordering = temporal["history_ordering"]
+        self.assertEqual(current_ordering, snapshot["current_ordering"])
+        self.assertEqual(history_ordering, snapshot["history_ordering"])
+        self.assertTrue(current_ordering["applied"])
+        self.assertFalse(current_ordering["pass_through"])
+        self.assertEqual(current_ordering["basis"], "retrieval_rank")
+        self.assertEqual(current_ordering["source"], "baseline")
+        self.assertEqual(current_ordering["reason"], "current-only-retrieval-rank")
+        self.assertEqual(
+            current_ordering["selected_current_rankings"],
+            [
+                {"memory_id": current.id, "rank": 1},
+                {"memory_id": unrelated.id, "rank": 2},
+            ],
+        )
+        self.assertEqual(
+            current_ordering["considered_current_rankings"],
+            [
+                {"memory_id": current.id, "rank": 1, "selected": True},
+                {"memory_id": unrelated.id, "rank": 2, "selected": True},
+            ],
+        )
+        self.assertFalse(history_ordering["applied"])
+        self.assertFalse(history_ordering["pass_through"])
+        self.assertEqual(history_ordering["basis"], "history_conflict_abstention_rank")
+        self.assertEqual(history_ordering["source"], "temporal_history_conflict_abstention")
+        self.assertEqual(history_ordering["reason"], "default-current-only")
+        self.assertEqual(history_ordering["selected_history_rankings"], [])
+        self.assertEqual(history_ordering["considered_history_rankings"], [])
+        self.assertEqual(history_graph[current.id]["temporal_state"], "current")
+        self.assertEqual(history_graph[current.id]["learned_at"], "2024-01-01T00:00:00Z")
+        self.assertEqual(history_graph[current.id]["valid_from"], "2024-01-01T00:00:00Z")
+        self.assertEqual(history_graph[current.id]["valid_to"], "2024-02-01T00:00:00Z")
+        self.assertEqual(history_graph[current.id]["superseded_at"], "2024-02-01T00:00:00Z")
+        self.assertEqual(history_graph[current.id]["superseded_by_ids"], [future.id])
+        self.assertEqual(history_graph[current.id]["status_at_query"], "active")
+        self.assertEqual(history_graph[current.id]["current_resolution"], "selected")
+        self.assertEqual(history_graph[unrelated.id]["temporal_state"], "current")
+        self.assertEqual(history_graph[unrelated.id]["learned_at"], "2024-01-15T00:00:00Z")
+        self.assertEqual(history_graph[unrelated.id]["valid_from"], "2024-01-15T00:00:00Z")
+        self.assertIsNone(history_graph[unrelated.id]["valid_to"])
+        self.assertIsNone(history_graph[unrelated.id]["superseded_at"])
+        self.assertEqual(history_graph[unrelated.id]["superseded_by_ids"], [])
+        self.assertEqual(history_graph[unrelated.id]["status_at_query"], "active")
+        self.assertEqual(history_graph[unrelated.id]["current_resolution"], "selected")
+
+    def test_build_context_preserves_query_at_default_identity_receipt_metadata(self):
+        unrelated = self.store.remember(
+            "Alice owns the billing exporter.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        stale = self.store.remember(
+            "Status page owner is Alice.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            actor_uri="agent://codex/session-january",
+            session_id="session://january",
+        )
+        current = self.store.remember(
+            "Status page owner is Alice Chen.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            actor_uri="agent://codex/session-february",
+            session_id="session://february",
+            parents=[stale.id],
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-15T00:00:00Z", "2024-01-15T00:00:00Z", unrelated.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z", stale.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-02-01T00:00:00Z", "2024-02-01T00:00:00Z", current.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-15T00:00:00Z", unrelated.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-01T00:00:00Z", stale.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-02-01T00:00:00Z", current.id),
+        )
+        self.store.conn.commit()
+
+        snapshot = self.store.query_at(
+            "2024-02-20T00:00:00Z",
+            scope="project",
+            search_query="status page owner",
+        )
+        context = build_context(
+            {
+                "action_id": "act_temporal_context",
+                "task": "default identity temporal passthrough",
+                "risk": "low",
+                "merkle_root": "root_fixture",
+                "policy_checks": [],
+                "memories": [],
+                "retrieval": {"temporal": snapshot},
+            }
+        )
+        temporal = context["temporal"]
+        history_graph = temporal["history_temporal_graph"]
+        current_graph = temporal["current_temporal_graph"]
+
+        self.assertEqual(temporal["query_at"], "2024-02-20T00:00:00Z")
+        self.assertEqual(temporal["scope"], "project")
+        self.assertEqual(temporal["search_query"], "status page owner")
+        self.assertTrue(temporal["include_abstained_current"])
+        self.assertEqual(temporal["current_resolution"], "all")
+        self.assertFalse(temporal["learned_only"])
+        self.assertFalse(temporal["unlearned_only"])
+        self.assertFalse(temporal["superseded_only"])
+        self.assertFalse(temporal["future_only"])
+        self.assertEqual(temporal["history_memory_ids"], [stale.id, current.id])
+        self.assertEqual(temporal["current_memory_ids"], [current.id])
+        self.assertEqual(temporal["resolved_current_memory_ids"], [current.id])
+        self.assertEqual(temporal["dropped_current_memory_ids"], [])
+        self.assertEqual(temporal["abstained_current_memory_ids"], [])
+        receipt_metadata = temporal["current_history_receipt_metadata"]
+        self.assertEqual(receipt_metadata["filter"], "current_resolution:all")
+        self.assertEqual(receipt_metadata["base_history_memory_ids"], [stale.id, current.id])
+        self.assertEqual(receipt_metadata["base_current_memory_ids"], [current.id])
+        self.assertEqual(receipt_metadata["included_history_memory_ids"], [stale.id, current.id])
+        self.assertEqual(receipt_metadata["included_current_memory_ids"], [current.id])
+        self.assertEqual(receipt_metadata["omitted_history_memory_ids"], [])
+        self.assertEqual(receipt_metadata["omitted_current_memory_ids"], [])
+        self.assertEqual(receipt_metadata, snapshot["current_history_receipt_metadata"])
+        self.assertNotIn(unrelated.id, history_graph)
+        self.assertEqual(history_graph[stale.id], snapshot["history_temporal_graph"][stale.id])
+        self.assertEqual(history_graph[current.id], snapshot["history_temporal_graph"][current.id])
+        self.assertEqual(current_graph[current.id], snapshot["current_temporal_graph"][current.id])
+
+    def test_build_context_preserves_query_at_default_no_search_identity_receipt_metadata(self):
+        unrelated = self.store.remember(
+            "Alice owns the billing exporter.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        stale = self.store.remember(
+            "Status page owner is Alice.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            actor_uri="agent://codex/session-january",
+            session_id="session://january",
+        )
+        current = self.store.remember(
+            "Status page owner is Alice Chen.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            actor_uri="agent://codex/session-february",
+            session_id="session://february",
+            parents=[stale.id],
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-15T00:00:00Z", "2024-01-15T00:00:00Z", unrelated.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z", stale.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-02-01T00:00:00Z", "2024-02-01T00:00:00Z", current.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-15T00:00:00Z", unrelated.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-01T00:00:00Z", stale.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-02-01T00:00:00Z", current.id),
+        )
+        self.store.conn.commit()
+
+        snapshot = self.store.query_at("2024-02-20T00:00:00Z", scope="project")
+        context = build_context(
+            {
+                "action_id": "act_temporal_context",
+                "task": "default no-search identity temporal passthrough",
+                "risk": "low",
+                "merkle_root": "root_fixture",
+                "policy_checks": [],
+                "memories": [],
+                "retrieval": {"temporal": snapshot},
+            }
+        )
+        temporal = context["temporal"]
+        history_graph = temporal["history_temporal_graph"]
+        current_graph = temporal["current_temporal_graph"]
+
+        self.assertEqual(temporal["query_at"], "2024-02-20T00:00:00Z")
+        self.assertEqual(temporal["scope"], "project")
+        self.assertNotIn("search_query", temporal)
+        self.assertTrue(temporal["include_abstained_current"])
+        self.assertEqual(temporal["current_resolution"], "all")
+        self.assertFalse(temporal["learned_only"])
+        self.assertFalse(temporal["unlearned_only"])
+        self.assertFalse(temporal["superseded_only"])
+        self.assertFalse(temporal["future_only"])
+        self.assertCountEqual(temporal["history_memory_ids"], [unrelated.id, stale.id, current.id])
+        self.assertCountEqual(temporal["current_memory_ids"], [unrelated.id, current.id])
+        self.assertCountEqual(temporal["resolved_current_memory_ids"], [unrelated.id, current.id])
+        self.assertEqual(temporal["dropped_current_memory_ids"], [])
+        self.assertEqual(temporal["abstained_current_memory_ids"], [])
+        receipt_metadata = temporal["current_history_receipt_metadata"]
+        self.assertEqual(receipt_metadata["filter"], "current_resolution:all")
+        self.assertCountEqual(receipt_metadata["base_history_memory_ids"], [unrelated.id, stale.id, current.id])
+        self.assertCountEqual(receipt_metadata["base_current_memory_ids"], [unrelated.id, current.id])
+        self.assertCountEqual(receipt_metadata["included_history_memory_ids"], [unrelated.id, stale.id, current.id])
+        self.assertCountEqual(receipt_metadata["included_current_memory_ids"], [unrelated.id, current.id])
+        self.assertEqual(receipt_metadata["omitted_history_memory_ids"], [])
+        self.assertEqual(receipt_metadata["omitted_current_memory_ids"], [])
+        self.assertEqual(receipt_metadata, snapshot["current_history_receipt_metadata"])
+        self.assertEqual(history_graph[stale.id], snapshot["history_temporal_graph"][stale.id])
+        self.assertEqual(history_graph[current.id], snapshot["history_temporal_graph"][current.id])
+        self.assertEqual(current_graph[unrelated.id], snapshot["current_temporal_graph"][unrelated.id])
+        self.assertEqual(current_graph[current.id], snapshot["current_temporal_graph"][current.id])
+
+    def test_build_context_preserves_query_at_default_no_search_identity_bitemporal_fields(self):
+        unrelated = self.store.remember(
+            "Alice owns the billing exporter.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        stale = self.store.remember(
+            "Status page owner is Alice.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            actor_uri="agent://codex/session-january",
+            session_id="session://january",
+        )
+        current = self.store.remember(
+            "Status page owner is Alice Chen.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            actor_uri="agent://codex/session-february",
+            session_id="session://february",
+            parents=[stale.id],
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-15T00:00:00Z", "2024-01-15T00:00:00Z", unrelated.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z", stale.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-02-01T00:00:00Z", "2024-02-01T00:00:00Z", current.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-15T00:00:00Z", unrelated.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-01T00:00:00Z", stale.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-02-01T00:00:00Z", current.id),
+        )
+        self.store.conn.commit()
+
+        snapshot = self.store.query_at("2024-02-20T00:00:00Z", scope="project")
+        context = build_context(
+            {
+                "action_id": "act_temporal_context",
+                "task": "default no-search identity temporal passthrough",
+                "risk": "low",
+                "merkle_root": "root_fixture",
+                "policy_checks": [],
+                "memories": [],
+                "retrieval": {"temporal": snapshot},
+            }
+        )
+        temporal = context["temporal"]
+        unrelated_envelope = temporal["history_temporal_graph"][unrelated.id]
+        stale_envelope = temporal["history_temporal_graph"][stale.id]
+        current_envelope = temporal["history_temporal_graph"][current.id]
+
+        self.assertCountEqual(temporal["history_memory_ids"], [unrelated.id, stale.id, current.id])
+        self.assertCountEqual(temporal["current_memory_ids"], [unrelated.id, current.id])
+        self.assertCountEqual(temporal["resolved_current_memory_ids"], [unrelated.id, current.id])
+        self.assertCountEqual(list(temporal["history_temporal_graph"]), [unrelated.id, stale.id, current.id])
+        self.assertCountEqual(list(temporal["current_temporal_graph"]), [unrelated.id, current.id])
+        self.assertEqual(list(temporal["superseded_temporal_graph"]), [stale.id])
+
+        self.assertEqual(unrelated_envelope["learned_at"], "2024-01-15T00:00:00Z")
+        self.assertEqual(unrelated_envelope["valid_from"], "2024-01-15T00:00:00Z")
+        self.assertIsNone(unrelated_envelope["valid_to"])
+        self.assertIsNone(unrelated_envelope["superseded_at"])
+        self.assertEqual(unrelated_envelope["superseded_by_ids"], [])
+        self.assertEqual(unrelated_envelope["temporal_state"], "current")
+        self.assertEqual(unrelated_envelope["current_resolution"], "selected")
+        self.assertIsInstance(unrelated_envelope["serial"], int)
+
+        self.assertEqual(stale_envelope["learned_at"], "2024-01-01T00:00:00Z")
+        self.assertEqual(stale_envelope["valid_from"], "2024-01-01T00:00:00Z")
+        self.assertEqual(stale_envelope["valid_to"], "2024-02-01T00:00:00Z")
+        self.assertEqual(stale_envelope["superseded_at"], "2024-02-01T00:00:00Z")
+        self.assertEqual(stale_envelope["superseded_by_ids"], [current.id])
+        self.assertEqual(stale_envelope["temporal_state"], "superseded")
+        self.assertEqual(stale_envelope["temporal_resolution_kind"], "supersession")
+        self.assertEqual(stale_envelope["temporal_resolution_reasons"], ["active-child-candidate"])
+        self.assertIsNone(stale_envelope["current_resolution"])
+        self.assertIsInstance(stale_envelope["serial"], int)
+
+        self.assertEqual(current_envelope["learned_at"], "2024-02-01T00:00:00Z")
+        self.assertEqual(current_envelope["valid_from"], "2024-02-01T00:00:00Z")
+        self.assertIsNone(current_envelope["valid_to"])
+        self.assertIsNone(current_envelope["superseded_at"])
+        self.assertEqual(current_envelope["superseded_by_ids"], [])
+        self.assertEqual(current_envelope["temporal_state"], "current")
+        self.assertIsNone(current_envelope["temporal_resolution_kind"])
+        self.assertEqual(current_envelope["temporal_resolution_reasons"], [])
+        self.assertEqual(current_envelope["current_resolution"], "selected")
+        self.assertIsInstance(current_envelope["serial"], int)
+
+        self.assertEqual(temporal["superseded_temporal_graph"][stale.id], stale_envelope)
+        self.assertEqual(temporal["current_temporal_graph"][unrelated.id], unrelated_envelope)
+        self.assertEqual(temporal["current_temporal_graph"][current.id], current_envelope)
+        self.assertEqual(temporal["history_temporal_graph"][stale.id], snapshot["history_temporal_graph"][stale.id])
+        self.assertEqual(temporal["current_temporal_graph"][unrelated.id], snapshot["current_temporal_graph"][unrelated.id])
+        self.assertEqual(temporal["current_temporal_graph"][current.id], snapshot["current_temporal_graph"][current.id])
+
+    def test_build_context_preserves_query_at_abstained_snapshot_controls_for_current_contradiction(self):
+        first = self.store.remember(
+            "Incident owner is Alex.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            actor_uri="agent://codex/session-january",
+            session_id="session://january",
+        )
+        second = self.store.remember(
+            "Incident owner is Priya.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="system",
+            actor_uri="agent://codex/session-february",
+            session_id="session://february",
+            trust=0.95,
+            authority="medium",
+            status="active",
+        )
+        unrelated = self.store.remember(
+            "Runbook owner is Alice.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        shared_timestamp = "2024-02-01T00:00:00Z"
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            (shared_timestamp, shared_timestamp, first.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            (shared_timestamp, shared_timestamp, second.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-15T00:00:00Z", "2024-01-15T00:00:00Z", unrelated.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            (shared_timestamp, first.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            (shared_timestamp, second.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-15T00:00:00Z", unrelated.id),
+        )
+        self.store.conn.commit()
+
+        snapshot = self.store.query_at(
+            "2024-02-20T00:00:00Z",
+            scope="project",
+            search_query="incident owner",
+            current_resolution="abstained",
+        )
+        context = build_context(
+            {
+                "action_id": "act_temporal_context",
+                "task": "abstained current temporal passthrough",
+                "risk": "low",
+                "merkle_root": "root_fixture",
+                "policy_checks": [],
+                "memories": [],
+                "retrieval": {"temporal": snapshot},
+            }
+        )
+        temporal = context["temporal"]
+        history_graph = temporal["history_temporal_graph"]
+        current_graph = temporal["current_temporal_graph"]
+        abstained_graph = temporal["abstained_temporal_graph"]
+
+        self.assertEqual(temporal["query_at"], "2024-02-20T00:00:00Z")
+        self.assertEqual(temporal["scope"], "project")
+        self.assertEqual(temporal["search_query"], "incident owner")
+        self.assertTrue(temporal["include_abstained_current"])
+        self.assertEqual(temporal["current_resolution"], "abstained")
+        self.assertFalse(temporal["learned_only"])
+        self.assertFalse(temporal["unlearned_only"])
+        self.assertFalse(temporal["superseded_only"])
+        self.assertFalse(temporal["future_only"])
+        self.assertCountEqual(temporal["history_memory_ids"], [first.id, second.id])
+        self.assertCountEqual(temporal["current_memory_ids"], [first.id, second.id])
+        self.assertEqual(temporal["resolved_current_memory_ids"], [])
+        self.assertEqual(temporal["dropped_current_memory_ids"], [])
+        self.assertCountEqual(temporal["abstained_current_memory_ids"], [first.id, second.id])
+        abstained_ids = list(temporal["abstained_current_memory_ids"])
+        self.assertEqual(temporal["future_memory_ids"], [])
+        self.assertEqual(temporal["superseded_memory_ids"], [])
+        self.assertEqual(temporal["unlearned_memory_ids"], [])
+        self.assertEqual(temporal["learned_memory_ids"], [])
+        self.assertEqual(temporal["selected_temporal_graph"], {})
+        self.assertEqual(temporal["dropped_current_temporal_graph"], {})
+        self.assertEqual(temporal["selection_strategy"], "abstained_only_v1")
+        self.assertEqual(temporal["selection_reason"], "explicit-abstained-current-filter")
+        self.assertEqual(temporal["selected_ids"], abstained_ids)
+        receipt_metadata = temporal["current_history_receipt_metadata"]
+        self.assertEqual(receipt_metadata["filter"], "current_resolution:abstained")
+        self.assertCountEqual(receipt_metadata["base_history_memory_ids"], [first.id, second.id])
+        self.assertCountEqual(receipt_metadata["base_current_memory_ids"], [first.id, second.id])
+        self.assertCountEqual(receipt_metadata["included_history_memory_ids"], [first.id, second.id])
+        self.assertCountEqual(receipt_metadata["included_current_memory_ids"], [first.id, second.id])
+        self.assertEqual(receipt_metadata["omitted_history_memory_ids"], [])
+        self.assertEqual(receipt_metadata["omitted_current_memory_ids"], [])
+        self.assertEqual(receipt_metadata, snapshot["current_history_receipt_metadata"])
+        self.assertNotIn(unrelated.id, history_graph)
+        self.assertCountEqual(list(history_graph), [first.id, second.id])
+        self.assertCountEqual(list(current_graph), [first.id, second.id])
+        self.assertCountEqual(list(abstained_graph), [first.id, second.id])
+
+        self.assertEqual(history_graph[first.id]["temporal_state"], "current")
+        self.assertEqual(history_graph[first.id]["current_resolution"], "abstained")
+        self.assertEqual(history_graph[first.id]["temporal_resolution_kind"], "contradiction")
+        self.assertEqual(history_graph[first.id]["temporal_resolution_reasons"], ["lexical-current-conflict"])
+        self.assertEqual(history_graph[second.id]["temporal_state"], "current")
+        self.assertEqual(history_graph[second.id]["current_resolution"], "abstained")
+        self.assertEqual(history_graph[second.id]["temporal_resolution_kind"], "contradiction")
+        self.assertEqual(history_graph[second.id]["temporal_resolution_reasons"], ["lexical-current-conflict"])
+        self.assertEqual(current_graph[first.id], snapshot["current_temporal_graph"][first.id])
+        self.assertEqual(current_graph[second.id], snapshot["current_temporal_graph"][second.id])
+        self.assertEqual(abstained_graph[first.id], snapshot["abstained_temporal_graph"][first.id])
+        self.assertEqual(abstained_graph[second.id], snapshot["abstained_temporal_graph"][second.id])
+        self.assertTrue(temporal["abstention"]["applied"])
+        self.assertEqual(temporal["abstention"]["reason"], "unresolved-current-conflict")
+        self.assertCountEqual(temporal["abstention"]["abstained_ids"], [first.id, second.id])
+        self.assertEqual(len(temporal["conflict_sets"]), 1)
+        self.assertEqual(temporal["conflict_sets"][0]["resolution_outcome"], "abstained")
+        self.assertCountEqual(temporal["conflict_sets"][0]["abstained_current_ids"], [first.id, second.id])
+        current_ordering = temporal["current_ordering"]
+        history_ordering = temporal["history_ordering"]
+        self.assertEqual(current_ordering, snapshot["current_ordering"])
+        self.assertEqual(history_ordering, snapshot["history_ordering"])
+        self.assertTrue(current_ordering["applied"])
+        self.assertFalse(current_ordering["pass_through"])
+        self.assertEqual(current_ordering["basis"], "current_conflict_abstention_rank")
+        self.assertEqual(current_ordering["source"], "temporal_current_conflict_abstention")
+        self.assertEqual(current_ordering["reason"], "explicit-abstained-current-filter")
+        self.assertEqual(
+            current_ordering["selected_current_rankings"],
+            [{"memory_id": memory_id, "rank": index} for index, memory_id in enumerate(abstained_ids, start=1)],
+        )
+        self.assertEqual(
+            current_ordering["considered_current_rankings"],
+            [
+                {"memory_id": memory_id, "rank": index, "selected": True}
+                for index, memory_id in enumerate(abstained_ids, start=1)
+            ],
+        )
+        self.assertFalse(history_ordering["applied"])
+        self.assertFalse(history_ordering["pass_through"])
+        self.assertEqual(history_ordering["basis"], "history_conflict_abstention_rank")
+        self.assertEqual(history_ordering["source"], "temporal_history_conflict_abstention")
+        self.assertEqual(history_ordering["reason"], "explicit-abstained-current-filter")
+        self.assertEqual(history_ordering["selected_history_rankings"], [])
+        self.assertEqual(history_ordering["considered_history_rankings"], [])
+
+    def test_build_context_preserves_hidden_query_at_abstained_snapshot_controls_for_current_contradiction(self):
+        first = self.store.remember(
+            "Incident owner is Alex.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            actor_uri="agent://codex/session-january",
+            session_id="session://january",
+        )
+        second = self.store.remember(
+            "Incident owner is Priya.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="system",
+            actor_uri="agent://codex/session-february",
+            session_id="session://february",
+            trust=0.95,
+            authority="medium",
+            status="active",
+        )
+        unrelated = self.store.remember(
+            "Runbook owner is Alice.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        shared_timestamp = "2024-02-01T00:00:00Z"
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            (shared_timestamp, shared_timestamp, first.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            (shared_timestamp, shared_timestamp, second.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-15T00:00:00Z", "2024-01-15T00:00:00Z", unrelated.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            (shared_timestamp, first.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            (shared_timestamp, second.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-15T00:00:00Z", unrelated.id),
+        )
+        self.store.conn.commit()
+
+        snapshot = self.store.query_at(
+            "2024-02-20T00:00:00Z",
+            scope="project",
+            search_query="incident owner",
+            include_abstained_current=False,
+        )
+        context = build_context(
+            {
+                "action_id": "act_temporal_context",
+                "task": "hidden abstained current temporal passthrough",
+                "risk": "low",
+                "merkle_root": "root_fixture",
+                "policy_checks": [],
+                "memories": [],
+                "retrieval": {"temporal": snapshot},
+            }
+        )
+        temporal = context["temporal"]
+
+        self.assertEqual(temporal["query_at"], "2024-02-20T00:00:00Z")
+        self.assertEqual(temporal["scope"], "project")
+        self.assertEqual(temporal["search_query"], "incident owner")
+        self.assertFalse(temporal["include_abstained_current"])
+        self.assertEqual(temporal["current_resolution"], "all")
+        self.assertFalse(temporal["learned_only"])
+        self.assertFalse(temporal["unlearned_only"])
+        self.assertFalse(temporal["superseded_only"])
+        self.assertFalse(temporal["future_only"])
+        self.assertEqual(temporal["history_memory_ids"], [])
+        self.assertEqual(temporal["current_memory_ids"], [])
+        self.assertEqual(temporal["resolved_current_memory_ids"], [])
+        self.assertEqual(temporal["dropped_current_memory_ids"], [])
+        self.assertCountEqual(temporal["abstained_current_memory_ids"], [first.id, second.id])
+        self.assertEqual(temporal["future_memory_ids"], [])
+        self.assertEqual(temporal["superseded_memory_ids"], [])
+        self.assertEqual(temporal["unlearned_memory_ids"], [])
+        self.assertEqual(temporal["learned_memory_ids"], [])
+        self.assertEqual(temporal["history_temporal_graph"], {})
+        self.assertEqual(temporal["current_temporal_graph"], {})
+        self.assertEqual(temporal["selected_temporal_graph"], {})
+        self.assertEqual(temporal["abstained_temporal_graph"], {})
+        self.assertEqual(temporal["dropped_current_temporal_graph"], {})
+        self.assertNotIn("selection_strategy", temporal)
+        self.assertNotIn("selection_reason", temporal)
+        self.assertNotIn("current_ordering", temporal)
+        receipt_metadata = temporal["current_history_receipt_metadata"]
+        self.assertEqual(receipt_metadata["filter"], "include_abstained_current:false")
+        self.assertCountEqual(receipt_metadata["base_history_memory_ids"], [first.id, second.id])
+        self.assertCountEqual(receipt_metadata["base_current_memory_ids"], [first.id, second.id])
+        self.assertEqual(receipt_metadata["included_history_memory_ids"], [])
+        self.assertEqual(receipt_metadata["included_current_memory_ids"], [])
+        self.assertCountEqual(receipt_metadata["omitted_history_memory_ids"], [first.id, second.id])
+        self.assertCountEqual(receipt_metadata["omitted_current_memory_ids"], [first.id, second.id])
+        self.assertEqual(receipt_metadata, snapshot["current_history_receipt_metadata"])
+        self.assertNotIn(unrelated.id, temporal["conflict_sets"][0]["abstained_current_ids"])
+        self.assertTrue(temporal["abstention"]["applied"])
+        self.assertEqual(temporal["abstention"]["reason"], "unresolved-current-conflict")
+        self.assertCountEqual(temporal["abstention"]["abstained_ids"], [first.id, second.id])
+        self.assertEqual(len(temporal["conflict_sets"]), 1)
+        self.assertEqual(temporal["conflict_sets"][0]["resolution_outcome"], "abstained")
+        self.assertCountEqual(temporal["conflict_sets"][0]["abstained_current_ids"], [first.id, second.id])
+
+    def test_build_context_preserves_query_at_identity_snapshot_controls_for_abstained_empty_subset(self):
+        stale = self.store.remember(
+            "Status page owner is Alice.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            actor_uri="agent://codex/session-january",
+            session_id="session://january",
+        )
+        current = self.store.remember(
+            "Status page owner is Alice Chen.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            actor_uri="agent://codex/session-february",
+            session_id="session://february",
+            parents=[stale.id],
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z", stale.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-02-01T00:00:00Z", "2024-02-01T00:00:00Z", current.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-01T00:00:00Z", stale.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-02-01T00:00:00Z", current.id),
+        )
+        self.store.conn.commit()
+
+        snapshot = self.store.query_at(
+            "2024-02-20T00:00:00Z",
+            scope="project",
+            search_query="status page owner",
+            current_resolution="abstained",
+        )
+        context = build_context(
+            {
+                "action_id": "act_temporal_context",
+                "task": "abstained identity temporal passthrough",
+                "risk": "low",
+                "merkle_root": "root_fixture",
+                "policy_checks": [],
+                "memories": [],
+                "retrieval": {"temporal": snapshot},
+            }
+        )
+        temporal = context["temporal"]
+
+        self.assertEqual(temporal["query_at"], "2024-02-20T00:00:00Z")
+        self.assertEqual(temporal["scope"], "project")
+        self.assertEqual(temporal["search_query"], "status page owner")
+        self.assertTrue(temporal["include_abstained_current"])
+        self.assertEqual(temporal["current_resolution"], "abstained")
+        self.assertEqual(temporal["history_memory_ids"], [])
+        self.assertEqual(temporal["current_memory_ids"], [])
+        self.assertEqual(temporal["abstained_current_memory_ids"], [])
+        self.assertEqual(temporal["history_temporal_graph"], {})
+        self.assertEqual(temporal["current_temporal_graph"], {})
+        self.assertEqual(temporal["abstained_temporal_graph"], {})
+        self.assertEqual(temporal["selection_strategy"], "abstained_only_v1")
+        self.assertEqual(temporal["selection_reason"], "explicit-abstained-current-filter")
+        self.assertEqual(temporal["selected_ids"], [])
+        receipt_metadata = temporal["current_history_receipt_metadata"]
+        self.assertEqual(receipt_metadata["filter"], "current_resolution:abstained")
+        self.assertCountEqual(receipt_metadata["base_history_memory_ids"], [stale.id, current.id])
+        self.assertEqual(receipt_metadata["base_current_memory_ids"], [current.id])
+        self.assertEqual(receipt_metadata["included_history_memory_ids"], [])
+        self.assertEqual(receipt_metadata["included_current_memory_ids"], [])
+        self.assertCountEqual(receipt_metadata["omitted_history_memory_ids"], [stale.id, current.id])
+        self.assertEqual(receipt_metadata["omitted_current_memory_ids"], [current.id])
+        self.assertEqual(receipt_metadata, snapshot["current_history_receipt_metadata"])
+        current_ordering = temporal["current_ordering"]
+        history_ordering = temporal["history_ordering"]
+        self.assertEqual(current_ordering, snapshot["current_ordering"])
+        self.assertEqual(history_ordering, snapshot["history_ordering"])
+        self.assertTrue(current_ordering["applied"])
+        self.assertFalse(current_ordering["pass_through"])
+        self.assertEqual(current_ordering["basis"], "current_conflict_abstention_rank")
+        self.assertEqual(current_ordering["source"], "temporal_current_conflict_abstention")
+        self.assertEqual(current_ordering["reason"], "explicit-abstained-current-filter")
+        self.assertEqual(current_ordering["selected_current_rankings"], [])
+        self.assertEqual(current_ordering["considered_current_rankings"], [])
+        self.assertFalse(history_ordering["applied"])
+        self.assertFalse(history_ordering["pass_through"])
+        self.assertEqual(history_ordering["basis"], "history_conflict_abstention_rank")
+        self.assertEqual(history_ordering["source"], "temporal_history_conflict_abstention")
+        self.assertEqual(history_ordering["reason"], "explicit-abstained-current-filter")
+        self.assertEqual(history_ordering["selected_history_rankings"], [])
+        self.assertEqual(history_ordering["considered_history_rankings"], [])
+
+    def test_build_context_preserves_query_at_identity_snapshot_controls_for_superseded_history_subset(self):
+        unrelated = self.store.remember(
+            "Alice owns the billing exporter.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        stale = self.store.remember(
+            "Status page owner is Alice.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            actor_uri="agent://codex/session-january",
+            session_id="session://january",
+        )
+        current = self.store.remember(
+            "Status page owner is Alice Chen.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            actor_uri="agent://codex/session-february",
+            session_id="session://february",
+            parents=[stale.id],
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-15T00:00:00Z", "2024-01-15T00:00:00Z", unrelated.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z", stale.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-02-01T00:00:00Z", "2024-02-01T00:00:00Z", current.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-15T00:00:00Z", unrelated.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-01T00:00:00Z", stale.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-02-01T00:00:00Z", current.id),
+        )
+        self.store.conn.commit()
+
+        snapshot = self.store.query_at(
+            "2024-02-20T00:00:00Z",
+            scope="project",
+            search_query="status page owner",
+            superseded_only=True,
+        )
+        context = build_context(
+            {
+                "action_id": "act_temporal_context",
+                "task": "superseded history temporal passthrough",
+                "risk": "low",
+                "merkle_root": "root_fixture",
+                "policy_checks": [],
+                "memories": [],
+                "retrieval": {"temporal": snapshot},
+            }
+        )
+        temporal = context["temporal"]
+        history_graph = temporal["history_temporal_graph"]
+        superseded_graph = temporal["superseded_temporal_graph"]
+
+        self.assertEqual(temporal["query_at"], "2024-02-20T00:00:00Z")
+        self.assertEqual(temporal["scope"], "project")
+        self.assertEqual(temporal["search_query"], "status page owner")
+        self.assertTrue(temporal["include_abstained_current"])
+        self.assertEqual(temporal["current_resolution"], "all")
+        self.assertFalse(temporal["learned_only"])
+        self.assertFalse(temporal["unlearned_only"])
+        self.assertTrue(temporal["superseded_only"])
+        self.assertFalse(temporal["future_only"])
+
+        self.assertEqual(temporal["history_memory_ids"], [stale.id])
+        self.assertEqual(temporal["current_memory_ids"], [])
+        self.assertEqual(temporal["resolved_current_memory_ids"], [])
+        self.assertEqual(temporal["dropped_current_memory_ids"], [])
+        self.assertEqual(temporal["abstained_current_memory_ids"], [])
+        self.assertEqual(temporal["future_memory_ids"], [])
+        self.assertEqual(temporal["superseded_memory_ids"], [stale.id])
+        self.assertEqual(temporal["unlearned_memory_ids"], [])
+        self.assertEqual(temporal["learned_memory_ids"], [])
+        self.assertNotIn(unrelated.id, history_graph)
+        self.assertNotIn(current.id, history_graph)
+        self.assertEqual(temporal["current_temporal_graph"], {})
+        self.assertEqual(temporal["future_temporal_graph"], {})
+        self.assertEqual(temporal["unlearned_temporal_graph"], {})
+        self.assertEqual(temporal["learned_temporal_graph"], {})
+        self.assertEqual(temporal["selected_temporal_graph"], {})
+        self.assertEqual(temporal["abstained_temporal_graph"], {})
+        self.assertEqual(temporal["dropped_current_temporal_graph"], {})
+        history_ordering = temporal["history_ordering"]
+
+        self.assertTrue(history_ordering["applied"])
+        self.assertFalse(history_ordering["pass_through"])
+        self.assertEqual(history_ordering["basis"], "historical_selection_rank")
+        self.assertEqual(history_ordering["source"], "temporal_history_selection")
+        self.assertEqual(history_ordering["reason"], "explicit-superseded-only-filter")
+        self.assertEqual(
+            history_ordering["selected_history_rankings"],
+            [{"memory_id": stale.id, "rank": 1}],
+        )
+        self.assertEqual(
+            history_ordering["considered_history_rankings"],
+            [{"memory_id": stale.id, "rank": 1, "selected": True}],
+        )
+        receipt_metadata = temporal["current_history_receipt_metadata"]
+        self.assertEqual(receipt_metadata["filter"], "superseded_only")
+        self.assertEqual(receipt_metadata["base_history_memory_ids"], [stale.id, current.id])
+        self.assertEqual(receipt_metadata["base_current_memory_ids"], [current.id])
+        self.assertEqual(receipt_metadata["included_history_memory_ids"], [stale.id])
+        self.assertEqual(receipt_metadata["included_current_memory_ids"], [])
+        self.assertEqual(receipt_metadata["omitted_history_memory_ids"], [current.id])
+        self.assertEqual(receipt_metadata["omitted_current_memory_ids"], [current.id])
+        self.assertEqual(receipt_metadata, snapshot["current_history_receipt_metadata"])
+
+        self.assertEqual(history_graph[stale.id]["temporal_state"], "superseded")
+        self.assertEqual(history_graph[stale.id]["valid_from"], "2024-01-01T00:00:00Z")
+        self.assertEqual(history_graph[stale.id]["valid_to"], "2024-02-01T00:00:00Z")
+        self.assertEqual(history_graph[stale.id]["superseded_at"], "2024-02-01T00:00:00Z")
+        self.assertEqual(history_graph[stale.id]["superseded_by_ids"], [current.id])
+        self.assertEqual(history_graph[stale.id]["current_resolution"], None)
+        self.assertEqual(history_graph[stale.id]["temporal_resolution_kind"], "supersession")
+        self.assertEqual(history_graph[stale.id]["temporal_resolution_reasons"], ["active-child-candidate"])
+        self.assertEqual(superseded_graph[stale.id], snapshot["superseded_temporal_graph"][stale.id])
+        self.assertEqual(history_graph[stale.id], snapshot["history_temporal_graph"][stale.id])
+
+    def test_build_context_preserves_query_at_no_search_superseded_identity_receipt_metadata(self):
+        unrelated = self.store.remember(
+            "Alice owns the billing exporter.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        stale = self.store.remember(
+            "Status page owner is Alice.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            actor_uri="agent://codex/session-january",
+            session_id="session://january",
+        )
+        current = self.store.remember(
+            "Status page owner is Alice Chen.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            actor_uri="agent://codex/session-february",
+            session_id="session://february",
+            parents=[stale.id],
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-15T00:00:00Z", "2024-01-15T00:00:00Z", unrelated.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z", stale.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-02-01T00:00:00Z", "2024-02-01T00:00:00Z", current.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-15T00:00:00Z", unrelated.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-01T00:00:00Z", stale.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-02-01T00:00:00Z", current.id),
+        )
+        self.store.conn.commit()
+
+        snapshot = self.store.query_at(
+            "2024-02-20T00:00:00Z",
+            scope="project",
+            superseded_only=True,
+        )
+        context = build_context(
+            {
+                "action_id": "act_temporal_context",
+                "task": "no-search superseded temporal passthrough",
+                "risk": "low",
+                "merkle_root": "root_fixture",
+                "policy_checks": [],
+                "memories": [],
+                "retrieval": {"temporal": snapshot},
+            }
+        )
+        temporal = context["temporal"]
+        history_graph = temporal["history_temporal_graph"]
+        superseded_graph = temporal["superseded_temporal_graph"]
+
+        self.assertEqual(temporal["query_at"], "2024-02-20T00:00:00Z")
+        self.assertEqual(temporal["scope"], "project")
+        self.assertNotIn("search_query", temporal)
+        self.assertTrue(temporal["include_abstained_current"])
+        self.assertEqual(temporal["current_resolution"], "all")
+        self.assertFalse(temporal["learned_only"])
+        self.assertFalse(temporal["unlearned_only"])
+        self.assertTrue(temporal["superseded_only"])
+        self.assertFalse(temporal["future_only"])
+        self.assertEqual(temporal["history_memory_ids"], [stale.id])
+        self.assertEqual(temporal["current_memory_ids"], [])
+        self.assertEqual(temporal["resolved_current_memory_ids"], [])
+        self.assertEqual(temporal["dropped_current_memory_ids"], [])
+        self.assertEqual(temporal["abstained_current_memory_ids"], [])
+        self.assertEqual(temporal["future_memory_ids"], [])
+        self.assertEqual(temporal["superseded_memory_ids"], [stale.id])
+        self.assertEqual(temporal["unlearned_memory_ids"], [])
+        self.assertEqual(temporal["learned_memory_ids"], [])
+        self.assertNotIn(unrelated.id, history_graph)
+        self.assertNotIn(current.id, history_graph)
+        self.assertEqual(temporal["current_temporal_graph"], {})
+        self.assertEqual(temporal["future_temporal_graph"], {})
+        self.assertEqual(temporal["unlearned_temporal_graph"], {})
+        self.assertEqual(temporal["learned_temporal_graph"], {})
+        self.assertEqual(temporal["selected_temporal_graph"], {})
+        self.assertEqual(temporal["abstained_temporal_graph"], {})
+        self.assertEqual(temporal["dropped_current_temporal_graph"], {})
+        history_ordering = temporal["history_ordering"]
+
+        self.assertEqual(history_ordering, snapshot["history_ordering"])
+        self.assertTrue(history_ordering["applied"])
+        self.assertFalse(history_ordering["pass_through"])
+        self.assertEqual(history_ordering["basis"], "historical_selection_rank")
+        self.assertEqual(history_ordering["source"], "temporal_history_selection")
+        self.assertEqual(history_ordering["reason"], "explicit-superseded-only-filter")
+        self.assertEqual(
+            history_ordering["selected_history_rankings"],
+            [{"memory_id": stale.id, "rank": 1}],
+        )
+        self.assertEqual(
+            history_ordering["considered_history_rankings"],
+            [{"memory_id": stale.id, "rank": 1, "selected": True}],
+        )
+        receipt_metadata = temporal["current_history_receipt_metadata"]
+        self.assertEqual(receipt_metadata["filter"], "superseded_only")
+        self.assertCountEqual(receipt_metadata["base_history_memory_ids"], [unrelated.id, stale.id, current.id])
+        self.assertCountEqual(receipt_metadata["base_current_memory_ids"], [unrelated.id, current.id])
+        self.assertEqual(receipt_metadata["included_history_memory_ids"], [stale.id])
+        self.assertEqual(receipt_metadata["included_current_memory_ids"], [])
+        self.assertCountEqual(receipt_metadata["omitted_history_memory_ids"], [unrelated.id, current.id])
+        self.assertCountEqual(receipt_metadata["omitted_current_memory_ids"], [unrelated.id, current.id])
+        self.assertEqual(receipt_metadata, snapshot["current_history_receipt_metadata"])
+        self.assertEqual(history_graph[stale.id]["temporal_state"], "superseded")
+        self.assertEqual(history_graph[stale.id]["learned_at"], "2024-01-01T00:00:00Z")
+        self.assertEqual(history_graph[stale.id]["valid_from"], "2024-01-01T00:00:00Z")
+        self.assertEqual(history_graph[stale.id]["valid_to"], "2024-02-01T00:00:00Z")
+        self.assertEqual(history_graph[stale.id]["superseded_at"], "2024-02-01T00:00:00Z")
+        self.assertEqual(history_graph[stale.id]["superseded_by_ids"], [current.id])
+        self.assertEqual(history_graph[stale.id]["current_resolution"], None)
+        self.assertEqual(history_graph[stale.id]["temporal_resolution_kind"], "supersession")
+        self.assertEqual(history_graph[stale.id]["temporal_resolution_reasons"], ["active-child-candidate"])
+        self.assertEqual(history_graph[stale.id]["valid_to"], history_graph[stale.id]["superseded_at"])
+        self.assertEqual(superseded_graph[stale.id], snapshot["superseded_temporal_graph"][stale.id])
+        self.assertEqual(history_graph[stale.id], snapshot["history_temporal_graph"][stale.id])
+
+    def test_build_context_preserves_query_at_no_search_superseded_identity_empty_predecessor_guard(self):
+        unrelated = self.store.remember(
+            "Alice owns the billing exporter.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        current = self.store.remember(
+            "Status page owner is Alice.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            actor_uri="agent://codex/session-january",
+            session_id="session://january",
+        )
+        future = self.store.remember(
+            "Status page owner is Alice Chen.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            actor_uri="agent://codex/session-february",
+            session_id="session://february",
+            parents=[current.id],
+            status="active",
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-15T00:00:00Z", "2024-01-15T00:00:00Z", unrelated.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z", current.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-02-01T00:00:00Z", "2024-02-01T00:00:00Z", future.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-15T00:00:00Z", unrelated.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-01T00:00:00Z", current.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-02-01T00:00:00Z", future.id),
+        )
+        self.store.conn.commit()
+
+        snapshot = self.store.query_at(
+            "2024-01-20T00:00:00Z",
+            scope="project",
+            superseded_only=True,
+        )
+        context = build_context(
+            {
+                "action_id": "act_temporal_context",
+                "task": "no-search superseded temporal empty passthrough",
+                "risk": "low",
+                "merkle_root": "root_fixture",
+                "policy_checks": [],
+                "memories": [],
+                "retrieval": {"temporal": snapshot},
+            }
+        )
+        temporal = context["temporal"]
+
+        self.assertEqual(temporal["query_at"], "2024-01-20T00:00:00Z")
+        self.assertEqual(temporal["scope"], "project")
+        self.assertNotIn("search_query", temporal)
+        self.assertTrue(temporal["include_abstained_current"])
+        self.assertEqual(temporal["current_resolution"], "all")
+        self.assertFalse(temporal["learned_only"])
+        self.assertFalse(temporal["unlearned_only"])
+        self.assertTrue(temporal["superseded_only"])
+        self.assertFalse(temporal["future_only"])
+        self.assertEqual(temporal["history_memory_ids"], [])
+        self.assertEqual(temporal["current_memory_ids"], [])
+        self.assertEqual(temporal["resolved_current_memory_ids"], [])
+        self.assertEqual(temporal["dropped_current_memory_ids"], [])
+        self.assertEqual(temporal["abstained_current_memory_ids"], [])
+        self.assertEqual(temporal["future_memory_ids"], [])
+        self.assertEqual(temporal["superseded_memory_ids"], [])
+        self.assertEqual(temporal["unlearned_memory_ids"], [])
+        self.assertEqual(temporal["learned_memory_ids"], [])
+        self.assertEqual(temporal["selected_ids"], [])
+        self.assertEqual(temporal["selection_strategy"], "superseded_only_v1")
+        self.assertEqual(temporal["selection_reason"], "explicit-superseded-only-filter")
+        self.assertEqual(temporal["history_temporal_graph"], {})
+        self.assertEqual(temporal["current_temporal_graph"], {})
+        self.assertEqual(temporal["future_temporal_graph"], {})
+        self.assertEqual(temporal["superseded_temporal_graph"], {})
+        self.assertEqual(temporal["unlearned_temporal_graph"], {})
+        self.assertEqual(temporal["learned_temporal_graph"], {})
+        self.assertEqual(temporal["selected_temporal_graph"], {})
+        self.assertEqual(temporal["abstained_temporal_graph"], {})
+        self.assertEqual(temporal["dropped_current_temporal_graph"], {})
+        history_ordering = temporal["history_ordering"]
+        self.assertEqual(history_ordering, snapshot["history_ordering"])
+        self.assertTrue(history_ordering["applied"])
+        self.assertFalse(history_ordering["pass_through"])
+        self.assertEqual(history_ordering["basis"], "historical_selection_rank")
+        self.assertEqual(history_ordering["source"], "temporal_history_selection")
+        self.assertEqual(history_ordering["reason"], "explicit-superseded-only-filter")
+        self.assertEqual(history_ordering["selected_history_rankings"], [])
+        self.assertEqual(history_ordering["considered_history_rankings"], [])
+        receipt_metadata = temporal["current_history_receipt_metadata"]
+        self.assertEqual(receipt_metadata["filter"], "superseded_only")
+        self.assertCountEqual(receipt_metadata["base_history_memory_ids"], [unrelated.id, current.id])
+        self.assertCountEqual(receipt_metadata["base_current_memory_ids"], [unrelated.id, current.id])
+        self.assertEqual(receipt_metadata["included_history_memory_ids"], [])
+        self.assertEqual(receipt_metadata["included_current_memory_ids"], [])
+        self.assertCountEqual(receipt_metadata["omitted_history_memory_ids"], [unrelated.id, current.id])
+        self.assertCountEqual(receipt_metadata["omitted_current_memory_ids"], [unrelated.id, current.id])
+        self.assertEqual(receipt_metadata, snapshot["current_history_receipt_metadata"])
+        self.assertEqual(temporal["conflict_sets"], [])
+        self.assertFalse(temporal["abstention"]["applied"])
+
+    def test_build_context_preserves_query_at_identity_snapshot_controls_for_future_subset(self):
+        learned = self.store.remember(
+            "Release freeze owner is Mallory.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="agent",
+        )
+        current = self.store.remember(
+            "Status page owner is Alice.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            actor_uri="agent://codex/session-january",
+            session_id="session://january",
+        )
+        future = self.store.remember(
+            "Status page owner is Alice Chen.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            actor_uri="agent://codex/session-february",
+            session_id="session://february",
+            parents=[current.id],
+            status="active",
+        )
+        unrelated = self.store.remember(
+            "Alice owns the billing exporter.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-05T00:00:00Z", "2024-01-05T00:00:00Z", learned.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z", current.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-02-01T00:00:00Z", "2024-02-01T00:00:00Z", future.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-15T00:00:00Z", "2024-01-15T00:00:00Z", unrelated.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'PROPOSED'",
+            ("2024-01-05T00:00:00Z", learned.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-01T00:00:00Z", current.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-02-01T00:00:00Z", future.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-15T00:00:00Z", unrelated.id),
+        )
+        self.store.conn.commit()
+
+        snapshot = self.store.query_at(
+            "2024-01-20T00:00:00Z",
+            scope="project",
+            search_query="status page owner",
+            future_only=True,
+        )
+        context = build_context(
+            {
+                "action_id": "act_temporal_context",
+                "task": "future temporal passthrough",
+                "risk": "low",
+                "merkle_root": "root_fixture",
+                "policy_checks": [],
+                "memories": [],
+                "retrieval": {"temporal": snapshot},
+            }
+        )
+        temporal = context["temporal"]
+        future_graph = temporal["future_temporal_graph"]
+
+        self.assertEqual(temporal["query_at"], "2024-01-20T00:00:00Z")
+        self.assertEqual(temporal["scope"], "project")
+        self.assertEqual(temporal["search_query"], "status page owner")
+        self.assertTrue(temporal["include_abstained_current"])
+        self.assertEqual(temporal["current_resolution"], "all")
+        self.assertFalse(temporal["learned_only"])
+        self.assertFalse(temporal["unlearned_only"])
+        self.assertFalse(temporal["superseded_only"])
+        self.assertTrue(temporal["future_only"])
+        self.assertEqual(temporal["selected_ids"], [future.id])
+        self.assertEqual(temporal["selection_strategy"], "future_only_v1")
+        self.assertEqual(temporal["selection_reason"], "explicit-future-only-filter")
+
+        self.assertEqual(temporal["history_memory_ids"], [])
+        self.assertEqual(temporal["current_memory_ids"], [])
+        self.assertEqual(temporal["resolved_current_memory_ids"], [])
+        self.assertEqual(temporal["dropped_current_memory_ids"], [])
+        self.assertEqual(temporal["abstained_current_memory_ids"], [])
+        self.assertEqual(temporal["future_memory_ids"], [future.id])
+        self.assertEqual(temporal["superseded_memory_ids"], [])
+        self.assertEqual(temporal["unlearned_memory_ids"], [])
+        self.assertEqual(temporal["learned_memory_ids"], [])
+        self.assertEqual(temporal["history_temporal_graph"], {})
+        self.assertEqual(temporal["current_temporal_graph"], {})
+        self.assertEqual(temporal["superseded_temporal_graph"], {})
+        self.assertEqual(temporal["unlearned_temporal_graph"], {})
+        self.assertEqual(temporal["learned_temporal_graph"], {})
+        self.assertEqual(temporal["selected_temporal_graph"], {})
+        self.assertEqual(temporal["abstained_temporal_graph"], {})
+        self.assertEqual(temporal["dropped_current_temporal_graph"], {})
+        history_ordering = temporal["history_ordering"]
+        self.assertEqual(history_ordering, snapshot["history_ordering"])
+        self.assertTrue(history_ordering["applied"])
+        self.assertFalse(history_ordering["pass_through"])
+        self.assertEqual(history_ordering["basis"], "historical_selection_rank")
+        self.assertEqual(history_ordering["source"], "temporal_history_selection")
+        self.assertEqual(history_ordering["reason"], "explicit-future-only-filter")
+        self.assertEqual(
+            history_ordering["selected_history_rankings"],
+            [{"memory_id": future.id, "rank": 1}],
+        )
+        self.assertEqual(
+            history_ordering["considered_history_rankings"],
+            [{"memory_id": future.id, "rank": 1, "selected": True}],
+        )
+        receipt_metadata = temporal["current_history_receipt_metadata"]
+        self.assertEqual(receipt_metadata["filter"], "future_only")
+        self.assertEqual(receipt_metadata["base_history_memory_ids"], [current.id])
+        self.assertEqual(receipt_metadata["base_current_memory_ids"], [current.id])
+        self.assertEqual(receipt_metadata["included_history_memory_ids"], [])
+        self.assertEqual(receipt_metadata["included_current_memory_ids"], [])
+        self.assertEqual(receipt_metadata["omitted_history_memory_ids"], [current.id])
+        self.assertEqual(receipt_metadata["omitted_current_memory_ids"], [current.id])
+        self.assertEqual(receipt_metadata, snapshot["current_history_receipt_metadata"])
+        self.assertNotIn(learned.id, future_graph)
+        self.assertNotIn(current.id, future_graph)
+        self.assertNotIn(unrelated.id, future_graph)
+
+        self.assertEqual(future_graph[future.id]["temporal_state"], "future")
+        self.assertEqual(future_graph[future.id]["valid_from"], "2024-02-01T00:00:00Z")
+        self.assertEqual(future_graph[future.id]["superseded_by_ids"], [])
+        self.assertIsNone(future_graph[future.id]["current_resolution"])
+        self.assertIsNone(future_graph[future.id]["temporal_resolution_kind"])
+
+    def test_build_context_preserves_query_at_identity_snapshot_controls_for_future_empty_subset(self):
+        stale = self.store.remember(
+            "Status page owner is Alice.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            actor_uri="agent://codex/session-january",
+            session_id="session://january",
+        )
+        current = self.store.remember(
+            "Status page owner is Alice Chen.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            actor_uri="agent://codex/session-february",
+            session_id="session://february",
+            parents=[stale.id],
+            status="active",
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z", stale.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-02-01T00:00:00Z", "2024-02-01T00:00:00Z", current.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-01T00:00:00Z", stale.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-02-01T00:00:00Z", current.id),
+        )
+        self.store.conn.commit()
+
+        snapshot = self.store.query_at(
+            "2024-02-20T00:00:00Z",
+            scope="project",
+            search_query="status page owner",
+            future_only=True,
+        )
+        context = build_context(
+            {
+                "action_id": "act_temporal_context",
+                "task": "future temporal empty passthrough",
+                "risk": "low",
+                "merkle_root": "root_fixture",
+                "policy_checks": [],
+                "memories": [],
+                "retrieval": {"temporal": snapshot},
+            }
+        )
+        temporal = context["temporal"]
+
+        self.assertEqual(temporal["query_at"], "2024-02-20T00:00:00Z")
+        self.assertEqual(temporal["scope"], "project")
+        self.assertEqual(temporal["search_query"], "status page owner")
+        self.assertTrue(temporal["include_abstained_current"])
+        self.assertEqual(temporal["current_resolution"], "all")
+        self.assertFalse(temporal["learned_only"])
+        self.assertFalse(temporal["unlearned_only"])
+        self.assertFalse(temporal["superseded_only"])
+        self.assertTrue(temporal["future_only"])
+        self.assertEqual(temporal["selected_ids"], [])
+        self.assertEqual(temporal["selection_strategy"], "future_only_v1")
+        self.assertEqual(temporal["selection_reason"], "explicit-future-only-filter")
+        self.assertEqual(temporal["history_memory_ids"], [])
+        self.assertEqual(temporal["current_memory_ids"], [])
+        self.assertEqual(temporal["resolved_current_memory_ids"], [])
+        self.assertEqual(temporal["dropped_current_memory_ids"], [])
+        self.assertEqual(temporal["abstained_current_memory_ids"], [])
+        self.assertEqual(temporal["future_memory_ids"], [])
+        self.assertEqual(temporal["superseded_memory_ids"], [])
+        self.assertEqual(temporal["unlearned_memory_ids"], [])
+        self.assertEqual(temporal["learned_memory_ids"], [])
+        self.assertEqual(temporal["history_temporal_graph"], {})
+        self.assertEqual(temporal["current_temporal_graph"], {})
+        self.assertEqual(temporal["future_temporal_graph"], {})
+        self.assertEqual(temporal["superseded_temporal_graph"], {})
+        self.assertEqual(temporal["unlearned_temporal_graph"], {})
+        self.assertEqual(temporal["learned_temporal_graph"], {})
+        self.assertEqual(temporal["selected_temporal_graph"], {})
+        self.assertEqual(temporal["abstained_temporal_graph"], {})
+        history_ordering = temporal["history_ordering"]
+        self.assertEqual(history_ordering, snapshot["history_ordering"])
+        self.assertTrue(history_ordering["applied"])
+        self.assertFalse(history_ordering["pass_through"])
+        self.assertEqual(history_ordering["basis"], "historical_selection_rank")
+        self.assertEqual(history_ordering["source"], "temporal_history_selection")
+        self.assertEqual(history_ordering["reason"], "explicit-future-only-filter")
+        self.assertEqual(history_ordering["selected_history_rankings"], [])
+        self.assertEqual(history_ordering["considered_history_rankings"], [])
+        self.assertEqual(temporal["dropped_current_temporal_graph"], {})
+        receipt_metadata = temporal["current_history_receipt_metadata"]
+        self.assertEqual(receipt_metadata["filter"], "future_only")
+        self.assertEqual(receipt_metadata["base_history_memory_ids"], [stale.id, current.id])
+        self.assertEqual(receipt_metadata["base_current_memory_ids"], [current.id])
+        self.assertEqual(receipt_metadata["included_history_memory_ids"], [])
+        self.assertEqual(receipt_metadata["included_current_memory_ids"], [])
+        self.assertEqual(receipt_metadata["omitted_history_memory_ids"], [stale.id, current.id])
+        self.assertEqual(receipt_metadata["omitted_current_memory_ids"], [current.id])
+        self.assertEqual(receipt_metadata, snapshot["current_history_receipt_metadata"])
+
+    def test_build_context_preserves_query_at_no_search_identity_snapshot_controls_for_future_subset(self):
+        learned = self.store.remember(
+            "Release freeze owner is Mallory.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="agent",
+        )
+        current = self.store.remember(
+            "Status page owner is Alice.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            actor_uri="agent://codex/session-january",
+            session_id="session://january",
+        )
+        future = self.store.remember(
+            "Status page owner is Alice Chen.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            actor_uri="agent://codex/session-february",
+            session_id="session://february",
+            parents=[current.id],
+            status="active",
+        )
+        unrelated = self.store.remember(
+            "Alice owns the billing exporter.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-05T00:00:00Z", "2024-01-05T00:00:00Z", learned.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z", current.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-02-01T00:00:00Z", "2024-02-01T00:00:00Z", future.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-15T00:00:00Z", "2024-01-15T00:00:00Z", unrelated.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'PROPOSED'",
+            ("2024-01-05T00:00:00Z", learned.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-01T00:00:00Z", current.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-02-01T00:00:00Z", future.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-15T00:00:00Z", unrelated.id),
+        )
+        self.store.conn.commit()
+
+        snapshot = self.store.query_at(
+            "2024-01-20T00:00:00Z",
+            scope="project",
+            future_only=True,
+        )
+        context = build_context(
+            {
+                "action_id": "act_temporal_context",
+                "task": "no-search future temporal passthrough",
+                "risk": "low",
+                "merkle_root": "root_fixture",
+                "policy_checks": [],
+                "memories": [],
+                "retrieval": {"temporal": snapshot},
+            }
+        )
+        temporal = context["temporal"]
+        future_graph = temporal["future_temporal_graph"]
+
+        self.assertEqual(temporal["query_at"], "2024-01-20T00:00:00Z")
+        self.assertEqual(temporal["scope"], "project")
+        self.assertNotIn("search_query", temporal)
+        self.assertTrue(temporal["include_abstained_current"])
+        self.assertEqual(temporal["current_resolution"], "all")
+        self.assertFalse(temporal["learned_only"])
+        self.assertFalse(temporal["unlearned_only"])
+        self.assertFalse(temporal["superseded_only"])
+        self.assertTrue(temporal["future_only"])
+        self.assertEqual(temporal["selected_ids"], [future.id])
+        self.assertEqual(temporal["selection_strategy"], "future_only_v1")
+        self.assertEqual(temporal["selection_reason"], "explicit-future-only-filter")
+        self.assertEqual(temporal["history_memory_ids"], [])
+        self.assertEqual(temporal["current_memory_ids"], [])
+        self.assertEqual(temporal["resolved_current_memory_ids"], [])
+        self.assertEqual(temporal["dropped_current_memory_ids"], [])
+        self.assertEqual(temporal["abstained_current_memory_ids"], [])
+        self.assertEqual(temporal["future_memory_ids"], [future.id])
+        self.assertEqual(temporal["superseded_memory_ids"], [])
+        self.assertEqual(temporal["unlearned_memory_ids"], [])
+        self.assertEqual(temporal["learned_memory_ids"], [])
+        self.assertEqual(temporal["history_temporal_graph"], {})
+        self.assertEqual(temporal["current_temporal_graph"], {})
+        self.assertEqual(temporal["superseded_temporal_graph"], {})
+        self.assertEqual(temporal["unlearned_temporal_graph"], {})
+        self.assertEqual(temporal["learned_temporal_graph"], {})
+        self.assertEqual(temporal["selected_temporal_graph"], {})
+        self.assertEqual(temporal["abstained_temporal_graph"], {})
+        self.assertEqual(temporal["dropped_current_temporal_graph"], {})
+        history_ordering = temporal["history_ordering"]
+        self.assertEqual(history_ordering, snapshot["history_ordering"])
+        self.assertTrue(history_ordering["applied"])
+        self.assertFalse(history_ordering["pass_through"])
+        self.assertEqual(history_ordering["basis"], "historical_selection_rank")
+        self.assertEqual(history_ordering["source"], "temporal_history_selection")
+        self.assertEqual(history_ordering["reason"], "explicit-future-only-filter")
+        self.assertEqual(
+            history_ordering["selected_history_rankings"],
+            [{"memory_id": future.id, "rank": 1}],
+        )
+        self.assertEqual(
+            history_ordering["considered_history_rankings"],
+            [{"memory_id": future.id, "rank": 1, "selected": True}],
+        )
+        receipt_metadata = temporal["current_history_receipt_metadata"]
+        self.assertEqual(receipt_metadata["filter"], "future_only")
+        self.assertCountEqual(receipt_metadata["base_history_memory_ids"], [learned.id, current.id, unrelated.id])
+        self.assertCountEqual(receipt_metadata["base_current_memory_ids"], [current.id, unrelated.id])
+        self.assertEqual(receipt_metadata["included_history_memory_ids"], [])
+        self.assertEqual(receipt_metadata["included_current_memory_ids"], [])
+        self.assertCountEqual(receipt_metadata["omitted_history_memory_ids"], [learned.id, current.id, unrelated.id])
+        self.assertCountEqual(receipt_metadata["omitted_current_memory_ids"], [current.id, unrelated.id])
+        self.assertEqual(receipt_metadata, snapshot["current_history_receipt_metadata"])
+        self.assertNotIn(learned.id, future_graph)
+        self.assertNotIn(current.id, future_graph)
+        self.assertNotIn(unrelated.id, future_graph)
+        self.assertEqual(future_graph[future.id]["temporal_state"], "future")
+        self.assertEqual(future_graph[future.id]["learned_at"], "2024-02-01T00:00:00Z")
+        self.assertEqual(future_graph[future.id]["valid_from"], "2024-02-01T00:00:00Z")
+        self.assertIsNone(future_graph[future.id]["valid_to"])
+        self.assertIsNone(future_graph[future.id]["superseded_at"])
+        self.assertIsNone(future_graph[future.id]["unlearned_at"])
+        self.assertEqual(future_graph[future.id]["superseded_by_ids"], [])
+        self.assertEqual(future_graph[future.id]["status_at_query"], "future")
+        self.assertIsNone(future_graph[future.id]["current_resolution"])
+        self.assertIsNone(future_graph[future.id]["temporal_resolution_kind"])
+        self.assertEqual(future_graph[future.id]["temporal_resolution_reasons"], [])
+        self.assertNotIn("query_current_candidate_rank", future_graph[future.id])
+
+    def test_build_context_preserves_query_at_no_search_identity_snapshot_controls_for_future_empty_subset(self):
+        stale = self.store.remember(
+            "Status page owner is Alice.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            actor_uri="agent://codex/session-january",
+            session_id="session://january",
+        )
+        current = self.store.remember(
+            "Status page owner is Alice Chen.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            actor_uri="agent://codex/session-february",
+            session_id="session://february",
+            parents=[stale.id],
+            status="active",
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z", stale.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-02-01T00:00:00Z", "2024-02-01T00:00:00Z", current.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-01T00:00:00Z", stale.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-02-01T00:00:00Z", current.id),
+        )
+        self.store.conn.commit()
+
+        snapshot = self.store.query_at(
+            "2024-02-20T00:00:00Z",
+            scope="project",
+            future_only=True,
+        )
+        context = build_context(
+            {
+                "action_id": "act_temporal_context",
+                "task": "no-search future temporal empty passthrough",
+                "risk": "low",
+                "merkle_root": "root_fixture",
+                "policy_checks": [],
+                "memories": [],
+                "retrieval": {"temporal": snapshot},
+            }
+        )
+        temporal = context["temporal"]
+
+        self.assertEqual(temporal["query_at"], "2024-02-20T00:00:00Z")
+        self.assertEqual(temporal["scope"], "project")
+        self.assertNotIn("search_query", temporal)
+        self.assertTrue(temporal["include_abstained_current"])
+        self.assertEqual(temporal["current_resolution"], "all")
+        self.assertFalse(temporal["learned_only"])
+        self.assertFalse(temporal["unlearned_only"])
+        self.assertFalse(temporal["superseded_only"])
+        self.assertTrue(temporal["future_only"])
+        self.assertEqual(temporal["selected_ids"], [])
+        self.assertEqual(temporal["selection_strategy"], "future_only_v1")
+        self.assertEqual(temporal["selection_reason"], "explicit-future-only-filter")
+        self.assertEqual(temporal["history_memory_ids"], [])
+        self.assertEqual(temporal["current_memory_ids"], [])
+        self.assertEqual(temporal["resolved_current_memory_ids"], [])
+        self.assertEqual(temporal["dropped_current_memory_ids"], [])
+        self.assertEqual(temporal["abstained_current_memory_ids"], [])
+        self.assertEqual(temporal["future_memory_ids"], [])
+        self.assertEqual(temporal["superseded_memory_ids"], [])
+        self.assertEqual(temporal["unlearned_memory_ids"], [])
+        self.assertEqual(temporal["learned_memory_ids"], [])
+        self.assertEqual(temporal["history_temporal_graph"], {})
+        self.assertEqual(temporal["current_temporal_graph"], {})
+        self.assertEqual(temporal["future_temporal_graph"], {})
+        self.assertEqual(temporal["superseded_temporal_graph"], {})
+        self.assertEqual(temporal["unlearned_temporal_graph"], {})
+        self.assertEqual(temporal["learned_temporal_graph"], {})
+        self.assertEqual(temporal["selected_temporal_graph"], {})
+        self.assertEqual(temporal["abstained_temporal_graph"], {})
+        self.assertEqual(temporal["dropped_current_temporal_graph"], {})
+        history_ordering = temporal["history_ordering"]
+        self.assertEqual(history_ordering, snapshot["history_ordering"])
+        self.assertTrue(history_ordering["applied"])
+        self.assertFalse(history_ordering["pass_through"])
+        self.assertEqual(history_ordering["basis"], "historical_selection_rank")
+        self.assertEqual(history_ordering["source"], "temporal_history_selection")
+        self.assertEqual(history_ordering["reason"], "explicit-future-only-filter")
+        self.assertEqual(history_ordering["selected_history_rankings"], [])
+        self.assertEqual(history_ordering["considered_history_rankings"], [])
+        receipt_metadata = temporal["current_history_receipt_metadata"]
+        self.assertEqual(receipt_metadata["filter"], "future_only")
+        self.assertEqual(receipt_metadata["base_history_memory_ids"], [stale.id, current.id])
+        self.assertEqual(receipt_metadata["base_current_memory_ids"], [current.id])
+        self.assertEqual(receipt_metadata["included_history_memory_ids"], [])
+        self.assertEqual(receipt_metadata["included_current_memory_ids"], [])
+        self.assertEqual(receipt_metadata["omitted_history_memory_ids"], [stale.id, current.id])
+        self.assertEqual(receipt_metadata["omitted_current_memory_ids"], [current.id])
+        self.assertEqual(receipt_metadata, snapshot["current_history_receipt_metadata"])
 
     def test_build_context_preserves_temporal_omitted_subset_envelopes(self):
         policy_path = self.tmp_path / "policy.json"
@@ -420,6 +3996,56 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(conflict["chosen_current_id"], None)
         self.assertCountEqual(conflict["abstained_current_ids"], [first.id, second.id])
 
+    def test_build_context_preserves_temporal_serial_metadata_for_abstained_current_conflict(self):
+        first = self.store.remember(
+            "Incident owner is Alex.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        second = self.store.remember(
+            "Incident owner is Priya.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="system",
+            trust=0.95,
+            authority="medium",
+            status="active",
+        )
+        shared_timestamp = "2024-02-01T00:00:00Z"
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            (shared_timestamp, shared_timestamp, first.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            (shared_timestamp, shared_timestamp, second.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            (shared_timestamp, first.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            (shared_timestamp, second.id),
+        )
+        self.store.conn.commit()
+
+        receipt = self.store.inject("incident owner", agent_id="codex", risk="low", scope="project")
+        context = build_context(receipt)
+        temporal = context["temporal"]
+        receipt_temporal = receipt["retrieval"]["temporal"]
+        first_serial = receipt_temporal["abstained_temporal_graph"][first.id]["serial"]
+        second_serial = receipt_temporal["abstained_temporal_graph"][second.id]["serial"]
+
+        self.assertLess(first_serial, second_serial)
+        self.assertEqual(temporal["current_temporal_graph"][first.id]["serial"], first_serial)
+        self.assertEqual(temporal["current_temporal_graph"][second.id]["serial"], second_serial)
+        self.assertEqual(temporal["abstained_temporal_graph"][first.id]["serial"], first_serial)
+        self.assertEqual(temporal["abstained_temporal_graph"][second.id]["serial"], second_serial)
+        self.assertEqual(temporal["abstained_temporal_graph"][first.id]["current_resolution"], "abstained")
+        self.assertEqual(temporal["abstained_temporal_graph"][second.id]["current_resolution"], "abstained")
+
     def test_build_context_preserves_dropped_current_conflict_subset(self):
         first = self.store.remember(
             "Deploy target is Render.",
@@ -507,6 +4133,524 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(conflict["resolution_outcome"], "resolved")
         self.assertEqual(conflict["chosen_current_id"], second.id)
         self.assertEqual(conflict["dropped_current_ids"], [first.id])
+
+    def test_build_context_preserves_temporal_serial_metadata_for_dropped_current_conflict(self):
+        first = self.store.remember(
+            "Deploy target is Render.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="document",
+            authority="low",
+            status="active",
+        )
+        second = self.store.remember(
+            "Deploy target is Railway.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            authority="high",
+            status="active",
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-02-01T00:00:00Z", "2024-02-01T00:00:00Z", first.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z", second.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-02-01T00:00:00Z", first.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-01T00:00:00Z", second.id),
+        )
+        self.store.conn.commit()
+
+        receipt = self.store.inject("deploy target", agent_id="codex", risk="low", scope="project")
+        context = build_context(receipt)
+        temporal = context["temporal"]
+        receipt_temporal = receipt["retrieval"]["temporal"]
+        dropped_serial = receipt_temporal["dropped_current_temporal_graph"][first.id]["serial"]
+        selected_serial = receipt_temporal["injected_temporal_graph"][second.id]["serial"]
+
+        self.assertLess(dropped_serial, selected_serial)
+        self.assertEqual(temporal["current_temporal_graph"][first.id]["serial"], dropped_serial)
+        self.assertEqual(temporal["current_temporal_graph"][second.id]["serial"], selected_serial)
+        self.assertEqual(temporal["dropped_current_temporal_graph"][first.id]["serial"], dropped_serial)
+        self.assertEqual(temporal["injected_temporal_graph"][second.id]["serial"], selected_serial)
+        self.assertEqual(temporal["dropped_current_temporal_graph"][first.id]["current_resolution"], "dropped")
+        self.assertEqual(temporal["injected_temporal_graph"][second.id]["current_resolution"], "selected")
+
+    def test_build_context_preserves_query_at_dropped_snapshot_controls_for_current_conflict(self):
+        first = self.store.remember(
+            "Deploy target is Render.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="document",
+            authority="low",
+            status="active",
+        )
+        second = self.store.remember(
+            "Deploy target is Railway.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            authority="high",
+            status="active",
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-02-01T00:00:00Z", "2024-02-01T00:00:00Z", first.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z", second.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-02-01T00:00:00Z", first.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-01T00:00:00Z", second.id),
+        )
+        self.store.conn.commit()
+
+        snapshot = self.store.query_at(
+            "2024-02-20T00:00:00Z",
+            scope="project",
+            search_query="deploy target",
+            current_resolution="dropped",
+        )
+        context = build_context(
+            {
+                "action_id": "act_temporal_context",
+                "task": "dropped current temporal passthrough",
+                "risk": "low",
+                "merkle_root": "root_fixture",
+                "policy_checks": [],
+                "memories": [],
+                "retrieval": {"temporal": snapshot},
+            }
+        )
+        temporal = context["temporal"]
+
+        self.assertEqual(temporal["query_at"], "2024-02-20T00:00:00Z")
+        self.assertEqual(temporal["scope"], "project")
+        self.assertEqual(temporal["search_query"], "deploy target")
+        self.assertTrue(temporal["include_abstained_current"])
+        self.assertEqual(temporal["current_resolution"], "dropped")
+        self.assertFalse(temporal["learned_only"])
+        self.assertFalse(temporal["unlearned_only"])
+        self.assertFalse(temporal["superseded_only"])
+        self.assertFalse(temporal["future_only"])
+        self.assertEqual(temporal["history_memory_ids"], [first.id])
+        self.assertEqual(temporal["current_memory_ids"], [first.id])
+        self.assertEqual(temporal["resolved_current_memory_ids"], [])
+        self.assertEqual(temporal["dropped_current_memory_ids"], [first.id])
+        self.assertEqual(temporal["abstained_current_memory_ids"], [])
+        self.assertEqual(temporal["future_memory_ids"], [])
+        self.assertEqual(temporal["superseded_memory_ids"], [])
+        self.assertEqual(temporal["unlearned_memory_ids"], [])
+        self.assertEqual(temporal["learned_memory_ids"], [])
+        self.assertEqual(temporal["selection_strategy"], "dropped_only_v1")
+        self.assertEqual(temporal["selection_reason"], "explicit-dropped-current-filter")
+        self.assertEqual(temporal["selected_ids"], [first.id])
+        receipt_metadata = temporal["current_history_receipt_metadata"]
+        self.assertEqual(receipt_metadata["filter"], "current_resolution:dropped")
+        self.assertCountEqual(receipt_metadata["base_history_memory_ids"], [first.id, second.id])
+        self.assertCountEqual(receipt_metadata["base_current_memory_ids"], [first.id, second.id])
+        self.assertEqual(receipt_metadata["included_history_memory_ids"], [first.id])
+        self.assertEqual(receipt_metadata["included_current_memory_ids"], [first.id])
+        self.assertEqual(receipt_metadata["omitted_history_memory_ids"], [second.id])
+        self.assertEqual(receipt_metadata["omitted_current_memory_ids"], [second.id])
+        self.assertEqual(receipt_metadata, snapshot["current_history_receipt_metadata"])
+        self.assertEqual(list(temporal["history_temporal_graph"]), [first.id])
+        self.assertEqual(list(temporal["current_temporal_graph"]), [first.id])
+        self.assertEqual(temporal["selected_temporal_graph"], {})
+        self.assertEqual(temporal["abstained_temporal_graph"], {})
+        self.assertEqual(list(temporal["dropped_current_temporal_graph"]), [first.id])
+        self.assertEqual(
+            temporal["dropped_current_temporal_graph"][first.id],
+            snapshot["dropped_current_temporal_graph"][first.id],
+        )
+        current_ordering = temporal["current_ordering"]
+        history_ordering = temporal["history_ordering"]
+        self.assertEqual(current_ordering, snapshot["current_ordering"])
+        self.assertEqual(history_ordering, snapshot["history_ordering"])
+        self.assertTrue(current_ordering["applied"])
+        self.assertFalse(current_ordering["pass_through"])
+        self.assertEqual(current_ordering["basis"], "current_conflict_resolution_rank")
+        self.assertEqual(current_ordering["source"], "temporal_current_conflict_resolution")
+        self.assertEqual(current_ordering["reason"], "explicit-dropped-current-filter")
+        self.assertEqual(current_ordering["selected_current_rankings"], [{"memory_id": first.id, "rank": 1}])
+        self.assertEqual(
+            current_ordering["considered_current_rankings"],
+            [
+                {"memory_id": first.id, "rank": 1, "selected": True},
+                {"memory_id": second.id, "rank": 2, "selected": False},
+            ],
+        )
+        self.assertFalse(history_ordering["applied"])
+        self.assertFalse(history_ordering["pass_through"])
+        self.assertEqual(history_ordering["basis"], "history_conflict_abstention_rank")
+        self.assertEqual(history_ordering["source"], "temporal_history_conflict_abstention")
+        self.assertEqual(history_ordering["reason"], "explicit-dropped-current-filter")
+        self.assertEqual(history_ordering["selected_history_rankings"], [])
+        self.assertEqual(history_ordering["considered_history_rankings"], [])
+
+    def test_build_context_preserves_query_at_no_search_dropped_scope_contradiction_bitemporal_fields(self):
+        unrelated = self.store.remember(
+            "Alice owns the billing exporter.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        first = self.store.remember(
+            "Deploy target is Render.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="document",
+            authority="low",
+            status="active",
+        )
+        second = self.store.remember(
+            "Deploy target is Railway.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            authority="high",
+            status="active",
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-15T00:00:00Z", "2024-01-15T00:00:00Z", unrelated.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-02-01T00:00:00Z", "2024-02-01T00:00:00Z", first.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z", second.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-15T00:00:00Z", unrelated.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-02-01T00:00:00Z", first.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-01T00:00:00Z", second.id),
+        )
+        self.store.conn.commit()
+
+        snapshot = self.store.query_at(
+            "2024-02-20T00:00:00Z",
+            scope="project",
+            current_resolution="dropped",
+        )
+        context = build_context(
+            {
+                "action_id": "act_temporal_context",
+                "task": "no-search dropped current temporal passthrough",
+                "risk": "low",
+                "merkle_root": "root_fixture",
+                "policy_checks": [],
+                "memories": [],
+                "retrieval": {"temporal": snapshot},
+            }
+        )
+        temporal = context["temporal"]
+        history_graph = temporal["history_temporal_graph"]
+        current_graph = temporal["current_temporal_graph"]
+        dropped_graph = temporal["dropped_current_temporal_graph"]
+
+        self.assertEqual(temporal["query_at"], "2024-02-20T00:00:00Z")
+        self.assertEqual(temporal["scope"], "project")
+        self.assertNotIn("search_query", temporal)
+        self.assertEqual(temporal["current_resolution"], "dropped")
+        self.assertEqual(temporal["history_memory_ids"], [first.id])
+        self.assertEqual(temporal["current_memory_ids"], [first.id])
+        self.assertEqual(temporal["resolved_current_memory_ids"], [])
+        self.assertEqual(temporal["dropped_current_memory_ids"], [first.id])
+        self.assertEqual(temporal["abstained_current_memory_ids"], [])
+        self.assertEqual(temporal["future_memory_ids"], [])
+        self.assertEqual(temporal["superseded_memory_ids"], [])
+        self.assertEqual(temporal["unlearned_memory_ids"], [])
+        self.assertEqual(temporal["learned_memory_ids"], [])
+        self.assertNotIn(unrelated.id, history_graph)
+        self.assertNotIn(second.id, history_graph)
+        self.assertEqual(history_graph, current_graph)
+        self.assertEqual(history_graph, dropped_graph)
+        self.assertEqual(temporal["selected_temporal_graph"], {})
+        self.assertEqual(temporal["abstained_temporal_graph"], {})
+        self.assertEqual(temporal["future_temporal_graph"], {})
+        self.assertEqual(temporal["superseded_temporal_graph"], {})
+        self.assertEqual(temporal["unlearned_temporal_graph"], {})
+        self.assertEqual(temporal["learned_temporal_graph"], {})
+        receipt_metadata = temporal["current_history_receipt_metadata"]
+        self.assertEqual(receipt_metadata["filter"], "current_resolution:dropped")
+        self.assertCountEqual(receipt_metadata["base_history_memory_ids"], [unrelated.id, first.id, second.id])
+        self.assertCountEqual(receipt_metadata["base_current_memory_ids"], [unrelated.id, first.id, second.id])
+        self.assertEqual(receipt_metadata["included_history_memory_ids"], [first.id])
+        self.assertEqual(receipt_metadata["included_current_memory_ids"], [first.id])
+        self.assertCountEqual(receipt_metadata["omitted_history_memory_ids"], [unrelated.id, second.id])
+        self.assertCountEqual(receipt_metadata["omitted_current_memory_ids"], [unrelated.id, second.id])
+        self.assertEqual(receipt_metadata, snapshot["current_history_receipt_metadata"])
+        self.assertEqual(history_graph[first.id]["temporal_state"], "current")
+        self.assertEqual(history_graph[first.id]["learned_at"], "2024-02-01T00:00:00Z")
+        self.assertEqual(history_graph[first.id]["valid_from"], "2024-02-01T00:00:00Z")
+        self.assertIsNone(history_graph[first.id]["valid_to"])
+        self.assertIsNone(history_graph[first.id]["superseded_at"])
+        self.assertEqual(history_graph[first.id]["superseded_by_ids"], [])
+        self.assertEqual(history_graph[first.id]["current_resolution"], "dropped")
+        self.assertEqual(history_graph[first.id]["temporal_resolution_kind"], "contradiction")
+        self.assertEqual(history_graph[first.id]["temporal_resolution_reasons"], ["lexical-current-conflict"])
+        self.assertEqual(history_graph[first.id]["current_conflict_reasons"], ["lexical-current-conflict"])
+        self.assertEqual(current_graph[first.id], snapshot["current_temporal_graph"][first.id])
+        self.assertEqual(dropped_graph[first.id], snapshot["dropped_current_temporal_graph"][first.id])
+
+    def test_build_context_preserves_query_at_no_search_abstained_scope_contradiction_bitemporal_fields(self):
+        unrelated = self.store.remember(
+            "Alice owns the billing exporter.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        first = self.store.remember(
+            "Incident owner is Alex.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        second = self.store.remember(
+            "Incident owner is Priya.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="system",
+            trust=0.95,
+            authority="medium",
+            status="active",
+        )
+        shared_timestamp = "2024-02-01T00:00:00Z"
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-15T00:00:00Z", "2024-01-15T00:00:00Z", unrelated.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            (shared_timestamp, shared_timestamp, first.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            (shared_timestamp, shared_timestamp, second.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-15T00:00:00Z", unrelated.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            (shared_timestamp, first.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            (shared_timestamp, second.id),
+        )
+        self.store.conn.commit()
+
+        snapshot = self.store.query_at(
+            "2024-02-20T00:00:00Z",
+            scope="project",
+            current_resolution="abstained",
+        )
+        context = build_context(
+            {
+                "action_id": "act_temporal_context",
+                "task": "no-search abstained current temporal passthrough",
+                "risk": "low",
+                "merkle_root": "root_fixture",
+                "policy_checks": [],
+                "memories": [],
+                "retrieval": {"temporal": snapshot},
+            }
+        )
+        temporal = context["temporal"]
+        history_graph = temporal["history_temporal_graph"]
+        current_graph = temporal["current_temporal_graph"]
+        abstained_graph = temporal["abstained_temporal_graph"]
+        abstained_ids = list(temporal["abstained_current_memory_ids"])
+
+        self.assertEqual(temporal["query_at"], "2024-02-20T00:00:00Z")
+        self.assertEqual(temporal["scope"], "project")
+        self.assertNotIn("search_query", temporal)
+        self.assertEqual(temporal["current_resolution"], "abstained")
+        self.assertCountEqual(temporal["history_memory_ids"], [first.id, second.id])
+        self.assertCountEqual(temporal["current_memory_ids"], [first.id, second.id])
+        self.assertEqual(temporal["resolved_current_memory_ids"], [])
+        self.assertEqual(temporal["dropped_current_memory_ids"], [])
+        self.assertCountEqual(temporal["abstained_current_memory_ids"], [first.id, second.id])
+        self.assertEqual(temporal["future_memory_ids"], [])
+        self.assertEqual(temporal["superseded_memory_ids"], [])
+        self.assertEqual(temporal["unlearned_memory_ids"], [])
+        self.assertEqual(temporal["learned_memory_ids"], [])
+        self.assertNotIn(unrelated.id, history_graph)
+        self.assertEqual(history_graph, current_graph)
+        self.assertEqual(history_graph, abstained_graph)
+        self.assertEqual(temporal["selected_temporal_graph"], {})
+        self.assertEqual(temporal["dropped_current_temporal_graph"], {})
+        self.assertEqual(temporal["future_temporal_graph"], {})
+        self.assertEqual(temporal["superseded_temporal_graph"], {})
+        self.assertEqual(temporal["unlearned_temporal_graph"], {})
+        self.assertEqual(temporal["learned_temporal_graph"], {})
+        receipt_metadata = temporal["current_history_receipt_metadata"]
+        self.assertEqual(receipt_metadata["filter"], "current_resolution:abstained")
+        self.assertCountEqual(receipt_metadata["base_history_memory_ids"], [unrelated.id, first.id, second.id])
+        self.assertCountEqual(receipt_metadata["base_current_memory_ids"], [unrelated.id, first.id, second.id])
+        self.assertCountEqual(receipt_metadata["included_history_memory_ids"], [first.id, second.id])
+        self.assertCountEqual(receipt_metadata["included_current_memory_ids"], [first.id, second.id])
+        self.assertEqual(receipt_metadata["omitted_history_memory_ids"], [unrelated.id])
+        self.assertEqual(receipt_metadata["omitted_current_memory_ids"], [unrelated.id])
+        self.assertEqual(receipt_metadata, snapshot["current_history_receipt_metadata"])
+        for memory_id in (first.id, second.id):
+            envelope = history_graph[memory_id]
+            self.assertEqual(envelope["temporal_state"], "current")
+            self.assertEqual(envelope["learned_at"], shared_timestamp)
+            self.assertEqual(envelope["valid_from"], shared_timestamp)
+            self.assertIsNone(envelope["valid_to"])
+            self.assertIsNone(envelope["superseded_at"])
+            self.assertEqual(envelope["superseded_by_ids"], [])
+            self.assertEqual(envelope["current_resolution"], "abstained")
+            self.assertEqual(envelope["temporal_resolution_kind"], "contradiction")
+            self.assertEqual(envelope["temporal_resolution_reasons"], ["lexical-current-conflict"])
+            self.assertEqual(envelope["current_conflict_reasons"], ["lexical-current-conflict"])
+            self.assertEqual(current_graph[memory_id], snapshot["current_temporal_graph"][memory_id])
+            self.assertEqual(abstained_graph[memory_id], snapshot["abstained_temporal_graph"][memory_id])
+        self.assertTrue(temporal["abstention"]["applied"])
+        self.assertEqual(temporal["abstention"]["reason"], "unresolved-current-conflict")
+        self.assertCountEqual(temporal["abstention"]["abstained_ids"], [first.id, second.id])
+        self.assertEqual(temporal["selection_strategy"], "abstained_only_v1")
+        self.assertEqual(temporal["selection_reason"], "explicit-abstained-current-filter")
+        self.assertEqual(temporal["selected_ids"], abstained_ids)
+        self.assertEqual(len(temporal["conflict_sets"]), 1)
+        self.assertEqual(temporal["conflict_sets"][0]["resolution_outcome"], "abstained")
+        self.assertCountEqual(temporal["conflict_sets"][0]["abstained_current_ids"], [first.id, second.id])
+
+    def test_build_context_preserves_query_at_identity_snapshot_controls_for_dropped_empty_subset(self):
+        stale = self.store.remember(
+            "Status page owner is Alice.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            actor_uri="agent://codex/session-january",
+            session_id="session://january",
+        )
+        current = self.store.remember(
+            "Status page owner is Alice Chen.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            actor_uri="agent://codex/session-february",
+            session_id="session://february",
+            parents=[stale.id],
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z", stale.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-02-01T00:00:00Z", "2024-02-01T00:00:00Z", current.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-01-01T00:00:00Z", stale.id),
+        )
+        self.store.conn.execute(
+            "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = 'OBSERVED'",
+            ("2024-02-01T00:00:00Z", current.id),
+        )
+        self.store.conn.commit()
+
+        snapshot = self.store.query_at(
+            "2024-02-20T00:00:00Z",
+            scope="project",
+            search_query="status page owner",
+            current_resolution="dropped",
+        )
+        context = build_context(
+            {
+                "action_id": "act_temporal_context",
+                "task": "dropped current empty temporal passthrough",
+                "risk": "low",
+                "merkle_root": "root_fixture",
+                "policy_checks": [],
+                "memories": [],
+                "retrieval": {"temporal": snapshot},
+            }
+        )
+        temporal = context["temporal"]
+
+        self.assertEqual(temporal["query_at"], "2024-02-20T00:00:00Z")
+        self.assertEqual(temporal["scope"], "project")
+        self.assertEqual(temporal["search_query"], "status page owner")
+        self.assertTrue(temporal["include_abstained_current"])
+        self.assertEqual(temporal["current_resolution"], "dropped")
+        self.assertFalse(temporal["learned_only"])
+        self.assertFalse(temporal["unlearned_only"])
+        self.assertFalse(temporal["superseded_only"])
+        self.assertFalse(temporal["future_only"])
+        self.assertEqual(temporal["history_memory_ids"], [])
+        self.assertEqual(temporal["current_memory_ids"], [])
+        self.assertEqual(temporal["resolved_current_memory_ids"], [])
+        self.assertEqual(temporal["dropped_current_memory_ids"], [])
+        self.assertEqual(temporal["abstained_current_memory_ids"], [])
+        self.assertEqual(temporal["future_memory_ids"], [])
+        self.assertEqual(temporal["superseded_memory_ids"], [])
+        self.assertEqual(temporal["unlearned_memory_ids"], [])
+        self.assertEqual(temporal["learned_memory_ids"], [])
+        self.assertEqual(temporal["history_temporal_graph"], {})
+        self.assertEqual(temporal["current_temporal_graph"], {})
+        self.assertEqual(temporal["selected_temporal_graph"], {})
+        self.assertEqual(temporal["abstained_temporal_graph"], {})
+        self.assertEqual(temporal["dropped_current_temporal_graph"], {})
+        self.assertEqual(temporal["selection_strategy"], "dropped_only_v1")
+        self.assertEqual(temporal["selection_reason"], "explicit-dropped-current-filter")
+        self.assertEqual(temporal["selected_ids"], [])
+        receipt_metadata = temporal["current_history_receipt_metadata"]
+        self.assertEqual(receipt_metadata["filter"], "current_resolution:dropped")
+        self.assertCountEqual(receipt_metadata["base_history_memory_ids"], [stale.id, current.id])
+        self.assertEqual(receipt_metadata["base_current_memory_ids"], [current.id])
+        self.assertEqual(receipt_metadata["included_history_memory_ids"], [])
+        self.assertEqual(receipt_metadata["included_current_memory_ids"], [])
+        self.assertCountEqual(receipt_metadata["omitted_history_memory_ids"], [stale.id, current.id])
+        self.assertEqual(receipt_metadata["omitted_current_memory_ids"], [current.id])
+        self.assertEqual(receipt_metadata, snapshot["current_history_receipt_metadata"])
+        current_ordering = temporal["current_ordering"]
+        history_ordering = temporal["history_ordering"]
+        self.assertEqual(current_ordering, snapshot["current_ordering"])
+        self.assertEqual(history_ordering, snapshot["history_ordering"])
+        self.assertTrue(current_ordering["applied"])
+        self.assertFalse(current_ordering["pass_through"])
+        self.assertEqual(current_ordering["basis"], "current_conflict_resolution_rank")
+        self.assertEqual(current_ordering["source"], "temporal_current_conflict_resolution")
+        self.assertEqual(current_ordering["reason"], "explicit-dropped-current-filter")
+        self.assertEqual(current_ordering["selected_current_rankings"], [])
+        self.assertEqual(current_ordering["considered_current_rankings"], [])
+        self.assertFalse(history_ordering["applied"])
+        self.assertFalse(history_ordering["pass_through"])
+        self.assertEqual(history_ordering["basis"], "history_conflict_abstention_rank")
+        self.assertEqual(history_ordering["source"], "temporal_history_conflict_abstention")
+        self.assertEqual(history_ordering["reason"], "explicit-dropped-current-filter")
+        self.assertEqual(history_ordering["selected_history_rankings"], [])
+        self.assertEqual(history_ordering["considered_history_rankings"], [])
 
     def test_history_query_context_includes_superseded_memory_when_requested(self):
         parent = self.store.remember(
@@ -671,6 +4815,900 @@ class RunnerTest(unittest.TestCase):
             "multi-hop-fusion-ranked-lower",
         )
 
+    def test_build_context_auto_multi_hop_budget_prefers_two_specific_hops_over_generic_overview(self):
+        overview = self.store.remember(
+            "Project Atlas owner Morgan rollback policy notes.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.99,
+        )
+        rollback = self.store.remember(
+            "DeployWindow rollback policy is canary first for Project Atlas.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.95,
+        )
+        owner = self.store.remember(
+            "Project Atlas owner is Morgan.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.95,
+        )
+        budget = approx_memory_tokens(rollback) + approx_memory_tokens(owner)
+
+        receipt = self.store.inject(
+            "What is the Project Atlas owner DeployWindow rollback policy?",
+            agent_id="codex",
+            risk="low",
+            scope="project",
+            context_budget_tokens=budget,
+        )
+
+        context = build_context(receipt)
+        self.assertTrue(receipt["retrieval"]["multi_hop"]["enabled"])
+        self.assertTrue(receipt["retrieval"]["multi_hop"]["auto_enabled"])
+        self.assertEqual(receipt["retrieval"]["multi_hop"]["activation_reason"], "fallback-compound-query")
+        self.assertEqual([memory["id"] for memory in context["memories"]], [rollback.id, owner.id])
+        self.assertEqual(context["budget_dropped"][0]["memory_id"], overview.id)
+        self.assertEqual(context["budget_dropped"][0]["packing_rank_basis"], "multi_hop_fusion_rank")
+        self.assertEqual(context["budget_dropped"][0]["multi_hop_fusion_rank"], 2)
+        self.assertEqual(
+            context["budget_dropped"][0]["multi_hop_outranked_reason"],
+            "multi-hop-fusion-ranked-lower",
+        )
+
+    def test_build_context_auto_multi_hop_semantic_budget_prefers_specific_facts_over_generic_overview(self):
+        overview = self.store.remember(
+            "Project Atlas owner Morgan rollback policy notes.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.99,
+        )
+        rollback = self.store.remember(
+            "DeployWindow rollback policy is canary first for Project Atlas.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.95,
+        )
+        owner = self.store.remember(
+            "Project Atlas owner is Morgan.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.95,
+        )
+        budget = approx_memory_tokens(rollback) + approx_memory_tokens(owner)
+
+        receipt = self.store.inject(
+            "Who is responsible for Project Atlas plus its DeployWindow rollback plan?",
+            agent_id="codex",
+            risk="low",
+            scope="project",
+            context_budget_tokens=budget,
+        )
+
+        context = build_context(receipt)
+        self.assertEqual(receipt["retrieval"]["search_mode"], "semantic")
+        self.assertTrue(receipt["retrieval"]["multi_hop"]["enabled"])
+        self.assertTrue(receipt["retrieval"]["multi_hop"]["auto_enabled"])
+        self.assertEqual(receipt["retrieval"]["multi_hop"]["activation_reason"], "semantic-compound-query")
+        self.assertEqual([memory["id"] for memory in context["memories"]], [rollback.id, owner.id])
+        self.assertEqual(context["budget_dropped"][0]["memory_id"], overview.id)
+        self.assertEqual(context["budget_dropped"][0]["packing_rank_basis"], "multi_hop_fusion_rank")
+        self.assertEqual(context["budget_dropped"][0]["multi_hop_fusion_rank"], 2)
+        self.assertEqual(
+            context["budget_dropped"][0]["multi_hop_outranked_reason"],
+            "multi-hop-fusion-ranked-lower",
+        )
+
+    def test_build_context_auto_multi_hop_fts_identifier_query_recovers_specific_rollback_fact(self):
+        overview = self.store.remember(
+            "Project Atlas owner Morgan DeployWindow rollback policy notes.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.99,
+        )
+        rollback = self.store.remember(
+            "DeployWindow rollback policy is canary first for Project Atlas.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.95,
+        )
+        owner = self.store.remember(
+            "Project Atlas owner is Morgan.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.95,
+        )
+        budget = approx_memory_tokens(overview) + approx_memory_tokens(rollback)
+
+        receipt = self.store.inject(
+            "Project Atlas owner DeployWindow rollback policy notes",
+            agent_id="codex",
+            risk="low",
+            scope="project",
+            context_budget_tokens=budget,
+        )
+
+        context = build_context(receipt)
+        self.assertEqual(receipt["retrieval"]["search_mode"], "fts")
+        self.assertTrue(receipt["retrieval"]["multi_hop"]["enabled"])
+        self.assertTrue(receipt["retrieval"]["multi_hop"]["auto_enabled"])
+        self.assertEqual(receipt["retrieval"]["multi_hop"]["activation_reason"], "fts-identifier-compound-query")
+        self.assertEqual([memory["id"] for memory in context["memories"]], [rollback.id, owner.id])
+        self.assertEqual(context["budget_dropped"][0]["memory_id"], overview.id)
+        self.assertEqual(context["budget_dropped"][0]["packing_rank_basis"], "multi_hop_fusion_rank")
+        self.assertEqual(context["budget_dropped"][0]["multi_hop_fusion_rank"], 3)
+
+    def test_build_context_auto_multi_hop_fts_entity_intent_query_recovers_specific_rollback_fact(self):
+        overview = self.store.remember(
+            "Project Atlas owner rollback policy notes.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.99,
+        )
+        rollback = self.store.remember(
+            "Rollback policy is canary first for Project Atlas.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.95,
+        )
+        owner = self.store.remember(
+            "Project Atlas owner is Morgan.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.95,
+        )
+        budget = approx_memory_tokens(overview) + approx_memory_tokens(rollback)
+
+        receipt = self.store.inject(
+            "Project Atlas owner rollback policy notes",
+            agent_id="codex",
+            risk="low",
+            scope="project",
+            context_budget_tokens=budget,
+        )
+
+        context = build_context(receipt)
+        self.assertEqual(receipt["retrieval"]["search_mode"], "fts")
+        self.assertTrue(receipt["retrieval"]["multi_hop"]["enabled"])
+        self.assertTrue(receipt["retrieval"]["multi_hop"]["auto_enabled"])
+        self.assertEqual(receipt["retrieval"]["multi_hop"]["activation_reason"], "fts-entity-intent-compound-query")
+        self.assertEqual([memory["id"] for memory in context["memories"]], [rollback.id, owner.id])
+        self.assertEqual(context["budget_dropped"][0]["memory_id"], overview.id)
+        self.assertEqual(context["budget_dropped"][0]["packing_rank_basis"], "multi_hop_fusion_rank")
+        self.assertEqual(context["budget_dropped"][0]["multi_hop_fusion_rank"], 3)
+
+    def test_build_context_auto_multi_hop_fts_deploy_target_query_recovers_target_and_rollback_facts(self):
+        overview = self.store.remember(
+            "Deploy target rollback policy notes.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.99,
+        )
+        rollback = self.store.remember(
+            "Rollback policy is canary first for deploy target Production.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.95,
+        )
+        target = self.store.remember(
+            "Deploy target is Production.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.95,
+        )
+        budget = approx_memory_tokens(rollback) + approx_memory_tokens(target)
+
+        receipt = self.store.inject(
+            "deploy target rollback policy notes",
+            agent_id="codex",
+            risk="low",
+            scope="project",
+            context_budget_tokens=budget,
+        )
+
+        context = build_context(receipt)
+        self.assertEqual(receipt["retrieval"]["search_mode"], "fts")
+        self.assertEqual(receipt["retrieval"]["query_lookup"]["selected_search_basis"], "direct-deploy-target-core")
+        self.assertTrue(receipt["retrieval"]["multi_hop"]["enabled"])
+        self.assertTrue(receipt["retrieval"]["multi_hop"]["auto_enabled"])
+        self.assertEqual(
+            receipt["retrieval"]["multi_hop"]["activation_reason"],
+            "fts-direct-deploy-target-compound-query",
+        )
+        self.assertEqual({memory["id"] for memory in context["memories"]}, {rollback.id, target.id})
+        self.assertEqual(context["budget_dropped"][0]["memory_id"], overview.id)
+        self.assertEqual(context["budget_dropped"][0]["packing_rank_basis"], "multi_hop_fusion_rank")
+
+    def test_build_context_auto_multi_hop_fts_direct_subject_query_recovers_specific_rollback_fact(self):
+        overview = self.store.remember(
+            "Status page owner rollback policy notes.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.99,
+        )
+        rollback = self.store.remember(
+            "Rollback policy is canary first for status page.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.95,
+        )
+        owner = self.store.remember(
+            "Status page maintainer is Priya.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.95,
+        )
+        budget = approx_memory_tokens(rollback) + approx_memory_tokens(owner)
+
+        receipt = self.store.inject(
+            "status page owner rollback policy notes",
+            agent_id="codex",
+            risk="low",
+            scope="project",
+            context_budget_tokens=budget,
+        )
+
+        context = build_context(receipt)
+        self.assertEqual(receipt["retrieval"]["search_mode"], "fts")
+        self.assertEqual(receipt["retrieval"]["query_lookup"]["selected_search_basis"], "direct-subject")
+        self.assertTrue(receipt["retrieval"]["multi_hop"]["enabled"])
+        self.assertTrue(receipt["retrieval"]["multi_hop"]["auto_enabled"])
+        self.assertEqual(receipt["retrieval"]["multi_hop"]["activation_reason"], "fts-direct-subject-compound-query")
+        self.assertEqual({memory["id"] for memory in context["memories"]}, {rollback.id, owner.id})
+        self.assertEqual(context["budget_dropped"][0]["memory_id"], overview.id)
+        self.assertEqual(context["budget_dropped"][0]["packing_rank_basis"], "multi_hop_fusion_rank")
+
+    def test_build_context_auto_multi_hop_owner_relation_status_page_queries_skip_generic_subject_only_decoys(self):
+        query_cases = (
+            ("role-relation-owner", "who owns the status page rollback policy notes"),
+            ("role-relation-on-point", "who is on point for the status page rollback policy notes"),
+            ("role-relation-responsible", "who is responsible for the status page rollback policy notes"),
+            ("role-relation-in-charge", "who is in charge of the status page rollback policy notes"),
+        )
+        for expected_basis, query in query_cases:
+            with self.subTest(query=query):
+                store = MemoryStore(self.tmp_path / f"{expected_basis}-status-page-runner.sqlite")
+                store.init()
+                overview = store.remember(
+                    "Status page owner rollback policy notes.",
+                    memory_type="semantic",
+                    scope="project",
+                    source_kind="human",
+                    trust=0.99,
+                )
+                rollback = store.remember(
+                    "Rollback policy is canary first for status page.",
+                    memory_type="semantic",
+                    scope="project",
+                    source_kind="human",
+                    trust=0.95,
+                )
+                owner = store.remember(
+                    "Status page maintainer is Priya.",
+                    memory_type="semantic",
+                    scope="project",
+                    source_kind="human",
+                    trust=0.95,
+                )
+                decoy = store.remember(
+                    "Status page dashboard is public.",
+                    memory_type="semantic",
+                    scope="project",
+                    source_kind="human",
+                    trust=0.97,
+                )
+                budget = approx_memory_tokens(rollback) + approx_memory_tokens(owner)
+
+                receipt = store.inject(
+                    query,
+                    agent_id="codex",
+                    risk="low",
+                    scope="project",
+                    context_budget_tokens=budget,
+                )
+
+                context = build_context(receipt)
+                retrieval = receipt["retrieval"]
+                self.assertEqual(receipt["retrieval"]["search_mode"], "fts")
+                self.assertEqual(retrieval["query_lookup"]["selected_search_basis"], expected_basis)
+                self.assertNotIn("status page", [subquery["query"] for subquery in retrieval["multi_hop"]["subqueries"]])
+                self.assertEqual({memory["id"] for memory in context["memories"]}, {rollback.id, owner.id})
+                self.assertEqual([item["memory_id"] for item in context["budget_dropped"]], [overview.id])
+                self.assertNotIn(decoy.id, receipt["retrieved_memory_ids"])
+
+    def test_build_context_auto_multi_hop_owner_relation_status_page_phrase_alias_queries_recover_owner_and_skip_generic_subject_only_decoys(self):
+        query_cases = (
+            ("role-relation-owner", "who owns the status page routing contact rollback policy notes"),
+            ("role-relation-on-point", "who is on point for the status page routing contact rollback policy notes"),
+            ("role-relation-responsible", "who is responsible for the status page routing contact rollback policy notes"),
+            ("role-relation-in-charge", "who is in charge of the status page routing contact rollback policy notes"),
+            ("role-relation-owner", "who owns the status page routing escalation contact rollback policy notes"),
+            ("role-relation-on-point", "who is on point for the status page routing escalation contact rollback policy notes"),
+            ("role-relation-responsible", "who is responsible for the status page routing escalation contact rollback policy notes"),
+            ("role-relation-in-charge", "who is in charge of the status page routing escalation contact rollback policy notes"),
+        )
+        for index, (expected_basis, query) in enumerate(query_cases, start=1):
+            with self.subTest(query=query):
+                store = MemoryStore(self.tmp_path / f"{expected_basis}-status-page-phrase-alias-runner-{index}.sqlite")
+                store.init()
+                overview = store.remember(
+                    "Status page owner routing contact rollback policy notes.",
+                    memory_type="semantic",
+                    scope="project",
+                    source_kind="human",
+                    trust=0.99,
+                )
+                rollback = store.remember(
+                    "Rollback policy is canary first for status page.",
+                    memory_type="semantic",
+                    scope="project",
+                    source_kind="human",
+                    trust=0.95,
+                )
+                owner = store.remember(
+                    "Status page maintainer is Priya.",
+                    memory_type="semantic",
+                    scope="project",
+                    source_kind="human",
+                    trust=0.95,
+                )
+                decoy = store.remember(
+                    "Status page dashboard is public.",
+                    memory_type="semantic",
+                    scope="project",
+                    source_kind="human",
+                    trust=0.97,
+                )
+                budget = approx_memory_tokens(rollback) + approx_memory_tokens(owner)
+
+                receipt = store.inject(
+                    query,
+                    agent_id="codex",
+                    risk="low",
+                    scope="project",
+                    context_budget_tokens=budget,
+                )
+
+                context = build_context(receipt)
+                retrieval = receipt["retrieval"]
+                self.assertEqual(receipt["retrieval"]["search_mode"], "fts")
+                self.assertEqual(retrieval["query_lookup"]["selected_search_basis"], expected_basis)
+                self.assertNotIn("status page routing contact owner", [subquery["query"] for subquery in retrieval["multi_hop"]["subqueries"]])
+                self.assertNotIn(
+                    "status page routing escalation contact owner",
+                    [subquery["query"] for subquery in retrieval["multi_hop"]["subqueries"]],
+                )
+                self.assertEqual({memory["id"] for memory in context["memories"]}, {rollback.id, owner.id})
+                self.assertEqual([item["memory_id"] for item in context["budget_dropped"]], [overview.id])
+                self.assertNotIn(decoy.id, receipt["retrieved_memory_ids"])
+
+    def test_build_context_auto_multi_hop_direct_subject_owner_phrase_alias_queries_drop_overview_before_specific_facts(self):
+        query_cases = (
+            (
+                "status page owner routing contact rollback policy notes",
+                "Status page owner routing contact rollback policy notes.",
+            ),
+            (
+                "status page owner routing escalation contact rollback policy notes",
+                "Status page owner routing escalation contact rollback policy notes.",
+            ),
+        )
+        for index, (query, overview_text) in enumerate(query_cases, start=1):
+            with self.subTest(query=query):
+                store = MemoryStore(self.tmp_path / f"direct-owner-phrase-alias-runner-{index}.sqlite")
+                store.init()
+                overview = store.remember(
+                    overview_text,
+                    memory_type="semantic",
+                    scope="project",
+                    source_kind="human",
+                    trust=0.99,
+                )
+                rollback = store.remember(
+                    "Rollback policy is canary first for status page.",
+                    memory_type="semantic",
+                    scope="project",
+                    source_kind="human",
+                    trust=0.95,
+                )
+                owner = store.remember(
+                    "Status page maintainer is Priya.",
+                    memory_type="semantic",
+                    scope="project",
+                    source_kind="human",
+                    trust=0.95,
+                )
+                contact = store.remember(
+                    "Status page escalation contact is Nia.",
+                    memory_type="semantic",
+                    scope="project",
+                    source_kind="human",
+                    trust=0.95,
+                )
+                decoy = store.remember(
+                    "Status page dashboard is public.",
+                    memory_type="semantic",
+                    scope="project",
+                    source_kind="human",
+                    trust=0.97,
+                )
+                budget = (
+                    approx_memory_tokens(rollback)
+                    + approx_memory_tokens(owner)
+                    + approx_memory_tokens(contact)
+                )
+
+                receipt = store.inject(
+                    query,
+                    agent_id="codex",
+                    risk="low",
+                    scope="project",
+                    context_budget_tokens=budget,
+                )
+
+                context = build_context(receipt)
+                retrieval = receipt["retrieval"]
+                self.assertEqual(receipt["retrieval"]["search_mode"], "fts")
+                self.assertEqual(retrieval["query_lookup"]["selected_search_basis"], "direct-subject")
+                self.assertIn(
+                    "status page escalation contact",
+                    [subquery["query"] for subquery in retrieval["multi_hop"]["subqueries"]],
+                )
+                self.assertEqual(
+                    {memory["id"] for memory in context["memories"]},
+                    {rollback.id, owner.id, contact.id},
+                )
+                self.assertEqual([item["memory_id"] for item in context["budget_dropped"]], [overview.id])
+                self.assertEqual(context["budget_dropped"][0]["packing_rank_basis"], "multi_hop_fusion_rank")
+                self.assertNotIn(decoy.id, receipt["retrieved_memory_ids"])
+
+    def test_build_context_auto_multi_hop_direct_subject_owner_phrase_alias_queries_reserve_owner_and_contact_under_two_fact_budget(self):
+        query_cases = (
+            (
+                "status page owner routing contact rollback policy notes",
+                "Status page owner routing contact rollback policy notes.",
+            ),
+            (
+                "status page owner routing escalation contact rollback policy notes",
+                "Status page owner routing escalation contact rollback policy notes.",
+            ),
+        )
+        for index, (query, overview_text) in enumerate(query_cases, start=1):
+            with self.subTest(query=query):
+                store = MemoryStore(self.tmp_path / f"direct-owner-phrase-alias-two-fact-{index}.sqlite")
+                store.init()
+                overview = store.remember(
+                    overview_text,
+                    memory_type="semantic",
+                    scope="project",
+                    source_kind="human",
+                    trust=0.99,
+                )
+                rollback = store.remember(
+                    "Rollback policy is canary first for status page.",
+                    memory_type="semantic",
+                    scope="project",
+                    source_kind="human",
+                    trust=0.95,
+                )
+                owner = store.remember(
+                    "Status page maintainer is Priya.",
+                    memory_type="semantic",
+                    scope="project",
+                    source_kind="human",
+                    trust=0.95,
+                )
+                contact = store.remember(
+                    "Status page escalation contact is Nia.",
+                    memory_type="semantic",
+                    scope="project",
+                    source_kind="human",
+                    trust=0.95,
+                )
+
+                receipt = store.inject(
+                    query,
+                    agent_id="codex",
+                    risk="low",
+                    scope="project",
+                    context_budget_tokens=approx_memory_tokens(owner) + approx_memory_tokens(rollback),
+                )
+
+                context = build_context(receipt)
+                packing = receipt["retrieval"]["packing"]
+                self.assertEqual({memory["id"] for memory in context["memories"]}, {owner.id, contact.id})
+                self.assertEqual(
+                    [item["memory_id"] for item in context["budget_dropped"]],
+                    [rollback.id, overview.id],
+                )
+                self.assertEqual(
+                    packing["reservation"],
+                    {
+                        "strategy": "mixed_owner_contact_role_pair_v1",
+                        "reason": "mixed-owner-contact-keep-role-facts-before-rollback",
+                        "requested_ids": [owner.id, contact.id],
+                        "applied_ids": [owner.id, contact.id],
+                        "applied": True,
+                        "blocked_reason": None,
+                    },
+                )
+
+    def test_build_context_auto_multi_hop_fts_direct_subject_phrase_alias_query_recovers_specific_rollback_fact(self):
+        overview = self.store.remember(
+            "Status page routing contact rollback policy notes.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.99,
+        )
+        rollback = self.store.remember(
+            "Rollback policy is canary first for status page.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.95,
+        )
+        contact = self.store.remember(
+            "Status page escalation contact is Priya.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.95,
+        )
+        budget = approx_memory_tokens(rollback) + approx_memory_tokens(contact)
+
+        receipt = self.store.inject(
+            "status page routing contact rollback policy notes",
+            agent_id="codex",
+            risk="low",
+            scope="project",
+            context_budget_tokens=budget,
+        )
+
+        context = build_context(receipt)
+        self.assertEqual(receipt["retrieval"]["search_mode"], "fts")
+        self.assertEqual(receipt["retrieval"]["query_lookup"]["selected_search_basis"], "direct-subject")
+        self.assertTrue(receipt["retrieval"]["multi_hop"]["enabled"])
+        self.assertTrue(receipt["retrieval"]["multi_hop"]["auto_enabled"])
+        self.assertEqual(receipt["retrieval"]["multi_hop"]["activation_reason"], "fts-direct-subject-compound-query")
+        self.assertEqual({memory["id"] for memory in context["memories"]}, {rollback.id, contact.id})
+        self.assertEqual(context["budget_dropped"][0]["memory_id"], overview.id)
+        self.assertEqual(context["budget_dropped"][0]["packing_rank_basis"], "multi_hop_fusion_rank")
+
+    def test_build_context_auto_multi_hop_direct_subject_phrase_alias_queries_skip_generic_subject_only_decoys(self):
+        overview = self.store.remember(
+            "Status page routing contact rollback policy notes.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.99,
+        )
+        rollback = self.store.remember(
+            "Rollback policy is canary first for status page.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.95,
+        )
+        contact = self.store.remember(
+            "Status page escalation contact is Priya.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.95,
+        )
+        decoy = self.store.remember(
+            "Status page dashboard is public.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.97,
+        )
+        budget = approx_memory_tokens(rollback) + approx_memory_tokens(contact)
+
+        receipt = self.store.inject(
+            "status page routing contact rollback policy notes",
+            agent_id="codex",
+            risk="low",
+            scope="project",
+            context_budget_tokens=budget,
+        )
+
+        context = build_context(receipt)
+        retrieval = receipt["retrieval"]
+        self.assertEqual(receipt["retrieval"]["search_mode"], "fts")
+        self.assertEqual(retrieval["query_lookup"]["selected_search_basis"], "direct-subject")
+        self.assertNotIn("status page", [subquery["query"] for subquery in retrieval["multi_hop"]["subqueries"]])
+        self.assertEqual({memory["id"] for memory in context["memories"]}, {rollback.id, contact.id})
+        self.assertEqual([item["memory_id"] for item in context["budget_dropped"]], [overview.id])
+        self.assertNotIn(decoy.id, receipt["retrieved_memory_ids"])
+
+    def test_build_context_auto_multi_hop_direct_subject_phrase_alias_escalation_contact_queries_skip_generic_subject_only_decoys(self):
+        overview = self.store.remember(
+            "Status page routing escalation contact rollback policy notes.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.99,
+        )
+        rollback = self.store.remember(
+            "Rollback policy is canary first for status page.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.95,
+        )
+        contact = self.store.remember(
+            "Status page escalation contact is Priya.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.95,
+        )
+        decoy = self.store.remember(
+            "Status page dashboard is public.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.97,
+        )
+        budget = approx_memory_tokens(rollback) + approx_memory_tokens(contact)
+
+        receipt = self.store.inject(
+            "status page routing escalation contact rollback policy notes",
+            agent_id="codex",
+            risk="low",
+            scope="project",
+            context_budget_tokens=budget,
+        )
+
+        context = build_context(receipt)
+        retrieval = receipt["retrieval"]
+        self.assertEqual(receipt["retrieval"]["search_mode"], "fts")
+        self.assertEqual(retrieval["query_lookup"]["selected_search_basis"], "direct-subject")
+        self.assertNotIn("status page", [subquery["query"] for subquery in retrieval["multi_hop"]["subqueries"]])
+        self.assertEqual({memory["id"] for memory in context["memories"]}, {rollback.id, contact.id})
+        self.assertEqual([item["memory_id"] for item in context["budget_dropped"]], [overview.id])
+        self.assertNotIn(decoy.id, receipt["retrieved_memory_ids"])
+
+    def test_build_context_auto_multi_hop_fts_deployment_approval_contact_query_recovers_specific_rollback_fact(self):
+        overview = self.store.remember(
+            "Deployment approval contact rollback policy notes.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.99,
+        )
+        rollback = self.store.remember(
+            "Rollback policy is canary first for deployment approvals.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.95,
+        )
+        contact = self.store.remember(
+            "Deployment approver is Priya.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.95,
+        )
+        budget = approx_memory_tokens(rollback) + approx_memory_tokens(contact)
+
+        for query, expected_basis in (
+            ("deployment approval contact rollback policy notes", "direct-subject"),
+            ("deployment approvals contact rollback policy notes", "direct-subject-alias"),
+        ):
+            with self.subTest(query=query):
+                receipt = self.store.inject(
+                    query,
+                    agent_id="codex",
+                    risk="low",
+                    scope="project",
+                    context_budget_tokens=budget,
+                )
+
+                context = build_context(receipt)
+                self.assertEqual(receipt["retrieval"]["search_mode"], "fts")
+                self.assertEqual(receipt["retrieval"]["query_lookup"]["selected_search_basis"], expected_basis)
+                self.assertTrue(receipt["retrieval"]["multi_hop"]["enabled"])
+                self.assertTrue(receipt["retrieval"]["multi_hop"]["auto_enabled"])
+                self.assertEqual(receipt["retrieval"]["multi_hop"]["activation_reason"], "fts-direct-subject-compound-query")
+                self.assertEqual({memory["id"] for memory in context["memories"]}, {rollback.id, contact.id})
+                self.assertEqual(context["budget_dropped"][0]["memory_id"], overview.id)
+                self.assertEqual(context["budget_dropped"][0]["packing_rank_basis"], "multi_hop_fusion_rank")
+
+    def test_build_context_auto_multi_hop_fts_deployment_approval_contact_query_without_overview_uses_phrase_alias_parent(self):
+        rollback = self.store.remember(
+            "Rollback policy is canary first for deployment approvals.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.95,
+        )
+        contact = self.store.remember(
+            "Deployment approver is Priya.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.95,
+        )
+        budget = approx_memory_tokens(rollback) + approx_memory_tokens(contact)
+
+        receipt = self.store.inject(
+            "deployment approvals contact rollback policy notes",
+            agent_id="codex",
+            risk="low",
+            scope="project",
+            context_budget_tokens=budget,
+        )
+
+        context = build_context(receipt)
+        retrieval = receipt["retrieval"]
+
+        self.assertEqual(receipt["retrieval"]["search_mode"], "fts")
+        self.assertEqual(retrieval["query_lookup"]["selected_search_basis"], "direct-subject-phrase-alias")
+        self.assertEqual(retrieval["query_lookup"]["selected_search_query"], "deployment approver")
+        self.assertTrue(retrieval["multi_hop"]["enabled"])
+        self.assertTrue(retrieval["multi_hop"]["auto_enabled"])
+        self.assertEqual(retrieval["multi_hop"]["activation_reason"], "fts-direct-subject-compound-query")
+        self.assertEqual({memory["id"] for memory in context["memories"]}, {rollback.id, contact.id})
+        self.assertEqual(context["budget_dropped"], [])
+
+    def test_build_context_auto_multi_hop_fts_deployment_approval_owner_query_without_overview_uses_phrase_alias_parent(self):
+        rollback = self.store.remember(
+            "Rollback policy is canary first for deployment approvals.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.95,
+        )
+        owner = self.store.remember(
+            "Deployment approver is Priya.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.95,
+        )
+        budget = approx_memory_tokens(rollback) + approx_memory_tokens(owner)
+
+        receipt = self.store.inject(
+            "deployment approvals owner rollback policy notes",
+            agent_id="codex",
+            risk="low",
+            scope="project",
+            context_budget_tokens=budget,
+        )
+
+        context = build_context(receipt)
+        retrieval = receipt["retrieval"]
+
+        self.assertEqual(receipt["retrieval"]["search_mode"], "fts")
+        self.assertEqual(retrieval["query_lookup"]["selected_search_basis"], "direct-subject-phrase-alias")
+        self.assertEqual(retrieval["query_lookup"]["selected_search_query"], "deployment approver")
+        self.assertTrue(retrieval["multi_hop"]["enabled"])
+        self.assertTrue(retrieval["multi_hop"]["auto_enabled"])
+        self.assertEqual(retrieval["multi_hop"]["activation_reason"], "fts-direct-subject-compound-query")
+        self.assertEqual({memory["id"] for memory in context["memories"]}, {rollback.id, owner.id})
+        self.assertEqual(context["budget_dropped"], [])
+
+    def test_build_context_auto_multi_hop_fts_deployment_approval_owner_query_recovers_specific_rollback_fact(self):
+        overview = self.store.remember(
+            "Deployment approval owner rollback policy notes.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.99,
+        )
+        rollback = self.store.remember(
+            "Rollback policy is canary first for deployment approvals.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.95,
+        )
+        owner = self.store.remember(
+            "Deployment approver is Priya.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.95,
+        )
+        budget = approx_memory_tokens(rollback) + approx_memory_tokens(owner)
+
+        for query, expected_basis in (
+            ("deployment approval owner rollback policy notes", "direct-subject"),
+            ("deployment approvals owner rollback policy notes", "direct-subject-alias"),
+        ):
+            with self.subTest(query=query):
+                receipt = self.store.inject(
+                    query,
+                    agent_id="codex",
+                    risk="low",
+                    scope="project",
+                    context_budget_tokens=budget,
+                )
+
+                context = build_context(receipt)
+                self.assertEqual(receipt["retrieval"]["search_mode"], "fts")
+                self.assertEqual(receipt["retrieval"]["query_lookup"]["selected_search_basis"], expected_basis)
+                self.assertTrue(receipt["retrieval"]["multi_hop"]["enabled"])
+                self.assertTrue(receipt["retrieval"]["multi_hop"]["auto_enabled"])
+                self.assertEqual(receipt["retrieval"]["multi_hop"]["activation_reason"], "fts-direct-subject-compound-query")
+                self.assertEqual({memory["id"] for memory in context["memories"]}, {rollback.id, owner.id})
+                self.assertEqual(context["budget_dropped"][0]["memory_id"], overview.id)
+                self.assertEqual(context["budget_dropped"][0]["packing_rank_basis"], "multi_hop_fusion_rank")
+
+    def test_build_context_auto_multi_hop_owner_relation_deployment_approval_queries_recover_specific_rollback_fact(self):
+        query_cases = (
+            ("role-relation-owner", "who owns deployment approvals rollback policy notes"),
+            ("role-relation-on-point", "who is on point for deployment approvals rollback policy notes"),
+            ("role-relation-responsible", "who is responsible for deployment approvals rollback policy notes"),
+            ("role-relation-in-charge", "who is in charge of deployment approvals rollback policy notes"),
+        )
+        for expected_basis, query in query_cases:
+            with self.subTest(query=query):
+                store = MemoryStore(self.tmp_path / f"{expected_basis}-runner.sqlite")
+                overview = store.remember(
+                    "Deployment approvals owner rollback policy notes.",
+                    memory_type="semantic",
+                    scope="project",
+                    source_kind="human",
+                    trust=0.99,
+                )
+                rollback = store.remember(
+                    "Rollback policy is canary first for deployment approvals.",
+                    memory_type="semantic",
+                    scope="project",
+                    source_kind="human",
+                    trust=0.95,
+                )
+                owner = store.remember(
+                    "Deployment approver is Priya.",
+                    memory_type="semantic",
+                    scope="project",
+                    source_kind="human",
+                    trust=0.95,
+                )
+                budget = approx_memory_tokens(rollback) + approx_memory_tokens(owner)
+
+                receipt = store.inject(
+                    query,
+                    agent_id="codex",
+                    risk="low",
+                    scope="project",
+                    context_budget_tokens=budget,
+                )
+
+                context = build_context(receipt)
+                self.assertEqual(receipt["retrieval"]["search_mode"], "fts")
+                self.assertEqual(receipt["retrieval"]["query_lookup"]["selected_search_basis"], expected_basis)
+                self.assertTrue(receipt["retrieval"]["multi_hop"]["enabled"])
+                self.assertTrue(receipt["retrieval"]["multi_hop"]["auto_enabled"])
+                self.assertEqual(receipt["retrieval"]["multi_hop"]["activation_reason"], "fts-direct-subject-compound-query")
+                self.assertEqual({memory["id"] for memory in context["memories"]}, {rollback.id, owner.id})
+                self.assertEqual(context["budget_dropped"][0]["memory_id"], overview.id)
+                self.assertEqual(context["budget_dropped"][0]["packing_rank_basis"], "multi_hop_fusion_rank")
+
     def test_benchmark_chronology_context_puts_explicit_change_event_before_timeline_support(self):
         stale = self.store.remember(
             "On Monday, the deployment approver was Noor.",
@@ -714,6 +5752,25 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(retrieval["temporal"]["injection_strategy"], "chronology_mutation_anchor_first_v1")
         self.assertEqual(retrieval["temporal"]["injection_preferred_ids"], [current.id, stale.id])
         self.assertEqual(retrieval["temporal"]["selected_mutation_anchor_id"], current.id)
+        self.assertEqual(context["temporal"]["history_ordering"], retrieval["temporal"]["history_ordering"])
+        self.assertEqual(
+            retrieval["temporal"]["history_ordering"],
+            {
+                "applied": True,
+                "pass_through": False,
+                "basis": "chronological_timeline_selection_rank",
+                "source": "temporal_chronological_timeline_selection",
+                "reason": "chronology-query-terms",
+                "selected_history_rankings": [
+                    {"memory_id": stale.id, "rank": 1},
+                    {"memory_id": current.id, "rank": 2},
+                ],
+                "considered_history_rankings": [
+                    {"memory_id": stale.id, "rank": 1, "selected": True},
+                    {"memory_id": current.id, "rank": 2, "selected": True},
+                ],
+            },
+        )
 
     def test_multi_event_chronology_context_budget_keeps_explicit_change_events_before_support(self):
         support = self.store.remember(
@@ -785,7 +5842,7 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(retrieval["packing"]["injected_ids"], [latest_change.id, earlier_change.id])
 
     def test_history_shift_context_keeps_support_before_multiple_anchor_candidates(self):
-        self.store.remember(
+        opening = self.store.remember(
             "The infra channel handled the opening ping.",
             memory_type="semantic",
             scope="project",
@@ -797,7 +5854,7 @@ class RunnerTest(unittest.TestCase):
             scope="project",
             source_kind="human",
         )
-        self.store.remember(
+        later = self.store.remember(
             "Blair took the next rotation.",
             memory_type="semantic",
             scope="project",
@@ -1634,6 +6691,147 @@ class RunnerTest(unittest.TestCase):
                 self.assertEqual(temporal["selected_relation_current_id"], second.id)
                 self.assertEqual(temporal["selected_relation_support_ids"], [support.id])
                 self.assertEqual(temporal["selected_current_support_ids"], [support.id])
+
+    def test_passive_update_current_context_backfills_generic_change_anchor_support(self):
+        cases = [
+            (
+                "used-update-current-support",
+                "DB uses failover slot",
+                "DB usage changed after failover drill",
+                "what did db use change to",
+                "role-relation-uses",
+                "db uses",
+            ),
+            (
+                "required-update-current-support",
+                "UI requires access token",
+                "UI requirements changed after auth hardening",
+                "what did ui require change to",
+                "role-relation-requires",
+                "ui requires",
+            ),
+        ]
+
+        for label, current_text, support_text, task, expected_basis, expected_query in cases:
+            with self.subTest(label=label):
+                scope = f"runner-{label}"
+                current = self.store.remember(
+                    current_text,
+                    memory_type="semantic",
+                    scope=scope,
+                    source_kind="human",
+                )
+                support = self.store.remember(
+                    support_text,
+                    memory_type="semantic",
+                    scope=scope,
+                    source_kind="human",
+                    trust=0.99,
+                )
+                self.store.conn.execute(
+                    "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+                    ("2024-02-01T00:00:00Z", "2024-02-01T00:00:00Z", current.id),
+                )
+                self.store.conn.execute(
+                    "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+                    ("2024-03-01T00:00:00Z", "2024-03-01T00:00:00Z", support.id),
+                )
+                self.store.conn.commit()
+                context_path = self.tmp_path / f"{label}-update-current-support-context.json"
+
+                receipt = run_with_memory(
+                    self.store,
+                    ["python3", "-c", "import os, pathlib; assert pathlib.Path(os.environ['ZERKER_MEMORY_CONTEXT']).exists()"],
+                    task=task,
+                    agent_id="codex",
+                    risk="low",
+                    scope=scope,
+                    context_path=context_path,
+                )
+
+                self.assertEqual(receipt["exit_code"], 0)
+                context = json.loads(context_path.read_text())
+                retrieval = receipt["memory_receipt"]["retrieval"]
+                temporal = retrieval["temporal"]
+
+                self.assertEqual([memory["id"] for memory in context["memories"]], [current.id, support.id])
+                self.assertEqual(retrieval["query_lookup"]["lookup_basis"], expected_basis)
+                self.assertEqual(retrieval["query_lookup"]["selected_search_basis"], "update-subject-core")
+                self.assertEqual(retrieval["query_lookup"]["selected_search_query"], expected_query)
+                self.assertEqual(retrieval["update_current_support"]["selected_candidate_ids"], [support.id])
+                self.assertEqual(retrieval["query_lookup"]["update"]["support_candidate_ids"], [support.id])
+                self.assertEqual(temporal["selection_reason"], "default-current-only")
+                self.assertEqual(temporal["selected_ids"], [current.id, support.id])
+                self.assertEqual(temporal["selected_current_ids"], [current.id, support.id])
+
+    def test_passive_update_current_context_pair_budget_prefers_explicit_relation_plus_support_anchor(self):
+        current = self.store.remember(
+            "DB uses failover slot",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.6,
+        )
+        support = self.store.remember(
+            "DB usage changed after failover drill",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.4,
+        )
+        decoy = self.store.remember(
+            "DB uses, incident log tracking is documented",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.99,
+            authority="high",
+        )
+
+        receipt = self.store.inject(
+            "what did db use change to",
+            agent_id="codex",
+            risk="low",
+            scope="project",
+            context_budget_tokens=approx_memory_tokens(current) + approx_memory_tokens(decoy),
+            retrieval_config={"embedding": {"enabled": False}, "reranker": {"enabled": False}},
+        )
+        context = build_context(receipt)
+        retrieval = receipt["retrieval"]
+        temporal = retrieval["temporal"]
+
+        self.assertEqual([memory["id"] for memory in context["memories"]], [current.id, support.id])
+        self.assertEqual([memory["id"] for memory in receipt["memories"]], [current.id, support.id])
+        self.assertEqual(retrieval["query_lookup"]["selected_search_basis"], "update-subject-core")
+        self.assertEqual(retrieval["query_lookup"]["selected_search_query"], "db uses")
+        self.assertEqual(retrieval["update_current_support"]["selected_candidate_ids"], [support.id])
+        self.assertEqual(retrieval["query_lookup"]["update"]["support_candidate_ids"], [support.id])
+        self.assertEqual(temporal["selection_reason"], "default-current-only")
+        self.assertEqual(temporal["injection_strategy"], "update_current_relation_support_anchor_first_v1")
+        self.assertEqual(temporal["selected_current_anchor_id"], current.id)
+        self.assertEqual(temporal["selected_relation_current_id"], current.id)
+        self.assertEqual(temporal["selected_relation_support_ids"], [support.id])
+        self.assertEqual(temporal["selected_current_support_ids"], [support.id])
+        self.assertEqual(retrieval["packing"]["reservation"]["strategy"], "update_current_support_pair_v1")
+        self.assertEqual(retrieval["packing"]["reservation"]["requested_ids"], [current.id, support.id])
+        self.assertEqual(retrieval["packing"]["reservation"]["applied_ids"], [current.id, support.id])
+        self.assertEqual(context["budget_dropped"][0]["memory_id"], decoy.id)
+        self.assertFalse(context["budget_dropped"][0]["reserved_by_strategy"])
+        self.assertEqual(
+            context["budget_dropped"][0]["reservation_exclusion_reason"],
+            "update-current-support-pair-reserved",
+        )
+        self.assertEqual(
+            context["budget_dropped"][0]["reservation_exclusion"],
+            {
+                "reason": "update-current-support-pair-reserved",
+                "detail": "explicit-current-relation-plus-support-anchor-kept",
+                "selected_current_id": current.id,
+                "selected_support_ids": [support.id],
+                "selected_pair_ids": [current.id, support.id],
+            },
+        )
+        self.assertEqual(context["temporal"]["current_ordering"], retrieval["temporal"]["current_ordering"])
 
     def test_point_at_question_context_abstains_on_cross_provenance_tie(self):
         first = self.store.remember(
@@ -2640,6 +7838,232 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(retrieval["query_lookup"]["selected_search_query"], "deployment approver")
         self.assertFalse(retrieval["query_lookup"]["semantic_rescue"]["applied"])
 
+    def test_current_reordered_deployment_approval_contact_question_context_uses_phrase_alias_search_variant(self):
+        self.store.remember(
+            "Deployment contact doc mentions Priya.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        target = self.store.remember(
+            "Deployment approver is Priya.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        context_path = self.tmp_path / "current-reordered-deployment-approval-contact-context.json"
+
+        receipt = run_with_memory(
+            self.store,
+            ["python3", "-c", "import os, pathlib; assert pathlib.Path(os.environ['ZERKER_MEMORY_CONTEXT']).exists()"],
+            task="Who is the approval contact for deployments now?",
+            agent_id="codex",
+            risk="low",
+            scope="project",
+            context_path=context_path,
+        )
+
+        self.assertEqual(receipt["exit_code"], 0)
+        context = json.loads(context_path.read_text())
+        self.assertEqual([memory["id"] for memory in context["memories"]], [target.id])
+        retrieval = receipt["memory_receipt"]["retrieval"]
+        self.assertEqual(retrieval["search_mode"], "fts")
+        self.assertEqual(retrieval["query_lookup"]["lookup_basis"], "current-term")
+        self.assertEqual(retrieval["query_lookup"]["selected_search_basis"], "current-subject-core-phrase-alias")
+        self.assertEqual(retrieval["query_lookup"]["selected_search_query"], "deployment approver")
+        self.assertFalse(retrieval["query_lookup"]["semantic_rescue"]["applied"])
+
+    def test_current_deployment_approver_for_deployments_question_context_uses_phrase_alias_search_variant(self):
+        self.store.remember(
+            "Deployment contact doc mentions Priya.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        target = self.store.remember(
+            "Deployment approver is Priya.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        context_path = self.tmp_path / "current-deployment-approver-for-deployments-context.json"
+
+        receipt = run_with_memory(
+            self.store,
+            ["python3", "-c", "import os, pathlib; assert pathlib.Path(os.environ['ZERKER_MEMORY_CONTEXT']).exists()"],
+            task="Who is the approver for deployments now?",
+            agent_id="codex",
+            risk="low",
+            scope="project",
+            context_path=context_path,
+        )
+
+        self.assertEqual(receipt["exit_code"], 0)
+        context = json.loads(context_path.read_text())
+        self.assertEqual([memory["id"] for memory in context["memories"]], [target.id])
+        retrieval = receipt["memory_receipt"]["retrieval"]
+        self.assertEqual(retrieval["search_mode"], "fts")
+        self.assertEqual(retrieval["query_lookup"]["lookup_basis"], "current-term")
+        self.assertEqual(retrieval["query_lookup"]["selected_search_basis"], "current-subject-core-phrase-alias")
+        self.assertEqual(retrieval["query_lookup"]["selected_search_query"], "deployment approver")
+        self.assertFalse(retrieval["query_lookup"]["semantic_rescue"]["applied"])
+
+    def test_current_who_approves_deployments_question_context_uses_phrase_alias_search_variant(self):
+        self.store.remember(
+            "Deployment contact doc mentions Priya.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        target = self.store.remember(
+            "Deployment approver is Priya.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        context_path = self.tmp_path / "current-who-approves-deployments-context.json"
+
+        receipt = run_with_memory(
+            self.store,
+            ["python3", "-c", "import os, pathlib; assert pathlib.Path(os.environ['ZERKER_MEMORY_CONTEXT']).exists()"],
+            task="Who approves deployments now?",
+            agent_id="codex",
+            risk="low",
+            scope="project",
+            context_path=context_path,
+        )
+
+        self.assertEqual(receipt["exit_code"], 0)
+        context = json.loads(context_path.read_text())
+        self.assertEqual([memory["id"] for memory in context["memories"]], [target.id])
+        retrieval = receipt["memory_receipt"]["retrieval"]
+        self.assertEqual(retrieval["search_mode"], "fts")
+        self.assertEqual(retrieval["query_lookup"]["lookup_basis"], "current-term")
+        self.assertEqual(retrieval["query_lookup"]["selected_search_basis"], "current-subject-core-phrase-alias")
+        self.assertEqual(retrieval["query_lookup"]["selected_search_query"], "deployment approver")
+        self.assertFalse(retrieval["query_lookup"]["semantic_rescue"]["applied"])
+
+    def test_current_singular_deployment_approval_question_context_uses_phrase_alias_search_variant(self):
+        cases = [
+            ("approves-singular", "Who approves deployment now?"),
+            ("approver-for-singular", "Who is the approver for deployment now?"),
+        ]
+
+        for label, query in cases:
+            with self.subTest(label=label):
+                scope = f"runner-current-singular-deployment-approval-{label}"
+                self.store.remember(
+                    "Deployment contact doc mentions Priya.",
+                    memory_type="semantic",
+                    scope=scope,
+                    source_kind="human",
+                )
+                target = self.store.remember(
+                    "Deployment approver is Priya.",
+                    memory_type="semantic",
+                    scope=scope,
+                    source_kind="human",
+                )
+                context_path = self.tmp_path / f"current-singular-deployment-approval-{label}.json"
+
+                receipt = run_with_memory(
+                    self.store,
+                    ["python3", "-c", "import os, pathlib; assert pathlib.Path(os.environ['ZERKER_MEMORY_CONTEXT']).exists()"],
+                    task=query,
+                    agent_id="codex",
+                    risk="low",
+                    scope=scope,
+                    context_path=context_path,
+                )
+
+                self.assertEqual(receipt["exit_code"], 0)
+                context = json.loads(context_path.read_text())
+                self.assertEqual([memory["id"] for memory in context["memories"]], [target.id])
+                retrieval = receipt["memory_receipt"]["retrieval"]
+                self.assertEqual(retrieval["search_mode"], "fts")
+                self.assertEqual(retrieval["query_lookup"]["lookup_basis"], "current-term")
+                self.assertEqual(retrieval["query_lookup"]["selected_search_basis"], "current-subject-core-phrase-alias")
+                self.assertEqual(retrieval["query_lookup"]["selected_search_query"], "deployment approver")
+                self.assertFalse(retrieval["query_lookup"]["semantic_rescue"]["applied"])
+
+    def test_current_deployment_sign_off_question_context_uses_phrase_alias_search_variant(self):
+        cases = [
+            ("signs-off-singular", "Who signs off on deployment now?"),
+            ("signs-off-plural", "Who signs off on deployments now?"),
+        ]
+
+        for label, query in cases:
+            with self.subTest(label=label):
+                scope = f"runner-current-deployment-sign-off-{label}"
+                self.store.remember(
+                    "Deployment contact doc mentions Priya.",
+                    memory_type="semantic",
+                    scope=scope,
+                    source_kind="human",
+                )
+                target = self.store.remember(
+                    "Deployment approver is Priya.",
+                    memory_type="semantic",
+                    scope=scope,
+                    source_kind="human",
+                )
+                context_path = self.tmp_path / f"current-deployment-sign-off-{label}.json"
+
+                receipt = run_with_memory(
+                    self.store,
+                    ["python3", "-c", "import os, pathlib; assert pathlib.Path(os.environ['ZERKER_MEMORY_CONTEXT']).exists()"],
+                    task=query,
+                    agent_id="codex",
+                    risk="low",
+                    scope=scope,
+                    context_path=context_path,
+                )
+
+                self.assertEqual(receipt["exit_code"], 0)
+                context = json.loads(context_path.read_text())
+                self.assertEqual([memory["id"] for memory in context["memories"]], [target.id])
+                retrieval = receipt["memory_receipt"]["retrieval"]
+                self.assertEqual(retrieval["search_mode"], "fts")
+                self.assertEqual(retrieval["query_lookup"]["lookup_basis"], "current-term")
+                self.assertEqual(retrieval["query_lookup"]["selected_search_basis"], "current-subject-core-phrase-alias")
+                self.assertEqual(retrieval["query_lookup"]["selected_search_query"], "deployment approver")
+                self.assertFalse(retrieval["query_lookup"]["semantic_rescue"]["applied"])
+
+    def test_current_deployment_signoff_responsible_question_context_uses_phrase_alias_search_variant(self):
+        self.store.remember(
+            "Deployment contact doc mentions Priya.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        target = self.store.remember(
+            "Deployment approver is Priya.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        context_path = self.tmp_path / "current-deployment-signoff-responsible-context.json"
+
+        receipt = run_with_memory(
+            self.store,
+            ["python3", "-c", "import os, pathlib; assert pathlib.Path(os.environ['ZERKER_MEMORY_CONTEXT']).exists()"],
+            task="Who is responsible for deployment signoff now?",
+            agent_id="codex",
+            risk="low",
+            scope="project",
+            context_path=context_path,
+        )
+
+        self.assertEqual(receipt["exit_code"], 0)
+        context = json.loads(context_path.read_text())
+        self.assertEqual([memory["id"] for memory in context["memories"]], [target.id])
+        retrieval = receipt["memory_receipt"]["retrieval"]
+        self.assertEqual(retrieval["search_mode"], "fts")
+        self.assertEqual(retrieval["query_lookup"]["lookup_basis"], "role-relation-responsible")
+        self.assertEqual(retrieval["query_lookup"]["selected_search_basis"], "current-subject-core-phrase-alias")
+        self.assertEqual(retrieval["query_lookup"]["selected_search_query"], "deployment approver")
+        self.assertFalse(retrieval["query_lookup"]["semantic_rescue"]["applied"])
+
     def test_current_deployment_approval_role_question_context_uses_phrase_alias_search_variant(self):
         cases = [
             ("owner", "Who owns deployment approvals now?", "role-relation-owner"),
@@ -2683,6 +8107,282 @@ class RunnerTest(unittest.TestCase):
                 self.assertEqual(retrieval["query_lookup"]["selected_search_basis"], "current-subject-core-phrase-alias")
                 self.assertEqual(retrieval["query_lookup"]["selected_search_query"], "deployment approver")
                 self.assertFalse(retrieval["query_lookup"]["semantic_rescue"]["applied"])
+
+    def test_current_deployment_approval_person_question_context_infers_owner_role_before_phrase_alias(self):
+        stale = self.store.remember(
+            "Deployment approver was Alex.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        self.store.remember(
+            "Deployment approver changed to Priya.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            parents=[stale.id],
+        )
+        current = self.store.remember(
+            "Deployment approver is Priya.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        self.store.remember(
+            "Deployment approval owner notes mention the checklist.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        context_path = self.tmp_path / "current-deployment-approval-person-context.json"
+
+        receipt = run_with_memory(
+            self.store,
+            ["python3", "-c", "import os, pathlib; assert pathlib.Path(os.environ['ZERKER_MEMORY_CONTEXT']).exists()"],
+            task="Who handles deployment approvals now?",
+            agent_id="codex",
+            risk="low",
+            scope="project",
+            context_path=context_path,
+        )
+
+        self.assertEqual(receipt["exit_code"], 0)
+        context = json.loads(context_path.read_text())
+        self.assertEqual([memory["id"] for memory in context["memories"]], [current.id])
+        retrieval = receipt["memory_receipt"]["retrieval"]
+        self.assertEqual(retrieval["search_mode"], "fts")
+        self.assertEqual(retrieval["query_lookup"]["lookup_basis"], "current-term")
+        self.assertEqual(retrieval["query_lookup"]["selected_search_basis"], "current-subject-core-phrase-alias")
+        self.assertEqual(retrieval["query_lookup"]["selected_search_query"], "deployment approver")
+        self.assertEqual(retrieval["query_lookup"]["current"]["role_inferred"], "owner")
+        self.assertEqual(retrieval["query_lookup"]["current"]["role_inference_reason"], "who-wrapper-person-role")
+        self.assertFalse(retrieval["query_lookup"]["semantic_rescue"]["applied"])
+        self.assertEqual(retrieval["temporal"]["selection_reason"], "current-query-terms")
+        self.assertEqual(retrieval["temporal"]["selected_ids"], [current.id])
+
+    def test_current_deployment_signoff_handles_question_context_infers_owner_role_before_phrase_alias(self):
+        cases = (
+            ("compact", "Who handles deployment signoff now?"),
+            ("hyphenated", "Who handles deployment sign-off now?"),
+        )
+
+        for label, task in cases:
+            with self.subTest(label=label):
+                scope = f"deployment-signoff-handles-context-{label}"
+                stale = self.store.remember(
+                    "Deployment approver was Alex.",
+                    memory_type="semantic",
+                    scope=scope,
+                    source_kind="human",
+                )
+                self.store.remember(
+                    "Deployment approver changed to Priya.",
+                    memory_type="semantic",
+                    scope=scope,
+                    source_kind="human",
+                    parents=[stale.id],
+                )
+                current = self.store.remember(
+                    "Deployment approver is Priya.",
+                    memory_type="semantic",
+                    scope=scope,
+                    source_kind="human",
+                )
+                self.store.remember(
+                    "Deployment contact doc mentions Priya.",
+                    memory_type="semantic",
+                    scope=scope,
+                    source_kind="human",
+                )
+                context_path = self.tmp_path / f"current-deployment-signoff-handles-{label}-context.json"
+
+                receipt = run_with_memory(
+                    self.store,
+                    ["python3", "-c", "import os, pathlib; assert pathlib.Path(os.environ['ZERKER_MEMORY_CONTEXT']).exists()"],
+                    task=task,
+                    agent_id="codex",
+                    risk="low",
+                    scope=scope,
+                    context_path=context_path,
+                )
+
+                self.assertEqual(receipt["exit_code"], 0)
+                context = json.loads(context_path.read_text())
+                self.assertEqual([memory["id"] for memory in context["memories"]], [current.id])
+                retrieval = receipt["memory_receipt"]["retrieval"]
+                self.assertEqual(retrieval["search_mode"], "fts")
+                self.assertEqual(retrieval["query_lookup"]["lookup_basis"], "current-term")
+                self.assertEqual(retrieval["query_lookup"]["selected_search_basis"], "current-subject-core-phrase-alias")
+                self.assertEqual(retrieval["query_lookup"]["selected_search_query"], "deployment approver")
+                self.assertEqual(retrieval["query_lookup"]["current"]["role_inferred"], "owner")
+                self.assertEqual(retrieval["query_lookup"]["current"]["role_inference_reason"], "who-wrapper-person-role")
+                self.assertFalse(retrieval["query_lookup"]["semantic_rescue"]["applied"])
+                self.assertEqual(retrieval["temporal"]["selection_reason"], "current-query-terms")
+                self.assertEqual(retrieval["temporal"]["selected_ids"], [current.id])
+
+    def test_current_deployment_signoff_person_on_point_question_context_uses_relation_phrase_alias_route(self):
+        cases = (
+            ("compact", "Who is the person on point for deployment signoff now?"),
+            ("hyphenated", "Who is the person on point for deployment sign-off now?"),
+        )
+
+        for label, task in cases:
+            with self.subTest(label=label):
+                scope = f"deployment-signoff-person-on-point-context-{label}"
+                stale = self.store.remember(
+                    "Deployment approver was Alex.",
+                    memory_type="semantic",
+                    scope=scope,
+                    source_kind="human",
+                )
+                self.store.remember(
+                    "Deployment approver changed to Priya.",
+                    memory_type="semantic",
+                    scope=scope,
+                    source_kind="human",
+                    parents=[stale.id],
+                )
+                current = self.store.remember(
+                    "Deployment approver is Priya.",
+                    memory_type="semantic",
+                    scope=scope,
+                    source_kind="human",
+                )
+                self.store.remember(
+                    "Deployment contact doc mentions Priya.",
+                    memory_type="semantic",
+                    scope=scope,
+                    source_kind="human",
+                )
+                context_path = self.tmp_path / f"current-deployment-signoff-person-on-point-{label}-context.json"
+
+                receipt = run_with_memory(
+                    self.store,
+                    ["python3", "-c", "import os, pathlib; assert pathlib.Path(os.environ['ZERKER_MEMORY_CONTEXT']).exists()"],
+                    task=task,
+                    agent_id="codex",
+                    risk="low",
+                    scope=scope,
+                    context_path=context_path,
+                )
+
+                self.assertEqual(receipt["exit_code"], 0)
+                context = json.loads(context_path.read_text())
+                self.assertEqual([memory["id"] for memory in context["memories"]], [current.id])
+                retrieval = receipt["memory_receipt"]["retrieval"]
+                self.assertEqual(retrieval["search_mode"], "fts")
+                self.assertEqual(retrieval["query_lookup"]["lookup_basis"], "role-relation-on-point")
+                self.assertEqual(retrieval["query_lookup"]["selected_search_basis"], "current-subject-core-phrase-alias")
+                self.assertEqual(retrieval["query_lookup"]["selected_search_query"], "deployment approver")
+                self.assertFalse(retrieval["query_lookup"]["semantic_rescue"]["applied"])
+                self.assertEqual(retrieval["temporal"]["selection_reason"], "current-query-terms")
+                self.assertEqual(retrieval["temporal"]["selected_ids"], [current.id])
+
+    def test_current_deployment_signoff_on_point_question_context_uses_relation_phrase_alias_route(self):
+        cases = (
+            ("compact", "Who is on point for deployment signoff now?"),
+            ("hyphenated", "Who is on point for deployment sign-off now?"),
+        )
+
+        for label, task in cases:
+            with self.subTest(label=label):
+                scope = f"deployment-signoff-on-point-context-{label}"
+                stale = self.store.remember(
+                    "Deployment approver was Alex.",
+                    memory_type="semantic",
+                    scope=scope,
+                    source_kind="human",
+                )
+                self.store.remember(
+                    "Deployment approver changed to Priya.",
+                    memory_type="semantic",
+                    scope=scope,
+                    source_kind="human",
+                    parents=[stale.id],
+                )
+                current = self.store.remember(
+                    "Deployment approver is Priya.",
+                    memory_type="semantic",
+                    scope=scope,
+                    source_kind="human",
+                )
+                self.store.remember(
+                    "Deployment contact doc mentions Priya.",
+                    memory_type="semantic",
+                    scope=scope,
+                    source_kind="human",
+                )
+                context_path = self.tmp_path / f"current-deployment-signoff-on-point-{label}-context.json"
+
+                receipt = run_with_memory(
+                    self.store,
+                    ["python3", "-c", "import os, pathlib; assert pathlib.Path(os.environ['ZERKER_MEMORY_CONTEXT']).exists()"],
+                    task=task,
+                    agent_id="codex",
+                    risk="low",
+                    scope=scope,
+                    context_path=context_path,
+                )
+
+                self.assertEqual(receipt["exit_code"], 0)
+                context = json.loads(context_path.read_text())
+                self.assertEqual([memory["id"] for memory in context["memories"]], [current.id])
+                retrieval = receipt["memory_receipt"]["retrieval"]
+                self.assertEqual(retrieval["search_mode"], "fts")
+                self.assertEqual(retrieval["query_lookup"]["lookup_basis"], "role-relation-on-point")
+                self.assertEqual(retrieval["query_lookup"]["selected_search_basis"], "current-subject-core-phrase-alias")
+                self.assertEqual(retrieval["query_lookup"]["selected_search_query"], "deployment approver")
+                self.assertFalse(retrieval["query_lookup"]["semantic_rescue"]["applied"])
+                self.assertEqual(retrieval["temporal"]["selection_reason"], "current-query-terms")
+                self.assertEqual(retrieval["temporal"]["selected_ids"], [current.id])
+
+    def test_build_context_no_overview_deployment_approval_owner_wrapper_compound_queries_use_phrase_alias_parent(self):
+        query_cases = (
+            ("role-relation-owner", "who owns deployment approvals rollback policy notes"),
+            ("role-relation-on-point", "who is on point for deployment approvals rollback policy notes"),
+            ("role-relation-responsible", "who is responsible for deployment approvals rollback policy notes"),
+            ("role-relation-in-charge", "who is in charge of deployment approvals rollback policy notes"),
+        )
+
+        for index, (expected_basis, query) in enumerate(query_cases, start=1):
+            with self.subTest(query=query):
+                scope = f"deployment-approval-owner-wrapper-runner-no-overview-{index}"
+                rollback = self.store.remember(
+                    "Rollback policy is canary first for deployment approvals.",
+                    memory_type="semantic",
+                    scope=scope,
+                    source_kind="human",
+                    trust=0.95,
+                )
+                owner = self.store.remember(
+                    "Deployment approver is Priya.",
+                    memory_type="semantic",
+                    scope=scope,
+                    source_kind="human",
+                    trust=0.95,
+                )
+                budget = approx_memory_tokens(rollback) + approx_memory_tokens(owner)
+
+                receipt = self.store.inject(
+                    query,
+                    agent_id="codex",
+                    risk="low",
+                    scope=scope,
+                    context_budget_tokens=budget,
+                )
+
+                context = build_context(receipt)
+                retrieval = receipt["retrieval"]
+
+                self.assertEqual(receipt["retrieval"]["search_mode"], "fts")
+                self.assertEqual(retrieval["query_lookup"]["lookup_basis"], expected_basis)
+                self.assertEqual(retrieval["query_lookup"]["selected_search_basis"], f"{expected_basis}-phrase-alias")
+                self.assertEqual(retrieval["query_lookup"]["selected_search_query"], "deployment approver")
+                self.assertTrue(retrieval["multi_hop"]["enabled"])
+                self.assertTrue(retrieval["multi_hop"]["auto_enabled"])
+                self.assertEqual(retrieval["multi_hop"]["activation_reason"], "fts-direct-subject-compound-query")
+                self.assertEqual({memory["id"] for memory in context["memories"]}, {rollback.id, owner.id})
+                self.assertEqual(context["budget_dropped"], [])
 
     def test_update_history_deployment_approval_owner_question_context_infers_owner_role_before_phrase_alias(self):
         stale = self.store.remember(
@@ -2990,7 +8690,7 @@ class RunnerTest(unittest.TestCase):
             scope="project",
             source_kind="human",
         )
-        self.store.remember(
+        later = self.store.remember(
             "Blair took the next rotation.",
             memory_type="semantic",
             scope="project",
@@ -3028,7 +8728,7 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(retrieval["temporal"]["selected_ids"], [support.id, anchor.id])
 
     def test_history_shift_context_prefers_person_rotation_support_over_generic_handled_observation(self):
-        self.store.remember(
+        opening = self.store.remember(
             "The infra channel handled the opening ping.",
             memory_type="semantic",
             scope="project",
@@ -3040,7 +8740,7 @@ class RunnerTest(unittest.TestCase):
             scope="project",
             source_kind="human",
         )
-        self.store.remember(
+        later = self.store.remember(
             "Blair took the next rotation.",
             memory_type="semantic",
             scope="project",
@@ -3073,6 +8773,128 @@ class RunnerTest(unittest.TestCase):
             [support.id],
         )
         self.assertEqual(retrieval["temporal"]["selected_ids"], [support.id, anchor.id])
+        self.assertEqual(context["temporal"]["history_ordering"], retrieval["temporal"]["history_ordering"])
+        self.assertEqual(
+            retrieval["temporal"]["history_ordering"],
+            {
+                "applied": True,
+                "pass_through": False,
+                "basis": "history_observation_support_selection_rank",
+                "source": "temporal_history_observation_support_selection",
+                "reason": "history-observation-support-query-terms",
+                "selected_history_rankings": [
+                    {"memory_id": support.id, "rank": 1},
+                    {"memory_id": anchor.id, "rank": 2},
+                ],
+                "considered_history_rankings": [
+                    {"memory_id": support.id, "rank": 1, "selected": True},
+                    {"memory_id": anchor.id, "rank": 2, "selected": True},
+                    {"memory_id": later.id, "rank": 3, "selected": False},
+                    {"memory_id": opening.id, "rank": 4, "selected": False},
+                ],
+            },
+        )
+
+    def test_history_shift_context_trims_low_signal_extra_anchor_before_budget_pressure(self):
+        opening = self.store.remember(
+            "The infra channel handled the opening ping.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.8,
+        )
+        support = self.store.remember(
+            "Avery covered the overnight rotation.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.75,
+        )
+        later = self.store.remember(
+            "Blair took the next rotation.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.7,
+        )
+        notes_anchor = self.store.remember(
+            "Status page shift notes live in docs/status.md.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.95,
+        )
+        handoff_anchor = self.store.remember(
+            "The status page changed after the shift handoff.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.9,
+        )
+        extra_anchor = self.store.remember(
+            "Status page shift handoff checklist lives in docs/handoff.md.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.99,
+            authority="high",
+        )
+
+        receipt = self.store.inject(
+            "Who handled the status page before the shift?",
+            agent_id="codex",
+            risk="low",
+            scope="project",
+            context_budget_tokens=(
+                approx_memory_tokens(support)
+                + approx_memory_tokens(notes_anchor)
+                + approx_memory_tokens(handoff_anchor)
+            ),
+        )
+        context = build_context(receipt)
+        retrieval = receipt["retrieval"]
+
+        self.assertEqual(
+            [memory["id"] for memory in context["memories"]],
+            [support.id, notes_anchor.id, handoff_anchor.id],
+        )
+        self.assertEqual(context["budget_dropped"], [])
+        self.assertEqual(
+            retrieval["query_lookup"]["history"]["observation_support"]["selected_anchor_candidate_ids"],
+            [notes_anchor.id, handoff_anchor.id],
+        )
+        self.assertEqual(
+            retrieval["query_lookup"]["history"]["observation_support"]["excluded_anchor_candidate_ids"],
+            [extra_anchor.id],
+        )
+        self.assertEqual(context["temporal"]["history_ordering"], retrieval["temporal"]["history_ordering"])
+        self.assertIn(
+            {"memory_id": extra_anchor.id, "rank": 4, "selected": False},
+            retrieval["temporal"]["history_ordering"]["considered_history_rankings"],
+        )
+        self.assertEqual(
+            retrieval["temporal"]["selection_exclusions"],
+            [
+                {
+                    "memory_id": extra_anchor.id,
+                    "reason": "history-observation-anchor-not-selected",
+                    "detail": "earliest-and-strongest-observation-anchor-chain-selected",
+                    "selection_strategy": "history_observation_support_v1",
+                    "selected_anchor_candidate_ids": [notes_anchor.id, handoff_anchor.id],
+                    "anchor_candidate_ids": [notes_anchor.id, handoff_anchor.id, extra_anchor.id],
+                    "anchor_selection_strategy": "observation_anchor_earliest_plus_strongest_v1",
+                }
+            ],
+        )
+        self.assertCountEqual(
+            receipt["retrieved_memory_ids"],
+            [support.id, notes_anchor.id, handoff_anchor.id, opening.id],
+        )
+        self.assertNotIn(extra_anchor.id, receipt["retrieved_memory_ids"])
+        self.assertEqual(
+            retrieval["query_lookup"]["history"]["observation_support"]["ordered_support_candidate_ids"],
+            [support.id, later.id, opening.id],
+        )
 
     def test_before_update_routing_owner_question_context_uses_phrase_alias_history_variant(self):
         stale = self.store.remember(
@@ -3397,6 +9219,202 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(temporal["selected_relation_current_id"], current.id)
         self.assertEqual(temporal["selected_relation_support_ids"], [generic_anchor.id])
         self.assertEqual(temporal["selected_current_support_ids"], [generic_anchor.id])
+        self.assertEqual(context["temporal"]["history_ordering"], temporal["history_ordering"])
+        self.assertEqual(
+            temporal["history_ordering"],
+            {
+                "applied": True,
+                "pass_through": False,
+                "basis": "chronological_timeline_selection_rank",
+                "source": "temporal_chronological_timeline_selection",
+                "reason": "chronology-query-terms",
+                "selected_history_rankings": [
+                    {"memory_id": stale.id, "rank": 1},
+                    {"memory_id": current.id, "rank": 2},
+                    {"memory_id": generic_anchor.id, "rank": 3},
+                ],
+                "considered_history_rankings": [
+                    {"memory_id": stale.id, "rank": 1, "selected": True},
+                    {"memory_id": current.id, "rank": 2, "selected": True},
+                    {"memory_id": generic_anchor.id, "rank": 3, "selected": True},
+                ],
+            },
+        )
+
+    def test_chronology_relation_context_budget_falls_back_to_stale_and_current_when_support_chain_exceeds_budget(self):
+        stale = self.store.remember(
+            "API gateway points to canary.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.3,
+            authority="low",
+        )
+        middle = self.store.remember(
+            "API gateway points to staging.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.95,
+            authority="high",
+            parents=[stale.id],
+        )
+        current = self.store.remember(
+            "API gateway points to production.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.8,
+            authority="medium",
+            parents=[middle.id],
+        )
+        generic_anchor = self.store.remember(
+            "API gateway points changed after migration.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.99,
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z", stale.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-02-01T00:00:00Z", "2024-02-01T00:00:00Z", middle.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-03-01T00:00:00Z", "2024-03-01T00:00:00Z", current.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-04-01T00:00:00Z", "2024-04-01T00:00:00Z", generic_anchor.id),
+        )
+        self.store.conn.commit()
+
+        receipt = self.store.inject(
+            "when did the api gateway point at change then",
+            agent_id="codex",
+            risk="low",
+            scope="project",
+            context_budget_tokens=approx_memory_tokens(stale) + approx_memory_tokens(current),
+        )
+
+        context = build_context(receipt)
+        self.assertEqual([memory["id"] for memory in context["memories"]], [stale.id, current.id])
+        self.assertCountEqual(
+            [item["memory_id"] for item in context["budget_dropped"]],
+            [middle.id, generic_anchor.id],
+        )
+        retrieval = receipt["retrieval"]
+        temporal = retrieval["temporal"]
+        self.assertEqual(temporal["injection_strategy"], "chronology_relation_current_anchor_first_v1")
+        self.assertEqual(temporal["selected_current_anchor_id"], current.id)
+        self.assertEqual(temporal["selected_relation_current_id"], current.id)
+        self.assertEqual(temporal["selected_relation_support_ids"], [generic_anchor.id])
+        self.assertEqual(temporal["selected_current_support_ids"], [generic_anchor.id])
+        self.assertEqual(
+            retrieval["packing"]["reservation"]["requested_ids"],
+            [stale.id, current.id, generic_anchor.id],
+        )
+        self.assertEqual(
+            retrieval["packing"]["reservation"]["fallback_requested_ids"],
+            [stale.id, current.id],
+        )
+        self.assertTrue(retrieval["packing"]["reservation"]["fallback_applied"])
+
+    def test_build_context_chronology_budget_records_reserved_support_chain_exclusion_reason(self):
+        stale = self.store.remember(
+            "API gateway points to canary.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.3,
+            authority="low",
+        )
+        middle = self.store.remember(
+            "API gateway points to staging.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.95,
+            authority="high",
+            parents=[stale.id],
+        )
+        current = self.store.remember(
+            "API gateway points to production.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.8,
+            authority="medium",
+            parents=[middle.id],
+        )
+        generic_anchor = self.store.remember(
+            "API gateway points changed after migration.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.99,
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z", stale.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-02-01T00:00:00Z", "2024-02-01T00:00:00Z", middle.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-03-01T00:00:00Z", "2024-03-01T00:00:00Z", current.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-04-01T00:00:00Z", "2024-04-01T00:00:00Z", generic_anchor.id),
+        )
+        self.store.conn.commit()
+        budget = (
+            approx_memory_tokens(stale)
+            + approx_memory_tokens(current)
+            + approx_memory_tokens(generic_anchor)
+        )
+
+        receipt = self.store.inject(
+            "when did the api gateway point at change then",
+            agent_id="codex",
+            risk="low",
+            scope="project",
+            context_budget_tokens=budget,
+        )
+
+        context = build_context(receipt)
+        retrieval = receipt["retrieval"]
+        self.assertEqual(retrieval["packing"]["reservation"]["strategy"], "chronology_relation_support_chain_v1")
+        self.assertEqual(
+            retrieval["packing"]["budget_dropped"][0]["reservation_exclusion_reason"],
+            "chronology-support-chain-reserved",
+        )
+        self.assertEqual(
+            retrieval["packing"]["budget_dropped"][0]["reservation_exclusion"],
+            {
+                "reason": "chronology-support-chain-reserved",
+                "detail": "selected-stale-current-support-chain-kept",
+                "selected_stale_id": stale.id,
+                "selected_current_id": current.id,
+                "selected_support_ids": [generic_anchor.id],
+                "selected_chain_ids": [stale.id, current.id, generic_anchor.id],
+            },
+        )
+        self.assertEqual(
+            context["budget_dropped"][0]["reservation_exclusion_reason"],
+            "chronology-support-chain-reserved",
+        )
+        self.assertEqual(
+            context["budget_dropped"][0]["reservation_exclusion"]["selected_chain_ids"],
+            [stale.id, current.id, generic_anchor.id],
+        )
 
     def test_temporal_wrapped_relation_history_context_abstains_on_cross_provenance_conflict(self):
         cases = [
@@ -3673,6 +9691,160 @@ class RunnerTest(unittest.TestCase):
             "update-history-query-terms",
         )
 
+    def test_build_context_update_history_budget_records_reserved_anchor_pair_exclusion_reason(self):
+        first = self.store.remember(
+            "Deploy target is Heroku.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.3,
+            authority="low",
+        )
+        second = self.store.remember(
+            "Deploy target changed to Render.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.95,
+            authority="high",
+        )
+        third = self.store.remember(
+            "Deploy target changed to Production.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.8,
+            authority="medium",
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z", first.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-02-01T00:00:00Z", "2024-02-01T00:00:00Z", second.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-03-01T00:00:00Z", "2024-03-01T00:00:00Z", third.id),
+        )
+        self.store.conn.commit()
+        budget = approx_memory_tokens(second) + approx_memory_tokens(third)
+
+        receipt = self.store.inject(
+            "what did the deploy target change from",
+            agent_id="codex",
+            risk="low",
+            scope="project",
+            context_budget_tokens=budget,
+        )
+
+        context = build_context(receipt)
+        self.assertEqual([memory["id"] for memory in context["memories"]], [second.id, third.id])
+        retrieval = receipt["retrieval"]
+        self.assertEqual(retrieval["packing"]["reservation"]["strategy"], "update_history_anchor_pair_v1")
+        self.assertEqual(
+            retrieval["packing"]["budget_dropped"][0]["reservation_exclusion_reason"],
+            "update-history-anchor-pair-reserved",
+        )
+        self.assertEqual(
+            retrieval["packing"]["budget_dropped"][0]["reservation_exclusion"],
+            {
+                "reason": "update-history-anchor-pair-reserved",
+                "detail": "selected-stale-current-anchor-pair-kept",
+                "selected_stale_id": second.id,
+                "selected_current_id": third.id,
+                "selected_pair_ids": [second.id, third.id],
+            },
+        )
+        self.assertEqual(
+            context["budget_dropped"][0]["reservation_exclusion_reason"],
+            "update-history-anchor-pair-reserved",
+        )
+        self.assertEqual(
+            context["budget_dropped"][0]["reservation_exclusion"]["selected_pair_ids"],
+            [second.id, third.id],
+        )
+
+    def test_recent_history_context_budget_falls_back_to_previous_and_latest_current_when_support_chain_exceeds_budget(self):
+        first = self.store.remember(
+            "Deploy target is Heroku.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.99,
+            authority="policy",
+        )
+        second = self.store.remember(
+            "Deploy target changed to Render.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.2,
+            authority="low",
+            parents=[first.id],
+        )
+        current = self.store.remember(
+            "Deploy target changed to Production.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.8,
+            authority="medium",
+            parents=[second.id],
+        )
+        generic_anchor = self.store.remember(
+            "Deploy target changed after CAB review.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.99,
+            authority="high",
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z", first.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-02-01T00:00:00Z", "2024-02-01T00:00:00Z", second.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-03-01T00:00:00Z", "2024-03-01T00:00:00Z", current.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-04-01T00:00:00Z", "2024-04-01T00:00:00Z", generic_anchor.id),
+        )
+        self.store.conn.commit()
+
+        receipt = self.store.inject(
+            "what was the previous deploy target",
+            agent_id="codex",
+            risk="low",
+            scope="project",
+            context_budget_tokens=approx_memory_tokens(second) + approx_memory_tokens(current),
+        )
+        context = build_context(receipt)
+        retrieval = receipt["retrieval"]
+        temporal = retrieval["temporal"]
+        budget_dropped_ids = [item["memory_id"] for item in context["budget_dropped"]]
+
+        self.assertEqual([memory["id"] for memory in context["memories"]], [second.id, current.id])
+        self.assertEqual(temporal["selection_strategy"], "historical_preferred_v1")
+        self.assertEqual(temporal["selection_reason"], "history-query-terms")
+        self.assertEqual(temporal["selected_current_anchor_id"], current.id)
+        self.assertEqual(temporal["selected_current_support_ids"], [generic_anchor.id])
+        self.assertEqual(retrieval["packing"]["reservation"]["applied_ids"], [second.id, current.id])
+        self.assertTrue(retrieval["packing"]["reservation"]["fallback_applied"])
+        self.assertEqual(
+            retrieval["packing"]["reservation"]["fallback_requested_ids"],
+            [second.id, current.id],
+        )
+        self.assertCountEqual(budget_dropped_ids, [first.id, generic_anchor.id])
+        self.assertNotIn(current.id, budget_dropped_ids)
+
     def test_update_history_destination_query_context_canonicalizes_alias_to_target(self):
         first = self.store.remember(
             "Deploy target is Staging.",
@@ -3809,6 +9981,109 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(retrieval["hybrid"]["kept_lexical_candidate_ids"], [current.id])
         self.assertEqual(retrieval["hybrid"]["introduced_candidate_ids"], [stale.id])
 
+    def test_update_current_deploy_target_context_ignores_switch_to_during_hybrid_backfill(self):
+        decoy = self.store.remember(
+            "Deploy target docs mention Production",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.95,
+        )
+        target = self.store.remember(
+            "Deploy destination is Production",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.7,
+        )
+        current = self.store.remember(
+            "Deploy target switched to Production.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.8,
+        )
+        context_path = self.tmp_path / "update-current-deploy-target-switch-hybrid-context.json"
+
+        receipt = run_with_memory(
+            self.store,
+            ["python3", "-c", "import os, pathlib; assert pathlib.Path(os.environ['ZERKER_MEMORY_CONTEXT']).exists()"],
+            task="what did the deploy target switch to",
+            agent_id="codex",
+            risk="low",
+            scope="project",
+            context_path=context_path,
+        )
+
+        self.assertEqual(receipt["exit_code"], 0)
+        context = json.loads(context_path.read_text())
+        self.assertEqual([memory["id"] for memory in context["memories"]], [target.id, current.id])
+        retrieval = receipt["memory_receipt"]["retrieval"]
+        self.assertEqual(retrieval["query_lookup"]["selected_search_basis"], "update-subject-core")
+        self.assertEqual(retrieval["query_lookup"]["selected_search_query"], "deploy target")
+        self.assertEqual(retrieval["query_lookup"]["update"]["matched_terms"], ["switch"])
+        self.assertEqual(retrieval["query_lookup"]["update"]["direction_terms"], ["to"])
+        self.assertTrue(retrieval["hybrid"]["applied"])
+        self.assertEqual(retrieval["hybrid"]["effective_query"], "deploy target")
+        self.assertEqual(retrieval["hybrid"]["semantic_probe"]["ignored_query_terms"], ["switch", "to"])
+        self.assertEqual(retrieval["hybrid"]["kept_lexical_candidate_ids"], [current.id])
+        self.assertEqual(retrieval["hybrid"]["introduced_candidate_ids"], [target.id])
+        self.assertEqual(retrieval["temporal"]["selected_ids"], [target.id, current.id])
+
+    def test_update_current_deploy_destination_context_ignores_update_to_during_hybrid_backfill(self):
+        decoy = self.store.remember(
+            "Deploy target docs mention Production",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.95,
+        )
+        target = self.store.remember(
+            "Deploy destination is Production",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.7,
+        )
+        current = self.store.remember(
+            "Deploy target updated to Production.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.8,
+        )
+        context_path = self.tmp_path / "update-current-deploy-destination-update-hybrid-context.json"
+
+        receipt = run_with_memory(
+            self.store,
+            ["python3", "-c", "import os, pathlib; assert pathlib.Path(os.environ['ZERKER_MEMORY_CONTEXT']).exists()"],
+            task="what did the deploy destination update to",
+            agent_id="codex",
+            risk="low",
+            scope="project",
+            context_path=context_path,
+        )
+
+        self.assertEqual(receipt["exit_code"], 0)
+        context = json.loads(context_path.read_text())
+        self.assertEqual([memory["id"] for memory in context["memories"]], [target.id, current.id])
+        retrieval = receipt["memory_receipt"]["retrieval"]
+        self.assertEqual(retrieval["query_lookup"]["selected_search_basis"], "update-subject-core")
+        self.assertEqual(retrieval["query_lookup"]["selected_search_query"], "deploy target")
+        self.assertEqual(retrieval["query_lookup"]["update"]["matched_terms"], ["update"])
+        self.assertEqual(retrieval["query_lookup"]["update"]["raw_core_terms"], ["deploy", "destination"])
+        self.assertEqual(retrieval["query_lookup"]["update"]["core_terms"], ["deploy", "target"])
+        self.assertEqual(
+            retrieval["query_lookup"]["update"]["matched_aliases"],
+            [{"token": "destination", "canonical": "target"}],
+        )
+        self.assertTrue(retrieval["hybrid"]["applied"])
+        self.assertEqual(retrieval["hybrid"]["effective_query"], "deploy target")
+        self.assertEqual(retrieval["hybrid"]["semantic_probe"]["ignored_query_terms"], ["update", "to"])
+        self.assertEqual(retrieval["hybrid"]["kept_lexical_candidate_ids"], [current.id])
+        self.assertEqual(retrieval["hybrid"]["introduced_candidate_ids"], [target.id])
+        self.assertEqual(retrieval["temporal"]["selected_ids"], [target.id, current.id])
+
     def test_build_context_current_deploy_target_budget_prefers_semantic_backfill_state(self):
         current = self.store.remember(
             "Deploy target changed to Production.",
@@ -3885,6 +10160,140 @@ class RunnerTest(unittest.TestCase):
             context["budget_dropped"][0]["hybrid_outranked_reason"],
             "hybrid-semantic-backfill-ranked-lower",
         )
+
+    def test_build_context_update_current_deploy_target_family_pair_budget_keeps_canonical_hybrid_pair(self):
+        scenarios = (
+            (
+                "what did the deploy target switch to",
+                "Deploy target switched to Production.",
+                ["switch"],
+            ),
+            (
+                "what did the deploy destination update to",
+                "Deploy target updated to Production.",
+                ["update"],
+            ),
+        )
+        for task, current_text, matched_terms in scenarios:
+            with self.subTest(task=task):
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    store = MemoryStore(Path(tmpdir) / "memory.sqlite")
+                    store.init()
+                    store.remember(
+                        "Deploy target docs mention Production",
+                        memory_type="semantic",
+                        scope="project",
+                        source_kind="human",
+                        trust=0.95,
+                    )
+                    target = store.remember(
+                        "Deploy destination is Production",
+                        memory_type="semantic",
+                        scope="project",
+                        source_kind="human",
+                        trust=0.7,
+                    )
+                    current = store.remember(
+                        current_text,
+                        memory_type="semantic",
+                        scope="project",
+                        source_kind="human",
+                        trust=0.8,
+                    )
+
+                    receipt = store.inject(
+                        task,
+                        agent_id="codex",
+                        risk="low",
+                        scope="project",
+                        context_budget_tokens=approx_memory_tokens(target) + approx_memory_tokens(current),
+                        retrieval_config={"embedding": {"enabled": False}, "reranker": {"enabled": False}},
+                    )
+                    context = build_context(receipt)
+                    retrieval = receipt["retrieval"]
+
+                    self.assertEqual([memory["id"] for memory in context["memories"]], [target.id, current.id])
+                    self.assertEqual(context["budget_dropped"], [])
+                    self.assertEqual(retrieval["packing"]["injected_ids"], [target.id, current.id])
+                    self.assertEqual(retrieval["packing"]["budget_dropped"], [])
+                    self.assertEqual(retrieval["query_lookup"]["selected_search_basis"], "update-subject-core")
+                    self.assertEqual(retrieval["query_lookup"]["selected_search_query"], "deploy target")
+                    self.assertEqual(retrieval["query_lookup"]["update"]["matched_terms"], matched_terms)
+                    self.assertEqual(retrieval["query_lookup"]["update"]["direction_terms"], ["to"])
+                    self.assertFalse(retrieval["embedding"]["enabled"])
+                    self.assertFalse(retrieval["reranker"]["enabled"])
+                    self.assertTrue(retrieval["baseline_ranking"]["hybrid_semantic_signal_applied"])
+                    self.assertTrue(retrieval["hybrid"]["applied"])
+                    self.assertEqual(retrieval["hybrid"]["kept_lexical_candidate_ids"], [current.id])
+                    self.assertEqual(retrieval["hybrid"]["introduced_candidate_ids"], [target.id])
+                    self.assertEqual(retrieval["temporal"]["selected_ids"], [target.id, current.id])
+
+    def test_build_context_update_current_deploy_target_change_move_pair_budget_keeps_canonical_hybrid_pair(self):
+        scenarios = (
+            (
+                "what did the deploy target change to",
+                "Deploy target changed to Production.",
+                ["change"],
+            ),
+            (
+                "where did the deploy destination move to",
+                "Deploy target moved to Production.",
+                ["move"],
+            ),
+        )
+        for task, current_text, matched_terms in scenarios:
+            with self.subTest(task=task):
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    store = MemoryStore(Path(tmpdir) / "memory.sqlite")
+                    store.init()
+                    store.remember(
+                        "Deploy target docs mention Production",
+                        memory_type="semantic",
+                        scope="project",
+                        source_kind="human",
+                        trust=0.95,
+                    )
+                    target = store.remember(
+                        "Deploy destination is Production",
+                        memory_type="semantic",
+                        scope="project",
+                        source_kind="human",
+                        trust=0.7,
+                    )
+                    current = store.remember(
+                        current_text,
+                        memory_type="semantic",
+                        scope="project",
+                        source_kind="human",
+                        trust=0.8,
+                    )
+
+                    receipt = store.inject(
+                        task,
+                        agent_id="codex",
+                        risk="low",
+                        scope="project",
+                        context_budget_tokens=approx_memory_tokens(target) + approx_memory_tokens(current),
+                        retrieval_config={"embedding": {"enabled": False}, "reranker": {"enabled": False}},
+                    )
+                    context = build_context(receipt)
+                    retrieval = receipt["retrieval"]
+
+                    self.assertEqual([memory["id"] for memory in context["memories"]], [target.id, current.id])
+                    self.assertEqual(context["budget_dropped"], [])
+                    self.assertEqual(retrieval["packing"]["injected_ids"], [target.id, current.id])
+                    self.assertEqual(retrieval["packing"]["budget_dropped"], [])
+                    self.assertEqual(retrieval["query_lookup"]["selected_search_basis"], "update-subject-core")
+                    self.assertEqual(retrieval["query_lookup"]["selected_search_query"], "deploy target")
+                    self.assertEqual(retrieval["query_lookup"]["update"]["matched_terms"], matched_terms)
+                    self.assertEqual(retrieval["query_lookup"]["update"]["direction_terms"], ["to"])
+                    self.assertFalse(retrieval["embedding"]["enabled"])
+                    self.assertFalse(retrieval["reranker"]["enabled"])
+                    self.assertTrue(retrieval["baseline_ranking"]["hybrid_semantic_signal_applied"])
+                    self.assertTrue(retrieval["hybrid"]["applied"])
+                    self.assertEqual(retrieval["hybrid"]["kept_lexical_candidate_ids"], [current.id])
+                    self.assertEqual(retrieval["hybrid"]["introduced_candidate_ids"], [target.id])
+                    self.assertEqual(retrieval["temporal"]["selected_ids"], [target.id, current.id])
 
     def test_build_context_preserves_provider_reranker_budget_drop_metadata(self):
         broad = self.store.remember(
@@ -4080,6 +10489,26 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(retrieval["temporal"]["selected_target_current_id"], current.id)
         self.assertEqual(retrieval["temporal"]["selected_target_support_ids"], [support.id])
         self.assertTrue(retrieval["temporal"]["fusion"]["applied"])
+        self.assertEqual(context["temporal"]["history_ordering"], retrieval["temporal"]["history_ordering"])
+        self.assertEqual(
+            retrieval["temporal"]["history_ordering"],
+            {
+                "applied": True,
+                "pass_through": False,
+                "basis": "target_history_support_selection_rank",
+                "source": "temporal_target_history_support_selection",
+                "reason": "history-target-query-terms",
+                "selected_history_rankings": [
+                    {"memory_id": support.id, "rank": 1},
+                    {"memory_id": current.id, "rank": 2},
+                ],
+                "considered_history_rankings": [
+                    {"memory_id": support.id, "rank": 1, "selected": True},
+                    {"memory_id": current.id, "rank": 2, "selected": True},
+                    {"memory_id": generic_anchor.id, "rank": 3, "selected": False},
+                ],
+            },
+        )
         self.assertEqual(
             retrieval["baseline_ranking"]["temporal_fusion_signal"],
             "temporal_support_rrf_score_v1",
@@ -4089,12 +10518,211 @@ class RunnerTest(unittest.TestCase):
             "target-history-current-anchor-not-selected",
         )
         self.assertEqual(retrieval["temporal"]["selection_exclusions"][0]["memory_id"], generic_anchor.id)
+        self.assertEqual(
+            context["temporal"]["selection_exclusions"],
+            retrieval["temporal"]["selection_exclusions"],
+        )
         candidate_by_id = {candidate["memory_id"]: candidate for candidate in retrieval["candidates"]}
         self.assertEqual([candidate["memory_id"] for candidate in retrieval["candidates"]], [support.id, current.id, generic_anchor.id])
         self.assertEqual(candidate_by_id[support.id]["temporal_fusion_rank"], 1)
         self.assertEqual(
             candidate_by_id[generic_anchor.id]["temporal_selection_exclusion"]["detail"],
             "explicit-target-history-support-pair-selected",
+        )
+
+    def test_before_target_history_context_preserves_support_vs_generic_selection_exclusion_roles(self):
+        support_one = self.store.remember(
+            "Blue Finch shipped on Staging before the cutover.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.4,
+        )
+        support_two = self.store.remember(
+            "Blue Finch was routed through the staging deploy target before the migration.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.5,
+        )
+        current = self.store.remember(
+            "Blue Finch deploy target changed to Production.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.6,
+        )
+        generic_anchor = self.store.remember(
+            "Blue Finch changed after freeze.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.99,
+            authority="high",
+        )
+        context_path = self.tmp_path / "before-target-history-multi-support-context.json"
+
+        receipt = run_with_memory(
+            self.store,
+            ["python3", "-c", "import os, pathlib; assert pathlib.Path(os.environ['ZERKER_MEMORY_CONTEXT']).exists()"],
+            task="What did Blue Finch deploy to before it moved to Production?",
+            agent_id="codex",
+            risk="low",
+            scope="project",
+            context_path=context_path,
+        )
+
+        self.assertEqual(receipt["exit_code"], 0)
+        context = json.loads(context_path.read_text())
+        retrieval = receipt["memory_receipt"]["retrieval"]
+        temporal = retrieval["temporal"]
+        self.assertEqual(temporal["selection_strategy"], "target_history_support_preferred_v1")
+        self.assertEqual(context["temporal"]["selection_exclusions"], temporal["selection_exclusions"])
+
+        selected_support_id = temporal["selected_target_support_ids"][0]
+        excluded_support_id = support_one.id if selected_support_id == support_two.id else support_two.id
+        exclusions_by_id = {
+            item["memory_id"]: item
+            for item in context["temporal"]["selection_exclusions"]
+        }
+
+        self.assertEqual(exclusions_by_id[excluded_support_id]["candidate_role"], "history-support")
+        self.assertEqual(
+            exclusions_by_id[excluded_support_id]["reason"],
+            "target-history-support-candidate-not-selected",
+        )
+        self.assertEqual(exclusions_by_id[generic_anchor.id]["candidate_role"], "generic-current")
+        self.assertEqual(
+            exclusions_by_id[generic_anchor.id]["reason"],
+            "target-history-current-anchor-not-selected",
+        )
+        self.assertEqual(exclusions_by_id[generic_anchor.id]["selected_target_current_id"], current.id)
+
+    def test_before_target_history_context_budget_drop_records_blocked_selected_pair_metadata(self):
+        support = self.store.remember(
+            "Blue Finch shipped on Staging before the cutover. " + ("detail " * 80),
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.4,
+        )
+        current = self.store.remember(
+            "Blue Finch deploy target changed to Production. " + ("state " * 80),
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.6,
+        )
+        generic_anchor = self.store.remember(
+            "Blue Finch changed after freeze.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.99,
+            authority="high",
+        )
+
+        receipt = self.store.inject(
+            "What did Blue Finch deploy to before it moved to Production?",
+            agent_id="codex",
+            risk="low",
+            scope="project",
+            context_budget_tokens=approx_memory_tokens(support) + approx_memory_tokens(current) - 1,
+        )
+
+        context = build_context(receipt)
+        retrieval = receipt["retrieval"]
+        self.assertEqual([memory["id"] for memory in context["memories"]], [support.id])
+        self.assertCountEqual(receipt["retrieved_memory_ids"], [support.id, current.id, generic_anchor.id])
+        self.assertEqual(receipt["injected_memory_ids"], [support.id])
+        self.assertEqual(retrieval["packing"]["reservation"]["strategy"], "target_history_support_chain_v1")
+        self.assertEqual(retrieval["packing"]["reservation"]["blocked_reason"], "reservation-exceeds-budget")
+        self.assertEqual(
+            retrieval["packing"]["budget_dropped"][0]["reservation_exclusion_reason"],
+            "target-history-support-pair-blocked",
+        )
+        self.assertEqual(
+            retrieval["packing"]["budget_dropped"][0]["reservation_exclusion"],
+            {
+                "reason": "target-history-support-pair-blocked",
+                "detail": "selected-target-support-current-pair-exceeds-budget",
+                "blocked_reason": "reservation-exceeds-budget",
+                "blocked_pair_member_role": "target-current",
+                "selected_target_current_id": current.id,
+                "selected_target_support_ids": [support.id],
+                "selected_pair_ids": [support.id, current.id],
+            },
+        )
+        self.assertEqual(
+            context["budget_dropped"][0]["reservation_exclusion_reason"],
+            "target-history-support-pair-blocked",
+        )
+        self.assertEqual(
+            context["budget_dropped"][0]["reservation_exclusion"]["selected_pair_ids"],
+            [support.id, current.id],
+        )
+
+    def test_before_target_history_context_exact_pair_budget_keeps_generic_decoy_out_of_packing(self):
+        support = self.store.remember(
+            "Blue Finch shipped on Staging before the cutover.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.4,
+        )
+        current = self.store.remember(
+            "Blue Finch deploy target changed to Production.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.6,
+        )
+        generic_anchor = self.store.remember(
+            "Blue Finch changed after freeze. " + ("note " * 80),
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.99,
+            authority="high",
+        )
+
+        receipt = self.store.inject(
+            "What did Blue Finch deploy to before it moved to Production?",
+            agent_id="codex",
+            risk="low",
+            scope="project",
+            context_budget_tokens=approx_memory_tokens(support) + approx_memory_tokens(current),
+        )
+
+        context = build_context(receipt)
+        retrieval = receipt["retrieval"]
+        self.assertEqual([memory["id"] for memory in context["memories"]], [support.id, current.id])
+        self.assertEqual(context["budget_dropped"], [])
+        self.assertEqual(
+            retrieval["temporal"]["selection_exclusions"],
+            [
+                {
+                    "memory_id": generic_anchor.id,
+                    "reason": "target-history-current-anchor-not-selected",
+                    "detail": "explicit-target-history-support-pair-selected",
+                    "selection_strategy": "target_history_support_preferred_v1",
+                    "candidate_role": "generic-current",
+                    "selected_target_current_id": current.id,
+                    "selected_target_support_ids": [support.id],
+                    "selected_target_pair_ids": [support.id, current.id],
+                }
+            ],
+        )
+        self.assertEqual(context["temporal"]["selection_exclusions"], retrieval["temporal"]["selection_exclusions"])
+        self.assertEqual(retrieval["packing"]["reservation"]["strategy"], "target_history_support_chain_v1")
+        self.assertEqual(retrieval["packing"]["reservation"]["applied_ids"], [support.id, current.id])
+        self.assertEqual(
+            [item["memory_id"] for item in retrieval["packing"]["candidate_priorities"]],
+            [support.id, current.id],
+        )
+        self.assertNotIn(
+            generic_anchor.id,
+            {item["memory_id"] for item in retrieval["packing"]["candidate_priorities"]},
         )
 
     def test_before_target_history_context_prefers_explicit_current_target_before_generic_anchor(self):
@@ -4202,6 +10830,73 @@ class RunnerTest(unittest.TestCase):
                 {"memory_id": decoy.id, "rank": 2, "selected": False},
             ],
         )
+
+    def test_build_context_current_deployment_approval_now_prefers_direct_fact_over_update_anchor(self):
+        stale = self.store.remember(
+            "Deployment approver was Alex.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.7,
+        )
+        update_current = self.store.remember(
+            "Deployment approver changed to Priya.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.8,
+        )
+        current = self.store.remember(
+            "Deployment approver is Priya.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.95,
+        )
+
+        receipt = self.store.inject(
+            "Who is on point for deployment approvals now?",
+            agent_id="codex",
+            risk="low",
+            scope="project",
+        )
+
+        context = build_context(receipt)
+        temporal = receipt["retrieval"]["temporal"]
+        self.assertEqual([memory["id"] for memory in context["memories"]], [current.id])
+        self.assertCountEqual(receipt["retrieved_memory_ids"], [stale.id, update_current.id, current.id])
+        self.assertEqual(receipt["injected_memory_ids"], [current.id])
+        self.assertEqual(temporal["selection_strategy"], "current_only_v1")
+        self.assertEqual(temporal["selection_reason"], "current-query-terms")
+        self.assertEqual(
+            temporal["selection_exclusions"],
+            [
+                {
+                    "memory_id": update_current.id,
+                    "reason": "explicit-update-anchor-not-selected",
+                    "detail": "direct-current-restatement-selected",
+                    "selection_strategy": "current_only_v1",
+                    "chosen_current_id": current.id,
+                    "matching_current_value_ids": [current.id],
+                    "update_current_value": "priya",
+                    "update_pattern": "changed_to",
+                }
+            ],
+        )
+        self.assertEqual(
+            temporal["conflict_sets"][0]["stale_ids"],
+            [update_current.id, stale.id],
+        )
+        self.assertEqual(
+            temporal["conflict_sets"][0]["resolution_strategy"],
+            "explicit_update_current_value_restatement_prefers_direct_fact_v1",
+        )
+        candidate_by_id = {candidate["memory_id"]: candidate for candidate in receipt["retrieval"]["candidates"]}
+        self.assertEqual(
+            candidate_by_id[update_current.id]["temporal_selection_exclusion_reason"],
+            "explicit-update-anchor-not-selected",
+        )
+        self.assertIsNone(candidate_by_id[stale.id]["temporal_selection_exclusion"])
 
     def test_original_history_question_context_prefers_earliest_state_but_keeps_current_visible(self):
         first = self.store.remember(
@@ -4479,6 +11174,81 @@ class RunnerTest(unittest.TestCase):
         )
         self.assertEqual(retrieval["packing"]["budget_dropped"][0]["memory_id"], generic_anchor.id)
 
+    def test_build_context_original_history_budget_records_reserved_anchor_pair_exclusion_reason(self):
+        first = self.store.remember(
+            "Deploy target is Heroku.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.3,
+            authority="low",
+        )
+        second = self.store.remember(
+            "Deploy target changed to Render.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.95,
+            authority="high",
+        )
+        third = self.store.remember(
+            "Deploy target changed to Production.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.8,
+            authority="medium",
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z", first.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-02-01T00:00:00Z", "2024-02-01T00:00:00Z", second.id),
+        )
+        self.store.conn.execute(
+            "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+            ("2024-03-01T00:00:00Z", "2024-03-01T00:00:00Z", third.id),
+        )
+        self.store.conn.commit()
+        budget = approx_memory_tokens(first) + approx_memory_tokens(third)
+
+        receipt = self.store.inject(
+            "what was the original deploy target",
+            agent_id="codex",
+            risk="low",
+            scope="project",
+            context_budget_tokens=budget,
+        )
+
+        context = build_context(receipt)
+        self.assertEqual([memory["id"] for memory in context["memories"]], [first.id, third.id])
+        retrieval = receipt["retrieval"]
+        self.assertEqual(retrieval["packing"]["reservation"]["strategy"], "earliest_history_anchor_pair_v1")
+        self.assertEqual(
+            retrieval["packing"]["budget_dropped"][0]["reservation_exclusion_reason"],
+            "earliest-history-anchor-pair-reserved",
+        )
+        self.assertEqual(
+            retrieval["packing"]["budget_dropped"][0]["reservation_exclusion"],
+            {
+                "reason": "earliest-history-anchor-pair-reserved",
+                "detail": "selected-earliest-current-anchor-pair-kept",
+                "selected_stale_id": first.id,
+                "selected_current_id": third.id,
+                "selected_pair_ids": [first.id, third.id],
+            },
+        )
+        self.assertEqual(
+            context["budget_dropped"][0]["reservation_exclusion_reason"],
+            "earliest-history-anchor-pair-reserved",
+        )
+        self.assertEqual(
+            context["budget_dropped"][0]["reservation_exclusion"]["selected_pair_ids"],
+            [first.id, third.id],
+        )
+
     def test_recent_history_relation_context_prefers_plain_current_relation_before_generic_anchor(self):
         stale = self.store.remember(
             "API gateway points to staging.",
@@ -4654,6 +11424,21 @@ class RunnerTest(unittest.TestCase):
             [second.id, current.id, generic_anchor.id],
         )
         self.assertEqual(retrieval["packing"]["budget_dropped"][0]["memory_id"], first.id)
+        self.assertEqual(
+            retrieval["packing"]["budget_dropped"][0]["reservation_exclusion_reason"],
+            "history-support-chain-reserved",
+        )
+        self.assertEqual(
+            context["budget_dropped"][0]["reservation_exclusion"],
+            {
+                "reason": "history-support-chain-reserved",
+                "detail": "selected-stale-current-support-chain-kept",
+                "selected_stale_id": second.id,
+                "selected_current_id": current.id,
+                "selected_support_ids": [generic_anchor.id],
+                "selected_chain_ids": [second.id, current.id, generic_anchor.id],
+            },
+        )
 
     def test_recent_history_question_context_orders_latest_superseded_before_older_stale_states(self):
         first = self.store.remember(

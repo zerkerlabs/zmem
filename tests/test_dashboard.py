@@ -1,10 +1,13 @@
+import io
 import json
 import os
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
+from zerker_memory.cli import create_handoff_package, main, restore_snapshot_file
 from zerker_memory.dashboard import (
     DashboardServer,
     INDEX_HTML,
@@ -37,6 +40,11 @@ class DashboardTest(unittest.TestCase):
         self.assertIn("Benchmark Panel", INDEX_HTML)
         self.assertIn("Proven Zone", INDEX_HTML)
         self.assertIn("Asserted Zone", INDEX_HTML)
+        self.assertIn("continuityAnchor.restore_receipt_id", INDEX_HTML)
+        self.assertIn("continuityAnchor.continuity_sidecar_ok", INDEX_HTML)
+        self.assertIn("function restoreLineageText(lineage)", INDEX_HTML)
+        self.assertIn("basis ${restoreLineage.basis}", INDEX_HTML)
+        self.assertIn("receipt at ${restoreLineage.source_receipt_created_at}", INDEX_HTML)
         self.assertIn("Treeship boundary framing", INDEX_HTML)
         self.assertIn("Agent MCP And Benchmarks", INDEX_HTML)
         self.assertIn("renderMemorySpotlight", INDEX_HTML)
@@ -77,9 +85,34 @@ class DashboardTest(unittest.TestCase):
         self.assertIn("tool ${tool}", INDEX_HTML)
         self.assertIn("repo ${repo}", INDEX_HTML)
         self.assertIn("workspace ${workspace}", INDEX_HTML)
+        self.assertIn("origin ${originSummary}", INDEX_HTML)
+        self.assertIn("identity ${key} · via ${resolutionMethod}", INDEX_HTML)
+        self.assertIn("cross session ${identityResolution.cross_session ? 'yes' : 'no'}", INDEX_HTML)
+        self.assertIn("${prefix} ${actionId} · agent ${agent} · risk ${risk} · receipt ${receiptState} · task ${taskSummary}", INDEX_HTML)
+        self.assertIn("source URIs ${sourceUriPreview}", INDEX_HTML)
         self.assertIn("session scheme ${sessionScheme}", INDEX_HTML)
         self.assertIn("source scheme ${sourceScheme}", INDEX_HTML)
         self.assertIn("attestation ${proofLineage.treeship_attestation_status || 'none'}", INDEX_HTML)
+        self.assertIn("system ${proofLineage.treeship_system || 'none'}", INDEX_HTML)
+        self.assertIn("subject ${proofLineage.treeship_subject_key || 'none'}", INDEX_HTML)
+        self.assertIn("signed at ${proofLineage.treeship_signed_at}", INDEX_HTML)
+        self.assertIn("payload digest ${shortHash(proofLineage.treeship_payload_digest)}", INDEX_HTML)
+        self.assertIn("event hash ${shortHash(proofLineage.event_hash)}", INDEX_HTML)
+        self.assertIn("receipt hash ${shortHash(proofLineage.receipt_hash)}", INDEX_HTML)
+        self.assertIn("workspace continuity ${continuityAnchor.kind}", INDEX_HTML)
+        self.assertIn("continuityAnchor.continuity_error", INDEX_HTML)
+        self.assertIn("imported restore ${importedOrigin.restore_receipt_id}", INDEX_HTML)
+        self.assertIn("const importedOrigin = importedOriginText(claim.imported_origin);", INDEX_HTML)
+        self.assertIn("tie fields ${tieFields.join(', ') || 'none'}", INDEX_HTML)
+        self.assertIn("ignored tie breakers ${ignoredTieBreakers.join(', ') || 'none'}", INDEX_HTML)
+        self.assertIn("function resolutionTraceText(preview)", INDEX_HTML)
+        self.assertIn("resolution trace ${step.summary || `${step.field || 'field'} ${step.outcome || 'preview'}`}", INDEX_HTML)
+        self.assertIn("function decisiveClaimText(preview)", INDEX_HTML)
+        self.assertIn("decision source ${decisiveClaim.summary || 'read-only merge preview'}", INDEX_HTML)
+        self.assertIn("function losingClaimContrastText(preview)", INDEX_HTML)
+        self.assertIn("decision contrast ${losingContrast.summary || 'read-only merge preview'}", INDEX_HTML)
+        self.assertIn("function losingClaimParentActionText(preview)", INDEX_HTML)
+        self.assertIn("losing action ${losingAction.summary || 'read-only merge preview'}", INDEX_HTML)
 
     def test_build_workspace_sources_state_is_dashboard_ready(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -89,6 +122,18 @@ class DashboardTest(unittest.TestCase):
             root.mkdir()
             registered = register_workspace(name="Project", root=root, registry_path=registry_path)
             store = MemoryStore(root / ".zerker" / "memory.sqlite")
+            first_action = store.inject(
+                "capture first release-notes owner claim",
+                agent_id="codex",
+                risk="medium",
+                scope="project",
+            )
+            second_action = store.inject(
+                "capture second release-notes owner claim",
+                agent_id="openclaw",
+                risk="high",
+                scope="project",
+            )
             first = store.remember(
                 "Release notes owner is Maya",
                 memory_type="semantic",
@@ -98,6 +143,7 @@ class DashboardTest(unittest.TestCase):
                 session_id="chat://codex/session-5",
                 source_uri="conversation://codex/session-5/message-2",
                 status="active",
+                parent_action_id=first_action["action_id"],
             )
             second = store.remember(
                 "Release notes owner is Iris",
@@ -108,6 +154,7 @@ class DashboardTest(unittest.TestCase):
                 session_id="chat://openclaw/session-8",
                 source_uri="conversation://openclaw/session-8/message-4",
                 status="active",
+                parent_action_id=second_action["action_id"],
             )
             store.conn.execute(
                 "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
@@ -118,13 +165,15 @@ class DashboardTest(unittest.TestCase):
                 ("2024-02-01T00:00:00Z", "2024-02-01T00:00:00Z", second.id),
             )
             row = store.conn.execute(
-                "SELECT receipt_id, treeship_statement_json FROM memory_write_receipts WHERE memory_id = ?",
+                "SELECT receipt_id, event_hash, receipt_hash, treeship_statement_json FROM memory_write_receipts WHERE memory_id = ?",
                 (second.id,),
             ).fetchone()
             treeship_statement = json.loads(row["treeship_statement_json"])
             treeship_statement["attestation"] = {
                 "schema": "zerker.memory.treeship_attestation.v1",
                 "status": "signed",
+                "system": "system://zmem",
+                "subject": "ts-dashboard-subject-123",
                 "payload_digest": "sha256:abc123",
                 "artifact_id": "ts_dashboard_123",
                 "signed_at": "2026-06-25T01:10:11Z",
@@ -134,15 +183,31 @@ class DashboardTest(unittest.TestCase):
                 (json.dumps(treeship_statement, sort_keys=True), row["receipt_id"]),
             )
             store.conn.commit()
+            handoff = create_handoff_package(
+                store,
+                providers_path=root / ".zerker" / "providers.json",
+                out_dir=root / ".zerker" / "handoff",
+                action_id=None,
+            )
+            snapshot_payload = json.loads(Path(handoff["snapshot_path"]).read_text(encoding="utf-8"))
 
             with patch.dict(os.environ, {"ZMEM_WORKSPACE_REGISTRY": str(registry_path)}):
                 state = build_workspace_sources_state(store)
 
         self.assertEqual(state["schema"], "zerker.workspace_sources.v1")
         self.assertEqual(state["workspace_id"], registered["workspace"]["id"])
+        self.assertEqual(state["workspace_continuity"]["kind"], "local_handoff_manifest")
+        self.assertEqual(state["workspace_continuity"]["action_id"], handoff["action_id"])
+        self.assertEqual(state["workspace_continuity"]["snapshot_hash"], snapshot_payload["snapshot_hash"])
+        self.assertEqual(state["workspace_continuity"]["snapshot_merkle_root"], snapshot_payload["merkle_root"])
         self.assertEqual(state["connected_agents"][0]["agent_id"], "codex")
         self.assertEqual(state["connected_agents"][0]["tool"], "codex")
         self.assertEqual(state["connected_agents"][0]["repo_name"], "project")
+        self.assertEqual(
+            state["connected_agents"][0]["identity_anchor"]["key"],
+            f"{registered['workspace']['id']}::codex",
+        )
+        self.assertFalse(state["connected_agents"][0]["identity_resolution"]["cross_session"])
         self.assertEqual({source["source_uri"] for source in state["sources"]}, {
             "conversation://codex/session-5/message-2",
             "conversation://openclaw/session-8/message-4",
@@ -150,21 +215,455 @@ class DashboardTest(unittest.TestCase):
         self.assertEqual({source["trust_status"] for source in state["sources"]}, {"active"})
         self.assertEqual({source["source_identity"]["repo_name"] for source in state["sources"]}, {"project"})
         self.assertEqual({source["source_identity"]["source_scheme"] for source in state["sources"]}, {"conversation"})
+        self.assertEqual({source["source_identity"]["origin_kind"] for source in state["sources"]}, {"chat_message"})
+        self.assertEqual(
+            {source["source_identity"]["origin_summary"] for source in state["sources"]},
+            {
+                "chat_message:codex/session-5/message-2",
+                "chat_message:openclaw/session-8/message-4",
+            },
+        )
+        self.assertEqual(
+            {source["identity_anchor"]["key"] for source in state["sources"]},
+            {
+                f"{registered['workspace']['id']}::codex",
+                f"{registered['workspace']['id']}::openclaw",
+            },
+        )
+        self.assertEqual(
+            {source["identity_resolution"]["key"] for source in state["sources"]},
+            {
+                f"{registered['workspace']['id']}::codex",
+                f"{registered['workspace']['id']}::openclaw",
+            },
+        )
+        self.assertFalse(state["sources"][0]["identity_resolution"]["cross_session"])
+        self.assertEqual(state["connected_agents"][0]["latest_origin_summary"], "chat_message:codex/session-5/message-2")
+        self.assertEqual(state["connected_agents"][0]["latest_parent_action"]["action_id"], first_action["action_id"])
+        self.assertEqual(
+            state["connected_agents"][0]["source_uri_preview"],
+            "conversation://codex/session-5/message-2",
+        )
+        self.assertEqual(state["connected_agents"][1]["latest_parent_action"]["action_id"], second_action["action_id"])
+        self.assertEqual(state["connected_agents"][1]["latest_parent_action"]["risk"], "high")
+        self.assertEqual(
+            state["connected_agents"][1]["source_uri_preview"],
+            "conversation://openclaw/session-8/message-4",
+        )
+        self.assertEqual(
+            {source["parent_action"]["action_id"] for source in state["sources"]},
+            {first_action["action_id"], second_action["action_id"]},
+        )
         self.assertTrue(all("merkle_root" in source["proof_lineage"] for source in state["sources"]))
         self.assertIn("treeship_artifact_id", state["connected_agents"][1]["latest_proof_lineage"])
         self.assertEqual(state["connected_agents"][1]["latest_proof_lineage"]["treeship_artifact_id"], "ts_dashboard_123")
         self.assertEqual(state["connected_agents"][1]["latest_proof_lineage"]["treeship_attestation_status"], "signed")
+        self.assertEqual(state["connected_agents"][1]["latest_proof_lineage"]["treeship_system"], "system://zmem")
+        self.assertEqual(state["connected_agents"][1]["latest_proof_lineage"]["treeship_subject_key"], "ts-dashboard-subject-123")
+        self.assertEqual(state["connected_agents"][1]["latest_proof_lineage"]["treeship_subject_type"], "memory_write")
+        self.assertEqual(state["connected_agents"][1]["latest_proof_lineage"]["treeship_signed_at"], "2026-06-25T01:10:11Z")
+        self.assertEqual(state["connected_agents"][1]["latest_proof_lineage"]["treeship_payload_digest"], "sha256:abc123")
+        self.assertEqual(state["connected_agents"][1]["latest_proof_lineage"]["event_hash"], row["event_hash"])
+        self.assertEqual(state["connected_agents"][1]["latest_proof_lineage"]["receipt_hash"], row["receipt_hash"])
         self.assertEqual(state["claim_conflict_count"], 1)
         self.assertEqual(state["claim_conflicts"][0]["merge_preview"]["chosen_memory_id"], second.id)
         self.assertEqual(state["claim_conflicts"][0]["merge_preview"]["chosen_value"], "iris")
+        self.assertTrue(state["claim_conflicts"][0]["cross_session"])
         claims_by_id = {claim["memory_id"]: claim for claim in state["claim_conflicts"][0]["claims"]}
         self.assertEqual(claims_by_id[second.id]["proof_lineage"]["treeship_artifact_id"], "ts_dashboard_123")
         self.assertEqual(claims_by_id[second.id]["proof_lineage"]["treeship_attestation_status"], "signed")
+        self.assertEqual(claims_by_id[second.id]["proof_lineage"]["treeship_system"], "system://zmem")
+        self.assertEqual(claims_by_id[second.id]["proof_lineage"]["treeship_subject_key"], "ts-dashboard-subject-123")
+        self.assertEqual(claims_by_id[second.id]["proof_lineage"]["treeship_subject_type"], "memory_write")
+        self.assertEqual(claims_by_id[second.id]["proof_lineage"]["treeship_signed_at"], "2026-06-25T01:10:11Z")
+        self.assertEqual(claims_by_id[second.id]["proof_lineage"]["treeship_payload_digest"], "sha256:abc123")
+        self.assertEqual(claims_by_id[second.id]["proof_lineage"]["event_hash"], row["event_hash"])
+        self.assertEqual(claims_by_id[second.id]["proof_lineage"]["receipt_hash"], row["receipt_hash"])
         self.assertEqual(claims_by_id[second.id]["source_identity"]["session_scheme"], "chat")
         self.assertEqual(claims_by_id[second.id]["source_identity"]["source_scheme"], "conversation")
+        self.assertEqual(claims_by_id[first.id]["parent_action"]["action_id"], first_action["action_id"])
+        self.assertEqual(claims_by_id[second.id]["parent_action"]["action_id"], second_action["action_id"])
+        self.assertEqual(claims_by_id[second.id]["parent_action"]["task_summary"], "capture second release-notes owner claim")
+        self.assertEqual(
+            claims_by_id[second.id]["identity_anchor"]["key"],
+            f"{registered['workspace']['id']}::openclaw",
+        )
+        self.assertEqual(
+            claims_by_id[second.id]["identity_resolution"]["key"],
+            f"{registered['workspace']['id']}::openclaw",
+        )
+        self.assertFalse(claims_by_id[second.id]["identity_resolution"]["cross_session"])
         self.assertEqual(
             state["claim_conflicts"][0]["merge_preview"]["resolution_basis"]["summary"],
             "freshest updated_at",
+        )
+        self.assertEqual(
+            state["claim_conflicts"][0]["merge_preview"]["decisive_claim_lineage"]["memory_id"],
+            second.id,
+        )
+        self.assertEqual(
+            state["claim_conflicts"][0]["merge_preview"]["decisive_claim_lineage"]["summary"],
+            "freshest updated_at came from openclaw @ chat://openclaw/session-8",
+        )
+        self.assertEqual(
+            state["claim_conflicts"][0]["merge_preview"]["losing_claim_contrast"]["summary"],
+            "freshest updated_at kept openclaw @ chat://openclaw/session-8 (2024-02-01T00:00:00Z) over codex @ chat://codex/session-5 (2024-01-01T00:00:00Z)",
+        )
+        self.assertEqual(
+            state["claim_conflicts"][0]["merge_preview"]["losing_claim_parent_action"]["memory_id"],
+            first.id,
+        )
+        self.assertEqual(
+            state["claim_conflicts"][0]["merge_preview"]["losing_claim_parent_action"]["parent_action"]["action_id"],
+            first_action["action_id"],
+        )
+        self.assertEqual(
+            state["claim_conflicts"][0]["merge_preview"]["losing_claim_parent_action"]["parent_action"]["risk"],
+            "medium",
+        )
+        self.assertEqual(
+            state["claim_conflicts"][0]["merge_preview"]["losing_claim_parent_action"]["parent_action"]["task_summary"],
+            "capture first release-notes owner claim",
+        )
+        self.assertEqual(
+            state["claim_conflicts"][0]["merge_preview"]["losing_claim_parent_action"]["summary"],
+            f"losing claim came from {first_action['action_id']} by codex @ chat://codex/session-5",
+        )
+        self.assertEqual(
+            [step["summary"] for step in state["claim_conflicts"][0]["merge_preview"]["resolution_trace"]],
+            [
+                "authority kept 2 claims tied at low",
+                "trust kept 2 claims tied at 0.50",
+                "updated_at selected 2024-02-01T00:00:00Z",
+            ],
+        )
+
+    def test_build_workspace_sources_state_adds_bounded_connected_agent_source_uri_preview(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            registry_path = tmp_path / "workspaces.json"
+            root = tmp_path / "project"
+            root.mkdir()
+            register_workspace(name="Project", root=root, registry_path=registry_path)
+            store = MemoryStore(root / ".zerker" / "memory.sqlite")
+            store.remember(
+                "Release owner is Alice",
+                memory_type="semantic",
+                scope="project",
+                source_kind="agent",
+                actor_uri="agent://codex/chat-39",
+                session_id="chat://codex/session-39",
+                source_uri="conversation://codex/session-39/message-5",
+            )
+            store.remember(
+                "Release runbook is in docs/release.md",
+                memory_type="semantic",
+                scope="project",
+                source_kind="agent",
+                actor_uri="agent://codex/chat-17",
+                session_id="chat://codex/session-17",
+                source_uri="conversation://codex/session-17/message-3",
+            )
+            store.remember(
+                "Release checklist is in docs/checklist.md",
+                memory_type="semantic",
+                scope="project",
+                source_kind="agent",
+                actor_uri="agent://codex/chat-44",
+                session_id="chat://codex/session-44",
+                source_uri="conversation://codex/session-44/message-6",
+            )
+            store.remember(
+                "Release note draft is in docs/notes.md",
+                memory_type="semantic",
+                scope="project",
+                source_kind="agent",
+                actor_uri="agent://codex/chat-22",
+                session_id="chat://codex/session-22",
+                source_uri="conversation://codex/session-22/message-4",
+            )
+
+            with patch.dict(os.environ, {"ZMEM_WORKSPACE_REGISTRY": str(registry_path)}):
+                state = build_workspace_sources_state(store)
+
+        self.assertEqual(state["connected_agent_count"], 1)
+        self.assertEqual(
+            state["connected_agents"][0]["source_uri_preview"],
+            (
+                "conversation://codex/session-17/message-3,"
+                "conversation://codex/session-22/message-4,"
+                "conversation://codex/session-39/message-5,+1 more"
+            ),
+        )
+
+    def test_build_workspace_sources_state_surfaces_local_restore_continuity_anchor(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            registry_path = tmp_path / "workspaces.json"
+            root = tmp_path / "project"
+            root.mkdir()
+            register_workspace(name="Project", root=root, registry_path=registry_path)
+            source_db_path = root / ".zerker" / "source.sqlite"
+            source_store = MemoryStore(source_db_path)
+            source_store.remember(
+                "Imported workspace remembers the release checklist",
+                memory_type="semantic",
+                scope="project",
+                source_kind="agent",
+                actor_uri="agent://codex/import-1",
+                session_id="chat://codex/import-1",
+                source_uri="conversation://codex/import-1/message-1",
+            )
+            snapshot_path = root / ".zerker" / "imports" / "snapshot.json"
+            with redirect_stdout(io.StringIO()):
+                export_exit_code = main(["--db", str(source_db_path), "snapshot", "--out", str(snapshot_path)])
+            self.assertEqual(export_exit_code, 0)
+            snapshot_payload = json.loads(snapshot_path.read_text(encoding="utf-8"))
+
+            restored_store = MemoryStore(root / ".zerker" / "imported.sqlite")
+            restore_snapshot_file(restored_store, snapshot_path=snapshot_path)
+
+            with patch.dict(os.environ, {"ZMEM_WORKSPACE_REGISTRY": str(registry_path)}):
+                state = build_workspace_sources_state(restored_store)
+
+        continuity = state["workspace_continuity"]
+        self.assertEqual(continuity["kind"], "local_snapshot_restore")
+        self.assertEqual(continuity["snapshot_hash"], snapshot_payload["snapshot_hash"])
+        self.assertEqual(continuity["snapshot_merkle_root"], snapshot_payload["merkle_root"])
+        self.assertEqual(continuity["snapshot_path"], str(snapshot_path.resolve()))
+        self.assertTrue(continuity["continuity_sidecar_ok"])
+        self.assertIn("snapshot.continuity.json", continuity["continuity_sidecar_path"])
+        self.assertEqual(continuity["restore_actor_uri"], "actor://snapshot_restore")
+        self.assertTrue(str(continuity["restore_receipt_id"]).startswith("lr_"))
+        self.assertEqual(state["connected_agents"][0]["agent_id"], "codex")
+        self.assertEqual(
+            state["connected_agents"][0]["latest_imported_origin"]["restore_receipt_id"],
+            continuity["restore_receipt_id"],
+        )
+        self.assertEqual(
+            state["sources"][0]["imported_origin"]["restore_receipt_hash"],
+            continuity["restore_receipt_hash"],
+        )
+        self.assertEqual(
+            state["sources"][0]["imported_origin"]["snapshot_hash"],
+            snapshot_payload["snapshot_hash"],
+        )
+
+    def test_build_workspace_sources_state_surfaces_imported_origin_on_claim_conflict_claims(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            registry_path = tmp_path / "workspaces.json"
+            root = tmp_path / "project"
+            root.mkdir()
+            register_workspace(name="Project", root=root, registry_path=registry_path)
+            source_db_path = root / ".zerker" / "source.sqlite"
+            source_store = MemoryStore(source_db_path)
+            first = source_store.remember(
+                "Incident owner is Alex",
+                memory_type="semantic",
+                scope="project",
+                source_kind="agent",
+                actor_uri="agent://codex/import-1",
+                session_id="chat://codex/import-1",
+                source_uri="conversation://codex/import-1/message-1",
+                status="active",
+            )
+            second = source_store.remember(
+                "Incident owner is Priya",
+                memory_type="semantic",
+                scope="project",
+                source_kind="agent",
+                actor_uri="agent://openclaw/import-2",
+                session_id="chat://openclaw/import-2",
+                source_uri="conversation://openclaw/import-2/message-2",
+                status="active",
+            )
+            source_store.conn.execute(
+                "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+                ("2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z", first.id),
+            )
+            source_store.conn.execute(
+                "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+                ("2024-02-01T00:00:00Z", "2024-02-01T00:00:00Z", second.id),
+            )
+            source_store.conn.commit()
+            snapshot_path = root / ".zerker" / "imports" / "snapshot.json"
+            with redirect_stdout(io.StringIO()):
+                export_exit_code = main(["--db", str(source_db_path), "snapshot", "--out", str(snapshot_path)])
+            self.assertEqual(export_exit_code, 0)
+            snapshot_payload = json.loads(snapshot_path.read_text(encoding="utf-8"))
+
+            restored_store = MemoryStore(root / ".zerker" / "imported.sqlite")
+            restore_snapshot_file(restored_store, snapshot_path=snapshot_path)
+
+            with patch.dict(os.environ, {"ZMEM_WORKSPACE_REGISTRY": str(registry_path)}):
+                state = build_workspace_sources_state(restored_store)
+
+        continuity = state["workspace_continuity"]
+        self.assertEqual(state["claim_conflict_count"], 1)
+        claims_by_id = {claim["memory_id"]: claim for claim in state["claim_conflicts"][0]["claims"]}
+        self.assertEqual(
+            claims_by_id[first.id]["imported_origin"]["restore_receipt_id"],
+            continuity["restore_receipt_id"],
+        )
+        self.assertEqual(
+            claims_by_id[second.id]["imported_origin"]["restore_receipt_hash"],
+            continuity["restore_receipt_hash"],
+        )
+        self.assertEqual(
+            claims_by_id[second.id]["imported_origin"]["snapshot_hash"],
+            snapshot_payload["snapshot_hash"],
+        )
+        self.assertTrue(claims_by_id[first.id]["imported_origin"]["continuity_sidecar_ok"])
+
+    def test_build_workspace_sources_state_distinguishes_post_restore_local_claims_from_imported_claims(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            registry_path = tmp_path / "workspaces.json"
+            root = tmp_path / "project"
+            root.mkdir()
+            register_workspace(name="Project", root=root, registry_path=registry_path)
+            source_db_path = root / ".zerker" / "source.sqlite"
+            source_store = MemoryStore(source_db_path)
+            imported = source_store.remember(
+                "Incident owner is Alex",
+                memory_type="semantic",
+                scope="project",
+                source_kind="agent",
+                actor_uri="agent://codex/import-1",
+                session_id="chat://codex/import-1",
+                source_uri="conversation://codex/import-1/message-1",
+                status="active",
+            )
+            snapshot_path = root / ".zerker" / "imports" / "snapshot.json"
+            with redirect_stdout(io.StringIO()):
+                export_exit_code = main(["--db", str(source_db_path), "snapshot", "--out", str(snapshot_path)])
+            self.assertEqual(export_exit_code, 0)
+
+            restored_store = MemoryStore(root / ".zerker" / "imported.sqlite")
+            restore_snapshot_file(restored_store, snapshot_path=snapshot_path)
+            local = restored_store.remember(
+                "Incident owner is Priya",
+                memory_type="semantic",
+                scope="project",
+                source_kind="agent",
+                actor_uri="agent://openclaw/local-1",
+                session_id="chat://openclaw/local-1",
+                source_uri="conversation://openclaw/local-1/message-1",
+                status="active",
+            )
+            restored_store.conn.execute(
+                "UPDATE memories SET created_at = ?, updated_at = ? WHERE id = ?",
+                ("2099-01-01T00:00:00Z", "2099-01-01T00:00:00Z", local.id),
+            )
+            restored_store.conn.execute(
+                "UPDATE memory_write_receipts SET created_at = ? WHERE memory_id = ?",
+                ("2099-01-01T00:00:00Z", local.id),
+            )
+            restored_store.conn.commit()
+
+            with patch.dict(os.environ, {"ZMEM_WORKSPACE_REGISTRY": str(registry_path)}):
+                state = build_workspace_sources_state(restored_store)
+
+        sources_by_id = {source["memory_id"]: source for source in state["sources"]}
+        claims_by_id = {claim["memory_id"]: claim for claim in state["claim_conflicts"][0]["claims"]}
+        agents_by_id = {agent["agent_id"]: agent for agent in state["connected_agents"]}
+        continuity = state["workspace_continuity"]
+
+        self.assertEqual(sources_by_id[imported.id]["restore_lineage"]["kind"], "imported_snapshot_write")
+        self.assertEqual(
+            sources_by_id[imported.id]["restore_lineage"]["basis"],
+            "receipt_created_at<=restore_created_at",
+        )
+        self.assertEqual(
+            sources_by_id[imported.id]["restore_lineage"]["restore_created_at"],
+            continuity["created_at"],
+        )
+        self.assertEqual(sources_by_id[local.id]["restore_lineage"]["kind"], "local_post_restore_write")
+        self.assertEqual(
+            sources_by_id[local.id]["restore_lineage"]["basis"],
+            "receipt_created_at>restore_created_at",
+        )
+        self.assertEqual(
+            sources_by_id[local.id]["restore_lineage"]["restore_created_at"],
+            continuity["created_at"],
+        )
+        self.assertEqual(
+            sources_by_id[local.id]["restore_lineage"]["source_receipt_created_at"],
+            "2099-01-01T00:00:00Z",
+        )
+        self.assertIn("imported_origin", sources_by_id[imported.id])
+        self.assertNotIn("imported_origin", sources_by_id[local.id])
+        self.assertEqual(claims_by_id[imported.id]["restore_lineage"]["kind"], "imported_snapshot_write")
+        self.assertEqual(claims_by_id[local.id]["restore_lineage"]["kind"], "local_post_restore_write")
+        self.assertIn("imported_origin", claims_by_id[imported.id])
+        self.assertNotIn("imported_origin", claims_by_id[local.id])
+        self.assertEqual(agents_by_id["codex"]["latest_restore_lineage"]["kind"], "imported_snapshot_write")
+        self.assertEqual(agents_by_id["openclaw"]["latest_restore_lineage"]["kind"], "local_post_restore_write")
+        self.assertIsNone(agents_by_id["openclaw"]["latest_imported_origin"])
+
+    def test_build_workspace_sources_state_surfaces_abstained_tie_details_for_dashboard(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            registry_path = tmp_path / "workspaces.json"
+            root = tmp_path / "project"
+            root.mkdir()
+            register_workspace(name="Project", root=root, registry_path=registry_path)
+            store = MemoryStore(root / ".zerker" / "memory.sqlite")
+            first = store.remember(
+                "Incident owner is Alex",
+                memory_type="semantic",
+                scope="project",
+                source_kind="agent",
+                actor_uri="agent://codex/chat-17",
+                session_id="chat://codex/session-17",
+                source_uri="conversation://codex/session-17/message-3",
+                status="active",
+                trust=0.95,
+                authority="medium",
+            )
+            second = store.remember(
+                "Incident owner is Priya",
+                memory_type="semantic",
+                scope="project",
+                source_kind="agent",
+                actor_uri="agent://openclaw/chat-22",
+                session_id="chat://openclaw/session-22",
+                source_uri="conversation://openclaw/session-22/message-9",
+                status="active",
+                trust=0.95,
+                authority="medium",
+            )
+            shared_timestamp = "2024-02-01T00:00:00Z"
+            store.conn.execute(
+                "UPDATE memories SET created_at = ?, updated_at = ? WHERE id IN (?, ?)",
+                (shared_timestamp, shared_timestamp, first.id, second.id),
+            )
+            store.conn.commit()
+
+            with patch.dict(os.environ, {"ZMEM_WORKSPACE_REGISTRY": str(registry_path)}):
+                state = build_workspace_sources_state(store)
+
+        self.assertEqual(state["claim_conflict_count"], 1)
+        preview = state["claim_conflicts"][0]["merge_preview"]
+        self.assertEqual(preview["resolution_outcome"], "abstained")
+        self.assertEqual(preview["chosen_memory_id"], None)
+        self.assertEqual(preview["decisive_claim_lineage"], None)
+        self.assertEqual(preview["losing_claim_parent_action"], None)
+        self.assertEqual(preview["tie_fields"], ["authority", "trust", "updated_at", "created_at"])
+        self.assertEqual(preview["ignored_tie_breakers"], ["retrieval_rank", "memory_id"])
+        self.assertEqual(
+            preview["resolution_basis"]["summary"],
+            "exact tie on authority, trust, updated_at, created_at",
+        )
+        self.assertEqual(
+            [step["summary"] for step in preview["resolution_trace"]],
+            [
+                "authority kept 2 claims tied at medium",
+                "trust kept 2 claims tied at 0.95",
+                "updated_at kept 2 claims tied at 2024-02-01T00:00:00Z",
+                "created_at kept 2 claims tied at 2024-02-01T00:00:00Z",
+            ],
         )
 
     def test_dashboard_server_is_threaded(self):

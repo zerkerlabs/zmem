@@ -15,15 +15,37 @@ zmem treeship publish <action-id> --dry-run --command-template "treeship prove {
 Schema: `com.zerker.memory.treeship.statement`
 
 The Treeship export is a portable statement derived from a verified receipt bundle, not just a raw receipt reshape.
+For lifecycle mutation receipts that already embed a Treeship statement,
+export helpers can also emit that embedded statement unchanged after
+recomputing the lifecycle `receipt_hash` and checking the embedded
+`source.receipt` linkage locally. That preserves actor/content/root
+lineage for session and restore mutations without requiring a live
+store or a local Treeship install, but restore statements still need
+the original snapshot artifact if an external verifier wants to
+re-check the `source_snapshot_verified` claim.
+For per-memory write receipts that already embed a Treeship statement,
+export helpers can also emit the embedded provenance or mutation
+statement after locally re-verifying the receipt hash, source event
+linkage, optional Treeship attestation metadata, and any signed prior
+receipt id/hash/root anchors already carried on the receipt. Export now
+normalizes `object.semantic_truth_guaranteed=false` when older mutation
+statements omitted it, but a standalone exported mutation receipt still
+proves only the current receipt's provenance/integrity plus its signed
+linkage hints. Full ordered-chain continuity still requires the prior
+receipt or a lineage/snapshot proof surface.
 
 Core fields:
 
 - `evidence.bundle_hash`: stable hash of the underlying receipt bundle.
 - `evidence.bundle_event_count`: number of supporting append-only events in the bundle proof.
 - `evidence.bundle_verified`: true only when the bundle proof recomputes to the receipt Merkle root.
+- `evidence.supporting_write_receipt_count` / `evidence.verified_supporting_write_receipt_count`: how many embedded supporting write receipts were carried and locally re-verified from the bundle payload.
+- `evidence.trusted_provenance_verified`: true only when every embedded supporting write receipt verifies locally.
+- `object.semantic_truth_guaranteed`: always false; the statement proves provenance/integrity, not semantic truth.
 - `source.bundle`: the embedded receipt bundle used to build the statement.
+- `source.supporting_provenance_receipts`: compact supporting provenance anchors with memory id, actor id, content digest, Merkle-root transition, and optional Treeship artifact id.
 
-Export fails when the bundle hash, Merkle proof, or receipt identity do not validate locally.
+Export fails when the bundle hash, Merkle proof, receipt identity, or embedded supporting provenance receipts do not validate locally.
 
 `zmem treeship publish` reuses that same verified statement export, then invokes a local Treeship CLI command template. `{statement}` expands to the exported JSON path and `{action_id}` expands to the governed action ID. If `{statement}` is omitted, Zerker appends the statement path as the final argument.
 

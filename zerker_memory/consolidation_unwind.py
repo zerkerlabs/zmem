@@ -14,6 +14,7 @@ from .consolidation import (
 
 CONSOLIDATION_UNWIND_PLAN_SCHEMA = "zerker.consolidation_unwind_plan.v1"
 CONSOLIDATION_RETRY_GUIDANCE_SCHEMA = "zerker.consolidation_retry_guidance.v1"
+CONSOLIDATION_RETRY_GROUP_REPORT_SCHEMA = "zerker.consolidation_retry_group_report.v1"
 
 
 def consolidation_unwind_plan(
@@ -184,6 +185,109 @@ def consolidation_retry_guidance(
     }
 
 
+def consolidation_retry_group_report(
+    job_ledger_path: Path,
+    summary_ledger_path: Path,
+    child_ids: list[str],
+) -> dict[str, Any]:
+    requested_child_ids = _unique_child_ids(child_ids)
+    guidance_reports = [
+        consolidation_retry_guidance(job_ledger_path, summary_ledger_path, child_id)
+        for child_id in requested_child_ids
+    ]
+    child_order = {child_id: index for index, child_id in enumerate(requested_child_ids)}
+    level_ranks = {level["id"]: level["rank"] for level in consolidation_levels()}
+
+    groups_by_summary_id: dict[str, dict[str, Any]] = {}
+    for guidance in guidance_reports:
+        child_id = guidance["child_id"]
+        for step in guidance["steps"]:
+            summary_id = step["summary_id"]
+            group = groups_by_summary_id.get(summary_id)
+            if group is None:
+                group = {
+                    "summary_id": summary_id,
+                    "summary_level": step["summary_level"],
+                    "job_id": step["job_id"],
+                    "audit_status": step["audit_status"],
+                    "child_ids": [],
+                    "child_kinds": [],
+                    "ready_child_ids": [],
+                    "blocked_child_ids": [],
+                    "direct_child_ids": [],
+                    "root_child_ids": [],
+                    "retry_actions": [],
+                    "blocked_by_summary_ids": [],
+                    "blocking_reasons": [],
+                    "non_blocking": step["non_blocking"],
+                    "reversible": step["reversible"],
+                }
+                groups_by_summary_id[summary_id] = group
+            _append_unique(group["child_ids"], child_id)
+            _append_unique(group["child_kinds"], guidance["child_kind"])
+            if step["retryable_now"]:
+                _append_unique(group["ready_child_ids"], child_id)
+            else:
+                _append_unique(group["blocked_child_ids"], child_id)
+            if step["is_direct_parent"]:
+                _append_unique(group["direct_child_ids"], child_id)
+            if step["is_root_summary"]:
+                _append_unique(group["root_child_ids"], child_id)
+            _append_unique(group["retry_actions"], step["retry_action"])
+            for dependency_id in step["blocked_by_summary_ids"]:
+                _append_unique(group["blocked_by_summary_ids"], dependency_id)
+            for reason in step["blocking_reasons"]:
+                _append_unique(group["blocking_reasons"], reason)
+
+    groups = sorted(
+        groups_by_summary_id.values(),
+        key=lambda group: (
+            level_ranks.get(group["summary_level"], 999),
+            group["summary_id"],
+        ),
+    )
+    ready_summary_ids: list[str] = []
+    blocked_summary_ids: list[str] = []
+    for group in groups:
+        group["child_ids"].sort(key=child_order.__getitem__)
+        group["ready_child_ids"].sort(key=child_order.__getitem__)
+        group["blocked_child_ids"].sort(key=child_order.__getitem__)
+        group["direct_child_ids"].sort(key=child_order.__getitem__)
+        group["root_child_ids"].sort(key=child_order.__getitem__)
+        group["shared_dependency_group"] = len(group["child_ids"]) > 1
+        group["dependency_group_status"] = (
+            "retryable-now" if len(group["ready_child_ids"]) == len(group["child_ids"]) else "blocked"
+        )
+        if group["dependency_group_status"] == "retryable-now":
+            ready_summary_ids.append(group["summary_id"])
+        else:
+            blocked_summary_ids.append(group["summary_id"])
+
+    return {
+        "schema": CONSOLIDATION_RETRY_GROUP_REPORT_SCHEMA,
+        "requested_child_ids": requested_child_ids,
+        "child_report_count": len(guidance_reports),
+        "impacted_summary_count": len(groups),
+        "shared_impacted_summary_count": sum(1 for group in groups if group["shared_dependency_group"]),
+        "ready_summary_ids": ready_summary_ids,
+        "blocked_summary_ids": blocked_summary_ids,
+        "child_reports": [
+            {
+                "child_id": guidance["child_id"],
+                "child_kind": guidance["child_kind"],
+                "child_retry_action": guidance["child_retry_action"],
+                "child_repair_required": guidance["child_repair_required"],
+                "impacted_summary_ids": list(guidance["impacted_summary_ids"]),
+                "ready_summary_ids": list(guidance["ready_summary_ids"]),
+                "blocked_summary_ids": list(guidance["blocked_summary_ids"]),
+                "blocked_child_summary_ids": list(guidance["blocked_child_summary_ids"]),
+            }
+            for guidance in guidance_reports
+        ],
+        "groups": groups,
+    }
+
+
 def _audit_records_by_summary_id(records: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     indexed: dict[str, dict[str, Any]] = {}
     for record in records:
@@ -273,3 +377,17 @@ def _missing_summary_retry_steps(
                 }
             )
     return steps
+
+
+def _unique_child_ids(child_ids: list[str]) -> list[str]:
+    normalized: list[str] = []
+    for child_id in child_ids:
+        if not isinstance(child_id, str) or not child_id:
+            raise ValueError("child_ids must contain non-empty strings")
+        _append_unique(normalized, child_id)
+    return normalized
+
+
+def _append_unique(items: list[str], value: str) -> None:
+    if value not in items:
+        items.append(value)

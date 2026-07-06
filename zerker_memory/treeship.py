@@ -8,7 +8,16 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from zerker_memory import __version__
-from zerker_memory.store import BUNDLE_SCHEMA, HASH_ALG, MERKLE_ALG, merkle_root, sha256_text, stable_json
+from zerker_memory.store import (
+    BUNDLE_SCHEMA,
+    HASH_ALG,
+    WRITE_RECEIPT_SCHEMA,
+    LIFECYCLE_RECEIPT_SCHEMA,
+    MERKLE_ALG,
+    merkle_root,
+    sha256_text,
+    stable_json,
+)
 
 
 TREESHIP_STATEMENT_SCHEMA = "com.zerker.memory.treeship.statement"
@@ -43,6 +52,11 @@ def to_treeship_statement(receipt: Mapping[str, Any]) -> dict[str, Any]:
     tampered inputs before shaping them for Treeship.
     """
 
+    if _has_embedded_write_statement(receipt):
+        return _embedded_write_statement(receipt)
+    if _has_embedded_lifecycle_statement(receipt):
+        return _embedded_lifecycle_statement(receipt)
+
     receipt_payload = _bundle_receipt(receipt) if _is_bundle(receipt) else receipt
     normalized = _normalize_receipt(receipt_payload)
     action_id = _required(normalized, "action_id")
@@ -65,14 +79,23 @@ def to_treeship_statement(receipt: Mapping[str, Any]) -> dict[str, Any]:
     if _is_bundle(receipt):
         bundle = dict(receipt)
         proof = dict(bundle.get("proof", {}))
+        supporting_provenance = _bundle_supporting_provenance_summary(bundle)
         evidence.update(
             {
                 "bundle_hash": _required_str(bundle, "bundle_hash"),
                 "bundle_event_count": int(proof.get("event_count", 0)),
                 "bundle_verified": bool(proof.get("verified")),
+                "supporting_write_receipt_count": supporting_provenance["supporting_write_receipt_count"],
+                "verified_supporting_write_receipt_count": supporting_provenance[
+                    "verified_supporting_write_receipt_count"
+                ],
+                "trusted_provenance_verified": supporting_provenance["trusted_provenance_verified"],
             }
         )
         source["bundle"] = bundle
+        source["supporting_provenance_receipts"] = supporting_provenance["supporting_provenance_receipts"]
+        if supporting_provenance["attestation_artifacts"]:
+            source["attestation_artifacts"] = supporting_provenance["attestation_artifacts"]
     if normalized.get("signature") is not None:
         evidence["signature"] = normalized["signature"]
 
@@ -97,11 +120,111 @@ def to_treeship_statement(receipt: Mapping[str, Any]) -> dict[str, Any]:
             "injected_memory_ids": normalized["injected_memory_ids"],
             "withheld_memory_ids": normalized["withheld_memory_ids"],
             "policy_checks": normalized["policy_checks"],
+            "semantic_truth_guaranteed": False,
         },
         "evidence": evidence,
         "source": source,
         "created_at": created_at,
     }
+
+
+def _has_embedded_lifecycle_statement(receipt: Mapping[str, Any]) -> bool:
+    return (
+        isinstance(receipt, Mapping)
+        and receipt.get("receipt_schema") == LIFECYCLE_RECEIPT_SCHEMA
+        and isinstance(receipt.get("treeship_statement"), Mapping)
+    )
+
+
+def _has_embedded_write_statement(receipt: Mapping[str, Any]) -> bool:
+    return (
+        isinstance(receipt, Mapping)
+        and receipt.get("receipt_schema") == WRITE_RECEIPT_SCHEMA
+        and isinstance(receipt.get("treeship_statement"), Mapping)
+    )
+
+
+def _embedded_write_statement(receipt: Mapping[str, Any]) -> dict[str, Any]:
+    statement = receipt.get("treeship_statement")
+    if not isinstance(statement, Mapping):
+        raise ValueError("write receipt missing treeship_statement")
+
+    from .store import MemoryStore
+
+    verifier = MemoryStore(Path("/tmp/zerker-memory-write-receipt-export-verifier.sqlite"))
+    verification = verifier.verify_memory_write_receipt(dict(receipt), prior_receipt=_write_receipt_prior_stub(receipt))
+    if not verification["ok"]:
+        raise ValueError(
+            "write receipt "
+            f"{receipt.get('receipt_id') or receipt.get('memory_id') or 'unknown'} verification failed: {verification['error']}"
+        )
+    exported_statement = json.loads(json.dumps(statement))
+    statement_object = exported_statement.get("object")
+    if isinstance(statement_object, dict) and "semantic_truth_guaranteed" not in statement_object:
+        statement_object["semantic_truth_guaranteed"] = False
+    return exported_statement
+
+
+def _write_receipt_prior_stub(receipt: Mapping[str, Any]) -> dict[str, Any] | None:
+    statement = receipt.get("treeship_statement")
+    if not isinstance(statement, Mapping):
+        return None
+    source = statement.get("source")
+    evidence = statement.get("evidence")
+    if not isinstance(source, Mapping) or not isinstance(evidence, Mapping):
+        return None
+    prior_receipt_id = source.get("prior_receipt_id")
+    prior_receipt_hash = source.get("prior_receipt_hash")
+    if prior_receipt_id is None and prior_receipt_hash is None:
+        return None
+    return {
+        "memory_id": receipt.get("memory_id"),
+        "receipt_id": prior_receipt_id,
+        "receipt_hash": prior_receipt_hash,
+        "merkle_root": evidence.get("prior_merkle_root"),
+        "status": statement.get("object", {}).get("previous_status"),
+    }
+
+
+def _embedded_lifecycle_statement(receipt: Mapping[str, Any]) -> dict[str, Any]:
+    statement = receipt.get("treeship_statement")
+    if not isinstance(statement, Mapping):
+        raise ValueError("lifecycle receipt missing treeship_statement")
+    if not isinstance(receipt.get("receipt_hash"), str) or not str(receipt.get("receipt_hash")):
+        raise ValueError("lifecycle receipt missing receipt_hash")
+    if statement.get("created_at") != receipt.get("created_at"):
+        raise ValueError("lifecycle treeship created_at mismatch")
+    statement_source = statement.get("source")
+    if not isinstance(statement_source, Mapping):
+        raise ValueError("lifecycle receipt missing treeship source")
+    if statement_source.get("system") != "zerker-memory":
+        raise ValueError("lifecycle treeship source system mismatch")
+    statement_object = statement.get("object")
+    if isinstance(statement_object, Mapping) and statement_object.get("semantic_truth_guaranteed") is True:
+        raise ValueError("lifecycle semantic_truth_guaranteed must be false")
+    if statement_source.get("receipt") != _embedded_lifecycle_source_receipt(receipt):
+        raise ValueError("lifecycle treeship source receipt mismatch")
+    if _embedded_lifecycle_receipt_hash(receipt) != receipt.get("receipt_hash"):
+        raise ValueError("lifecycle receipt_hash mismatch")
+    statement_evidence = statement.get("evidence")
+    if isinstance(statement_evidence, Mapping) and statement_evidence.get("new_merkle_root") != receipt.get("merkle_root"):
+        raise ValueError("lifecycle treeship new_merkle_root mismatch")
+    if statement_source.get("treeship_artifact_id") != receipt.get("treeship_artifact_id"):
+        raise ValueError("lifecycle treeship artifact mismatch")
+    return json.loads(json.dumps(statement))
+
+
+def _embedded_lifecycle_source_receipt(receipt: Mapping[str, Any]) -> dict[str, Any]:
+    source_receipt = dict(receipt)
+    source_receipt.pop("treeship_statement", None)
+    source_receipt.pop("receipt_hash", None)
+    return source_receipt
+
+
+def _embedded_lifecycle_receipt_hash(receipt: Mapping[str, Any]) -> str:
+    receipt_without_hash = dict(receipt)
+    receipt_without_hash.pop("receipt_hash", None)
+    return sha256_text(stable_json(receipt_without_hash))
 
 
 def treeship_cli_status(command_template: str | None = None) -> dict[str, Any]:
@@ -339,6 +462,95 @@ def _validate_bundle(bundle: Mapping[str, Any]) -> None:
         raise ValueError("bundle proof event_count mismatch")
     if proof.get("verified") is not True:
         raise ValueError("bundle proof is not verified")
+
+def _bundle_supporting_provenance_summary(bundle: Mapping[str, Any]) -> dict[str, Any]:
+    supporting_memory_ids = bundle.get("supporting_memory_ids")
+    if not isinstance(supporting_memory_ids, list):
+        raise ValueError("bundle supporting_memory_ids is invalid")
+
+    supporting_receipts = bundle.get("supporting_memory_write_receipts")
+    if supporting_receipts is None:
+        supporting_receipts = {}
+    if not isinstance(supporting_receipts, Mapping):
+        raise ValueError("bundle supporting_memory_write_receipts is invalid")
+
+    from .store import MemoryStore
+
+    verifier = MemoryStore(Path("/tmp/zerker-memory-write-receipt-verifier.sqlite"))
+    result = {
+        "supporting_write_receipt_count": len(supporting_receipts),
+        "verified_supporting_write_receipt_count": 0,
+        "trusted_provenance_verified": True,
+        "supporting_provenance_receipts": [],
+        "attestation_artifacts": [],
+    }
+    for memory_id in sorted(supporting_receipts):
+        if memory_id not in supporting_memory_ids:
+            raise ValueError("bundle supporting write receipt key missing from supporting_memory_ids")
+        supporting_receipt = supporting_receipts[memory_id]
+        if not isinstance(supporting_receipt, Mapping):
+            raise ValueError(f"bundle supporting write receipt for {memory_id} is invalid")
+        if supporting_receipt.get("memory_id") != memory_id:
+            raise ValueError("bundle supporting write receipt memory_id mismatch")
+        verification = verifier.verify_memory_write_receipt(dict(supporting_receipt))
+        if not verification["ok"]:
+            raise ValueError(
+                "supporting write receipt "
+                f"{supporting_receipt.get('receipt_id') or memory_id} verification failed: {verification['error']}"
+            )
+
+        result["verified_supporting_write_receipt_count"] += 1
+        treeship_statement = supporting_receipt.get("treeship_statement") or {}
+        statement_object = treeship_statement.get("object") or {}
+        statement_evidence = treeship_statement.get("evidence") or {}
+        attestation = supporting_receipt.get("treeship_attestation")
+        result["supporting_provenance_receipts"].append(
+            {
+                "memory_id": supporting_receipt.get("memory_id"),
+                "receipt_id": supporting_receipt.get("receipt_id"),
+                "receipt_hash": supporting_receipt.get("receipt_hash"),
+                "actor_id": statement_object.get("actor_id"),
+                "actor_uri": supporting_receipt.get("actor_uri"),
+                "content_digest": supporting_receipt.get("content_digest"),
+                "prior_merkle_root": statement_evidence.get("prior_merkle_root"),
+                "merkle_root": supporting_receipt.get("merkle_root"),
+                "new_merkle_root": statement_evidence.get("new_merkle_root", supporting_receipt.get("merkle_root")),
+                "treeship_artifact_id": attestation.get("artifact_id") if isinstance(attestation, Mapping) else None,
+                "trusted_provenance_verified": True,
+                "semantic_truth_guaranteed": False,
+            }
+        )
+        if isinstance(attestation, Mapping):
+            result["attestation_artifacts"].append(
+                {
+                    "memory_id": supporting_receipt.get("memory_id"),
+                    "receipt_id": supporting_receipt.get("receipt_id"),
+                    "artifact_id": attestation.get("artifact_id"),
+                    "status": attestation.get("status"),
+                    "signed_at": attestation.get("signed_at"),
+                }
+            )
+    supporting_memories = bundle.get("supporting_memories")
+    if supporting_memories is None:
+        supporting_memories = []
+    if not isinstance(supporting_memories, list):
+        raise ValueError("bundle supporting_memories is invalid")
+    seen_supporting_memory_ids: set[str] = set()
+    for memory in supporting_memories:
+        if not isinstance(memory, Mapping):
+            raise ValueError("bundle supporting memory entry is invalid")
+        memory_id = memory.get("id")
+        if not isinstance(memory_id, str) or not memory_id:
+            raise ValueError("bundle supporting memory id is invalid")
+        if memory_id not in supporting_memory_ids:
+            raise ValueError("bundle supporting memory id missing from supporting_memory_ids")
+        if memory_id in seen_supporting_memory_ids:
+            raise ValueError("bundle supporting memory id is duplicated")
+        seen_supporting_memory_ids.add(memory_id)
+    result["trusted_provenance_verified"] = (
+        result["verified_supporting_write_receipt_count"] == result["supporting_write_receipt_count"]
+    )
+    return result
 
 
 def _normalize_receipt(receipt: Mapping[str, Any]) -> dict[str, Any]:

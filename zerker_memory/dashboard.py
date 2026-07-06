@@ -673,12 +673,49 @@ INDEX_HTML = """<!doctype html>
       const agents = report.connected_agents || [];
       const conflicts = report.claim_conflicts || [];
       const sources = report.sources || [];
+      const identityResolutionByKey = new Map(
+        agents
+          .map((agent) => [agent.identity_anchor?.key, agent.identity_resolution])
+          .filter(([key]) => Boolean(key))
+      );
       function sourceIdentityText(identity, fallbackWorkspaceId) {
         const sourceIdentity = identity || {};
         const tool = String(sourceIdentity.tool || 'unknown');
         const repo = String(sourceIdentity.repo_name || 'unknown');
         const workspace = String(sourceIdentity.workspace_id || fallbackWorkspaceId || 'unknown');
         return `tool ${tool} · repo ${repo} · workspace ${workspace}`;
+      }
+      function sourceOriginText(value) {
+        const sourceValue = value || {};
+        const originSummary = String(sourceValue.latest_origin_summary || sourceValue.origin_summary || 'unknown');
+        return `origin ${originSummary}`;
+      }
+      function identityAnchorText(anchor, resolution) {
+        const identityAnchor = anchor || {};
+        const identityResolution = resolution || {};
+        const key = String(identityAnchor.key || identityResolution.key || 'unknown-anchor');
+        const resolutionMethod = String(identityAnchor.resolution_method || identityResolution.resolution_method || 'unknown');
+        if (resolution) {
+          const sessionCount = Number(identityResolution.session_count || 0);
+          return `identity ${key} · via ${resolutionMethod} · cross session ${identityResolution.cross_session ? 'yes' : 'no'} · sessions ${sessionCount}`;
+        }
+        const resolved = identityResolutionByKey.get(key) || {};
+        const crossSession = resolved.cross_session;
+        const sessionCount = Number(resolved.session_count || 0);
+        const suffix = typeof crossSession === 'boolean'
+          ? ` · cross session ${crossSession ? 'yes' : 'no'} · sessions ${sessionCount}`
+          : '';
+        return `identity ${key} · via ${resolutionMethod}${suffix}`;
+      }
+      function parentActionText(action, prefix = 'parent action') {
+        const parentAction = action || {};
+        const actionId = String(parentAction.action_id || 'none');
+        if (actionId === 'none') return `${prefix} none`;
+        const agent = String(parentAction.agent_id || 'unknown');
+        const risk = String(parentAction.risk || 'unknown');
+        const receiptState = parentAction.available_local_receipt ? 'local' : 'missing';
+        const taskSummary = String(parentAction.task_summary || 'unknown');
+        return `${prefix} ${actionId} · agent ${agent} · risk ${risk} · receipt ${receiptState} · task ${taskSummary}`;
       }
       function sourceSchemeText(identity) {
         const sourceIdentity = identity || {};
@@ -690,22 +727,167 @@ INDEX_HTML = """<!doctype html>
         const proofLineage = lineage || {};
         return `attestation ${proofLineage.treeship_attestation_status || 'none'} · artifact ${proofLineage.treeship_artifact_id || 'none'}`;
       }
+      function systemText(lineage) {
+        const proofLineage = lineage || {};
+        return `system ${proofLineage.treeship_system || 'none'}`;
+      }
+      function subjectText(lineage) {
+        const proofLineage = lineage || {};
+        return `subject ${proofLineage.treeship_subject_key || 'none'}`;
+      }
+      function signedAtText(lineage) {
+        const proofLineage = lineage || {};
+        if (!proofLineage.treeship_signed_at) return null;
+        return `signed at ${proofLineage.treeship_signed_at}`;
+      }
+      function payloadDigestText(lineage) {
+        const proofLineage = lineage || {};
+        if (!proofLineage.treeship_payload_digest) return null;
+        return `payload digest ${shortHash(proofLineage.treeship_payload_digest)}`;
+      }
+      function eventHashText(lineage) {
+        const proofLineage = lineage || {};
+        if (!proofLineage.event_hash) return null;
+        return `event hash ${shortHash(proofLineage.event_hash)}`;
+      }
+      function receiptHashText(lineage) {
+        const proofLineage = lineage || {};
+        if (!proofLineage.receipt_hash) return null;
+        return `receipt hash ${shortHash(proofLineage.receipt_hash)}`;
+      }
+      function importedOriginText(origin) {
+        const importedOrigin = origin || {};
+        if (!importedOrigin.restore_receipt_id) return null;
+        const snapshotHash = importedOrigin.snapshot_hash ? shortHash(importedOrigin.snapshot_hash) : 'unknown';
+        const restoreReceiptHash = importedOrigin.restore_receipt_hash ? shortHash(importedOrigin.restore_receipt_hash) : 'unknown';
+        const continuityStatus = importedOrigin.continuity_sidecar_ok === true
+          ? 'ok'
+          : (importedOrigin.continuity_sidecar_ok === false ? 'failed' : 'none');
+        const parts = [
+          `imported restore ${importedOrigin.restore_receipt_id}`,
+          `snapshot ${snapshotHash}`,
+          `receipt hash ${restoreReceiptHash}`,
+          `continuity ${continuityStatus}`,
+        ];
+        if (importedOrigin.continuity_error) parts.push(`error ${importedOrigin.continuity_error}`);
+        return parts.join(' · ');
+      }
+      function restoreLineageText(lineage) {
+        const restoreLineage = lineage || {};
+        if (!restoreLineage.kind) return null;
+        const parts = [`restore lineage ${restoreLineage.kind}`];
+        if (restoreLineage.basis) parts.push(`basis ${restoreLineage.basis}`);
+        if (restoreLineage.restore_created_at) parts.push(`restore at ${restoreLineage.restore_created_at}`);
+        if (restoreLineage.source_receipt_created_at) parts.push(`receipt at ${restoreLineage.source_receipt_created_at}`);
+        return parts.join(' · ');
+      }
+      function workspaceContinuityText(continuity) {
+        const continuityAnchor = continuity || {};
+        if (!continuityAnchor.kind) return null;
+        const snapshotHash = continuityAnchor.snapshot_hash ? shortHash(continuityAnchor.snapshot_hash) : 'unknown';
+        const actionId = continuityAnchor.action_id || 'none';
+        const manifestPath = continuityAnchor.manifest_path || 'none';
+        const restoreReceiptId = continuityAnchor.restore_receipt_id || null;
+        const continuityError = continuityAnchor.continuity_error || null;
+        const continuityStatus = continuityAnchor.continuity_sidecar_ok === true
+          ? 'ok'
+          : (continuityAnchor.continuity_sidecar_ok === false ? 'failed' : null);
+        const continuitySidecarPath = continuityAnchor.continuity_sidecar_path || null;
+        const sourcePath = continuityAnchor.snapshot_path || 'none';
+        const parts = [
+          `workspace continuity ${continuityAnchor.kind}`,
+          `snapshot ${snapshotHash}`,
+          `action ${actionId}`,
+        ];
+        if (restoreReceiptId) parts.push(`restore receipt ${restoreReceiptId}`);
+        if (manifestPath !== 'none') parts.push(`manifest ${manifestPath}`);
+        if (continuityStatus) parts.push(`continuity ${continuityStatus}`);
+        if (continuityError) parts.push(`error ${continuityError}`);
+        if (continuitySidecarPath) parts.push(`sidecar ${continuitySidecarPath}`);
+        parts.push(`source ${sourcePath}`);
+        return parts.join(' · ');
+      }
+      function tieDetailsText(preview) {
+        const tieFields = Array.isArray(preview.tie_fields) ? preview.tie_fields : [];
+        if (!tieFields.length) return null;
+        return `tie fields ${tieFields.join(', ') || 'none'}`;
+      }
+      function ignoredTieBreakersText(preview) {
+        const ignoredTieBreakers = Array.isArray(preview.ignored_tie_breakers) ? preview.ignored_tie_breakers : [];
+        if (!ignoredTieBreakers.length) return null;
+        return `ignored tie breakers ${ignoredTieBreakers.join(', ') || 'none'}`;
+      }
+      function resolutionTraceText(preview) {
+        const trace = Array.isArray(preview.resolution_trace) ? preview.resolution_trace : [];
+        return trace.map((step) => `resolution trace ${step.summary || `${step.field || 'field'} ${step.outcome || 'preview'}`}`);
+      }
+      function decisiveClaimText(preview) {
+        const decisiveClaim = (preview || {}).decisive_claim_lineage || {};
+        if (!decisiveClaim.memory_id) return null;
+        const proofLineage = decisiveClaim.proof_lineage || {};
+        const parts = [
+          `decision source ${decisiveClaim.summary || 'read-only merge preview'}`,
+          `${decisiveClaim.agent_id || 'unknown agent'} @ ${decisiveClaim.chat_session_id || 'no session'}`,
+        ];
+        if (decisiveClaim.source_uri) parts.push(`via ${decisiveClaim.source_uri}`);
+        parts.push(`receipt ${proofLineage.receipt_id || 'none'}`);
+        parts.push(attestationText(proofLineage));
+        parts.push(systemText(proofLineage));
+        parts.push(subjectText(proofLineage));
+        const eventHash = eventHashText(proofLineage);
+        if (eventHash) parts.push(eventHash);
+        const receiptHash = receiptHashText(proofLineage);
+        if (receiptHash) parts.push(receiptHash);
+        parts.push(`root ${shortHash(proofLineage.merkle_root)}`);
+        return parts.join(' · ');
+      }
+      function losingClaimContrastText(preview) {
+        const losingContrast = (preview || {}).losing_claim_contrast || {};
+        if (!(losingContrast.losing_claim_count > 0)) return null;
+        return `decision contrast ${losingContrast.summary || 'read-only merge preview'}`;
+      }
+      function losingClaimParentActionText(preview) {
+        const losingAction = (preview || {}).losing_claim_parent_action || {};
+        const action = losingAction.parent_action || {};
+        if (!action.action_id) return null;
+        return `losing action ${losingAction.summary || 'read-only merge preview'} · ${parentActionText(action, 'losing action')}`;
+      }
       if (!agents.length && !sources.length && !conflicts.length) {
         $('workspaceSources').innerHTML = '<div class="empty">No source-lineage receipts yet. Agent writes will appear here after memory is saved.</div>';
         return;
       }
+      const continuityText = workspaceContinuityText(report.workspace_continuity);
       const agentCards = agents.slice(0, 6).map((agent) => {
         const latestProof = agent.latest_proof_lineage || {};
+        const latestImportedOrigin = importedOriginText(agent.latest_imported_origin);
+        const latestRestoreLineage = restoreLineageText(agent.latest_restore_lineage);
+        const latestSignedAt = signedAtText(latestProof);
+        const latestPayloadDigest = payloadDigestText(latestProof);
+        const latestEventHash = eventHashText(latestProof);
+        const latestReceiptHash = receiptHashText(latestProof);
+        const sourceUriPreview = String(agent.source_uri_preview || 'none');
         return `<div class="quick-card">
           <strong>${escapeHtml(agent.agent_id || 'unknown agent')}</strong>
           <span>${escapeHtml(sourceIdentityText(agent, report.workspace_id))}</span>
+          <span>${escapeHtml(sourceOriginText(agent))}</span>
+          <span>${escapeHtml(identityAnchorText(agent.identity_anchor, agent.identity_resolution))}</span>
+          ${latestRestoreLineage ? `<span>${escapeHtml(latestRestoreLineage)}</span>` : ''}
+          ${latestImportedOrigin ? `<span>${escapeHtml(latestImportedOrigin)}</span>` : ''}
+          <span>${escapeHtml(parentActionText(agent.latest_parent_action, 'latest parent action'))}</span>
           <span>${escapeHtml((agent.chat_session_ids || []).join(', ') || 'no sessions')}</span>
-          <span>${escapeHtml(`memories ${agent.memory_count || 0} · ${attestationText(latestProof)}`)}</span>
-          <span>${escapeHtml(`latest root ${shortHash(latestProof.merkle_root)}`)}</span>
+          <span>${escapeHtml(`source URIs ${sourceUriPreview}`)}</span>
+          <span>${escapeHtml(`memories ${agent.memory_count || 0} · ${attestationText(latestProof)} · ${systemText(latestProof)} · ${subjectText(latestProof)}${latestSignedAt ? ` · ${latestSignedAt}` : ''}${latestPayloadDigest ? ` · ${latestPayloadDigest}` : ''}`)}</span>
+          <span>${escapeHtml(`${latestEventHash || 'event hash none'} · ${latestReceiptHash || 'receipt hash none'} · latest root ${shortHash(latestProof.merkle_root)}`)}</span>
         </div>`;
       }).join('');
       const sourceRows = sources.slice(0, 5).map((source) => {
         const lineage = source.proof_lineage || {};
+        const restoreLineage = restoreLineageText(source.restore_lineage);
+        const importedOrigin = importedOriginText(source.imported_origin);
+        const signedAt = signedAtText(lineage);
+        const payloadDigest = payloadDigestText(lineage);
+        const eventHash = eventHashText(lineage);
+        const receiptHash = receiptHashText(lineage);
         return `<div class="item">
           <div class="meta">
             ${pill(source.agent_id || 'unknown agent')}
@@ -714,23 +896,45 @@ INDEX_HTML = """<!doctype html>
           </div>
           <div class="content">${escapeHtml(source.source_uri || 'no source URI recorded')}</div>
           <div class="topline">${escapeHtml(sourceIdentityText(source.source_identity, source.workspace_id))}</div>
+          <div class="topline">${escapeHtml(sourceOriginText(source.source_identity))}</div>
+          <div class="topline">${escapeHtml(identityAnchorText(source.identity_anchor, source.identity_resolution))}</div>
+          ${restoreLineage ? `<div class="topline">${escapeHtml(restoreLineage)}</div>` : ''}
+          ${importedOrigin ? `<div class="topline">${escapeHtml(importedOrigin)}</div>` : ''}
+          <div class="topline">${escapeHtml(parentActionText(source.parent_action))}</div>
           <div class="topline">${escapeHtml(sourceSchemeText(source.source_identity))}</div>
-          <div class="topline">${escapeHtml(source.chat_session_id || 'no session')} · receipt ${escapeHtml(lineage.receipt_id || 'none')} · ${escapeHtml(attestationText(lineage))} · root ${escapeHtml(shortHash(lineage.merkle_root))}</div>
+          <div class="topline">${escapeHtml(source.chat_session_id || 'no session')} · receipt ${escapeHtml(lineage.receipt_id || 'none')} · ${escapeHtml(attestationText(lineage))} · ${escapeHtml(systemText(lineage))} · ${escapeHtml(subjectText(lineage))}${signedAt ? ` · ${escapeHtml(signedAt)}` : ''}${payloadDigest ? ` · ${escapeHtml(payloadDigest)}` : ''}${eventHash ? ` · ${escapeHtml(eventHash)}` : ''}${receiptHash ? ` · ${escapeHtml(receiptHash)}` : ''} · root ${escapeHtml(shortHash(lineage.merkle_root))}</div>
         </div>`;
       }).join('');
       const conflictRows = conflicts.slice(0, 3).map((conflict) => {
         const preview = conflict.merge_preview || {};
         const resolutionBasis = (preview.resolution_basis || {}).summary || 'read-only merge preview';
+        const tieDetails = tieDetailsText(preview);
+        const ignoredTieBreakers = ignoredTieBreakersText(preview);
+        const resolutionTrace = resolutionTraceText(preview);
+        const decisiveClaim = decisiveClaimText(preview);
+        const losingContrast = losingClaimContrastText(preview);
+        const losingAction = losingClaimParentActionText(preview);
         const claims = (conflict.claims || []).slice(0, 3).map((claim) => {
           const lineage = claim.proof_lineage || {};
           const chosen = preview.chosen_memory_id && preview.chosen_memory_id === claim.memory_id;
+          const restoreLineage = restoreLineageText(claim.restore_lineage);
+          const importedOrigin = importedOriginText(claim.imported_origin);
+          const signedAt = signedAtText(lineage);
+          const payloadDigest = payloadDigestText(lineage);
+          const eventHash = eventHashText(lineage);
+          const receiptHash = receiptHashText(lineage);
           return `<div class="quick-card">
             <strong>${escapeHtml(claim.agent_id || 'unknown agent')} · ${escapeHtml(claim.value || 'unknown claim')}</strong>
             <span>${escapeHtml(claim.chat_session_id || 'no session')}</span>
             <span>${escapeHtml(sourceIdentityText(claim.source_identity, claim.workspace_id))}</span>
+            <span>${escapeHtml(sourceOriginText(claim.source_identity))}</span>
+            <span>${escapeHtml(identityAnchorText(claim.identity_anchor, claim.identity_resolution))}</span>
+            ${restoreLineage ? `<span>${escapeHtml(restoreLineage)}</span>` : ''}
+            ${importedOrigin ? `<span>${escapeHtml(importedOrigin)}</span>` : ''}
+            <span>${escapeHtml(parentActionText(claim.parent_action))}</span>
             <span>${escapeHtml(sourceSchemeText(claim.source_identity))}</span>
             <span>${escapeHtml(`${claim.trust_status || 'unknown'} · ${claim.authority || 'unknown'} authority`)}</span>
-            <span>${escapeHtml(`${attestationText(lineage)} · root ${shortHash(lineage.merkle_root)}${chosen ? ' · selected' : ''}`)}</span>
+            <span>${escapeHtml(`${attestationText(lineage)} · ${systemText(lineage)} · ${subjectText(lineage)}${signedAt ? ` · ${signedAt}` : ''}${payloadDigest ? ` · ${payloadDigest}` : ''}${eventHash ? ` · ${eventHash}` : ''}${receiptHash ? ` · ${receiptHash}` : ''} · root ${shortHash(lineage.merkle_root)}${chosen ? ' · selected' : ''}`)}</span>
           </div>`;
         }).join('');
         const headline = `${conflict.subject_key || 'unknown entity'} ${conflict.relation || 'is'}`;
@@ -743,6 +947,12 @@ INDEX_HTML = """<!doctype html>
           <div class="content">${escapeHtml(headline)}</div>
           <div class="topline">${escapeHtml(preview.rule_summary || 'read-only merge preview')}</div>
           <div class="topline">${escapeHtml(`resolution basis ${resolutionBasis}`)}</div>
+          ${decisiveClaim ? `<div class="topline">${escapeHtml(decisiveClaim)}</div>` : ''}
+          ${losingContrast ? `<div class="topline">${escapeHtml(losingContrast)}</div>` : ''}
+          ${losingAction ? `<div class="topline">${escapeHtml(losingAction)}</div>` : ''}
+          ${tieDetails ? `<div class="topline">${escapeHtml(tieDetails)}</div>` : ''}
+          ${ignoredTieBreakers ? `<div class="topline">${escapeHtml(ignoredTieBreakers)}</div>` : ''}
+          ${resolutionTrace.map((step) => `<div class="topline">${escapeHtml(step)}</div>`).join('')}
           <div class="quick-grid" style="margin-top:12px">${claims}</div>
         </div>`;
       }).join('');
@@ -754,6 +964,7 @@ INDEX_HTML = """<!doctype html>
           ${pill(`claim conflicts ${report.claim_conflict_count || 0}`)}
           ${pill(report.workspace_id || 'workspace none')}
         </div>
+        ${continuityText ? `<div class="topline" style="margin-top:10px">${escapeHtml(continuityText)}</div>` : ''}
         <div class="quick-grid">${agentCards}</div>
         ${conflicts.length ? `<h3 style="margin-top:14px">Claim Conflicts</h3><div class="list" style="margin-top:12px">${conflictRows}</div>` : ''}
         <h3 style="margin-top:14px">Recent Source Lineage</h3>
@@ -1751,13 +1962,29 @@ def build_onboarding_state(store: MemoryStore) -> dict[str, Any]:
     }
 
 
+def _compact_dashboard_preview(values: list[Any] | None, *, limit: int = 3) -> str | None:
+    items = sorted({str(value).strip() for value in values or [] if str(value).strip()})
+    if not items:
+        return None
+    if len(items) <= limit:
+        return ",".join(items)
+    return ",".join(items[:limit]) + f",+{len(items) - limit} more"
+
+
 def build_workspace_sources_state(store: MemoryStore, *, limit: int = 25) -> dict[str, Any]:
-    return workspace_source_report(
+    report = workspace_source_report(
         store,
         db_path=store.db_path,
         policy_path=store.policy_path,
         limit=limit,
     )
+    connected_agents = []
+    for agent in report.get("connected_agents") or []:
+        enriched_agent = dict(agent)
+        enriched_agent["source_uri_preview"] = _compact_dashboard_preview(agent.get("source_uris"))
+        connected_agents.append(enriched_agent)
+    report["connected_agents"] = connected_agents
+    return report
 
 
 def build_agent_continuity_state(store: MemoryStore) -> dict[str, Any]:

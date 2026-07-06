@@ -19,6 +19,7 @@ The unwind plan stays local-first and non-blocking. It does not mutate the store
 
 - `consolidation_unwind_plan(job_ledger_path, summary_ledger_path, child_id)`
 - `consolidation_retry_guidance(job_ledger_path, summary_ledger_path, child_id)`
+- `consolidation_retry_group_report(job_ledger_path, summary_ledger_path, child_ids)`
 
 It composes the existing L4 surfaces:
 
@@ -61,6 +62,17 @@ The retry actions stay deliberately local and narrow:
 - `recreate-missing-summary` when a completed job has no latest summary record but its source lineage is still intact
 - `wait-for-dependent-summary-repair` or `wait-for-child-summary-repair` when parent summaries must not be recreated yet
 - `review-mismatched-summary`, `review-unexpected-summary`, or `break-cycle-before-retry` when audit or lineage state is already unsafe
+
+## Batch Dependency Groups
+
+The unwind fixture now also exposes a read-only batch report for operators who need to audit many child repairs together:
+
+- `consolidation_retry_group_report(...)` runs the existing per-child retry guidance for each requested child id, de-duplicates repeated child ids, and merges the result into summary-centric dependency groups.
+- Each group is keyed by `summary_id` and preserves `summary_level`, `audit_status`, contributing `child_ids`, whether the same impacted summary is shared by multiple children, direct-vs-root child sets, merged `blocking_reasons`, merged `blocked_by_summary_ids`, and the unique `retry_actions` already implied by the per-child guidance.
+- `dependency_group_status` is `retryable-now` only when every contributing child can recreate that summary immediately; otherwise the group stays `blocked`.
+- The top-level report also preserves compact per-child summaries so orphan children, nested-summary repairs, and blocked child-summary lineage still stay explicit instead of disappearing into the merged group view.
+
+This keeps multi-summary retry audits local-first and reversible without widening into `store.py`, a daemon, or hosted summarization: operators can now see when several child repairs collapse onto the same impacted session/day/week summary and whether that summary is jointly ready or jointly blocked.
 
 ## Current Boundary
 

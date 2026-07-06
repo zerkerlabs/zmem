@@ -29,6 +29,7 @@ from .workspaces import (
     list_workspaces,
     register_workspace,
     use_workspace,
+    workspace_restore_continuity_path,
     workspace_source_report,
     workspace_status_for_paths,
 )
@@ -375,6 +376,30 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
         "--summary-only",
         action="store_true",
         help="Print only a compact human-readable session-snapshot summary",
+    )
+    session_retention = session_sub.add_parser(
+        "retention",
+        help="Show a per-session rollup of snapshot retention state across the matching sessions",
+    )
+    session_retention.add_argument("--session-id")
+    session_retention.add_argument("--scope")
+    session_retention.add_argument("--limit", type=int, default=10)
+    session_retention.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Print only a compact human-readable snapshot retention rollup summary",
+    )
+    session_rollup = session_sub.add_parser(
+        "rollup",
+        help="Show a per-session lifecycle rollup across starts, checkpoints, snapshots, retention tombstones, and ends",
+    )
+    session_rollup.add_argument("--session-id")
+    session_rollup.add_argument("--scope")
+    session_rollup.add_argument("--limit", type=int, default=10)
+    session_rollup.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Print only a compact human-readable session lifecycle rollup summary",
     )
     session_timeline = session_sub.add_parser(
         "timeline",
@@ -1279,6 +1304,30 @@ def main(argv: list[str] | None = None) -> int:
                 else:
                     print_json(result)
                 return 0
+            if args.session_command == "retention":
+                result = build_session_retention_rollup_report(
+                    store,
+                    session_id=args.session_id,
+                    scope=args.scope,
+                    limit=args.limit,
+                )
+                if args.summary_only:
+                    print(render_session_retention_rollup_summary(result), end="")
+                else:
+                    print_json(result)
+                return 0
+            if args.session_command == "rollup":
+                result = build_session_lifecycle_rollup_report(
+                    store,
+                    session_id=args.session_id,
+                    scope=args.scope,
+                    limit=args.limit,
+                )
+                if args.summary_only:
+                    print(render_session_lifecycle_rollup_summary(result), end="")
+                else:
+                    print_json(result)
+                return 0
             if args.session_command == "timeline":
                 result = build_session_timeline_report(
                     store,
@@ -1570,12 +1619,34 @@ def main(argv: list[str] | None = None) -> int:
                 snapshot_payload = json.loads(args.snapshot_path.read_text(encoding="utf-8"))
                 result = store.verify_snapshot(snapshot_payload)
                 result["path"] = str(args.snapshot_path)
+                session_continuity_sidecar = load_snapshot_continuity_sidecar(
+                    snapshot_path=args.snapshot_path,
+                    snapshot_payload=snapshot_payload,
+                )
+                result["session_continuity_sidecar"] = session_continuity_sidecar
+                if isinstance(session_continuity_sidecar, dict):
+                    result["session_lifecycle_rollup"] = session_continuity_sidecar.get("session_lifecycle_rollup")
+                    result["session_lifecycle_rollup_summary"] = session_continuity_sidecar.get(
+                        "session_lifecycle_rollup_summary"
+                    )
+                    result["session_retention_rollup"] = session_continuity_sidecar.get("session_retention_rollup")
+                    result["session_retention_rollup_summary"] = session_continuity_sidecar.get(
+                        "session_retention_rollup_summary"
+                    )
                 if args.summary_only:
                     print(render_snapshot_verification_summary(result), end="")
                 else:
                     print_json(result)
                 return 0 if result["ok"] else 1
-            print_json(export_snapshot(store.snapshot(), out=args.out, out_dir=args.out_dir))
+            snapshot_result = export_snapshot(store.snapshot(), out=args.out, out_dir=args.out_dir)
+            continuity_sidecar = write_snapshot_continuity_sidecar(
+                store,
+                snapshot_path=Path(snapshot_result["path"]),
+                snapshot_payload=snapshot_result["payload"],
+            )
+            snapshot_result["continuity_path"] = continuity_sidecar["path"]
+            snapshot_result["continuity_payload"] = continuity_sidecar["payload"]
+            print_json(snapshot_result)
             return 0
         if args.command == "bench":
             from .bench import (
@@ -4479,6 +4550,10 @@ def handoff_manifest_payload(
     bundle_path: Path | None,
     treeship_path: Path | None,
     status_summary: str,
+    session_lifecycle_rollup: dict[str, Any],
+    session_lifecycle_rollup_summary: str,
+    session_retention_rollup: dict[str, Any],
+    session_retention_rollup_summary: str,
 ) -> dict:
     return {
         "schema": "zerker.handoff_manifest.v1",
@@ -4488,6 +4563,744 @@ def handoff_manifest_payload(
         "bundle_path": handoff_relative_path(bundle_path, root=target_dir),
         "treeship_path": handoff_relative_path(treeship_path, root=target_dir),
         "status_summary": status_summary,
+        "session_lifecycle_rollup": session_lifecycle_rollup,
+        "session_lifecycle_rollup_summary": session_lifecycle_rollup_summary,
+        "session_retention_rollup": session_retention_rollup,
+        "session_retention_rollup_summary": session_retention_rollup_summary,
+    }
+
+
+def snapshot_continuity_sidecar_path(snapshot_path: Path) -> Path:
+    return snapshot_path.with_suffix(".continuity.json")
+
+
+def write_workspace_restore_continuity_anchor(
+    store: MemoryStore,
+    *,
+    snapshot_path: Path,
+    snapshot_payload: dict[str, Any],
+    restore_result: dict[str, Any],
+    session_continuity_sidecar: dict[str, Any] | None,
+) -> dict[str, Any]:
+    receipt = restore_result.get("receipt") if isinstance(restore_result.get("receipt"), dict) else {}
+    continuity_payload = {
+        "schema": "zerker.workspace_restore_continuity.v1",
+        "kind": "local_snapshot_restore",
+        "created_at": receipt.get("created_at"),
+        "db_path": str(store.db_path.resolve(strict=False)),
+        "snapshot_path": str(snapshot_path.resolve()),
+        "snapshot_hash": snapshot_payload.get("snapshot_hash"),
+        "snapshot_merkle_root": snapshot_payload.get("merkle_root"),
+        "restore_receipt_id": receipt.get("receipt_id"),
+        "restore_receipt_hash": receipt.get("receipt_hash"),
+        "restore_actor_uri": receipt.get("actor_uri"),
+        "continuity_sidecar_path": (
+            session_continuity_sidecar.get("path")
+            if isinstance(session_continuity_sidecar, dict)
+            else None
+        ),
+        "continuity_sidecar_ok": (
+            session_continuity_sidecar.get("ok")
+            if isinstance(session_continuity_sidecar, dict)
+            else None
+        ),
+        "continuity_error": (
+            session_continuity_sidecar.get("error")
+            if isinstance(session_continuity_sidecar, dict) and session_continuity_sidecar.get("error")
+            else None
+        ),
+        "local_only": True,
+        "read_only_preview": True,
+    }
+    continuity_path = workspace_restore_continuity_path(store.db_path)
+    continuity_path.parent.mkdir(parents=True, exist_ok=True)
+    continuity_path.write_text(json.dumps(continuity_payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return {
+        "ok": True,
+        "path": str(continuity_path),
+        "payload": continuity_payload,
+    }
+
+
+def write_snapshot_continuity_sidecar(store: MemoryStore, *, snapshot_path: Path, snapshot_payload: dict[str, Any]) -> dict[str, Any]:
+    lifecycle_rollup = build_session_lifecycle_rollup_report(store, limit=10)
+    lifecycle_rollup_summary = render_session_lifecycle_rollup_summary(lifecycle_rollup).rstrip()
+    retention_rollup = build_session_retention_rollup_report(store, limit=10)
+    retention_rollup_summary = render_session_retention_rollup_summary(retention_rollup).rstrip()
+    generated_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    continuity_payload = {
+        "schema": "zerker.snapshot_continuity.v1",
+        "generated_at": generated_at,
+        "snapshot_hash": snapshot_payload.get("snapshot_hash"),
+        "snapshot_merkle_root": snapshot_payload.get("merkle_root"),
+        "session_lifecycle_rollup": lifecycle_rollup,
+        "session_lifecycle_rollup_summary": lifecycle_rollup_summary,
+        "session_retention_rollup": retention_rollup,
+        "session_retention_rollup_summary": retention_rollup_summary,
+    }
+    continuity_path = snapshot_continuity_sidecar_path(snapshot_path.resolve())
+    continuity_path.parent.mkdir(parents=True, exist_ok=True)
+    continuity_path.write_text(json.dumps(continuity_payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return {
+        "ok": True,
+        "path": str(continuity_path),
+        "payload": continuity_payload,
+    }
+
+
+def extract_session_continuity_payload(
+    payload: object,
+) -> tuple[dict[str, Any] | None, str | None, dict[str, Any] | None, str | None]:
+    if not isinstance(payload, dict):
+        return None, None, None, None
+
+    session_lifecycle_rollup = payload.get("session_lifecycle_rollup")
+    if not isinstance(session_lifecycle_rollup, dict):
+        session_lifecycle_rollup = None
+    session_lifecycle_rollup_summary = payload.get("session_lifecycle_rollup_summary")
+    if not isinstance(session_lifecycle_rollup_summary, str):
+        session_lifecycle_rollup_summary = (
+            render_session_lifecycle_rollup_summary(session_lifecycle_rollup).rstrip()
+            if session_lifecycle_rollup is not None
+            else None
+        )
+
+    session_retention_rollup = payload.get("session_retention_rollup")
+    if not isinstance(session_retention_rollup, dict):
+        session_retention_rollup = None
+    session_retention_rollup_summary = payload.get("session_retention_rollup_summary")
+    if not isinstance(session_retention_rollup_summary, str):
+        session_retention_rollup_summary = (
+            render_session_retention_rollup_summary(session_retention_rollup).rstrip()
+            if session_retention_rollup is not None
+            else None
+        )
+
+    return (
+        session_lifecycle_rollup,
+        session_lifecycle_rollup_summary,
+        session_retention_rollup,
+        session_retention_rollup_summary,
+    )
+
+
+def validate_snapshot_continuity_payload(payload: dict[str, Any]) -> str | None:
+    def validate_rollup_sessions(rollup_name: str, rollup: dict[str, Any]) -> str | None:
+        sessions = rollup.get("sessions")
+        if not isinstance(sessions, list):
+            return f"{rollup_name}.sessions must be a list"
+        for index, session in enumerate(sessions):
+            if not isinstance(session, dict):
+                return f"{rollup_name}.sessions[{index}] must be an object"
+        count = rollup.get("count")
+        if not isinstance(count, int) or isinstance(count, bool):
+            return f"{rollup_name}.count must be an integer"
+        if count != len(sessions):
+            return f"{rollup_name}.count must equal sessions length ({count} != {len(sessions)})"
+        return None
+
+    def validate_lifecycle_event_kind_counts(rollup: dict[str, Any]) -> str | None:
+        event_kind_counts = rollup.get("event_kind_counts")
+        if not isinstance(event_kind_counts, dict):
+            return "session_lifecycle_rollup.event_kind_counts must be an object"
+        sessions = rollup.get("sessions")
+        if not isinstance(sessions, list):
+            return None
+        count_fields = {
+            "start": "start_count",
+            "checkpoint": "checkpoint_count",
+            "snapshot": "snapshot_count",
+            "snapshot_soft_delete": "snapshot_soft_delete_count",
+            "end": "end_count",
+        }
+        for event_kind, session_field in count_fields.items():
+            aggregate_count = event_kind_counts.get(event_kind)
+            if not isinstance(aggregate_count, int) or isinstance(aggregate_count, bool):
+                return f"session_lifecycle_rollup.event_kind_counts.{event_kind} must be an integer"
+            if aggregate_count < 0:
+                return f"session_lifecycle_rollup.event_kind_counts.{event_kind} must be non-negative"
+            session_total = 0
+            for session in sessions:
+                if not isinstance(session, dict):
+                    return None
+                session_count = session.get(session_field, 0)
+                if not isinstance(session_count, int) or isinstance(session_count, bool):
+                    return f"session_lifecycle_rollup.sessions[*].{session_field} must be an integer"
+                if session_count < 0:
+                    return f"session_lifecycle_rollup.sessions[*].{session_field} must be non-negative"
+                session_total += session_count
+            if aggregate_count != session_total:
+                return (
+                    "session_lifecycle_rollup.event_kind_counts."
+                    f"{event_kind} must equal summed session {session_field} "
+                    f"({aggregate_count} != {session_total})"
+                )
+        return None
+
+    def validate_lifecycle_latest_event_kinds(rollup: dict[str, Any]) -> str | None:
+        sessions = rollup.get("sessions")
+        if not isinstance(sessions, list):
+            return None
+        count_fields = {
+            "start": "start_count",
+            "checkpoint": "checkpoint_count",
+            "snapshot": "snapshot_count",
+            "snapshot_soft_delete": "snapshot_soft_delete_count",
+            "end": "end_count",
+        }
+        valid_event_kinds = tuple(count_fields)
+        valid_event_kind_set = set(valid_event_kinds)
+        for session in sessions:
+            if not isinstance(session, dict):
+                return None
+            latest_event_kind = session.get("latest_event_kind")
+            if not isinstance(latest_event_kind, str):
+                return "session_lifecycle_rollup.sessions[*].latest_event_kind must be a string"
+            if latest_event_kind not in valid_event_kind_set:
+                return (
+                    "session_lifecycle_rollup.sessions[*].latest_event_kind must be one of "
+                    "[start, checkpoint, snapshot, snapshot_soft_delete, end]"
+                )
+            session_field = count_fields[latest_event_kind]
+            session_count = session.get(session_field, 0)
+            if not isinstance(session_count, int) or isinstance(session_count, bool):
+                return f"session_lifecycle_rollup.sessions[*].{session_field} must be an integer"
+            if session_count <= 0:
+                return (
+                    "session_lifecycle_rollup.sessions[*].latest_event_kind="
+                    f"{latest_event_kind} requires {session_field} > 0"
+                )
+        return None
+
+    def validate_lifecycle_latest_event_identifiers(rollup: dict[str, Any]) -> str | None:
+        sessions = rollup.get("sessions")
+        if not isinstance(sessions, list):
+            return None
+        identifier_fields = {
+            "start": "latest_start_session_start_id",
+            "checkpoint": "latest_checkpoint_id",
+            "snapshot": "latest_session_snapshot_id",
+            "snapshot_soft_delete": "latest_soft_deleted_session_snapshot_id",
+            "end": "latest_session_end_id",
+        }
+        for session in sessions:
+            if not isinstance(session, dict):
+                return None
+            latest_event_kind = session.get("latest_event_kind")
+            if not isinstance(latest_event_kind, str):
+                return "session_lifecycle_rollup.sessions[*].latest_event_kind must be a string"
+            identifier_field = identifier_fields.get(latest_event_kind)
+            if identifier_field is None:
+                continue
+            identifier_value = session.get(identifier_field)
+            if not isinstance(identifier_value, str) or not identifier_value.strip():
+                return (
+                    "session_lifecycle_rollup.sessions[*].latest_event_kind="
+                    f"{latest_event_kind} requires {identifier_field}"
+                )
+        return None
+
+    def validate_lifecycle_latest_lifecycle_ids(rollup: dict[str, Any]) -> str | None:
+        sessions = rollup.get("sessions")
+        if not isinstance(sessions, list):
+            return None
+        identifier_fields = {
+            "start": "latest_start_session_start_id",
+            "checkpoint": "latest_checkpoint_id",
+            "snapshot": "latest_session_snapshot_id",
+            "snapshot_soft_delete": "latest_soft_deleted_session_snapshot_id",
+            "end": "latest_session_end_id",
+        }
+        for session in sessions:
+            if not isinstance(session, dict):
+                return None
+            latest_event_kind = session.get("latest_event_kind")
+            if not isinstance(latest_event_kind, str):
+                return "session_lifecycle_rollup.sessions[*].latest_event_kind must be a string"
+            identifier_field = identifier_fields.get(latest_event_kind)
+            if identifier_field is None:
+                continue
+            latest_lifecycle_id = session.get("latest_lifecycle_id")
+            if not isinstance(latest_lifecycle_id, str) or not latest_lifecycle_id.strip():
+                return (
+                    "session_lifecycle_rollup.sessions[*].latest_lifecycle_id must equal "
+                    f"{identifier_field} when latest_event_kind={latest_event_kind}"
+                )
+            event_identifier = session.get(identifier_field)
+            if latest_lifecycle_id != event_identifier:
+                return (
+                    "session_lifecycle_rollup.sessions[*].latest_lifecycle_id must equal "
+                    f"{identifier_field} when latest_event_kind={latest_event_kind}"
+                )
+        return None
+
+    def validate_lifecycle_latest_event_roots(rollup: dict[str, Any]) -> str | None:
+        sessions = rollup.get("sessions")
+        if not isinstance(sessions, list):
+            return None
+        root_fields = {
+            "start": "latest_start_root",
+            "checkpoint": "latest_checkpoint_root",
+            "snapshot": "latest_session_snapshot_root",
+            "snapshot_soft_delete": "latest_soft_delete_root",
+            "end": "latest_session_end_root",
+        }
+        for session in sessions:
+            if not isinstance(session, dict):
+                return None
+            latest_event_kind = session.get("latest_event_kind")
+            if not isinstance(latest_event_kind, str):
+                return "session_lifecycle_rollup.sessions[*].latest_event_kind must be a string"
+            root_field = root_fields.get(latest_event_kind)
+            if root_field is None:
+                continue
+            root_value = session.get(root_field)
+            if not isinstance(root_value, str) or not root_value.strip():
+                return (
+                    "session_lifecycle_rollup.sessions[*].latest_event_kind="
+                    f"{latest_event_kind} requires {root_field}"
+                )
+        return None
+
+    def validate_lifecycle_latest_status_roots(rollup: dict[str, Any]) -> str | None:
+        sessions = rollup.get("sessions")
+        if not isinstance(sessions, list):
+            return None
+        root_fields = {
+            "start": "latest_start_root",
+            "checkpoint": "latest_checkpoint_root",
+            "snapshot": "latest_session_snapshot_root",
+            "snapshot_soft_delete": "latest_soft_delete_root",
+            "end": "latest_session_end_root",
+        }
+        for session in sessions:
+            if not isinstance(session, dict):
+                return None
+            latest_event_kind = session.get("latest_event_kind")
+            if not isinstance(latest_event_kind, str):
+                return "session_lifecycle_rollup.sessions[*].latest_event_kind must be a string"
+            root_field = root_fields.get(latest_event_kind)
+            if root_field is None:
+                continue
+            latest_status_root = session.get("latest_status_root")
+            if not isinstance(latest_status_root, str) or not latest_status_root.strip():
+                return (
+                    "session_lifecycle_rollup.sessions[*].latest_status_root must equal "
+                    f"{root_field} when latest_event_kind={latest_event_kind}"
+                )
+            event_root = session.get(root_field)
+            if latest_status_root != event_root:
+                return (
+                    "session_lifecycle_rollup.sessions[*].latest_status_root must equal "
+                    f"{root_field} when latest_event_kind={latest_event_kind}"
+                )
+        return None
+
+    def validate_lifecycle_latest_event_created_ats(rollup: dict[str, Any]) -> str | None:
+        sessions = rollup.get("sessions")
+        if not isinstance(sessions, list):
+            return None
+        created_at_fields = {
+            "start": "latest_start_created_at",
+            "checkpoint": "latest_checkpoint_created_at",
+            "snapshot": "latest_session_snapshot_created_at",
+            "snapshot_soft_delete": "latest_soft_deleted_deleted_at",
+            "end": "latest_session_end_created_at",
+        }
+        for session in sessions:
+            if not isinstance(session, dict):
+                return None
+            latest_event_kind = session.get("latest_event_kind")
+            if not isinstance(latest_event_kind, str):
+                return "session_lifecycle_rollup.sessions[*].latest_event_kind must be a string"
+            created_at_field = created_at_fields.get(latest_event_kind)
+            if created_at_field is None:
+                continue
+            latest_event_created_at = session.get("latest_event_created_at")
+            if not isinstance(latest_event_created_at, str) or not latest_event_created_at.strip():
+                return (
+                    "session_lifecycle_rollup.sessions[*].latest_event_created_at must equal "
+                    f"{created_at_field} when latest_event_kind={latest_event_kind}"
+                )
+            event_created_at = session.get(created_at_field)
+            if latest_event_created_at != event_created_at:
+                return (
+                    "session_lifecycle_rollup.sessions[*].latest_event_created_at must equal "
+                    f"{created_at_field} when latest_event_kind={latest_event_kind}"
+                )
+        return None
+
+    def validate_lifecycle_token_budget_hints(rollup: dict[str, Any]) -> str | None:
+        sessions = rollup.get("sessions")
+        if not isinstance(sessions, list):
+            return None
+        for session in sessions:
+            if not isinstance(session, dict):
+                return None
+            token_budget_hint = session.get("latest_start_token_budget_hint")
+            if token_budget_hint is None:
+                continue
+            if not isinstance(token_budget_hint, dict):
+                return "session_lifecycle_rollup.sessions[*].latest_start_token_budget_hint must be an object"
+            if "context_budget_tokens" not in token_budget_hint:
+                continue
+            context_budget_tokens = token_budget_hint.get("context_budget_tokens")
+            if not isinstance(context_budget_tokens, int) or isinstance(context_budget_tokens, bool):
+                return (
+                    "session_lifecycle_rollup.sessions[*].latest_start_token_budget_hint.context_budget_tokens "
+                    "must be an integer"
+                )
+            if context_budget_tokens < 0:
+                return (
+                    "session_lifecycle_rollup.sessions[*].latest_start_token_budget_hint.context_budget_tokens "
+                    "must be non-negative"
+                )
+        return None
+
+    def validate_lifecycle_receipt_provenance_counts(rollup: dict[str, Any]) -> str | None:
+        sessions = rollup.get("sessions")
+        if not isinstance(sessions, list):
+            return None
+        count_fields = (
+            "verified_receipt_count",
+            "failed_receipt_count",
+            "linked_treeship_artifact_count",
+        )
+        for count_field in count_fields:
+            aggregate_count = rollup.get(count_field)
+            if not isinstance(aggregate_count, int) or isinstance(aggregate_count, bool):
+                return f"session_lifecycle_rollup.{count_field} must be an integer"
+            if aggregate_count < 0:
+                return f"session_lifecycle_rollup.{count_field} must be non-negative"
+            session_total = 0
+            for session in sessions:
+                if not isinstance(session, dict):
+                    return None
+                session_count = session.get(count_field, 0)
+                if not isinstance(session_count, int) or isinstance(session_count, bool):
+                    return f"session_lifecycle_rollup.sessions[*].{count_field} must be an integer"
+                if session_count < 0:
+                    return f"session_lifecycle_rollup.sessions[*].{count_field} must be non-negative"
+                session_total += session_count
+            if aggregate_count != session_total:
+                return (
+                    f"session_lifecycle_rollup.{count_field} must equal summed session {count_field} "
+                    f"({aggregate_count} != {session_total})"
+                )
+        return None
+
+    def validate_retention_payload_status_counts(rollup: dict[str, Any]) -> str | None:
+        payload_status_counts = rollup.get("payload_status_counts")
+        if not isinstance(payload_status_counts, dict):
+            return "session_retention_rollup.payload_status_counts must be an object"
+        sessions = rollup.get("sessions")
+        if not isinstance(sessions, list):
+            return None
+        count_fields = {
+            "available": "available_payload_count",
+            "soft_deleted": "soft_deleted_payload_count",
+        }
+        for payload_status, session_field in count_fields.items():
+            aggregate_count = payload_status_counts.get(payload_status)
+            if not isinstance(aggregate_count, int) or isinstance(aggregate_count, bool):
+                return f"session_retention_rollup.payload_status_counts.{payload_status} must be an integer"
+            session_total = 0
+            for session in sessions:
+                if not isinstance(session, dict):
+                    return None
+                session_count = session.get(session_field, 0)
+                if not isinstance(session_count, int) or isinstance(session_count, bool):
+                    return f"session_retention_rollup.sessions[*].{session_field} must be an integer"
+                if session_count < 0:
+                    return f"session_retention_rollup.sessions[*].{session_field} must be non-negative"
+                session_total += session_count
+            if aggregate_count < 0:
+                return f"session_retention_rollup.payload_status_counts.{payload_status} must be non-negative"
+            if aggregate_count != session_total:
+                return (
+                    "session_retention_rollup.payload_status_counts."
+                    f"{payload_status} must equal summed session {session_field} "
+                    f"({aggregate_count} != {session_total})"
+                )
+        return None
+
+    def validate_retention_state_counts(rollup: dict[str, Any]) -> str | None:
+        retention_state_counts = rollup.get("retention_state_counts")
+        if not isinstance(retention_state_counts, dict):
+            return "session_retention_rollup.retention_state_counts must be an object"
+        sessions = rollup.get("sessions")
+        if not isinstance(sessions, list):
+            return None
+        valid_states = (
+            "all_available",
+            "mixed",
+            "soft_deleted_only",
+        )
+        valid_state_set = set(valid_states)
+        for session in sessions:
+            if not isinstance(session, dict):
+                return None
+            session_state = session.get("retention_state")
+            if not isinstance(session_state, str):
+                return "session_retention_rollup.sessions[*].retention_state must be a string"
+            if session_state not in valid_state_set:
+                return (
+                    "session_retention_rollup.sessions[*].retention_state must be one of "
+                    "[all_available, mixed, soft_deleted_only]"
+                )
+        for retention_state in valid_states:
+            aggregate_count = retention_state_counts.get(retention_state)
+            if not isinstance(aggregate_count, int) or isinstance(aggregate_count, bool):
+                return f"session_retention_rollup.retention_state_counts.{retention_state} must be an integer"
+            if aggregate_count < 0:
+                return f"session_retention_rollup.retention_state_counts.{retention_state} must be non-negative"
+            session_total = 0
+            for session in sessions:
+                if not isinstance(session, dict):
+                    return None
+                session_state = session.get("retention_state")
+                if session_state == retention_state:
+                    session_total += 1
+            if aggregate_count != session_total:
+                return (
+                    "session_retention_rollup.retention_state_counts."
+                    f"{retention_state} must equal counted session retention_state={retention_state} "
+                    f"({aggregate_count} != {session_total})"
+                )
+        return None
+
+    def validate_retention_state_coherence(rollup: dict[str, Any]) -> str | None:
+        sessions = rollup.get("sessions")
+        if not isinstance(sessions, list):
+            return None
+        for session in sessions:
+            if not isinstance(session, dict):
+                return None
+            retention_state = session.get("retention_state")
+            if not isinstance(retention_state, str):
+                return "session_retention_rollup.sessions[*].retention_state must be a string"
+            available_payload_count = session.get("available_payload_count", 0)
+            if not isinstance(available_payload_count, int) or isinstance(available_payload_count, bool):
+                return "session_retention_rollup.sessions[*].available_payload_count must be an integer"
+            soft_deleted_payload_count = session.get("soft_deleted_payload_count", 0)
+            if not isinstance(soft_deleted_payload_count, int) or isinstance(soft_deleted_payload_count, bool):
+                return "session_retention_rollup.sessions[*].soft_deleted_payload_count must be an integer"
+            expected_retention_state = "all_available"
+            if available_payload_count > 0 and soft_deleted_payload_count > 0:
+                expected_retention_state = "mixed"
+            elif soft_deleted_payload_count > 0:
+                expected_retention_state = "soft_deleted_only"
+            if retention_state != expected_retention_state:
+                return (
+                    "session_retention_rollup.sessions[*].retention_state="
+                    f"{retention_state} must match available_payload_count={available_payload_count} "
+                    f"and soft_deleted_payload_count={soft_deleted_payload_count} "
+                    f"(expected {expected_retention_state})"
+                )
+        return None
+
+    def validate_retention_latest_payload_statuses(rollup: dict[str, Any]) -> str | None:
+        sessions = rollup.get("sessions")
+        if not isinstance(sessions, list):
+            return None
+        valid_statuses = (
+            "available",
+            "soft_deleted",
+        )
+        valid_status_set = set(valid_statuses)
+        for session in sessions:
+            if not isinstance(session, dict):
+                return None
+            latest_payload_status = session.get("latest_payload_status")
+            if not isinstance(latest_payload_status, str):
+                return "session_retention_rollup.sessions[*].latest_payload_status must be a string"
+            if latest_payload_status not in valid_status_set:
+                return (
+                    "session_retention_rollup.sessions[*].latest_payload_status must be one of "
+                    "[available, soft_deleted]"
+                )
+            available_payload_count = session.get("available_payload_count", 0)
+            if not isinstance(available_payload_count, int) or isinstance(available_payload_count, bool):
+                return "session_retention_rollup.sessions[*].available_payload_count must be an integer"
+            soft_deleted_payload_count = session.get("soft_deleted_payload_count", 0)
+            if not isinstance(soft_deleted_payload_count, int) or isinstance(soft_deleted_payload_count, bool):
+                return "session_retention_rollup.sessions[*].soft_deleted_payload_count must be an integer"
+            if available_payload_count <= 0 and soft_deleted_payload_count <= 0:
+                return (
+                    "session_retention_rollup.sessions[*] must report at least one available "
+                    "or soft_deleted payload"
+                )
+            if latest_payload_status == "available" and available_payload_count <= 0:
+                return (
+                    "session_retention_rollup.sessions[*].latest_payload_status=available "
+                    "requires available_payload_count > 0"
+                )
+            if latest_payload_status == "soft_deleted" and soft_deleted_payload_count <= 0:
+                return (
+                    "session_retention_rollup.sessions[*].latest_payload_status=soft_deleted "
+                    "requires soft_deleted_payload_count > 0"
+                )
+        return None
+
+    if "session_lifecycle_rollup" not in payload:
+        return "missing session_lifecycle_rollup"
+    session_lifecycle_rollup = payload.get("session_lifecycle_rollup")
+    if not isinstance(session_lifecycle_rollup, dict):
+        return "session_lifecycle_rollup must be an object"
+    if "session_retention_rollup" not in payload:
+        return "missing session_retention_rollup"
+    session_retention_rollup = payload.get("session_retention_rollup")
+    if not isinstance(session_retention_rollup, dict):
+        return "session_retention_rollup must be an object"
+    lifecycle_sessions_error = validate_rollup_sessions(
+        "session_lifecycle_rollup",
+        session_lifecycle_rollup,
+    )
+    if lifecycle_sessions_error:
+        return lifecycle_sessions_error
+    lifecycle_event_kind_counts_error = validate_lifecycle_event_kind_counts(
+        session_lifecycle_rollup,
+    )
+    if lifecycle_event_kind_counts_error:
+        return lifecycle_event_kind_counts_error
+    lifecycle_latest_event_kind_error = validate_lifecycle_latest_event_kinds(
+        session_lifecycle_rollup,
+    )
+    if lifecycle_latest_event_kind_error:
+        return lifecycle_latest_event_kind_error
+    lifecycle_latest_event_identifier_error = validate_lifecycle_latest_event_identifiers(
+        session_lifecycle_rollup,
+    )
+    if lifecycle_latest_event_identifier_error:
+        return lifecycle_latest_event_identifier_error
+    lifecycle_latest_lifecycle_id_error = validate_lifecycle_latest_lifecycle_ids(
+        session_lifecycle_rollup,
+    )
+    if lifecycle_latest_lifecycle_id_error:
+        return lifecycle_latest_lifecycle_id_error
+    lifecycle_latest_event_root_error = validate_lifecycle_latest_event_roots(
+        session_lifecycle_rollup,
+    )
+    if lifecycle_latest_event_root_error:
+        return lifecycle_latest_event_root_error
+    lifecycle_latest_status_root_error = validate_lifecycle_latest_status_roots(
+        session_lifecycle_rollup,
+    )
+    if lifecycle_latest_status_root_error:
+        return lifecycle_latest_status_root_error
+    lifecycle_latest_event_created_at_error = validate_lifecycle_latest_event_created_ats(
+        session_lifecycle_rollup,
+    )
+    if lifecycle_latest_event_created_at_error:
+        return lifecycle_latest_event_created_at_error
+    lifecycle_token_budget_hint_error = validate_lifecycle_token_budget_hints(
+        session_lifecycle_rollup,
+    )
+    if lifecycle_token_budget_hint_error:
+        return lifecycle_token_budget_hint_error
+    lifecycle_receipt_provenance_counts_error = validate_lifecycle_receipt_provenance_counts(
+        session_lifecycle_rollup,
+    )
+    if lifecycle_receipt_provenance_counts_error:
+        return lifecycle_receipt_provenance_counts_error
+    retention_sessions_error = validate_rollup_sessions(
+        "session_retention_rollup",
+        session_retention_rollup,
+    )
+    if retention_sessions_error:
+        return retention_sessions_error
+    retention_payload_status_counts_error = validate_retention_payload_status_counts(
+        session_retention_rollup,
+    )
+    if retention_payload_status_counts_error:
+        return retention_payload_status_counts_error
+    retention_latest_payload_status_error = validate_retention_latest_payload_statuses(
+        session_retention_rollup,
+    )
+    if retention_latest_payload_status_error:
+        return retention_latest_payload_status_error
+    retention_state_counts_error = validate_retention_state_counts(
+        session_retention_rollup,
+    )
+    if retention_state_counts_error:
+        return retention_state_counts_error
+    retention_state_coherence_error = validate_retention_state_coherence(
+        session_retention_rollup,
+    )
+    if retention_state_coherence_error:
+        return retention_state_coherence_error
+    return None
+
+
+def load_snapshot_continuity_sidecar(
+    *,
+    snapshot_path: Path,
+    snapshot_payload: dict[str, Any],
+) -> dict[str, Any] | None:
+    continuity_path = snapshot_continuity_sidecar_path(snapshot_path.resolve())
+    if not continuity_path.exists():
+        return None
+    try:
+        continuity_payload = json.loads(continuity_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return {
+            "ok": False,
+            "path": str(continuity_path),
+            "error": f"invalid continuity sidecar: {exc}",
+        }
+    if not isinstance(continuity_payload, dict):
+        return {
+            "ok": False,
+            "path": str(continuity_path),
+            "error": "invalid continuity sidecar: payload is not an object",
+        }
+    if continuity_payload.get("schema") != "zerker.snapshot_continuity.v1":
+        return {
+            "ok": False,
+            "path": str(continuity_path),
+            "error": "invalid continuity sidecar schema",
+        }
+    payload_error = validate_snapshot_continuity_payload(continuity_payload)
+    if payload_error:
+        return {
+            "ok": False,
+            "path": str(continuity_path),
+            "error": f"invalid continuity sidecar: {payload_error}",
+        }
+    if continuity_payload.get("snapshot_hash") != snapshot_payload.get("snapshot_hash"):
+        return {
+            "ok": False,
+            "path": str(continuity_path),
+            "error": (
+                "continuity sidecar snapshot hash mismatch "
+                f"(expected {snapshot_payload.get('snapshot_hash')}, "
+                f"got {continuity_payload.get('snapshot_hash')})"
+            ),
+        }
+    if continuity_payload.get("snapshot_merkle_root") != snapshot_payload.get("merkle_root"):
+        return {
+            "ok": False,
+            "path": str(continuity_path),
+            "error": (
+                "continuity sidecar snapshot Merkle root mismatch "
+                f"(expected {snapshot_payload.get('merkle_root')}, "
+                f"got {continuity_payload.get('snapshot_merkle_root')})"
+            ),
+        }
+    (
+        session_lifecycle_rollup,
+        session_lifecycle_rollup_summary,
+        session_retention_rollup,
+        session_retention_rollup_summary,
+    ) = extract_session_continuity_payload(continuity_payload)
+    return {
+        "ok": True,
+        "path": str(continuity_path),
+        "payload": continuity_payload,
+        "session_lifecycle_rollup": session_lifecycle_rollup,
+        "session_lifecycle_rollup_summary": session_lifecycle_rollup_summary,
+        "session_retention_rollup": session_retention_rollup,
+        "session_retention_rollup_summary": session_retention_rollup_summary,
     }
 
 
@@ -4522,6 +5335,10 @@ def launch_proof_manifest_payload(
     status_summary: str,
     local_alpha_gate_text: str,
     strict_publish_gate_text: str,
+    session_lifecycle_rollup: dict[str, Any] | None = None,
+    session_lifecycle_rollup_summary: str | None = None,
+    session_retention_rollup: dict[str, Any] | None = None,
+    session_retention_rollup_summary: str | None = None,
 ) -> dict:
     return_packet = {
         "manifest_path": LAUNCH_PROOF_MANIFEST_FILENAME,
@@ -4532,7 +5349,7 @@ def launch_proof_manifest_payload(
         "archive_path": RETURN_PACKET_ARCHIVE_FILENAME,
         "finalize_script_path": RETURN_PACKET_FINALIZE_FILENAME,
     }
-    return {
+    payload = {
         "schema": "zerker.launch_proof_manifest.v1",
         "db_path": launch_proof_relative_path(db_path, root=target_dir),
         "transcript_path": launch_proof_relative_path(transcript_path, root=target_dir),
@@ -4590,6 +5407,15 @@ def launch_proof_manifest_payload(
         "return_packet": return_packet,
         "status_summary": status_summary,
     }
+    if session_lifecycle_rollup is not None:
+        payload["session_lifecycle_rollup"] = session_lifecycle_rollup
+    if session_lifecycle_rollup_summary is not None:
+        payload["session_lifecycle_rollup_summary"] = session_lifecycle_rollup_summary
+    if session_retention_rollup is not None:
+        payload["session_retention_rollup"] = session_retention_rollup
+    if session_retention_rollup_summary is not None:
+        payload["session_retention_rollup_summary"] = session_retention_rollup_summary
+    return payload
 
 
 def discover_handoff_paths(handoff_dir: Path) -> dict:
@@ -4630,6 +5456,19 @@ def discover_handoff_paths(handoff_dir: Path) -> dict:
 
 
 def render_handoff_summary(result: dict) -> str:
+    lifecycle_rollup = result.get("session_lifecycle_rollup") if isinstance(result.get("session_lifecycle_rollup"), dict) else {}
+    event_kind_counts = lifecycle_rollup.get("event_kind_counts") if isinstance(lifecycle_rollup.get("event_kind_counts"), dict) else {}
+    retention_rollup = result.get("session_retention_rollup") if isinstance(result.get("session_retention_rollup"), dict) else {}
+    retention_state_counts = (
+        retention_rollup.get("retention_state_counts")
+        if isinstance(retention_rollup.get("retention_state_counts"), dict)
+        else {}
+    )
+    retention_payload_counts = (
+        retention_rollup.get("payload_status_counts")
+        if isinstance(retention_rollup.get("payload_status_counts"), dict)
+        else {}
+    )
     lines = [
         "Zerker Memory handoff",
         "",
@@ -4639,6 +5478,24 @@ def render_handoff_summary(result: dict) -> str:
         f"Manifest: {result['manifest_path']}",
         f"Snapshot: {result['snapshot_path']}",
         f"Snapshot verify: {'ok' if result['snapshot_verify']['ok'] else 'failed'}",
+        f"Lifecycle sessions: {int(lifecycle_rollup.get('count', 0))}",
+        "Lifecycle events: "
+        f"starts={int(event_kind_counts.get('start', 0))} "
+        f"checkpoints={int(event_kind_counts.get('checkpoint', 0))} "
+        f"snapshots={int(event_kind_counts.get('snapshot', 0))} "
+        f"snapshot_soft_deletes={int(event_kind_counts.get('snapshot_soft_delete', 0))} "
+        f"ends={int(event_kind_counts.get('end', 0))}",
+        "Lifecycle receipt provenance: "
+        f"{int(lifecycle_rollup.get('verified_receipt_count', 0))} verified, "
+        f"{int(lifecycle_rollup.get('failed_receipt_count', 0))} failed",
+        f"Retention sessions: {int(retention_rollup.get('count', 0))}",
+        "Retention states: "
+        f"all_available={int(retention_state_counts.get('all_available', 0))} "
+        f"mixed={int(retention_state_counts.get('mixed', 0))} "
+        f"soft_deleted_only={int(retention_state_counts.get('soft_deleted_only', 0))}",
+        "Retention payloads: "
+        f"{int(retention_payload_counts.get('available', 0))} available, "
+        f"{int(retention_payload_counts.get('soft_deleted', 0))} soft-deleted",
     ]
     if result.get("action_id"):
         lines.extend(
@@ -4656,6 +5513,73 @@ def render_handoff_summary(result: dict) -> str:
         lines.append(f"- {step}")
     lines.append("")
     return "\n".join(lines)
+
+
+def append_session_continuity_summary_lines(
+    lines: list[str],
+    *,
+    session_lifecycle_rollup: dict[str, Any] | None,
+    session_retention_rollup: dict[str, Any] | None,
+) -> None:
+    if session_lifecycle_rollup is not None:
+        event_kind_counts = session_lifecycle_rollup.get("event_kind_counts") or {}
+        lines.extend(
+            [
+                f"Lifecycle sessions: {int(session_lifecycle_rollup.get('count', 0))}",
+                "Lifecycle events: "
+                f"starts={int(event_kind_counts.get('start', 0))} "
+                f"checkpoints={int(event_kind_counts.get('checkpoint', 0))} "
+                f"snapshots={int(event_kind_counts.get('snapshot', 0))} "
+                f"snapshot_soft_deletes={int(event_kind_counts.get('snapshot_soft_delete', 0))} "
+                f"ends={int(event_kind_counts.get('end', 0))}",
+                "Lifecycle receipt provenance: "
+                f"{int(session_lifecycle_rollup.get('verified_receipt_count', 0))} verified, "
+                f"{int(session_lifecycle_rollup.get('failed_receipt_count', 0))} failed",
+            ]
+        )
+        sessions = session_lifecycle_rollup.get("sessions")
+        if isinstance(sessions, list) and sessions:
+            latest_session = sessions[0] if isinstance(sessions[0], dict) else {}
+            token_budget_hint = (
+                latest_session.get("latest_start_token_budget_hint")
+                if isinstance(latest_session.get("latest_start_token_budget_hint"), dict)
+                else {}
+            )
+            context_budget_tokens = token_budget_hint.get("context_budget_tokens")
+            budget_hint_text = (
+                str(context_budget_tokens)
+                if isinstance(context_budget_tokens, int) and not isinstance(context_budget_tokens, bool)
+                else "none"
+            )
+            lines.append(
+                "Latest lifecycle session: "
+                f"{latest_session.get('session_id') or 'unknown'} "
+                f"latest={latest_session.get('latest_event_kind') or 'unknown'} "
+                f"payload={latest_session.get('latest_payload_status') or 'none'} "
+                f"context_budget_tokens={budget_hint_text}"
+            )
+            if latest_session.get("latest_soft_deleted_reason"):
+                lines.append(f"Latest lifecycle retention: {latest_session['latest_soft_deleted_reason']}")
+    if session_retention_rollup is not None:
+        retention_state_counts = session_retention_rollup.get("retention_state_counts") or {}
+        payload_status_counts = session_retention_rollup.get("payload_status_counts") or {}
+        lines.extend(
+            [
+                f"Retention sessions: {int(session_retention_rollup.get('count', 0))}",
+                "Retention states: "
+                f"all_available={int(retention_state_counts.get('all_available', 0))} "
+                f"mixed={int(retention_state_counts.get('mixed', 0))} "
+                f"soft_deleted_only={int(retention_state_counts.get('soft_deleted_only', 0))}",
+                "Retention payloads: "
+                f"{int(payload_status_counts.get('available', 0))} available, "
+                f"{int(payload_status_counts.get('soft_deleted', 0))} soft-deleted",
+            ]
+        )
+        sessions = session_retention_rollup.get("sessions")
+        if isinstance(sessions, list) and sessions:
+            latest_session = sessions[0] if isinstance(sessions[0], dict) else {}
+            if latest_session.get("latest_soft_deleted_reason"):
+                lines.append(f"Latest retention reason: {latest_session['latest_soft_deleted_reason']}")
 
 
 def run_release_pack(
@@ -4676,6 +5600,12 @@ def run_release_pack(
         out_dir=None,
         action_id=action_id,
     )
+    (
+        handoff_session_lifecycle_rollup,
+        handoff_session_lifecycle_rollup_summary,
+        handoff_session_retention_rollup,
+        handoff_session_retention_rollup_summary,
+    ) = extract_session_continuity_payload(handoff)
     launch_proof = run_launch_proof(
         policy_path=policy_path,
         providers_path=providers_path,
@@ -4864,6 +5794,10 @@ def run_release_pack(
         status_summary=final_status_summary,
         local_alpha_gate_text=local_alpha_gate_text,
         strict_publish_gate_text=strict_publish_gate_text,
+        session_lifecycle_rollup=handoff_session_lifecycle_rollup,
+        session_lifecycle_rollup_summary=handoff_session_lifecycle_rollup_summary,
+        session_retention_rollup=handoff_session_retention_rollup,
+        session_retention_rollup_summary=handoff_session_retention_rollup_summary,
     )
     Path(launch_proof["manifest_path"]).write_text(json.dumps(manifest_payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     write_return_packet_archive(
@@ -4927,6 +5861,16 @@ def render_restore_summary(result: dict) -> str:
     restore_receipt = result["restore"]["receipt"]
     restore_verify = result.get("restore_verify") or {}
     restore_evidence = ((restore_receipt.get("treeship_statement") or {}).get("evidence") or {})
+    restore_schema = str(result.get("schema") or "")
+    session_lifecycle_rollup = (
+        result.get("session_lifecycle_rollup") if isinstance(result.get("session_lifecycle_rollup"), dict) else None
+    )
+    session_retention_rollup = (
+        result.get("session_retention_rollup") if isinstance(result.get("session_retention_rollup"), dict) else None
+    )
+    session_continuity_sidecar = (
+        result.get("session_continuity_sidecar") if isinstance(result.get("session_continuity_sidecar"), dict) else None
+    )
     lines = [
         "Zerker Memory restore",
         "",
@@ -4958,6 +5902,28 @@ def render_restore_summary(result: dict) -> str:
             "Semantic truth: not guaranteed",
         ]
     )
+    if session_continuity_sidecar is not None:
+        lines.append(f"Session continuity sidecar: {session_continuity_sidecar.get('path')}")
+        lines.append(
+            "Session continuity verify: "
+            f"{'ok' if session_continuity_sidecar.get('ok') else 'failed'}"
+        )
+    if session_continuity_sidecar is not None and not session_continuity_sidecar.get("ok") and session_continuity_sidecar.get("error"):
+        lines.append(f"Session continuity error: {session_continuity_sidecar['error']}")
+    elif (
+        restore_schema == "zerker.restore_snapshot_file.v1"
+        and session_continuity_sidecar is None
+        and session_lifecycle_rollup is None
+        and session_retention_rollup is None
+    ):
+        lines.append(
+            "Session continuity: none (standalone snapshot restores do not carry lifecycle or retention history)"
+        )
+    append_session_continuity_summary_lines(
+        lines,
+        session_lifecycle_rollup=session_lifecycle_rollup,
+        session_retention_rollup=session_retention_rollup,
+    )
     if result.get("next_steps"):
         lines.extend(["", "Next:"])
         for step in result["next_steps"]:
@@ -4971,69 +5937,23 @@ def build_bundle_verification_result(store: MemoryStore, *, bundle_path: Path) -
     bundle_payload = json.loads(resolved_bundle_path.read_text(encoding="utf-8"))
     bundle_verify = store.verify_bundle(bundle_payload)
 
-    supporting_receipts = bundle_payload.get("supporting_memory_write_receipts")
-    receipt_verifications: list[dict[str, Any]] = []
-    attestation_artifacts: list[dict[str, Any]] = []
-    provenance_error: str | None = None
-    supporting_provenance_ok = True
-    verified_receipt_count = 0
-
-    if supporting_receipts is None:
-        supporting_receipts = {}
-    if not isinstance(supporting_receipts, dict):
-        supporting_provenance_ok = False
-        provenance_error = "bundle supporting_memory_write_receipts is invalid"
-        supporting_receipts = {}
-
-    for memory_id in sorted(supporting_receipts):
-        receipt = supporting_receipts[memory_id]
-        if not isinstance(receipt, dict):
-            supporting_provenance_ok = False
-            provenance_error = f"bundle supporting write receipt for {memory_id} is invalid"
-            receipt_verifications.append(
-                {
-                    "memory_id": memory_id,
-                    "ok": False,
-                    "error": provenance_error,
-                }
-            )
-            continue
-        verification = store.verify_memory_write_receipt(receipt)
-        receipt_verifications.append(
-            {
-                "memory_id": memory_id,
-                "receipt_id": receipt.get("receipt_id"),
-                "receipt_hash": receipt.get("receipt_hash"),
-                "verification": verification,
-            }
-        )
-        if verification["ok"]:
-            verified_receipt_count += 1
-        else:
-            supporting_provenance_ok = False
-            provenance_error = (
-                provenance_error
-                or f"supporting write receipt {receipt.get('receipt_id') or memory_id} verification failed"
-            )
-        attestation = receipt.get("treeship_attestation")
-        if isinstance(attestation, dict):
-            attestation_artifacts.append(
-                {
-                    "memory_id": memory_id,
-                    "receipt_id": receipt.get("receipt_id"),
-                    "artifact_id": attestation.get("artifact_id"),
-                    "status": attestation.get("status"),
-                    "signed_at": attestation.get("signed_at"),
-                }
-            )
-
     supporting_memory_ids = bundle_payload.get("supporting_memory_ids")
     supporting_events = bundle_payload.get("supporting_events")
     supporting_memory_count = len(supporting_memory_ids) if isinstance(supporting_memory_ids, list) else 0
     supporting_event_count = len(supporting_events) if isinstance(supporting_events, list) else 0
+    supporting_provenance_ok = bool(bundle_verify.get("supporting_provenance_verified"))
+    supporting_provenance = {
+        "ok": supporting_provenance_ok,
+        "receipt_count": int(bundle_verify.get("supporting_write_receipt_count") or 0),
+        "verified_receipt_count": int(bundle_verify.get("verified_supporting_write_receipt_count") or 0),
+        "receipts": bundle_verify.get("supporting_provenance_receipts") or [],
+        "attestation_artifacts": bundle_verify.get("attestation_artifacts") or [],
+    }
+    if not supporting_provenance_ok and bundle_verify.get("error"):
+        supporting_provenance["error"] = bundle_verify["error"]
 
     result = {
-        "ok": bundle_verify["ok"] and supporting_provenance_ok,
+        "ok": bundle_verify["ok"],
         "schema": "zerker.bundle_verification_result.v1",
         "path": str(resolved_bundle_path),
         "action_id": bundle_payload.get("action_id"),
@@ -5041,20 +5961,12 @@ def build_bundle_verification_result(store: MemoryStore, *, bundle_path: Path) -
         "bundle_verify": bundle_verify,
         "supporting_memory_count": supporting_memory_count,
         "supporting_event_count": supporting_event_count,
-        "supporting_provenance": {
-            "ok": supporting_provenance_ok,
-            "receipt_count": len(receipt_verifications),
-            "verified_receipt_count": verified_receipt_count,
-            "receipts": receipt_verifications,
-            "attestation_artifacts": attestation_artifacts,
-        },
-        "trusted_provenance_verified": bundle_verify["ok"] and supporting_provenance_ok,
+        "supporting_provenance": supporting_provenance,
+        "trusted_provenance_verified": bool(bundle_verify.get("trusted_provenance_verified")),
         "semantic_truth_guaranteed": False,
     }
-    if provenance_error is not None:
-        result["supporting_provenance"]["error"] = provenance_error
     if not result["ok"]:
-        result["error"] = bundle_verify.get("error") or provenance_error or "bundle verification failed"
+        result["error"] = bundle_verify.get("error") or "bundle verification failed"
     return result
 
 
@@ -5089,6 +6001,27 @@ def render_bundle_verification_summary(result: dict[str, Any]) -> str:
         f"Trusted provenance: {'verified' if result.get('trusted_provenance_verified') else 'not verified'}",
         "Semantic truth: not guaranteed",
     ]
+    provenance_receipts = [
+        item for item in supporting_provenance.get("receipts", []) if isinstance(item, dict)
+    ]
+    if len(provenance_receipts) == 1:
+        provenance = provenance_receipts[0]
+        lines.extend(
+            [
+                f"Provenance memory: {provenance.get('memory_id')}",
+                f"Provenance actor: {provenance.get('actor_id') or provenance.get('actor_uri') or 'unknown'}",
+                f"Provenance digest: {provenance.get('content_digest')}",
+                (
+                    "Provenance roots: "
+                    f"{provenance.get('prior_merkle_root')} -> {provenance.get('new_merkle_root')}"
+                ),
+                f"Provenance Treeship artifact: {provenance.get('treeship_artifact_id') or 'none'}",
+            ]
+        )
+    elif len(provenance_receipts) > 1:
+        lines.append(
+            f"Provenance details: {len(provenance_receipts)} receipts exported; inspect JSON for per-memory anchors"
+        )
     if bundle_verify.get("error"):
         lines.append(f"Bundle error: {bundle_verify['error']}")
     if supporting_provenance.get("error"):
@@ -5103,8 +6036,23 @@ def render_snapshot_verification_summary(result: dict[str, Any]) -> str:
         for item in result.get("attestation_artifacts", [])
         if str(item.get("artifact_id") or "")
     ]
+    write_receipt_chains = [item for item in result.get("write_receipt_chains", []) if isinstance(item, dict)]
+    provenance_receipts = [item for item in result.get("provenance_receipts", []) if isinstance(item, dict)]
+    verified_provenance_receipt_count = int(result.get("verified_provenance_receipt_count") or 0)
+    provenance_receipt_count = int(result.get("provenance_receipt_count") or len(provenance_receipts))
     verified_write_receipt_count = int(result.get("verified_write_receipt_count") or 0)
     write_receipt_count = int(result.get("write_receipt_count") or 0)
+    total_intervening_event_count = int(result.get("total_intervening_event_count") or 0)
+    total_intervening_other_memory_event_count = int(result.get("total_intervening_other_memory_event_count") or 0)
+    session_continuity_sidecar = (
+        result.get("session_continuity_sidecar") if isinstance(result.get("session_continuity_sidecar"), dict) else None
+    )
+    session_lifecycle_rollup = (
+        result.get("session_lifecycle_rollup") if isinstance(result.get("session_lifecycle_rollup"), dict) else None
+    )
+    session_retention_rollup = (
+        result.get("session_retention_rollup") if isinstance(result.get("session_retention_rollup"), dict) else None
+    )
     lines = [
         "Memory snapshot verify",
         "",
@@ -5124,12 +6072,60 @@ def render_snapshot_verification_summary(result: dict[str, Any]) -> str:
             f"({verified_write_receipt_count}/{write_receipt_count} verified)"
         ),
         f"Verified write transitions: {int(result.get('verified_write_receipt_transition_count') or 0)}",
+        f"Intervening events: {total_intervening_event_count}",
+        f"Intervening other-memory events: {total_intervening_other_memory_event_count}",
+        (
+            f"Provenance anchors: {verified_provenance_receipt_count} verified"
+            if provenance_receipt_count == verified_provenance_receipt_count
+            else f"Provenance anchors: {verified_provenance_receipt_count}/{provenance_receipt_count} verified"
+        ),
         f"Merkle root: {result.get('merkle_root')}",
         f"Computed Merkle root: {result.get('computed_merkle_root')}",
         f"Treeship artifacts: {', '.join(attestation_artifacts) if attestation_artifacts else 'none'}",
         f"Trusted provenance: {'verified' if result.get('ok') else 'not verified'}",
         "Semantic truth: not guaranteed",
     ]
+    continuity_bases = sorted(
+        {
+            str(transition.get("continuity_basis"))
+            for chain in write_receipt_chains
+            for transition in chain.get("transitions", [])
+            if isinstance(transition, dict) and transition.get("continuity_basis")
+        }
+    )
+    if continuity_bases:
+        continuity_basis_label = continuity_bases[0].replace("_", " ")
+        lines.append(f"Continuity basis: {continuity_basis_label}")
+    if len(provenance_receipts) == 1:
+        provenance = provenance_receipts[0]
+        lines.extend(
+            [
+                f"Provenance memory: {provenance.get('memory_id')}",
+                f"Provenance actor: {provenance.get('actor_id') or provenance.get('actor_uri') or 'unknown'}",
+                f"Provenance digest: {provenance.get('content_digest')}",
+                (
+                    "Provenance roots: "
+                    f"{provenance.get('prior_merkle_root')} -> {provenance.get('new_merkle_root')}"
+                ),
+                f"Provenance Treeship artifact: {provenance.get('treeship_artifact_id') or 'none'}",
+            ]
+        )
+    elif len(provenance_receipts) > 1:
+        lines.append(f"Provenance details: {len(provenance_receipts)} receipts exported; inspect JSON for per-memory anchors")
+    if session_continuity_sidecar is not None:
+        lines.append(f"Session continuity sidecar: {session_continuity_sidecar.get('path')}")
+        lines.append(
+            "Session continuity verify: "
+            f"{'ok' if session_continuity_sidecar.get('ok') else 'failed'}"
+        )
+        if session_continuity_sidecar.get("ok"):
+            append_session_continuity_summary_lines(
+                lines,
+                session_lifecycle_rollup=session_lifecycle_rollup,
+                session_retention_rollup=session_retention_rollup,
+            )
+        elif session_continuity_sidecar.get("error"):
+            lines.append(f"Session continuity error: {session_continuity_sidecar['error']}")
     if result.get("error"):
         lines.append(f"Snapshot error: {result['error']}")
     lines.append("")
@@ -5173,11 +6169,22 @@ def restore_snapshot_file(store: MemoryStore, *, snapshot_path: Path) -> dict:
     snapshot_verify = store.verify_snapshot(snapshot_payload)
     if not snapshot_verify["ok"]:
         raise ValueError(snapshot_verify.get("error", "snapshot verification failed"))
+    session_continuity_sidecar = load_snapshot_continuity_sidecar(
+        snapshot_path=resolved_snapshot_path,
+        snapshot_payload=snapshot_payload,
+    )
 
     restore_result = store.restore_snapshot(snapshot_payload)
     restore_verify = store.verify_lifecycle_receipt(
         restore_result["receipt"],
         source_snapshot=snapshot_payload,
+    )
+    workspace_restore_continuity = write_workspace_restore_continuity_anchor(
+        store,
+        snapshot_path=resolved_snapshot_path,
+        snapshot_payload=snapshot_payload,
+        restore_result=restore_result,
+        session_continuity_sidecar=session_continuity_sidecar,
     )
     return {
         "ok": True,
@@ -5193,6 +6200,28 @@ def restore_snapshot_file(store: MemoryStore, *, snapshot_path: Path) -> dict:
         "treeship_path": None,
         "restore": restore_result,
         "restore_verify": restore_verify,
+        "workspace_restore_continuity": workspace_restore_continuity,
+        "session_continuity_sidecar": session_continuity_sidecar,
+        "session_lifecycle_rollup": (
+            session_continuity_sidecar.get("session_lifecycle_rollup")
+            if isinstance(session_continuity_sidecar, dict)
+            else None
+        ),
+        "session_lifecycle_rollup_summary": (
+            session_continuity_sidecar.get("session_lifecycle_rollup_summary")
+            if isinstance(session_continuity_sidecar, dict)
+            else None
+        ),
+        "session_retention_rollup": (
+            session_continuity_sidecar.get("session_retention_rollup")
+            if isinstance(session_continuity_sidecar, dict)
+            else None
+        ),
+        "session_retention_rollup_summary": (
+            session_continuity_sidecar.get("session_retention_rollup_summary")
+            if isinstance(session_continuity_sidecar, dict)
+            else None
+        ),
         "next_steps": [
             f"zmem --db {store.db_path} status --summary-only --skip-eval",
             f"zmem --db {store.db_path} ui",
@@ -5256,6 +6285,16 @@ def render_lineage_summary(
         f"Trusted provenance: {'verified' if verification.get('ok') else 'not verified'}",
         "Semantic truth: not guaranteed",
     ]
+    if verification.get("verified_transition_count", 0) > 0:
+        lines.insert(11, "Continuity basis: prior receipt link + live previous event root")
+        lines.insert(12, f"Intervening events: {verification.get('total_intervening_event_count', 0)}")
+        lines.insert(
+            13,
+            (
+                "Intervening other-memory events: "
+                f"{verification.get('total_intervening_other_memory_event_count', 0)}"
+            ),
+        )
     if verification.get("error"):
         lines.append(f"Verification error: {verification['error']}")
     lines.append("")
@@ -5469,6 +6508,12 @@ def verify_return_packet_archive(archive_path: Path) -> dict[str, object]:
             public_raw_install_url = str(
                 public_verify.get("raw_install_url") or manifest_payload.get("public_raw_install_url") or PUBLIC_RAW_INSTALL_URL
             )
+            (
+                session_lifecycle_rollup,
+                session_lifecycle_rollup_summary,
+                session_retention_rollup,
+                session_retention_rollup_summary,
+            ) = extract_session_continuity_payload(manifest_payload)
             required_roots = [manifest_path, logs_dir_path, result_path, summary_path, assets_dir_path]
             missing_roots = [path for path in required_roots if not archive_contains_path(archive_names, path)]
             result_payload, result_error = read_archive_json(archive, result_path)
@@ -5567,10 +6612,20 @@ def verify_return_packet_archive(archive_path: Path) -> dict[str, object]:
         "launch_assets_expected_count": len(expected_asset_paths),
         "failed_steps": failed_steps,
         "action_id": manifest_payload.get("action_id"),
+        "session_lifecycle_rollup": session_lifecycle_rollup,
+        "session_lifecycle_rollup_summary": session_lifecycle_rollup_summary,
+        "session_retention_rollup": session_retention_rollup,
+        "session_retention_rollup_summary": session_retention_rollup_summary,
     }
 
 
 def render_return_packet_summary(result: dict[str, object]) -> str:
+    (
+        session_lifecycle_rollup,
+        _session_lifecycle_rollup_summary,
+        session_retention_rollup,
+        _session_retention_rollup_summary,
+    ) = extract_session_continuity_payload(result)
     lines = [
         "Zerker Memory return packet",
         "",
@@ -5595,6 +6650,11 @@ def render_return_packet_summary(result: dict[str, object]) -> str:
     public_raw_install_url = result.get("public_raw_install_url")
     if isinstance(public_raw_install_url, str) and public_raw_install_url:
         lines.append(f"Expected raw install URL: {public_raw_install_url}")
+    append_session_continuity_summary_lines(
+        lines,
+        session_lifecycle_rollup=session_lifecycle_rollup,
+        session_retention_rollup=session_retention_rollup,
+    )
     finalize_script_path = result.get("return_packet_finalize_script_path")
     if isinstance(finalize_script_path, str) and finalize_script_path:
         lines.append(f"Return packet finalize: {finalize_script_path}")
@@ -5640,6 +6700,12 @@ def append_public_verify_bootstrap_note(lines: list[str]) -> None:
 
 
 def render_operator_packet_summary(result: dict[str, object]) -> str:
+    (
+        session_lifecycle_rollup,
+        _session_lifecycle_rollup_summary,
+        session_retention_rollup,
+        _session_retention_rollup_summary,
+    ) = extract_session_continuity_payload(result)
     lines = [
         "Zerker Memory operator packet",
         "",
@@ -5676,6 +6742,11 @@ def render_operator_packet_summary(result: dict[str, object]) -> str:
     strict_publish_gate = result.get("strict_publish_gate")
     if isinstance(strict_publish_gate, str) and strict_publish_gate:
         lines.append(f"Strict publish gate: {strict_publish_gate}")
+    append_session_continuity_summary_lines(
+        lines,
+        session_lifecycle_rollup=session_lifecycle_rollup,
+        session_retention_rollup=session_retention_rollup,
+    )
     result_path = result.get("public_verify_result_path")
     if isinstance(result_path, str) and result_path:
         lines.append(f"Result receipt: {result_path}")
@@ -5817,6 +6888,12 @@ def verify_public_verify(root: Path) -> dict[str, object]:
         for asset in manifest.get("launch_assets", [])
         if isinstance(asset, dict) and asset.get("id") and asset.get("deliverable") and asset.get("output_path")
     ]
+    (
+        session_lifecycle_rollup,
+        session_lifecycle_rollup_summary,
+        session_retention_rollup,
+        session_retention_rollup_summary,
+    ) = extract_session_continuity_payload(manifest)
 
     result_payload: dict[str, object] | None = None
     result_error: str | None = None
@@ -5875,6 +6952,10 @@ def verify_public_verify(root: Path) -> dict[str, object]:
         "operator_packet_archive_path": str(operator_packet_archive_path),
         "launch_asset_board_path": str(launch_asset_board_path),
         "expected_launch_assets": expected_launch_assets,
+        "session_lifecycle_rollup": session_lifecycle_rollup,
+        "session_lifecycle_rollup_summary": session_lifecycle_rollup_summary,
+        "session_retention_rollup": session_retention_rollup,
+        "session_retention_rollup_summary": session_retention_rollup_summary,
         "details": "; ".join(details),
         "expected_count": len(expected_logs),
         "present_count": len(present_logs),
@@ -5886,6 +6967,12 @@ def verify_public_verify(root: Path) -> dict[str, object]:
 
 
 def render_public_verify_summary(result: dict[str, object]) -> str:
+    (
+        session_lifecycle_rollup,
+        _session_lifecycle_rollup_summary,
+        session_retention_rollup,
+        _session_retention_rollup_summary,
+    ) = extract_session_continuity_payload(result)
     lines = [
         "Zerker Memory public verify",
         "",
@@ -5927,6 +7014,11 @@ def render_public_verify_summary(result: dict[str, object]) -> str:
     install_mode = result.get("install_mode")
     if isinstance(install_mode, str) and install_mode:
         lines.append(f"Observed install mode: {install_mode}")
+    append_session_continuity_summary_lines(
+        lines,
+        session_lifecycle_rollup=session_lifecycle_rollup,
+        session_retention_rollup=session_retention_rollup,
+    )
     lines.append(f"Expected public repo: {PUBLIC_REPO_URL}")
     lines.append(f"Expected raw install URL: {PUBLIC_RAW_INSTALL_URL}")
     append_public_verify_bootstrap_note(lines)
@@ -6114,6 +7206,10 @@ def create_handoff_package(
 
     status_result = build_status_report(store, providers_path=providers_path, include_eval=False)
     status_summary = render_status_summary(status_result).rstrip()
+    session_lifecycle_rollup = build_session_lifecycle_rollup_report(store, limit=10)
+    session_lifecycle_rollup_summary = render_session_lifecycle_rollup_summary(session_lifecycle_rollup).rstrip()
+    session_retention_rollup = build_session_retention_rollup_report(store, limit=10)
+    session_retention_rollup_summary = render_session_retention_rollup_summary(session_retention_rollup).rstrip()
     readme_path = target_dir / "README.md"
     snapshot_rel = handoff_relative_path(Path(snapshot_result["path"]), root=target_dir)
     readme_lines = [
@@ -6155,6 +7251,18 @@ def create_handoff_package(
             status_summary,
             "```",
             "",
+            "## Session Lifecycle Continuity",
+            "",
+            "```text",
+            session_lifecycle_rollup_summary,
+            "```",
+            "",
+            "## Session Snapshot Retention",
+            "",
+            "```text",
+            session_retention_rollup_summary,
+            "```",
+            "",
         ]
     )
     readme_path.write_text("\n".join(readme_lines), encoding="utf-8")
@@ -6167,6 +7275,10 @@ def create_handoff_package(
         bundle_path=Path(bundle_result["path"]) if bundle_result is not None else None,
         treeship_path=Path(treeship_result["path"]) if treeship_result is not None else None,
         status_summary=status_summary,
+        session_lifecycle_rollup=session_lifecycle_rollup,
+        session_lifecycle_rollup_summary=session_lifecycle_rollup_summary,
+        session_retention_rollup=session_retention_rollup,
+        session_retention_rollup_summary=session_retention_rollup_summary,
     )
     manifest_path.write_text(json.dumps(manifest_payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
@@ -6191,6 +7303,10 @@ def create_handoff_package(
         "bundle_verify": bundle_verify,
         "treeship_path": treeship_result["path"] if treeship_result is not None else None,
         "status_summary": status_summary,
+        "session_lifecycle_rollup": session_lifecycle_rollup,
+        "session_lifecycle_rollup_summary": session_lifecycle_rollup_summary,
+        "session_retention_rollup": session_retention_rollup,
+        "session_retention_rollup_summary": session_retention_rollup_summary,
         "next_steps": next_steps,
     }
 
@@ -6198,6 +7314,7 @@ def create_handoff_package(
 def restore_handoff_package(store: MemoryStore, *, handoff_dir: Path) -> dict:
     target_dir = handoff_dir.resolve()
     discovered = discover_handoff_paths(target_dir)
+    manifest = discovered.get("manifest") if isinstance(discovered.get("manifest"), dict) else None
     snapshot_path = discovered["snapshot_path"]
     snapshot_payload = json.loads(snapshot_path.read_text(encoding="utf-8"))
     snapshot_verify = store.verify_snapshot(snapshot_payload)
@@ -6222,7 +7339,6 @@ def restore_handoff_package(store: MemoryStore, *, handoff_dir: Path) -> dict:
         f"zmem --db {store.db_path} ui",
     ]
     action_id = None
-    manifest = discovered.get("manifest")
     if manifest is not None:
         action_id = manifest.get("action_id")
     elif bundle_path is not None:
@@ -6230,6 +7346,26 @@ def restore_handoff_package(store: MemoryStore, *, handoff_dir: Path) -> dict:
         action_id = bundle_payload.get("action_id")
     if action_id:
         next_steps.insert(0, f"zmem --db {store.db_path} why {action_id}")
+    session_lifecycle_rollup = manifest.get("session_lifecycle_rollup") if manifest is not None else None
+    if not isinstance(session_lifecycle_rollup, dict):
+        session_lifecycle_rollup = None
+    session_lifecycle_rollup_summary = manifest.get("session_lifecycle_rollup_summary") if manifest is not None else None
+    if not isinstance(session_lifecycle_rollup_summary, str):
+        session_lifecycle_rollup_summary = (
+            render_session_lifecycle_rollup_summary(session_lifecycle_rollup).rstrip()
+            if session_lifecycle_rollup is not None
+            else None
+        )
+    session_retention_rollup = manifest.get("session_retention_rollup") if manifest is not None else None
+    if not isinstance(session_retention_rollup, dict):
+        session_retention_rollup = None
+    session_retention_rollup_summary = manifest.get("session_retention_rollup_summary") if manifest is not None else None
+    if not isinstance(session_retention_rollup_summary, str):
+        session_retention_rollup_summary = (
+            render_session_retention_rollup_summary(session_retention_rollup).rstrip()
+            if session_retention_rollup is not None
+            else None
+        )
 
     return {
         "ok": True,
@@ -6245,6 +7381,10 @@ def restore_handoff_package(store: MemoryStore, *, handoff_dir: Path) -> dict:
         "treeship_path": str(discovered["treeship_path"]) if discovered.get("treeship_path") is not None else None,
         "restore": restore_result,
         "restore_verify": restore_verify,
+        "session_lifecycle_rollup": session_lifecycle_rollup,
+        "session_lifecycle_rollup_summary": session_lifecycle_rollup_summary,
+        "session_retention_rollup": session_retention_rollup,
+        "session_retention_rollup_summary": session_retention_rollup_summary,
         "next_steps": next_steps,
     }
 
@@ -6277,7 +7417,16 @@ def build_session_checkpoints_report(
     scope: str | None = None,
     limit: int = 10,
 ) -> dict[str, Any]:
-    checkpoints = store.session_checkpoints(session_id=session_id, scope=scope, limit=limit)
+    checkpoints = [
+        _build_lifecycle_receipt_report_entry(store, checkpoint)
+        for checkpoint in store.session_checkpoints(session_id=session_id, scope=scope, limit=limit)
+    ]
+    verified_receipt_count = sum(
+        1 for checkpoint in checkpoints if bool((checkpoint.get("receipt_verification") or {}).get("ok"))
+    )
+    linked_treeship_artifact_count = sum(
+        1 for checkpoint in checkpoints if (checkpoint.get("receipt_summary") or {}).get("treeship_artifact_id")
+    )
     return {
         "ok": True,
         "schema": "zerker.session_checkpoints_report.v1",
@@ -6285,6 +7434,9 @@ def build_session_checkpoints_report(
         "scope": scope,
         "limit": limit,
         "count": len(checkpoints),
+        "verified_receipt_count": verified_receipt_count,
+        "failed_receipt_count": len(checkpoints) - verified_receipt_count,
+        "linked_treeship_artifact_count": linked_treeship_artifact_count,
         "checkpoints": checkpoints,
     }
 
@@ -6296,7 +7448,10 @@ def build_session_starts_report(
     scope: str | None = None,
     limit: int = 10,
 ) -> dict[str, Any]:
-    starts = store.session_starts(session_id=session_id, scope=scope, limit=limit)
+    starts = [
+        _build_lifecycle_receipt_report_entry(store, session_start)
+        for session_start in store.session_starts(session_id=session_id, scope=scope, limit=limit)
+    ]
     budget_hint_counts = {"set": 0, "unset": 0}
     for session_start in starts:
         token_budget_hint = session_start.get("token_budget_hint")
@@ -6304,6 +7459,10 @@ def build_session_starts_report(
             budget_hint_counts["set"] += 1
         else:
             budget_hint_counts["unset"] += 1
+    verified_receipt_count = sum(1 for session_start in starts if bool((session_start.get("receipt_verification") or {}).get("ok")))
+    linked_treeship_artifact_count = sum(
+        1 for session_start in starts if (session_start.get("receipt_summary") or {}).get("treeship_artifact_id")
+    )
     return {
         "ok": True,
         "schema": "zerker.session_starts_report.v1",
@@ -6312,6 +7471,9 @@ def build_session_starts_report(
         "limit": limit,
         "count": len(starts),
         "budget_hint_counts": budget_hint_counts,
+        "verified_receipt_count": verified_receipt_count,
+        "failed_receipt_count": len(starts) - verified_receipt_count,
+        "linked_treeship_artifact_count": linked_treeship_artifact_count,
         "starts": starts,
     }
 
@@ -6367,7 +7529,14 @@ def build_session_ends_report(
     scope: str | None = None,
     limit: int = 10,
 ) -> dict[str, Any]:
-    ends = store.session_ends(session_id=session_id, scope=scope, limit=limit)
+    ends = [
+        _build_lifecycle_receipt_report_entry(store, session_end)
+        for session_end in store.session_ends(session_id=session_id, scope=scope, limit=limit)
+    ]
+    verified_receipt_count = sum(1 for session_end in ends if bool((session_end.get("receipt_verification") or {}).get("ok")))
+    linked_treeship_artifact_count = sum(
+        1 for session_end in ends if (session_end.get("receipt_summary") or {}).get("treeship_artifact_id")
+    )
     return {
         "ok": True,
         "schema": "zerker.session_ends_report.v1",
@@ -6375,6 +7544,9 @@ def build_session_ends_report(
         "scope": scope,
         "limit": limit,
         "count": len(ends),
+        "verified_receipt_count": verified_receipt_count,
+        "failed_receipt_count": len(ends) - verified_receipt_count,
+        "linked_treeship_artifact_count": linked_treeship_artifact_count,
         "ends": ends,
     }
 
@@ -6470,11 +7642,18 @@ def build_session_snapshots_report(
     scope: str | None = None,
     limit: int = 10,
 ) -> dict[str, Any]:
-    snapshots = store.session_snapshots(session_id=session_id, scope=scope, limit=limit)
+    snapshots = [
+        _build_lifecycle_receipt_report_entry(store, snapshot)
+        for snapshot in store.session_snapshots(session_id=session_id, scope=scope, limit=limit)
+    ]
     payload_status_counts = {"available": 0, "soft_deleted": 0}
     for snapshot in snapshots:
         status = str(snapshot.get("payload_status") or "available")
         payload_status_counts[status] = payload_status_counts.get(status, 0) + 1
+    verified_receipt_count = sum(1 for snapshot in snapshots if bool((snapshot.get("receipt_verification") or {}).get("ok")))
+    linked_treeship_artifact_count = sum(
+        1 for snapshot in snapshots if (snapshot.get("receipt_summary") or {}).get("treeship_artifact_id")
+    )
     return {
         "ok": True,
         "schema": "zerker.session_snapshots_report.v1",
@@ -6483,7 +7662,88 @@ def build_session_snapshots_report(
         "limit": limit,
         "count": len(snapshots),
         "payload_status_counts": payload_status_counts,
+        "verified_receipt_count": verified_receipt_count,
+        "failed_receipt_count": len(snapshots) - verified_receipt_count,
+        "linked_treeship_artifact_count": linked_treeship_artifact_count,
         "snapshots": snapshots,
+    }
+
+
+def build_session_retention_rollup_report(
+    store: MemoryStore,
+    *,
+    session_id: str | None = None,
+    scope: str | None = None,
+    limit: int = 10,
+) -> dict[str, Any]:
+    sessions = store.session_snapshot_retention_rollup(session_id=session_id, scope=scope, limit=limit)
+    retention_state_counts = {
+        "all_available": 0,
+        "mixed": 0,
+        "soft_deleted_only": 0,
+    }
+    payload_status_counts = {"available": 0, "soft_deleted": 0}
+    for session in sessions:
+        retention_state = str(session.get("retention_state") or "all_available")
+        retention_state_counts[retention_state] = retention_state_counts.get(retention_state, 0) + 1
+        payload_status_counts["available"] += int(session.get("available_payload_count", 0))
+        payload_status_counts["soft_deleted"] += int(session.get("soft_deleted_payload_count", 0))
+    return {
+        "ok": True,
+        "schema": "zerker.session_snapshot_retention_rollup_report.v1",
+        "session_id": session_id,
+        "scope": scope,
+        "limit": limit,
+        "count": len(sessions),
+        "retention_state_counts": retention_state_counts,
+        "payload_status_counts": payload_status_counts,
+        "sessions": sessions,
+    }
+
+
+def build_session_lifecycle_rollup_report(
+    store: MemoryStore,
+    *,
+    session_id: str | None = None,
+    scope: str | None = None,
+    limit: int = 10,
+) -> dict[str, Any]:
+    sessions = store.session_lifecycle_rollup(session_id=session_id, scope=scope, limit=limit)
+    event_kind_counts = {
+        "start": 0,
+        "checkpoint": 0,
+        "snapshot": 0,
+        "snapshot_soft_delete": 0,
+        "end": 0,
+    }
+    payload_status_counts = {"available": 0, "soft_deleted": 0}
+    verified_receipt_count = 0
+    failed_receipt_count = 0
+    linked_treeship_artifact_count = 0
+    for session in sessions:
+        event_kind_counts["start"] += int(session.get("start_count", 0))
+        event_kind_counts["checkpoint"] += int(session.get("checkpoint_count", 0))
+        event_kind_counts["snapshot"] += int(session.get("snapshot_count", 0))
+        event_kind_counts["snapshot_soft_delete"] += int(session.get("snapshot_soft_delete_count", 0))
+        event_kind_counts["end"] += int(session.get("end_count", 0))
+        payload_status_counts["available"] += int(session.get("available_payload_count", 0))
+        payload_status_counts["soft_deleted"] += int(session.get("soft_deleted_payload_count", 0))
+        verified_receipt_count += int(session.get("verified_receipt_count", 0))
+        failed_receipt_count += int(session.get("failed_receipt_count", 0))
+        linked_treeship_artifact_count += int(session.get("linked_treeship_artifact_count", 0))
+    return {
+        "ok": True,
+        "schema": "zerker.session_lifecycle_rollup_report.v1",
+        "session_id": session_id,
+        "scope": scope,
+        "limit": limit,
+        "count": len(sessions),
+        "event_kind_counts": event_kind_counts,
+        "payload_status_counts": payload_status_counts,
+        "verified_receipt_count": verified_receipt_count,
+        "failed_receipt_count": failed_receipt_count,
+        "linked_treeship_artifact_count": linked_treeship_artifact_count,
+        "sessions": sessions,
     }
 
 
@@ -6494,7 +7754,10 @@ def build_session_timeline_report(
     scope: str | None = None,
     limit: int = 10,
 ) -> dict[str, Any]:
-    timeline = store.session_lifecycle_timeline(session_id=session_id, scope=scope, limit=limit)
+    timeline = [
+        _build_lifecycle_receipt_report_entry(store, entry)
+        for entry in store.session_lifecycle_timeline(session_id=session_id, scope=scope, limit=limit)
+    ]
     event_kind_counts = {
         "start": 0,
         "checkpoint": 0,
@@ -6503,9 +7766,19 @@ def build_session_timeline_report(
         "end": 0,
     }
     snapshot_payload_status_by_id: dict[str, str] = {}
+    verified_receipt_count = 0
+    failed_receipt_count = 0
+    linked_treeship_artifact_count = 0
     for entry in timeline:
         event_kind = str(entry.get("event_kind") or "")
         event_kind_counts[event_kind] = event_kind_counts.get(event_kind, 0) + 1
+        receipt_summary = entry.get("receipt_summary") if isinstance(entry.get("receipt_summary"), dict) else {}
+        if receipt_summary.get("trusted_provenance_verified"):
+            verified_receipt_count += 1
+        else:
+            failed_receipt_count += 1
+        if receipt_summary.get("treeship_artifact_id"):
+            linked_treeship_artifact_count += 1
         session_snapshot_id = entry.get("session_snapshot_id")
         payload_status = entry.get("payload_status")
         if isinstance(session_snapshot_id, str) and isinstance(payload_status, str) and session_snapshot_id not in snapshot_payload_status_by_id:
@@ -6522,6 +7795,9 @@ def build_session_timeline_report(
         "count": len(timeline),
         "event_kind_counts": event_kind_counts,
         "payload_status_counts": payload_status_counts,
+        "verified_receipt_count": verified_receipt_count,
+        "failed_receipt_count": failed_receipt_count,
+        "linked_treeship_artifact_count": linked_treeship_artifact_count,
         "timeline": timeline,
     }
 
@@ -6530,6 +7806,34 @@ def _render_session_memory_type_counts(memory_type_summary: dict[str, Any] | Non
     counts = memory_type_summary.get("active_counts_by_type") if isinstance(memory_type_summary, dict) else {}
     ordered_types = ("policy", "procedural", "episodic", "semantic")
     return " ".join(f"{memory_type}={int(counts.get(memory_type, 0))}" for memory_type in ordered_types)
+
+
+def _build_lifecycle_receipt_report_entry(store: MemoryStore, entry: dict[str, Any]) -> dict[str, Any]:
+    enriched = dict(entry)
+    receipt = entry.get("receipt")
+    if not isinstance(receipt, dict):
+        enriched["receipt_verification"] = {"ok": False, "error": "missing lifecycle receipt"}
+        return enriched
+    verification = store.verify_lifecycle_receipt(receipt)
+    statement_source = receipt.get("treeship_statement", {}).get("source", {})
+    source_event = statement_source.get("event") if isinstance(statement_source, dict) else None
+    enriched["receipt_verification"] = verification
+    enriched["receipt_summary"] = {
+        "trusted_provenance_verified": bool(verification.get("ok")),
+        "semantic_truth_guaranteed": bool(verification.get("semantic_truth_guaranteed")),
+        "receipt_hash": receipt.get("receipt_hash"),
+        "content_digest": receipt.get("content_digest"),
+        "prior_merkle_root": receipt.get("prior_merkle_root"),
+        "new_merkle_root": receipt.get("merkle_root"),
+        "treeship_artifact_id": receipt.get("treeship_artifact_id"),
+        "source_event_hash": receipt.get("source_event_hash"),
+        "source_event_actor_id": source_event.get("actor_id") if isinstance(source_event, dict) else None,
+        "source_event_actor_uri": source_event.get("actor_uri") if isinstance(source_event, dict) else None,
+        "source_event_payload_hash": source_event.get("payload_hash") if isinstance(source_event, dict) else None,
+        "source_event_prior_event_hash": source_event.get("prev_event_hash") if isinstance(source_event, dict) else None,
+        "source_event_created_at": source_event.get("created_at") if isinstance(source_event, dict) else None,
+    }
+    return enriched
 
 
 def render_session_checkpoint_summary(result: dict[str, Any]) -> str:
@@ -6582,6 +7886,9 @@ def render_session_start_summary(result: dict[str, Any]) -> str:
 def render_session_starts_summary(report: dict[str, Any]) -> str:
     starts = list(report.get("starts") or [])
     budget_hint_counts = report.get("budget_hint_counts") or {}
+    verified_receipt_count = int(report.get("verified_receipt_count", 0))
+    failed_receipt_count = int(report.get("failed_receipt_count", 0))
+    linked_treeship_artifact_count = int(report.get("linked_treeship_artifact_count", 0))
     latest_root = starts[0]["session_start_merkle_root"] if starts else "none"
     lines = [
         "Session starts",
@@ -6590,6 +7897,8 @@ def render_session_starts_summary(report: dict[str, Any]) -> str:
         f"Scope filter: {report.get('scope') or 'any'}",
         f"Returned: {report.get('count', 0)}",
         f"Budget hints: {int(budget_hint_counts.get('set', 0))} set, {int(budget_hint_counts.get('unset', 0))} unset",
+        f"Receipt provenance: {verified_receipt_count} verified, {failed_receipt_count} failed",
+        f"Linked Treeship artifacts: {linked_treeship_artifact_count}",
         f"Latest session start root: {latest_root}",
         "",
         "Entries:",
@@ -6612,6 +7921,26 @@ def render_session_starts_summary(report: dict[str, Any]) -> str:
             f"context_budget_tokens={budget_hint_text}"
         )
         lines.append(f"    memory types: {_render_session_memory_type_counts(session_start.get('memory_type_summary'))}")
+        receipt_summary = session_start.get("receipt_summary") if isinstance(session_start.get("receipt_summary"), dict) else {}
+        trusted_provenance = "verified" if receipt_summary.get("trusted_provenance_verified") else "not verified"
+        lines.append(
+            "    "
+            f"receipt: trusted_provenance={trusted_provenance} "
+            f"content_digest={receipt_summary.get('content_digest') or 'unknown'} "
+            f"prior_root={receipt_summary.get('prior_merkle_root') or 'unknown'} "
+            f"new_root={receipt_summary.get('new_merkle_root') or 'unknown'} "
+            f"artifact={receipt_summary.get('treeship_artifact_id') or 'none'}"
+        )
+        if receipt_summary.get("source_event_hash"):
+            lines.append(
+                "    "
+                f"source event: hash={receipt_summary.get('source_event_hash')} "
+                f"actor={receipt_summary.get('source_event_actor_id') or 'unknown'} "
+                f"uri={receipt_summary.get('source_event_actor_uri') or 'unknown'} "
+                f"payload_hash={receipt_summary.get('source_event_payload_hash') or 'unknown'} "
+                f"prev_event_hash={receipt_summary.get('source_event_prior_event_hash') or 'none'}"
+            )
+        lines.append("    semantic truth: not guaranteed")
         if session_start.get("summary"):
             lines.append(f"    summary: {session_start['summary']}")
     return "\n".join(lines).rstrip() + "\n"
@@ -6641,6 +7970,9 @@ def render_session_end_summary(result: dict[str, Any]) -> str:
 
 def render_session_ends_summary(report: dict[str, Any]) -> str:
     ends = list(report.get("ends") or [])
+    verified_receipt_count = int(report.get("verified_receipt_count", 0))
+    failed_receipt_count = int(report.get("failed_receipt_count", 0))
+    linked_treeship_artifact_count = int(report.get("linked_treeship_artifact_count", 0))
     latest_root = ends[0]["session_end_merkle_root"] if ends else "none"
     lines = [
         "Session ends",
@@ -6648,6 +7980,8 @@ def render_session_ends_summary(report: dict[str, Any]) -> str:
         f"Session filter: {report.get('session_id') or 'any'}",
         f"Scope filter: {report.get('scope') or 'any'}",
         f"Returned: {report.get('count', 0)}",
+        f"Receipt provenance: {verified_receipt_count} verified, {failed_receipt_count} failed",
+        f"Linked Treeship artifacts: {linked_treeship_artifact_count}",
         f"Latest session end root: {latest_root}",
         "",
         "Entries:",
@@ -6662,6 +7996,26 @@ def render_session_ends_summary(report: dict[str, Any]) -> str:
             f"active={session_end['memory_count']} root={session_end['session_end_merkle_root']}"
         )
         lines.append(f"    memory types: {_render_session_memory_type_counts(session_end.get('memory_type_summary'))}")
+        receipt_summary = session_end.get("receipt_summary") if isinstance(session_end.get("receipt_summary"), dict) else {}
+        trusted_provenance = "verified" if receipt_summary.get("trusted_provenance_verified") else "not verified"
+        lines.append(
+            "    "
+            f"receipt: trusted_provenance={trusted_provenance} "
+            f"content_digest={receipt_summary.get('content_digest') or 'unknown'} "
+            f"prior_root={receipt_summary.get('prior_merkle_root') or 'unknown'} "
+            f"new_root={receipt_summary.get('new_merkle_root') or 'unknown'} "
+            f"artifact={receipt_summary.get('treeship_artifact_id') or 'none'}"
+        )
+        if receipt_summary.get("source_event_hash"):
+            lines.append(
+                "    "
+                f"source event: hash={receipt_summary.get('source_event_hash')} "
+                f"actor={receipt_summary.get('source_event_actor_id') or 'unknown'} "
+                f"uri={receipt_summary.get('source_event_actor_uri') or 'unknown'} "
+                f"payload_hash={receipt_summary.get('source_event_payload_hash') or 'unknown'} "
+                f"prev_event_hash={receipt_summary.get('source_event_prior_event_hash') or 'none'}"
+            )
+        lines.append("    semantic truth: not guaranteed")
         if session_end.get("summary"):
             lines.append(f"    summary: {session_end['summary']}")
     return "\n".join(lines).rstrip() + "\n"
@@ -6738,6 +8092,9 @@ def render_session_snapshot_prune_summary(result: dict[str, Any]) -> str:
 
 def render_session_checkpoints_summary(report: dict[str, Any]) -> str:
     checkpoints = list(report.get("checkpoints") or [])
+    verified_receipt_count = int(report.get("verified_receipt_count", 0))
+    failed_receipt_count = int(report.get("failed_receipt_count", 0))
+    linked_treeship_artifact_count = int(report.get("linked_treeship_artifact_count", 0))
     latest_root = checkpoints[0]["checkpoint_merkle_root"] if checkpoints else "none"
     lines = [
         "Session checkpoints",
@@ -6745,6 +8102,8 @@ def render_session_checkpoints_summary(report: dict[str, Any]) -> str:
         f"Session filter: {report.get('session_id') or 'any'}",
         f"Scope filter: {report.get('scope') or 'any'}",
         f"Returned: {report.get('count', 0)}",
+        f"Receipt provenance: {verified_receipt_count} verified, {failed_receipt_count} failed",
+        f"Linked Treeship artifacts: {linked_treeship_artifact_count}",
         f"Latest checkpoint root: {latest_root}",
         "",
         "Entries:",
@@ -6759,6 +8118,26 @@ def render_session_checkpoints_summary(report: dict[str, Any]) -> str:
             f"active={checkpoint['memory_count']} root={checkpoint['checkpoint_merkle_root']}"
         )
         lines.append(f"    memory types: {_render_session_memory_type_counts(checkpoint.get('memory_type_summary'))}")
+        receipt_summary = checkpoint.get("receipt_summary") if isinstance(checkpoint.get("receipt_summary"), dict) else {}
+        trusted_provenance = "verified" if receipt_summary.get("trusted_provenance_verified") else "not verified"
+        lines.append(
+            "    "
+            f"receipt: trusted_provenance={trusted_provenance} "
+            f"content_digest={receipt_summary.get('content_digest') or 'unknown'} "
+            f"prior_root={receipt_summary.get('prior_merkle_root') or 'unknown'} "
+            f"new_root={receipt_summary.get('new_merkle_root') or 'unknown'} "
+            f"artifact={receipt_summary.get('treeship_artifact_id') or 'none'}"
+        )
+        if receipt_summary.get("source_event_hash"):
+            lines.append(
+                "    "
+                f"source event: hash={receipt_summary.get('source_event_hash')} "
+                f"actor={receipt_summary.get('source_event_actor_id') or 'unknown'} "
+                f"uri={receipt_summary.get('source_event_actor_uri') or 'unknown'} "
+                f"payload_hash={receipt_summary.get('source_event_payload_hash') or 'unknown'} "
+                f"prev_event_hash={receipt_summary.get('source_event_prior_event_hash') or 'none'}"
+            )
+        lines.append("    semantic truth: not guaranteed")
         if checkpoint.get("summary"):
             lines.append(f"    summary: {checkpoint['summary']}")
     return "\n".join(lines).rstrip() + "\n"
@@ -6767,6 +8146,9 @@ def render_session_checkpoints_summary(report: dict[str, Any]) -> str:
 def render_session_snapshots_summary(report: dict[str, Any]) -> str:
     snapshots = list(report.get("snapshots") or [])
     payload_status_counts = report.get("payload_status_counts") or {}
+    verified_receipt_count = int(report.get("verified_receipt_count", 0))
+    failed_receipt_count = int(report.get("failed_receipt_count", 0))
+    linked_treeship_artifact_count = int(report.get("linked_treeship_artifact_count", 0))
     latest_root = snapshots[0]["session_snapshot_merkle_root"] if snapshots else "none"
     lines = [
         "Session snapshots",
@@ -6774,6 +8156,8 @@ def render_session_snapshots_summary(report: dict[str, Any]) -> str:
         f"Session filter: {report.get('session_id') or 'any'}",
         f"Scope filter: {report.get('scope') or 'any'}",
         f"Returned: {report.get('count', 0)}",
+        f"Receipt provenance: {verified_receipt_count} verified, {failed_receipt_count} failed",
+        f"Linked Treeship artifacts: {linked_treeship_artifact_count}",
         "Payloads: "
         f"{int(payload_status_counts.get('available', 0))} available, "
         f"{int(payload_status_counts.get('soft_deleted', 0))} soft-deleted",
@@ -6792,6 +8176,26 @@ def render_session_snapshots_summary(report: dict[str, Any]) -> str:
             f"snapshot_hash={snapshot['snapshot_hash']}"
         )
         lines.append(f"    memory types: {_render_session_memory_type_counts(snapshot.get('memory_type_summary'))}")
+        receipt_summary = snapshot.get("receipt_summary") if isinstance(snapshot.get("receipt_summary"), dict) else {}
+        trusted_provenance = "verified" if receipt_summary.get("trusted_provenance_verified") else "not verified"
+        lines.append(
+            "    "
+            f"receipt: trusted_provenance={trusted_provenance} "
+            f"content_digest={receipt_summary.get('content_digest') or 'unknown'} "
+            f"prior_root={receipt_summary.get('prior_merkle_root') or 'unknown'} "
+            f"new_root={receipt_summary.get('new_merkle_root') or 'unknown'} "
+            f"artifact={receipt_summary.get('treeship_artifact_id') or 'none'}"
+        )
+        if receipt_summary.get("source_event_hash"):
+            lines.append(
+                "    "
+                f"source event: hash={receipt_summary.get('source_event_hash')} "
+                f"actor={receipt_summary.get('source_event_actor_id') or 'unknown'} "
+                f"uri={receipt_summary.get('source_event_actor_uri') or 'unknown'} "
+                f"payload_hash={receipt_summary.get('source_event_payload_hash') or 'unknown'} "
+                f"prev_event_hash={receipt_summary.get('source_event_prior_event_hash') or 'none'}"
+            )
+        lines.append("    semantic truth: not guaranteed")
         if snapshot.get("summary"):
             lines.append(f"    summary: {snapshot['summary']}")
         retention = snapshot.get("retention")
@@ -6806,10 +8210,158 @@ def render_session_snapshots_summary(report: dict[str, Any]) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
+def render_session_retention_rollup_summary(report: dict[str, Any]) -> str:
+    sessions = list(report.get("sessions") or [])
+    retention_state_counts = report.get("retention_state_counts") or {}
+    payload_status_counts = report.get("payload_status_counts") or {}
+    lines = [
+        "Session snapshot retention",
+        "",
+        f"Session filter: {report.get('session_id') or 'any'}",
+        f"Scope filter: {report.get('scope') or 'any'}",
+        f"Returned: {report.get('count', 0)}",
+        "Retention states: "
+        f"all_available={int(retention_state_counts.get('all_available', 0))} "
+        f"mixed={int(retention_state_counts.get('mixed', 0))} "
+        f"soft_deleted_only={int(retention_state_counts.get('soft_deleted_only', 0))}",
+        "Snapshot payloads: "
+        f"{int(payload_status_counts.get('available', 0))} available, "
+        f"{int(payload_status_counts.get('soft_deleted', 0))} soft-deleted",
+        "",
+        "Entries:",
+    ]
+    if not sessions:
+        lines.append("  none")
+    for session in sessions:
+        lines.append(
+            "  "
+            f"{session['session_id']}: scope={session.get('scope') or 'any'} "
+            f"latest={session.get('latest_payload_status') or 'unknown'} "
+            f"state={session.get('retention_state') or 'unknown'} "
+            f"snapshots={int(session.get('snapshot_count', 0))} "
+            f"available={int(session.get('available_payload_count', 0))} "
+            f"soft_deleted={int(session.get('soft_deleted_payload_count', 0))} "
+            f"latest_snapshot={session.get('latest_session_snapshot_id') or 'none'} "
+            f"status_root={session.get('latest_status_root') or 'unknown'}"
+        )
+        lines.append(
+            "    "
+            f"latest available: id={session.get('latest_available_session_snapshot_id') or 'none'} "
+            f"root={session.get('latest_available_snapshot_root') or 'none'}"
+        )
+        lines.append(
+            "    "
+            f"latest soft-deleted: id={session.get('latest_soft_deleted_session_snapshot_id') or 'none'} "
+            f"deleted_by={session.get('latest_soft_deleted_deleted_by') or 'none'} "
+            f"deleted_reason={session.get('latest_soft_deleted_reason') or 'none'} "
+            f"root={session.get('latest_soft_delete_root') or 'none'}"
+        )
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def render_session_lifecycle_rollup_summary(report: dict[str, Any]) -> str:
+    sessions = list(report.get("sessions") or [])
+    event_kind_counts = report.get("event_kind_counts") or {}
+    payload_status_counts = report.get("payload_status_counts") or {}
+    verified_receipt_count = int(report.get("verified_receipt_count", 0))
+    failed_receipt_count = int(report.get("failed_receipt_count", 0))
+    linked_treeship_artifact_count = int(report.get("linked_treeship_artifact_count", 0))
+    lines = [
+        "Session lifecycle rollup",
+        "",
+        f"Session filter: {report.get('session_id') or 'any'}",
+        f"Scope filter: {report.get('scope') or 'any'}",
+        f"Returned: {report.get('count', 0)}",
+        "Lifecycle events: "
+        f"starts={int(event_kind_counts.get('start', 0))} "
+        f"checkpoints={int(event_kind_counts.get('checkpoint', 0))} "
+        f"snapshots={int(event_kind_counts.get('snapshot', 0))} "
+        f"snapshot_soft_deletes={int(event_kind_counts.get('snapshot_soft_delete', 0))} "
+        f"ends={int(event_kind_counts.get('end', 0))}",
+        "Snapshot payloads: "
+        f"{int(payload_status_counts.get('available', 0))} available, "
+        f"{int(payload_status_counts.get('soft_deleted', 0))} soft-deleted",
+        f"Receipt provenance: {verified_receipt_count} verified, {failed_receipt_count} failed",
+        f"Linked Treeship artifacts: {linked_treeship_artifact_count}",
+        "",
+        "Entries:",
+    ]
+    if not sessions:
+        lines.append("  none")
+    for session in sessions:
+        lines.append(
+            "  "
+            f"{session['session_id']}: scope={session.get('scope') or 'any'} "
+            f"latest={session.get('latest_event_kind') or 'unknown'} "
+            f"events={int(session.get('event_count', 0))} "
+            f"starts={int(session.get('start_count', 0))} "
+            f"checkpoints={int(session.get('checkpoint_count', 0))} "
+            f"snapshots={int(session.get('snapshot_count', 0))} "
+            f"snapshot_soft_deletes={int(session.get('snapshot_soft_delete_count', 0))} "
+            f"ends={int(session.get('end_count', 0))} "
+            f"latest_root={session.get('latest_status_root') or 'unknown'}"
+        )
+        latest_receipt_summary = session.get("latest_receipt_summary") if isinstance(session.get("latest_receipt_summary"), dict) else {}
+        latest_receipt_status = "verified" if latest_receipt_summary.get("trusted_provenance_verified") else "failed"
+        if latest_receipt_status == "failed" and latest_receipt_summary.get("verification_error"):
+            latest_receipt_status = f"failed ({latest_receipt_summary['verification_error']})"
+        lines.append(
+            "    "
+            f"receipts={int(session.get('verified_receipt_count', 0))} verified, "
+            f"{int(session.get('failed_receipt_count', 0))} failed "
+            f"linked_artifacts={int(session.get('linked_treeship_artifact_count', 0))} "
+            f"latest_receipt={latest_receipt_status}"
+        )
+        token_budget_hint = session.get("latest_start_token_budget_hint")
+        context_budget_tokens = (
+            token_budget_hint.get("context_budget_tokens")
+            if isinstance(token_budget_hint, dict)
+            else None
+        )
+        budget_hint_text = (
+            str(context_budget_tokens)
+            if isinstance(context_budget_tokens, int) and not isinstance(context_budget_tokens, bool)
+            else "none"
+        )
+        lines.append(
+            "    "
+            f"latest_start={session.get('latest_start_session_start_id') or 'none'} "
+            f"context_budget_tokens={budget_hint_text} "
+            f"root={session.get('latest_start_root') or 'none'}"
+        )
+        lines.append(
+            "    "
+            f"latest_checkpoint={session.get('latest_checkpoint_id') or 'none'} "
+            f"root={session.get('latest_checkpoint_root') or 'none'}"
+        )
+        lines.append(
+            "    "
+            f"latest_snapshot={session.get('latest_session_snapshot_id') or 'none'} "
+            f"payload={session.get('latest_payload_status') or 'none'} "
+            f"root={session.get('latest_session_snapshot_root') or 'none'}"
+        )
+        lines.append(
+            "    "
+            f"latest_soft_deleted={session.get('latest_soft_deleted_session_snapshot_id') or 'none'} "
+            f"deleted_by={session.get('latest_soft_deleted_deleted_by') or 'none'} "
+            f"deleted_reason={session.get('latest_soft_deleted_reason') or 'none'} "
+            f"root={session.get('latest_soft_delete_root') or 'none'}"
+        )
+        lines.append(
+            "    "
+            f"latest_end={session.get('latest_session_end_id') or 'none'} "
+            f"root={session.get('latest_session_end_root') or 'none'}"
+        )
+    return "\n".join(lines).rstrip() + "\n"
+
+
 def render_session_timeline_summary(report: dict[str, Any]) -> str:
     timeline = list(report.get("timeline") or [])
     event_kind_counts = report.get("event_kind_counts") or {}
     payload_status_counts = report.get("payload_status_counts") or {}
+    verified_receipt_count = int(report.get("verified_receipt_count", 0))
+    failed_receipt_count = int(report.get("failed_receipt_count", 0))
+    linked_treeship_artifact_count = int(report.get("linked_treeship_artifact_count", 0))
     latest_root = timeline[0]["timeline_root"] if timeline else "none"
     lines = [
         "Session timeline",
@@ -6823,6 +8375,8 @@ def render_session_timeline_summary(report: dict[str, Any]) -> str:
         f"snapshots={int(event_kind_counts.get('snapshot', 0))} "
         f"snapshot_soft_deletes={int(event_kind_counts.get('snapshot_soft_delete', 0))} "
         f"ends={int(event_kind_counts.get('end', 0))}",
+        f"Receipt provenance: {verified_receipt_count} verified, {failed_receipt_count} failed",
+        f"Linked Treeship artifacts: {linked_treeship_artifact_count}",
         "Snapshot payloads: "
         f"{int(payload_status_counts.get('available', 0))} available, "
         f"{int(payload_status_counts.get('soft_deleted', 0))} soft-deleted",
@@ -6861,6 +8415,26 @@ def render_session_timeline_summary(report: dict[str, Any]) -> str:
             details.append(f"deleted_reason={retention.get('deleted_reason') or 'unspecified'}")
         lines.append("  " + " ".join(details))
         lines.append(f"    memory types: {_render_session_memory_type_counts(entry.get('memory_type_summary'))}")
+        receipt_summary = entry.get("receipt_summary") if isinstance(entry.get("receipt_summary"), dict) else {}
+        trusted_provenance = "verified" if receipt_summary.get("trusted_provenance_verified") else "not verified"
+        lines.append(
+            "    "
+            f"receipt: trusted_provenance={trusted_provenance} "
+            f"content_digest={receipt_summary.get('content_digest') or 'unknown'} "
+            f"prior_root={receipt_summary.get('prior_merkle_root') or 'unknown'} "
+            f"new_root={receipt_summary.get('new_merkle_root') or 'unknown'} "
+            f"artifact={receipt_summary.get('treeship_artifact_id') or 'none'}"
+        )
+        if receipt_summary.get("source_event_hash"):
+            lines.append(
+                "    "
+                f"source event: hash={receipt_summary.get('source_event_hash')} "
+                f"actor={receipt_summary.get('source_event_actor_id') or 'unknown'} "
+                f"uri={receipt_summary.get('source_event_actor_uri') or 'unknown'} "
+                f"payload_hash={receipt_summary.get('source_event_payload_hash') or 'unknown'} "
+                f"prev_event_hash={receipt_summary.get('source_event_prior_event_hash') or 'none'}"
+            )
+        lines.append("    semantic truth: not guaranteed")
         if entry.get("summary"):
             lines.append(f"    summary: {entry['summary']}")
     return "\n".join(lines).rstrip() + "\n"
@@ -6871,9 +8445,56 @@ def render_workspace_sources_summary(report: dict[str, Any]) -> str:
     workspace = workspace_profile.get("matched") or workspace_profile.get("current") or {}
     workspace_name = str(workspace.get("name") or report.get("workspace_id") or "unregistered")
     workspace_id = str(workspace.get("id") or report.get("workspace_id") or "none")
+    workspace_continuity = report.get("workspace_continuity") or {}
     connected_agents = list(report.get("connected_agents") or [])
     claim_conflicts = list(report.get("claim_conflicts") or [])
     sources = list(report.get("sources") or [])
+
+    def compact_payload_digest(value: Any) -> str | None:
+        text = str(value or "")
+        if not text:
+            return None
+        if ":" in text:
+            algorithm, digest = text.split(":", 1)
+            if len(digest) > 8:
+                return f"{algorithm}:{digest[:8]}..."
+            return text
+        if len(text) > 12:
+            return text[:12] + "..."
+        return text
+
+    def compact_lineage_hash(value: Any) -> str | None:
+        text = str(value or "")
+        if not text:
+            return None
+        if ":" in text:
+            algorithm, digest = text.split(":", 1)
+            if len(digest) > 8:
+                return f"{algorithm}:{digest[:8]}..."
+            return text
+        if len(text) > 12:
+            return text[:12] + "..."
+        return text
+
+    def compact_signed_at(value: Any) -> str | None:
+        text = str(value or "")
+        return text or None
+
+    def compact_treeship_system(value: Any) -> str | None:
+        text = str(value or "")
+        return text or None
+
+    def compact_treeship_subject(value: Any) -> str | None:
+        text = str(value or "")
+        return text or None
+
+    def compact_sorted_list(values: list[Any] | None, *, limit: int = 3) -> str | None:
+        normalized = sorted({str(value).strip() for value in (values or []) if str(value).strip()})
+        if not normalized:
+            return None
+        preview = normalized[:limit]
+        suffix = f",+{len(normalized) - limit} more" if len(normalized) > limit else ""
+        return ",".join(preview) + suffix
 
     def source_identity_summary(identity: dict[str, Any] | None, *, fallback_workspace_id: str | None = None) -> str:
         source_identity = identity or {}
@@ -6882,10 +8503,113 @@ def render_workspace_sources_summary(report: dict[str, Any]) -> str:
         source_workspace_id = str(source_identity.get("workspace_id") or fallback_workspace_id or "unknown")
         session_scheme = str(source_identity.get("session_scheme") or "unknown")
         source_scheme = str(source_identity.get("source_scheme") or "unknown")
+        origin_summary = str(source_identity.get("origin_summary") or "unknown")
         return (
             f"tool={tool} repo={repo_name} workspace={source_workspace_id} "
-            f"session_scheme={session_scheme} source_scheme={source_scheme}"
+            f"session_scheme={session_scheme} source_scheme={source_scheme} origin={origin_summary}"
         )
+
+    def identity_anchor_summary(
+        anchor: dict[str, Any] | None,
+        *,
+        resolution: dict[str, Any] | None = None,
+    ) -> str:
+        identity_anchor = anchor or {}
+        identity_resolution = resolution or {}
+        key = str(
+            identity_anchor.get("key")
+            or identity_resolution.get("key")
+            or "unknown-anchor"
+        )
+        resolution_method = str(
+            identity_anchor.get("resolution_method")
+            or identity_resolution.get("resolution_method")
+            or "unknown"
+        )
+        if resolution:
+            cross_session = "yes" if identity_resolution.get("cross_session") else "no"
+            session_count = int(identity_resolution.get("session_count") or 0)
+            return f"identity={key} via={resolution_method} cross_session={cross_session} sessions={session_count}"
+        return f"identity={key} via={resolution_method}"
+
+    def parent_action_summary(action: dict[str, Any] | None, *, prefix: str = "parent") -> str:
+        parent_action = action or {}
+        action_id = str(parent_action.get("action_id") or "none")
+        if action_id == "none":
+            return f"{prefix}_action=none"
+        local_receipt = "local" if parent_action.get("available_local_receipt") else "missing"
+        agent_id = str(parent_action.get("agent_id") or "unknown")
+        risk = str(parent_action.get("risk") or "unknown")
+        task_summary = str(parent_action.get("task_summary") or "unknown")
+        return (
+            f"{prefix}_action={action_id} {prefix}_agent={agent_id} {prefix}_risk={risk} "
+            f"{prefix}_receipt={local_receipt} {prefix}_task={task_summary}"
+        )
+
+    def imported_origin_summary(origin: dict[str, Any] | None, *, prefix: str = "imported") -> str:
+        imported_origin = origin or {}
+        restore_receipt_id = str(imported_origin.get("restore_receipt_id") or "").strip()
+        if not restore_receipt_id:
+            return ""
+        snapshot_hash = compact_lineage_hash(imported_origin.get("snapshot_hash")) or "unknown"
+        restore_receipt_hash = compact_lineage_hash(imported_origin.get("restore_receipt_hash")) or "unknown"
+        continuity_sidecar_ok = imported_origin.get("continuity_sidecar_ok")
+        continuity_status = "none"
+        if continuity_sidecar_ok is True:
+            continuity_status = "ok"
+        elif continuity_sidecar_ok is False:
+            continuity_status = "failed"
+        parts = [
+            f"{prefix}_restore={restore_receipt_id}",
+            f"{prefix}_snapshot={snapshot_hash}",
+            f"{prefix}_receipt_hash={restore_receipt_hash}",
+            f"{prefix}_continuity={continuity_status}",
+        ]
+        continuity_error = str(imported_origin.get("continuity_error") or "").strip()
+        if continuity_error:
+            parts.append(f"{prefix}_error={continuity_error}")
+        return " ".join(parts)
+
+    def restore_lineage_summary(lineage: dict[str, Any] | None, *, prefix: str = "restore_lineage") -> str:
+        restore_lineage = lineage or {}
+        kind = str(restore_lineage.get("kind") or "").strip()
+        if not kind:
+            return ""
+        if prefix == "latest_restore_lineage":
+            basis_prefix = "latest_restore_basis"
+            anchor_prefix = "latest_restore_anchor_at"
+            source_prefix = "latest_source_receipt_at"
+        else:
+            basis_prefix = "restore_basis"
+            anchor_prefix = "restore_anchor_at"
+            source_prefix = "source_receipt_at"
+        parts = [f"{prefix}={kind}"]
+        basis = str(restore_lineage.get("basis") or "").strip()
+        if basis:
+            parts.append(f"{basis_prefix}={basis}")
+        restore_created_at = str(restore_lineage.get("restore_created_at") or "").strip()
+        if restore_created_at:
+            parts.append(f"{anchor_prefix}={restore_created_at}")
+        source_receipt_created_at = str(restore_lineage.get("source_receipt_created_at") or "").strip()
+        if source_receipt_created_at:
+            parts.append(f"{source_prefix}={source_receipt_created_at}")
+        return " ".join(parts)
+
+    def resolution_trace_lines(preview: dict[str, Any] | None, *, indent: str = "    ") -> list[str]:
+        trace = (preview or {}).get("resolution_trace") or []
+        if not isinstance(trace, list) or not trace:
+            return []
+        lines = [f"{indent}decision trace:"]
+        for step in trace:
+            if not isinstance(step, dict):
+                continue
+            summary = str(step.get("summary") or "").strip()
+            if not summary:
+                field = str(step.get("field") or "field")
+                outcome = str(step.get("outcome") or "preview")
+                summary = f"{field} {outcome}"
+            lines.append(f"{indent}  - {summary}")
+        return lines
 
     def claim_lineage_summary(claim: dict[str, Any]) -> str:
         agent_id = str(claim.get("agent_id") or "unknown")
@@ -6904,20 +8628,105 @@ def render_workspace_sources_summary(report: dict[str, Any]) -> str:
         receipt_id = str(proof_lineage.get("receipt_id") or "unknown-receipt")
         treeship_artifact_id = str(proof_lineage.get("treeship_artifact_id") or "none")
         treeship_attestation_status = str(proof_lineage.get("treeship_attestation_status") or "none")
+        treeship_system = compact_treeship_system(proof_lineage.get("treeship_system"))
+        treeship_subject = compact_treeship_subject(proof_lineage.get("treeship_subject_key"))
+        signed_at = compact_signed_at(proof_lineage.get("treeship_signed_at"))
+        payload_digest = compact_payload_digest(proof_lineage.get("treeship_payload_digest"))
+        event_hash = compact_lineage_hash(proof_lineage.get("event_hash"))
+        receipt_hash = compact_lineage_hash(proof_lineage.get("receipt_hash"))
         merkle_root = str(proof_lineage.get("merkle_root") or "unknown-root")
         merkle_root_short = merkle_root[:12]
+        restore_lineage = restore_lineage_summary(claim.get("restore_lineage"))
+        imported_origin = imported_origin_summary(claim.get("imported_origin"))
         return (
             f"{agent_id} @ {session_id} via {source_uri} "
             f"[{source_identity_summary(source_identity, fallback_workspace_id=workspace_id)} "
+            f"{identity_anchor_summary(claim.get('identity_anchor'), resolution=claim.get('identity_resolution'))} "
+            f"{parent_action_summary(claim.get('parent_action'))} "
+            f"{f'{restore_lineage} ' if restore_lineage else ''}"
+            f"{f'{imported_origin} ' if imported_origin else ''}"
             f"kind={source_kind} status={trust_status} authority={authority} trust={trust_text} "
             f"updated={updated_at} created={created_at} receipt={receipt_id} artifact={treeship_artifact_id} "
-            f"attestation={treeship_attestation_status} root={merkle_root_short}]"
+            f"attestation={treeship_attestation_status}"
+            f"{f' system={treeship_system}' if treeship_system else ''}"
+            f"{f' subject={treeship_subject}' if treeship_subject else ''}"
+            f"{f' signed_at={signed_at}' if signed_at else ''}"
+            f"{f' payload_digest={payload_digest}' if payload_digest else ''} "
+            f"{f'event_hash={event_hash} ' if event_hash else ''}"
+            f"{f'receipt_hash={receipt_hash} ' if receipt_hash else ''}"
+            f"root={merkle_root_short}]"
         )
+
+    def decisive_claim_lineage_line(preview: dict[str, Any] | None) -> str | None:
+        decisive_claim = (preview or {}).get("decisive_claim_lineage") or {}
+        if not isinstance(decisive_claim, dict):
+            return None
+        memory_id = str(decisive_claim.get("memory_id") or "").strip()
+        if not memory_id:
+            return None
+        summary = str(decisive_claim.get("summary") or "").strip() or "read-only merge preview"
+        return f"    decision source: {summary} -> {claim_lineage_summary(decisive_claim)}"
+
+    def losing_claim_contrast_line(preview: dict[str, Any] | None) -> str | None:
+        losing_contrast = (preview or {}).get("losing_claim_contrast") or {}
+        if not isinstance(losing_contrast, dict):
+            return None
+        losing_count = int(losing_contrast.get("losing_claim_count") or 0)
+        if losing_count <= 0:
+            return None
+        summary = str(losing_contrast.get("summary") or "").strip() or "read-only merge preview"
+        return f"    decision contrast: {summary}"
+
+    def losing_claim_parent_action_line(preview: dict[str, Any] | None) -> str | None:
+        losing_action_preview = (preview or {}).get("losing_claim_parent_action") or {}
+        if not isinstance(losing_action_preview, dict):
+            return None
+        parent_action = losing_action_preview.get("parent_action")
+        if not isinstance(parent_action, dict):
+            return None
+        action_summary = parent_action_summary(parent_action, prefix="losing")
+        if action_summary == "losing_action=none":
+            return None
+        summary = str(losing_action_preview.get("summary") or "").strip() or "read-only merge preview"
+        return f"    losing action: {summary} -> {action_summary}"
+
+    def workspace_continuity_summary(continuity: dict[str, Any] | None) -> str:
+        continuity_anchor = continuity or {}
+        kind = str(continuity_anchor.get("kind") or "").strip()
+        if not kind:
+            return "none"
+        snapshot_hash = compact_lineage_hash(continuity_anchor.get("snapshot_hash")) or "unknown"
+        action_id = str(continuity_anchor.get("action_id") or "none")
+        manifest_path = str(continuity_anchor.get("manifest_path") or "unknown")
+        snapshot_path = str(continuity_anchor.get("snapshot_path") or "unknown")
+        restore_receipt_id = str(continuity_anchor.get("restore_receipt_id") or "").strip()
+        continuity_sidecar_path = str(continuity_anchor.get("continuity_sidecar_path") or "").strip()
+        continuity_error = str(continuity_anchor.get("continuity_error") or "").strip()
+        continuity_sidecar_ok = continuity_anchor.get("continuity_sidecar_ok")
+        continuity_status = "none"
+        if continuity_sidecar_ok is True:
+            continuity_status = "ok"
+        elif continuity_sidecar_ok is False:
+            continuity_status = "failed"
+        details = [f"{kind} snapshot_hash={snapshot_hash}", f"action_id={action_id}"]
+        if restore_receipt_id:
+            details.append(f"restore_receipt={restore_receipt_id}")
+        if manifest_path != "unknown":
+            details.append(f"manifest={manifest_path}")
+        if continuity_sidecar_path or continuity_status != "none":
+            details.append(f"continuity={continuity_status}")
+        if continuity_error:
+            details.append(f"error={continuity_error}")
+        if continuity_sidecar_path:
+            details.append(f"sidecar={continuity_sidecar_path}")
+        details.append(f"snapshot={snapshot_path}")
+        return " ".join(details)
 
     lines = [
         "Workspace sources",
         "",
         f"Workspace: {workspace_name} ({workspace_id})",
+        f"Workspace continuity: {workspace_continuity_summary(workspace_continuity)}",
         f"Connected agents: {report.get('connected_agent_count', 0)}",
         f"Chat sessions: {report.get('chat_session_count', 0)}",
         f"Source receipts inspected: {report.get('source_count', 0)}",
@@ -6937,10 +8746,37 @@ def render_workspace_sources_summary(report: dict[str, Any]) -> str:
             agent_workspace_id = str(agent.get("workspace_id") or workspace_id or "unknown")
             treeship_artifact_id = str(latest_proof_lineage.get("treeship_artifact_id") or "none")
             treeship_attestation_status = str(latest_proof_lineage.get("treeship_attestation_status") or "none")
+            latest_treeship_system = compact_treeship_system(latest_proof_lineage.get("treeship_system"))
+            latest_treeship_subject = compact_treeship_subject(latest_proof_lineage.get("treeship_subject_key"))
+            latest_signed_at = compact_signed_at(latest_proof_lineage.get("treeship_signed_at"))
+            latest_payload_digest = compact_payload_digest(latest_proof_lineage.get("treeship_payload_digest"))
+            latest_event_hash = compact_lineage_hash(latest_proof_lineage.get("event_hash"))
+            latest_receipt_hash = compact_lineage_hash(latest_proof_lineage.get("receipt_hash"))
+            latest_origin_summary = str(agent.get("latest_origin_summary") or "unknown")
+            chat_session_preview = compact_sorted_list(agent.get("chat_session_ids"))
+            source_uri_preview = compact_sorted_list(agent.get("source_uris"))
+            latest_restore_lineage = restore_lineage_summary(
+                agent.get("latest_restore_lineage"),
+                prefix="latest_restore_lineage",
+            )
+            latest_imported_origin = imported_origin_summary(agent.get("latest_imported_origin"), prefix="latest_imported")
             lines.append(
                 f"  {agent.get('agent_id', 'unknown')}: {memory_count} receipts, {session_count} sessions, "
                 f"last seen {last_seen_at} tool={tool} repo={repo_name} workspace={agent_workspace_id} "
-                f"latest_artifact={treeship_artifact_id} latest_attestation={treeship_attestation_status}"
+                f"latest_artifact={treeship_artifact_id} latest_attestation={treeship_attestation_status} "
+                f"{f'latest_system={latest_treeship_system} ' if latest_treeship_system else ''}"
+                f"{f'latest_subject={latest_treeship_subject} ' if latest_treeship_subject else ''}"
+                f"{f'latest_signed_at={latest_signed_at} ' if latest_signed_at else ''}"
+                f"{f'latest_payload_digest={latest_payload_digest} ' if latest_payload_digest else ''}"
+                f"{f'latest_event_hash={latest_event_hash} ' if latest_event_hash else ''}"
+                f"{f'latest_receipt_hash={latest_receipt_hash} ' if latest_receipt_hash else ''}"
+                f"latest_origin={latest_origin_summary} "
+                f"{f'chat_sessions={chat_session_preview} ' if chat_session_preview else ''}"
+                f"{f'source_uris={source_uri_preview} ' if source_uri_preview else ''}"
+                f"{f'{latest_restore_lineage} ' if latest_restore_lineage else ''}"
+                f"{f'{latest_imported_origin} ' if latest_imported_origin else ''}"
+                f"{parent_action_summary(agent.get('latest_parent_action'), prefix='latest_parent')} "
+                f"{identity_anchor_summary(agent.get('identity_anchor'), resolution=agent.get('identity_resolution'))}"
             )
     else:
         lines.append("  none")
@@ -6950,15 +8786,33 @@ def render_workspace_sources_summary(report: dict[str, Any]) -> str:
             proof_lineage = source.get("proof_lineage") or {}
             treeship_artifact_id = str(proof_lineage.get("treeship_artifact_id") or "none")
             treeship_attestation_status = str(proof_lineage.get("treeship_attestation_status") or "none")
+            treeship_system = compact_treeship_system(proof_lineage.get("treeship_system"))
+            treeship_subject = compact_treeship_subject(proof_lineage.get("treeship_subject_key"))
+            signed_at = compact_signed_at(proof_lineage.get("treeship_signed_at"))
+            payload_digest = compact_payload_digest(proof_lineage.get("treeship_payload_digest"))
+            event_hash = compact_lineage_hash(proof_lineage.get("event_hash"))
+            receipt_hash = compact_lineage_hash(proof_lineage.get("receipt_hash"))
             receipt_id = str(proof_lineage.get("receipt_id") or "unknown-receipt")
             merkle_root = str(proof_lineage.get("merkle_root") or "unknown-root")
+            restore_lineage = restore_lineage_summary(source.get("restore_lineage"))
+            imported_origin = imported_origin_summary(source.get("imported_origin"))
             lines.append(
                 "  "
                 f"{source.get('agent_id', 'unknown')} @ {source.get('chat_session_id') or 'unknown-session'} "
                 f"via {source.get('source_uri') or 'unknown-source'} "
                 f"[{source_identity_summary(source.get('source_identity'), fallback_workspace_id=source.get('workspace_id'))} "
+                f"{identity_anchor_summary(source.get('identity_anchor'), resolution=source.get('identity_resolution'))} "
+                f"{parent_action_summary(source.get('parent_action'))} "
+                f"{f'{restore_lineage} ' if restore_lineage else ''}"
+                f"{f'{imported_origin} ' if imported_origin else ''}"
                 f"kind={source.get('source_kind') or 'unknown'} status={source.get('trust_status') or 'unknown'} "
-                f"receipt={receipt_id} artifact={treeship_artifact_id} attestation={treeship_attestation_status} "
+                f"receipt={receipt_id} artifact={treeship_artifact_id} attestation={treeship_attestation_status}"
+                f"{f' system={treeship_system}' if treeship_system else ''}"
+                f"{f' subject={treeship_subject}' if treeship_subject else ''}"
+                f"{f' signed_at={signed_at}' if signed_at else ''}"
+                f"{f' payload_digest={payload_digest}' if payload_digest else ''} "
+                f"{f'event_hash={event_hash} ' if event_hash else ''}"
+                f"{f'receipt_hash={receipt_hash} ' if receipt_hash else ''}"
                 f"root={merkle_root[:12]}]"
             )
         if len(sources) > 5:
@@ -6983,11 +8837,14 @@ def render_workspace_sources_summary(report: dict[str, Any]) -> str:
             agent_summary = ", ".join(conflict.get("connected_agent_ids") or ["unknown"])
             if outcome == "abstained":
                 tie_fields = ", ".join(merge_preview.get("tie_fields") or []) or "unknown"
+                ignored_tie_breakers = ", ".join(merge_preview.get("ignored_tie_breakers") or []) or "none"
                 lines.append(
                     f"  - unresolved exact tie: {subject_key} {relation} [{value_summary}] from {agent_summary}"
                 )
                 lines.append(f"    tie fields: {tie_fields}")
+                lines.append(f"    ignored tie breakers: {ignored_tie_breakers}")
                 lines.append(f"    abstention basis: {resolution_basis.get('summary') or 'exact tie on deciding fields'}")
+                lines.extend(resolution_trace_lines(merge_preview))
                 for claim in conflict.get("claims") or []:
                     claim_value = str(claim.get("value") or "unknown")
                     lines.append(f"    {claim_value}: {claim_lineage_summary(claim)}")
@@ -6997,6 +8854,16 @@ def render_workspace_sources_summary(report: dict[str, Any]) -> str:
                     f"  - resolved: {subject_key} {relation} -> {chosen_value} from {agent_summary}"
                 )
                 lines.append(f"    resolution basis: {resolution_basis.get('summary') or 'current rule preview'}")
+                decision_source_line = decisive_claim_lineage_line(merge_preview)
+                if decision_source_line:
+                    lines.append(decision_source_line)
+                losing_contrast_line_text = losing_claim_contrast_line(merge_preview)
+                if losing_contrast_line_text:
+                    lines.append(losing_contrast_line_text)
+                losing_action_line = losing_claim_parent_action_line(merge_preview)
+                if losing_action_line:
+                    lines.append(losing_action_line)
+                lines.extend(resolution_trace_lines(merge_preview))
                 chosen_memory_id = str(merge_preview.get("chosen_memory_id") or "")
                 for claim in conflict.get("claims") or []:
                     claim_value = str(claim.get("value") or "unknown")
@@ -7392,6 +9259,8 @@ def render_public_verify_result_summary(
     operator_packet_archive_path: Path | None = None
     public_repo_url = PUBLIC_REPO_URL
     public_raw_install_url = PUBLIC_RAW_INSTALL_URL
+    session_lifecycle_rollup: dict[str, Any] | None = None
+    session_retention_rollup: dict[str, Any] | None = None
     if assets_dir_path is not None:
         manifest_path = assets_dir_path.parent / LAUNCH_PROOF_MANIFEST_FILENAME
         if manifest_path.exists():
@@ -7400,6 +9269,12 @@ def render_public_verify_result_summary(
             except json.JSONDecodeError:
                 manifest_payload = None
             if isinstance(manifest_payload, dict):
+                (
+                    session_lifecycle_rollup,
+                    _session_lifecycle_rollup_summary,
+                    session_retention_rollup,
+                    _session_retention_rollup_summary,
+                ) = extract_session_continuity_payload(manifest_payload)
                 manifest_assets = manifest_payload.get("launch_assets", [])
                 if isinstance(manifest_assets, list):
                     for asset in manifest_assets:
@@ -7487,6 +9362,11 @@ def render_public_verify_result_summary(
         lines.append(f"- Required install mode: `{requirement}`")
     lines.append(f"- Expected public repo: `{public_repo_url}`")
     lines.append(f"- Expected raw install URL: `{public_raw_install_url}`")
+    append_session_continuity_summary_lines(
+        lines,
+        session_lifecycle_rollup=session_lifecycle_rollup,
+        session_retention_rollup=session_retention_rollup,
+    )
     if runbook_path is not None:
         lines.append(f"- Open first: `{summary_relative(runbook_path)}`")
     if operator_prompt_path is not None:
@@ -7649,6 +9529,12 @@ def verify_operator_packet_archive(archive_path: Path) -> dict[str, object]:
     return_packet = manifest_payload.get("return_packet", {})
     if not isinstance(return_packet, dict):
         return_packet = {}
+    (
+        session_lifecycle_rollup,
+        session_lifecycle_rollup_summary,
+        session_retention_rollup,
+        session_retention_rollup_summary,
+    ) = extract_session_continuity_payload(manifest_payload)
     required_paths = [
         LAUNCH_PROOF_MANIFEST_FILENAME,
         str(manifest_payload.get("summary_path") or "README.md"),
@@ -7703,6 +9589,10 @@ def verify_operator_packet_archive(archive_path: Path) -> dict[str, object]:
         "public_verify_runbook_path": str(public_verify.get("runbook_path") or CLEAN_SHELL_PUBLIC_VERIFY_FILENAME),
         "return_packet_finalize_script_path": str(public_verify.get("finalize_script_path") or RETURN_PACKET_FINALIZE_FILENAME),
         "return_packet_archive_path": str(return_packet.get("archive_path") or RETURN_PACKET_ARCHIVE_FILENAME),
+        "session_lifecycle_rollup": session_lifecycle_rollup,
+        "session_lifecycle_rollup_summary": session_lifecycle_rollup_summary,
+        "session_retention_rollup": session_retention_rollup,
+        "session_retention_rollup_summary": session_retention_rollup_summary,
         "launch_assets_dir_path": str(manifest_payload.get("launch_assets_dir_path") or LAUNCH_ASSET_OUTPUTS_DIRNAME),
         "launch_asset_board_path": str(manifest_payload.get("launch_asset_board_path") or LAUNCH_ASSET_BOARD_FILENAME),
         "expected_launch_assets": [
@@ -9232,6 +11122,14 @@ def run_launch_proof(
                 existing_handoff = discover_handoff_paths(existing_handoff_dir)
             except ValueError:
                 existing_handoff = None
+        (
+            handoff_session_lifecycle_rollup,
+            handoff_session_lifecycle_rollup_summary,
+            handoff_session_retention_rollup,
+            handoff_session_retention_rollup_summary,
+        ) = extract_session_continuity_payload(
+            existing_handoff.get("manifest") if isinstance(existing_handoff, dict) else None
+        )
 
         store = MemoryStore(db_path, policy_path=policy_path)
         store.init()
@@ -9595,6 +11493,10 @@ def run_launch_proof(
         status_summary=final_status_summary,
         local_alpha_gate_text=local_alpha_gate_text,
         strict_publish_gate_text=strict_publish_gate_text,
+        session_lifecycle_rollup=handoff_session_lifecycle_rollup,
+        session_lifecycle_rollup_summary=handoff_session_lifecycle_rollup_summary,
+        session_retention_rollup=handoff_session_retention_rollup,
+        session_retention_rollup_summary=handoff_session_retention_rollup_summary,
     )
     manifest_path.write_text(json.dumps(manifest_payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     write_public_verify_result(
