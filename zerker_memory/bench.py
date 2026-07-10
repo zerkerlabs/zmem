@@ -363,6 +363,7 @@ def run_longmemeval_benchmark(
     answerer: str = "deterministic",
     answerer_model: str = "gpt-4o",
     write_trace: bool = False,
+    compact_artifacts: bool = False,
 ) -> dict[str, Any]:
     _validate_provider_benchmark_gate(retrieval_mode, retrieval_provider_config_path, allow_network_providers)
     dataset = _validate_local_dataset_path(dataset)
@@ -392,9 +393,17 @@ def run_longmemeval_benchmark(
     for path in (questions_dir, receipts_dir, snapshots_dir):
         path.mkdir(parents=True, exist_ok=True)
 
-    store = MemoryStore(run_dir / "memory.sqlite")
-    store.init()
-    before_snapshot = store.snapshot()
+    store: MemoryStore | None = None
+    if compact_artifacts:
+        with tempfile.TemporaryDirectory(prefix="zmem-longmemeval-before-") as tmp:
+            before_store = MemoryStore(Path(tmp) / "memory.sqlite")
+            before_store.init()
+            before_snapshot = before_store.snapshot()
+            before_store.conn.close()
+    else:
+        store = MemoryStore(run_dir / "memory.sqlite")
+        store.init()
+        before_snapshot = store.snapshot()
     before_snapshot_path = snapshots_dir / "before.snapshot.json"
     _write_json(before_snapshot_path, before_snapshot)
 
@@ -417,6 +426,9 @@ def run_longmemeval_benchmark(
         "retrieval_config": retrieval_config,
         "retrieval_provider_config": retrieval_provider_config,
         "retrieval_reproducibility": _benchmark_retrieval_reproducibility(retrieval_mode),
+        "receipt_bundles_omitted": compact_artifacts,
+        "store_lifecycle": "per-session-ephemeral" if compact_artifacts else "shared-run",
+        "run_database_omitted": compact_artifacts,
         "prompt_hashes": {
             "answerer": sha256_text("longmemeval local scaffold deterministic answerer"),
             "judge": sha256_text("longmemeval provisional exact-match local judge"),
@@ -434,40 +446,72 @@ def run_longmemeval_benchmark(
             f"{_context_budget_command_arg(context_budget_tokens)}"
             f"{_provider_config_command_arg(retrieval_provider_config_path)}"
             f"{_allow_network_command_arg(allow_network_providers)}"
+            f"{' --compact-artifacts' if compact_artifacts else ''}"
         ),
         "created_at": _now_iso(),
     }
     manifest_path = run_dir / "benchmark-run.json"
     _write_json(manifest_path, manifest)
 
-    question_records = []
-    receipt_hashes = []
-    question_ids = [str(record["question_id"]) for record in filtered_records]
+    questions = [_normalize_longmemeval_record(raw_record) for raw_record in filtered_records]
+    question_ids = [question["question_id"] for question in questions]
     if len(set(question_ids)) != len(question_ids):
         raise ValueError("longmemeval filtered split contains duplicate question_id values")
-    for raw_record in filtered_records:
-        question = _normalize_longmemeval_record(raw_record)
-        question_records.append(
-            _run_longmemeval_question(
-                store,
-                question,
-                questions_dir=questions_dir,
-                receipts_dir=receipts_dir,
-                context_budget_tokens=context_budget_tokens,
-                retrieval_mode=retrieval_mode,
-                retrieval_config=retrieval_config,
-                retrieval_config_hash=retrieval_config_hash,
-                retrieval_provider_config=retrieval_provider_runtime_config,
-                allow_network_providers=allow_network_providers,
-                answerer=answerer,
-                answerer_model=answerer_model,
-            )
-        )
-        receipt_hashes.append(question_records[-1]["receipt_bundle_hash"])
 
-    after_snapshot = store.snapshot()
-    after_snapshot_path = snapshots_dir / "after.snapshot.json"
-    _write_json(after_snapshot_path, after_snapshot)
+    def run_question(question_store: MemoryStore, question: dict[str, Any]) -> dict[str, Any]:
+        return _run_longmemeval_question(
+            question_store,
+            question,
+            questions_dir=questions_dir,
+            receipts_dir=receipts_dir,
+            context_budget_tokens=context_budget_tokens,
+            retrieval_mode=retrieval_mode,
+            retrieval_config=retrieval_config,
+            retrieval_config_hash=retrieval_config_hash,
+            retrieval_provider_config=retrieval_provider_runtime_config,
+            allow_network_providers=allow_network_providers,
+            answerer=answerer,
+            answerer_model=answerer_model,
+            write_receipt_bundle=not compact_artifacts,
+        )
+
+    if compact_artifacts:
+        questions_by_session: dict[str, list[dict[str, Any]]] = {}
+        for question in questions:
+            questions_by_session.setdefault(str(question["session_id"]), []).append(question)
+        records_by_question_id: dict[str, dict[str, Any]] = {}
+        for session_questions in questions_by_session.values():
+            with tempfile.TemporaryDirectory(prefix="zmem-longmemeval-session-") as tmp:
+                session_store = MemoryStore(Path(tmp) / "memory.sqlite")
+                session_store.init()
+                try:
+                    for question in session_questions:
+                        record = run_question(session_store, question)
+                        records_by_question_id[record["question_id"]] = record
+                finally:
+                    session_store.conn.close()
+        question_records = [records_by_question_id[question_id] for question_id in question_ids]
+    else:
+        if store is None:
+            raise RuntimeError("shared benchmark store was not initialized")
+        question_records = [run_question(store, question) for question in questions]
+
+    receipt_hashes = [
+        record["receipt_bundle_hash"]
+        for record in question_records
+        if record.get("receipt_bundle_hash")
+    ]
+
+    snapshot_paths = {"before": before_snapshot_path}
+    if compact_artifacts:
+        after_snapshot_path = None
+    else:
+        if store is None:
+            raise RuntimeError("shared benchmark store was not initialized")
+        after_snapshot = store.snapshot()
+        after_snapshot_path = snapshots_dir / "after.snapshot.json"
+        _write_json(after_snapshot_path, after_snapshot)
+        snapshot_paths["after"] = after_snapshot_path
 
     summary = _summarize_questions(question_records)
     summary["scoring"] = "provisional-local"
@@ -480,12 +524,11 @@ def run_longmemeval_benchmark(
         "benchmark_run": _file_hash(manifest_path),
         "questions": {record["question_id"]: _file_hash(run_dir / record["question_path"]) for record in question_records},
         "receipt_bundles": {
-            record["action_id"]: _file_hash(run_dir / record["receipt_bundle_path"]) for record in question_records
+            record["action_id"]: _file_hash(run_dir / record["receipt_bundle_path"])
+            for record in question_records
+            if record.get("receipt_bundle_path")
         },
-        "snapshots": {
-            "before": _file_hash(before_snapshot_path),
-            "after": _file_hash(after_snapshot_path),
-        },
+        "snapshots": {name: _file_hash(path) for name, path in snapshot_paths.items()},
         "report": _file_hash(report_path),
     }
     aggregate_root = merkle_root(_artifact_hash_list(artifact_hashes))
@@ -507,6 +550,10 @@ def run_longmemeval_benchmark(
         "retrieval_config": retrieval_config,
         "retrieval_provider_config": retrieval_provider_config,
         "retrieval_reproducibility": _benchmark_retrieval_reproducibility(retrieval_mode),
+        "receipt_bundles_omitted": compact_artifacts,
+        "final_snapshot_omitted": compact_artifacts,
+        "store_lifecycle": "per-session-ephemeral" if compact_artifacts else "shared-run",
+        "run_database_omitted": compact_artifacts,
         "summary": summary,
         "question_count": len(question_records),
         "questions": question_records,
@@ -515,6 +562,9 @@ def run_longmemeval_benchmark(
             "merkle_alg": "binary-sha256-v1",
             "artifact_hashes": artifact_hashes,
             "per_question_receipt_bundle_hashes": receipt_hashes,
+            "receipt_bundles_omitted": compact_artifacts,
+            "final_snapshot_omitted": compact_artifacts,
+            "run_database_omitted": compact_artifacts,
             "aggregate_result_hash": sha256_text(stable_json(summary)),
             "aggregate_merkle_root": aggregate_root,
             "local_verification": "ok",
@@ -525,9 +575,10 @@ def run_longmemeval_benchmark(
             "benchmark_run": "benchmark-run.json",
             "result": "benchmark-result.json",
             "report": "report.md",
+            "database": None if compact_artifacts else "memory.sqlite",
             "snapshots": {
-                "before": "snapshots/before.snapshot.json",
-                "after": "snapshots/after.snapshot.json",
+                name: str(path.relative_to(run_dir))
+                for name, path in snapshot_paths.items()
             },
         },
     }
@@ -549,6 +600,8 @@ def run_longmemeval_benchmark(
         "retrieval_config": retrieval_config,
         "retrieval_provider_config": retrieval_provider_config,
         "retrieval_reproducibility": _benchmark_retrieval_reproducibility(retrieval_mode),
+        "store_lifecycle": result["store_lifecycle"],
+        "run_database_omitted": result["run_database_omitted"],
         "summary": summary,
         "proof": result["proof"],
     }
@@ -882,6 +935,7 @@ def run_benchmark_matrix(
                 answerer=answerer,
                 answerer_model=answerer_model,
                 write_trace=write_trace,
+                compact_artifacts=compact_artifacts,
             )
         else:
             mode_result = run_locomo_benchmark(
@@ -4278,6 +4332,7 @@ def _run_longmemeval_question(
     allow_network_providers: bool = False,
     answerer: str = "deterministic",
     answerer_model: str = "gpt-4o",
+    write_receipt_bundle: bool = True,
 ) -> dict[str, Any]:
     scope = f"bench:longmemeval:{question['session_id']}"
     created_memories = _remember_benchmark_history_once(
@@ -4327,9 +4382,14 @@ def _run_longmemeval_question(
     supporting_injected = support_status["injected_ids"]
     recall_at_k = 1.0 if not expected_supporting_ids else len(supporting_retrieved) / len(expected_supporting_ids)
     precision_at_k = 1.0 if not retrieved_ids else len(supporting_retrieved) / len(retrieved_ids)
-    bundle = store.receipt_bundle(receipt["action_id"])
-    bundle_path = receipts_dir / f"{receipt['action_id']}.bundle.json"
-    bundle_artifact = export_bundle(bundle, out=bundle_path)
+    bundle: dict[str, Any] = {"receipt": receipt, "supporting_memories": []}
+    bundle_path: Path | None = None
+    bundle_hash: str | None = None
+    if write_receipt_bundle:
+        bundle = store.receipt_bundle(receipt["action_id"])
+        bundle_path = receipts_dir / f"{receipt['action_id']}.bundle.json"
+        bundle_artifact = export_bundle(bundle, out=bundle_path)
+        bundle_hash = bundle_artifact["sha256"]
     retrieval_proof = _retrieval_proof_block(
         retrieval_mode=retrieval_mode,
         retrieval_config_hash=retrieval_config_hash,
@@ -4397,13 +4457,14 @@ def _run_longmemeval_question(
             "available_context_tokens": packing.get("available_tokens"),
         },
         "action_id": receipt["action_id"],
-        "receipt_bundle_path": f"receipts/{bundle_path.name}",
-        "receipt_bundle_hash": bundle_artifact["sha256"],
+        "receipt_bundle_path": f"receipts/{bundle_path.name}" if bundle_path else None,
+        "receipt_bundle_hash": bundle_hash,
         "retrieval_proof": retrieval_proof,
         "proof": {
             "receipt_merkle_root": receipt["merkle_root"],
             "memory_tree_root": receipt.get("memory_tree", {}).get("root"),
-            "bundle_hash": bundle_artifact["sha256"],
+            "bundle_hash": bundle_hash,
+            "receipt_bundle_omitted": not write_receipt_bundle,
             "retrieval": retrieval_proof,
         },
     }
@@ -4422,8 +4483,8 @@ def _run_longmemeval_question(
         "action_id": receipt["action_id"],
         "question_path": f"questions/{question_path.name}",
         "question_hash": record["question_hash"],
-        "receipt_bundle_path": f"receipts/{bundle_path.name}",
-        "receipt_bundle_hash": bundle_artifact["sha256"],
+        "receipt_bundle_path": f"receipts/{bundle_path.name}" if bundle_path else None,
+        "receipt_bundle_hash": bundle_hash,
         "retrieved_memory_ids": retrieved_ids,
         "candidate_memory_ids": retrieved_ids,
         "injected_memory_ids": injected_ids,

@@ -6,9 +6,15 @@ Audience: internal Zerker product, engineering, and launch coordination.
 
 Final acceptance: published at `d029b99` as `v0.1.3`; GitHub Actions run `29119164360`, Vercel site/docs deployments, and production browser checks passed.
 
-Post-release evidence: the first current-code full LoCoMo pseudo-embedding run completed with accuracy `0.5967`, token F1 `0.5969`, mean query tokens `536.0`, and adversarial abstention `1.0`. Treat comparisons to the older FTS artifact as directional until a fresh same-commit matrix is complete.
+Post-release evidence: a fresh same-commit four-mode LoCoMo matrix completed over `1,986` questions at checkpoint `871f23d`. Both matrix and comparison verification pass. The matrix hash is `9f8b77ca...`; the comparison hash is `18cdca15...`.
 
-The full pseudo-rerank run also completed at accuracy `0.5967` and matched pseudo-embedding on every category and correctness decision. This is useful negative evidence: the next retrieval investment should target multi-hop/open-domain support coverage, not another deterministic reranking layer.
+`fts-multihop` is the measured winner at accuracy `0.6067` and `425.8` mean query tokens, versus `0.5967` and `536.0` for plain FTS. It gained `98` questions and lost `78`, with a net four-question temporal regression and materially higher latency. The product decision is adaptive routing, not a global multihop default.
+
+Pseudo-embedding and pseudo-rerank match FTS on every scored category. This is useful negative evidence: the next retrieval investment should target query routing and support coverage, not another deterministic reranking layer.
+
+LongMemEval now provides the complementary signal. The verified `500`-question matrix scores multihop at `0.780` versus `0.740` for the other modes, with `20` recovered questions, zero losses, and `30/30` abstention across every mode. Multihop costs `4.0%` more query tokens and higher latency. Combined with LoCoMo's temporal regressions, this selects adaptive routing as the next product slice.
+
+The run also fixed a real operator problem: LongMemEval now honors `--compact-artifacts` with per-session ephemeral stores. The four-mode run completed in `174.84s`, wrote zero databases/bundles, and verified under matrix hash `e5dd8b06...` and comparison hash `a69090df...`. Summary-only output is bounded instead of printing thousands of per-question delta lines.
 
 ### What changed
 
@@ -32,7 +38,7 @@ The full pseudo-rerank run also completed at accuracy `0.5967` and matched pseud
 
 ### Next build move
 
-Resume one isolated LoCoMo dense/rerank matrix, then prioritize LongMemEval-S abstention evidence. Keep broad swarms and launch oversight paused.
+Expose and measure the existing selective-multihop path as an explicit adaptive benchmark mode. Acceptance is to retain LongMemEval's `20` recovered questions while reducing LoCoMo's `78` regressions, especially its net four temporal losses. Keep broad swarms and launch oversight paused.
 
 ## 2026-07-06 - v0.1.2 release checkpoint
 

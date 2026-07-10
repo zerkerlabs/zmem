@@ -1,3 +1,43 @@
+## 2026-07-10 - Same-checkpoint LoCoMo mode matrix
+
+Evidence:
+
+- Completed `1,986` questions across all four local modes at commit `871f23d`, seed `42`, and one SHA-pinned dataset conversion.
+- Matrix/comparison verification `ok`; matrix hash `9f8b77ca186ddf90821534f5f1eb83396f109f7720065e8d46207aab62796ecd`; comparison hash `18cdca154817642f6e5d5b3844a1fb048f936aefe1ae3f2e47a262f29f868b80`.
+- `fts-multihop` scored `0.6067` versus `0.5967` for FTS, pseudo-embedding, and pseudo-rerank, while using `20.6%` fewer query tokens than FTS.
+- Against FTS, multihop gained `98` questions and lost `78`: net `+18` single-hop, `+2` multi-hop, `+4` open-domain, and `-4` temporal. P50/p95 latency increased `78.5%` and `50.7%`.
+- The complete run covered `7,944` retrieval questions in `30m06s` and left zero SQLite artifacts.
+
+Decision:
+
+- Pseudo-embedding and pseudo-rerank are measured no-ops on quality here. Build adaptive routing instead of another reranker or a global multihop default.
+
+## 2026-07-10 - Bounded LongMemEval matrix and verified evidence
+
+Shipped:
+
+- Made LongMemEval honor `--compact-artifacts` through per-session ephemeral stores while preserving history reuse within a session and original question order.
+- Omitted compact-run databases, final snapshots, and per-question receipt bundles; normal proof-rich runs remain unchanged.
+- Added direct `zmem bench run ... --compact-artifacts` support so manifest reproducibility commands execute as written.
+- Bounded summary-only memory-count and efficiency deltas to ten examples plus an omitted count.
+
+Verification:
+
+- `python3.11 -m unittest tests.test_bench -q` -> `145` tests passed.
+- `python3.11 -m unittest discover -s tests -q` -> `1,222` tests passed.
+- Official five-question compact smoke -> matrix/comparison verification `ok`, zero SQLite and bundle artifacts.
+- Full `500`-question, four-mode LongMemEval matrix -> matrix/comparison verification `ok`, `174.84s`, zero SQLite and bundle artifacts.
+- Matrix hash `e5dd8b0657259f66952e95d3cef403011ee7a0f65daaa2d73abb86c1598e80e7`; comparison hash `a69090dffc378fc201549d08b81ca719b512f9b609a8ed01b89197a26ffa9d1f`.
+
+Finding:
+
+- `fts-multihop` scored `0.780` versus `0.740` for FTS, pseudo-embedding, and pseudo-rerank. It recovered `20` questions with zero losses and all modes passed `30/30` abstention questions.
+- Multihop used `2550.5` mean query tokens versus `2452.1` for FTS and had higher latency. Together with the LoCoMo regressions, this selects adaptive routing rather than a global multihop default.
+
+Next:
+
+- Expose the existing selective-multihop path as an explicit benchmark mode, then test whether it keeps LongMemEval's gains while reducing LoCoMo's temporal losses.
+
 ## 2026-07-10 - Lean single-mode benchmark matrices
 
 Shipped:

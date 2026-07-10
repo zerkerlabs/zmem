@@ -3,17 +3,21 @@
 This is the short orchestration dashboard for Zerker Memory. Every autonomous build run should update this file after it updates `docs/BUILD_LOG.md`.
 
 ## Release Coordination
-`2026-07-10T21:16:14Z`
+`2026-07-10T22:11:39Z`
 
-- Published and deployed `v0.1.3` at `d029b998875d26f4c3ae185d4499778e73c5c92e`. GitHub Actions run `29119164360` passed site, docs, Python 3.10/3.11/3.12 unit+eval, and release-smoke; production checks passed on `www.zmem.sh`, `/proof`, `/changelog`, and `docs.zmem.sh/docs` without console errors or horizontal overflow.
-- Completed the first post-release isolated LoCoMo run under Python 3.11: `.zerker/bench/locomo-v013-pseudo-embedding-py311-20260710/` contains `1,986` questions, result hash `3d31a2ee0a9ca73706dd3e64aecd53bfba5a8d06ee314487855c972ae3cc8367`, aggregate root `5adf3ecc29e5e88085040b26892d0e29031e012a4734a6fe94ea7cf9e7bf24fc`, and trace SHA `65f5797fe255775e6d0516f4ed0cf4191e63a9334b517f5cfb34cb152efa8825`.
-- Current pseudo-embedding evidence is accuracy `0.5967`, token F1 `0.5969`, EM `0.5967`, mean query tokens `536.0`, and adversarial abstention `1.0`. Multi-hop remains `0.0709` and open-domain `0.1250`, so this mode does not close the hardest retrieval gaps.
-- Directional comparison to the older FTS run shows about `22.7%` fewer query tokens and `22.5%` fewer retrieved memories, but it is not an apples-to-apples mode claim: the old artifact predates `v0.1.3` and its aggregate root fails current verification.
-- Benchmark verification now handles legacy null report/snapshot paths and omitted-but-still-named bundle paths without crashing. It fails closed on the one genuine legacy aggregate-root mismatch.
-- Compact LoCoMo runs now use one ephemeral store per conversation and omit the unverified run database. A 260-question real-conversation measurement completed in `57.29s` at roughly `272` questions/minute with zero SQLite artifacts; all 260 correctness decisions and final answers matched the prior full run's same conversation.
-- Completed the full isolated pseudo-embedding-rerank run on commit `be26bbc`: `1,986` questions, accuracy `0.5967`, token F1 `0.5969`, mean query tokens `536.0`, result hash `427864c9...`, aggregate root `e1a2cb28...`, and zero SQLite artifacts. It matched pseudo-embedding on all scored categories and all `1,986` correctness decisions, so reranking produced no quality gain on this path.
-- Single-mode matrices no longer compare their only result to itself. A 260-question artifact repack fell from `80.1 MB` to `48.5 MB` (`39.5%` smaller), and summary-only output now bounds question-id lists to ten entries plus an omitted count.
-- All recurring ZMem automations are confirmed paused. Next: repack the full rerank matrix with the lean single-mode format, then run a fresh same-commit four-mode matrix and LongMemEval-S.
+- Published and deployed `v0.1.3` at `d029b998875d26f4c3ae185d4499778e73c5c92e`. GitHub Actions run `29119164360` passed site, docs, Python 3.10/3.11/3.12 unit+eval, and release-smoke; production checks passed on `www.zmem.sh`, `/proof`, `/changelog`, and `docs.zmem.sh/docs`.
+- Completed and independently verified a fresh four-mode LoCoMo matrix at commit `871f23d`, seed `42`, and the same `1,986` questions. Matrix hash: `9f8b77ca186ddf90821534f5f1eb83396f109f7720065e8d46207aab62796ecd`; comparison hash: `18cdca154817642f6e5d5b3844a1fb048f936aefe1ae3f2e47a262f29f868b80`.
+- `fts-multihop` is the measured winner: accuracy `0.6067` versus `0.5967` for FTS, pseudo-embedding, and pseudo-rerank. It uses `425.8` mean query tokens versus `536.0` for FTS, a `20.6%` reduction.
+- The win is not uniform. Against FTS, multihop gained `98` questions and lost `78`: net `+18` single-hop, `+2` multi-hop, `+4` open-domain, and `-4` temporal. Its p50 and p95 retrieval latency were `78.5%` and `50.7%` higher.
+- Product decision: do not make multihop the global default yet. Build an adaptive route that retains its gains while preserving plain FTS on queries where decomposition is likely to hurt, especially temporal questions.
+- Pseudo-embedding and pseudo-rerank matched FTS on every scored category. Do not spend the next retrieval slice on another deterministic reranker.
+- Compact LoCoMo runs now use one ephemeral store per conversation, leave zero SQLite artifacts, and one-mode matrices no longer duplicate their only result. The full four-mode run completed `7,944` retrieval questions in `30m06s`.
+- Fixed `--compact-artifacts` for LongMemEval: compact runs now use per-session ephemeral stores, omit per-question bundles and the run database, and preserve normal proof-rich runs unchanged. Direct `zmem bench run` now accepts the same flag recorded in reproducibility commands.
+- Completed and independently verified the fresh `500`-question LongMemEval four-mode matrix. `fts-multihop` scored `0.780` versus `0.740` for all other modes, gaining `20` questions with zero losses; all modes passed `30/30` abstention questions.
+- LongMemEval multihop gains span knowledge update (`+5`), multi-session (`+7`), temporal reasoning (`+7`), and single-session user recall (`+1`). It costs `4.0%` more query tokens and higher p50/p95 latency, so LoCoMo still provides the routing guardrail.
+- LongMemEval matrix hash: `e5dd8b0657259f66952e95d3cef403011ee7a0f65daaa2d73abb86c1598e80e7`; comparison hash: `a69090dffc378fc201549d08b81ca719b512f9b609a8ed01b89197a26ffa9d1f`. The complete four-mode run took `174.84s`, produced zero databases/bundles, and verified independently.
+- Summary-only benchmark delta rows are now bounded to ten examples plus an omitted count; the same LongMemEval matrix summary falls from `1,624` lines to `43`.
+- All recurring ZMem automations remain paused. Next: expose and benchmark the existing selective multihop behavior as an explicit adaptive mode, then require LoCoMo temporal safety before changing the product default.
 
 ## Retrieval Baseline
 `2026-07-06T13:01:58Z`

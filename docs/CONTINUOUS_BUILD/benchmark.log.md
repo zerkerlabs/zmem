@@ -1,5 +1,29 @@
 # Benchmark Lane Log
 
+## 2026-07-10T22:11:39Z - bounded LongMemEval matrix and mode evidence
+
+- Scope: fixed compact LongMemEval execution, verified the full local matrix, and bounded summary-only output.
+- Root cause: matrix `--compact-artifacts` was passed to LoCoMo but not LongMemEval, so LongMemEval still built one global event chain, retained its SQLite database, and exported every per-question bundle.
+- Implementation: compact LongMemEval now groups questions by session, uses one ephemeral store per session, preserves session reuse and input order, omits bundles/database/final snapshot, and leaves noncompact execution unchanged. Direct `bench run` accepts the same flag.
+- Focused smoke: five questions completed in under one second, matrix/comparison verification `ok`, zero SQLite files, zero bundle files.
+- Full run: `500` questions x four modes, `174.84s`, `696 MB` output, zero SQLite/bundle artifacts, max resident set about `3.28 GB`.
+- Evidence: multihop accuracy `0.780`; FTS, pseudo-embedding, and pseudo-rerank `0.740`; multihop gained `20` questions with zero losses; all modes passed `30/30` abstention questions.
+- Category gains over FTS: knowledge update `+5`, multi-session `+7`, temporal reasoning `+7`, single-session user recall `+1`.
+- Cost: multihop mean query tokens `2550.5` versus `2452.1`; p50/p95 latency `38.777/74.003ms` versus FTS `27.713/54.364ms`.
+- Proof: matrix hash `e5dd8b0657259f66952e95d3cef403011ee7a0f65daaa2d73abb86c1598e80e7`; comparison hash `a69090dffc378fc201549d08b81ca719b512f9b609a8ed01b89197a26ffa9d1f`; independent verification `ok`.
+- UX: summary-only delta rows are bounded to ten examples plus omitted counts; the full matrix summary is now `43` lines instead of `1,624`.
+- Next safe slice: expose the existing selective-multihop path as an explicit mode and measure it against LoCoMo plus LongMemEval before changing any default.
+
+## 2026-07-10T21:44:00Z - same-checkpoint LoCoMo four-mode matrix
+
+- Run: `1,986` questions x four modes at retrieval checkpoint `871f23d`, seed `42`, compact conversation-bounded stores, and one local dataset conversion.
+- Proof: matrix/comparison verification `ok`; matrix hash `9f8b77ca186ddf90821534f5f1eb83396f109f7720065e8d46207aab62796ecd`; comparison hash `18cdca154817642f6e5d5b3844a1fb048f936aefe1ae3f2e47a262f29f868b80`.
+- Scores: multihop `0.6067`; FTS, pseudo-embedding, and pseudo-rerank `0.5967`. Pseudo modes match FTS on every scored category.
+- Tradeoff: multihop gains `98`, loses `78`, and nets `+20`; category net is single-hop `+18`, multi-hop `+2`, open-domain `+4`, temporal `-4`.
+- Efficiency: multihop mean query tokens `425.8` versus FTS `536.0` (`20.6%` lower), with p50/p95 latency `78.5%` and `50.7%` higher.
+- Runtime: `7,944` retrieval questions in `30m06s`, zero SQLite artifacts.
+- Decision: measure selective multihop routing; do not make always-on multihop the default and do not add another deterministic reranker.
+
 ## 2026-07-10T21:16:14Z - lean single-mode matrix packaging
 
 - Scope: removed the `result_paths * 2` compatibility workaround that made one-mode matrices compare a result to itself and duplicate question evidence.

@@ -21,6 +21,13 @@ Primary mission brief:
 - Lane progress and release tracker: `docs/ZMEM_PROGRESS_TRACKER.md`
 - Lane logs: `docs/CONTINUOUS_BUILD/`
 
+Coordinator update `2026-07-10T22:11:39Z`:
+
+- Fixed the LongMemEval compact path before the fresh matrix could repeat the old global-chain storage failure. Compact runs now use per-session ephemeral stores, retain session-level memory reuse, omit bundles/database/final snapshot, and expose a runnable direct CLI flag.
+- Full `500`-question four-mode LongMemEval evidence is verified: multihop `0.780`, all other modes `0.740`, `20` recovered questions, zero losses, and `30/30` abstention for every mode. Matrix hash `e5dd8b06...`; comparison hash `a69090df...`.
+- The run completed in `174.84s` with zero SQLite/bundle artifacts. Summary-only delta output is now bounded to ten examples plus omitted counts.
+- Combined LoCoMo and LongMemEval evidence selects an explicit adaptive-mode benchmark as the next L3/L6 slice. Broad recurring swarms remain paused.
+
 Coordinator update `2026-07-10T21:16:14Z`:
 
 - Removed single-mode matrix self-comparison duplication while preserving strict two-input standalone comparisons and full artifact verification.

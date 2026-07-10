@@ -689,6 +689,11 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
     bench_run.add_argument("--answerer-model", default="gpt-4o")
     bench_run.add_argument("--trace", action="store_true", help="Write trace.jsonl and summary.json artifacts.")
     bench_run.add_argument(
+        "--compact-artifacts",
+        action="store_true",
+        help="Skip bulky per-question receipt bundles and use bounded ephemeral stores when supported.",
+    )
+    bench_run.add_argument(
         "--retrieval-provider-config",
         type=Path,
         help="Optional local provider config to record, redacted, in benchmark artifacts.",
@@ -1718,6 +1723,7 @@ def main(argv: list[str] | None = None) -> int:
                         answerer=args.answerer,
                         answerer_model=args.answerer_model,
                         write_trace=args.trace,
+                        compact_artifacts=args.compact_artifacts,
                     )
                 elif args.benchmark == "locomo":
                     if args.dataset is None:
@@ -1735,6 +1741,7 @@ def main(argv: list[str] | None = None) -> int:
                         answerer=args.answerer,
                         answerer_model=args.answerer_model,
                         write_trace=args.trace,
+                        compact_artifacts=args.compact_artifacts,
                     )
                 else:
                     raise ValueError(f"unsupported benchmark: {args.benchmark}")
@@ -2175,13 +2182,14 @@ def _format_benchmark_cli_delta(value: object) -> str:
     return "n/a"
 
 
+def _bounded_benchmark_delta_rows(values: object, *, limit: int = 10) -> tuple[list[dict[str, object]], int]:
+    rows = [value for value in values if isinstance(value, dict)] if isinstance(values, list) else []
+    return rows[:limit], max(len(rows) - limit, 0)
+
+
 def _append_benchmark_memory_count_delta_lines(lines: list[str], summary: dict[str, object]) -> None:
-    memory_count_deltas = summary.get("memory_count_deltas")
-    if not isinstance(memory_count_deltas, list):
-        return
+    memory_count_deltas, omitted = _bounded_benchmark_delta_rows(summary.get("memory_count_deltas"))
     for delta in memory_count_deltas:
-        if not isinstance(delta, dict):
-            continue
         lines.append(
             "Memory count delta "
             f"{delta.get('question_id') or 'unknown'} ({delta.get('retrieval_mode') or 'unknown'}): "
@@ -2189,21 +2197,21 @@ def _append_benchmark_memory_count_delta_lines(lines: list[str], summary: dict[s
             f"injected={_format_benchmark_cli_delta(delta.get('injected_memory_count_delta'))} "
             f"withheld={_format_benchmark_cli_delta(delta.get('withheld_memory_count_delta'))}"
         )
+    if omitted:
+        lines.append(f"Memory count deltas omitted: {omitted}")
 
 
 def _append_benchmark_efficiency_delta_lines(lines: list[str], summary: dict[str, object]) -> None:
-    efficiency_deltas = summary.get("efficiency_deltas")
-    if not isinstance(efficiency_deltas, list):
-        return
+    efficiency_deltas, omitted = _bounded_benchmark_delta_rows(summary.get("efficiency_deltas"))
     for delta in efficiency_deltas:
-        if not isinstance(delta, dict):
-            continue
         lines.append(
             "Efficiency delta "
             f"{delta.get('question_id') or 'unknown'} ({delta.get('retrieval_mode') or 'unknown'}): "
             f"retrieval_latency_ms={_format_benchmark_cli_delta(delta.get('retrieval_latency_ms_delta'))} "
             f"total_tokens={_format_benchmark_cli_delta(delta.get('total_tokens_delta'))}"
         )
+    if omitted:
+        lines.append(f"Efficiency deltas omitted: {omitted}")
 
 
 def _append_benchmark_mode_proof_lines(lines: list[str], mode_proofs: object) -> None:
@@ -2349,7 +2357,10 @@ def _append_benchmark_mode_comparison_lines(lines: list[str], mode_comparisons: 
                 f"Mode comparison {retrieval_mode} budget context ids: "
                 f"{_bounded_benchmark_id_list(budget_context_ids)}"
             )
-        for delta in _mode_comparison_memory_count_deltas(mode_comparison):
+        memory_count_deltas, omitted_memory_count_deltas = _bounded_benchmark_delta_rows(
+            _mode_comparison_memory_count_deltas(mode_comparison)
+        )
+        for delta in memory_count_deltas:
             lines.append(
                 "Mode comparison "
                 f"{retrieval_mode} memory count delta {delta.get('question_id') or 'unknown'}: "
@@ -2357,12 +2368,23 @@ def _append_benchmark_mode_comparison_lines(lines: list[str], mode_comparisons: 
                 f"injected={_format_benchmark_cli_delta(delta.get('injected_memory_count_delta'))} "
                 f"withheld={_format_benchmark_cli_delta(delta.get('withheld_memory_count_delta'))}"
             )
-        for delta in _mode_comparison_efficiency_deltas(mode_comparison):
+        if omitted_memory_count_deltas:
+            lines.append(
+                f"Mode comparison {retrieval_mode} memory count deltas omitted: {omitted_memory_count_deltas}"
+            )
+        efficiency_deltas, omitted_efficiency_deltas = _bounded_benchmark_delta_rows(
+            _mode_comparison_efficiency_deltas(mode_comparison)
+        )
+        for delta in efficiency_deltas:
             lines.append(
                 "Mode comparison "
                 f"{retrieval_mode} efficiency delta {delta.get('question_id') or 'unknown'}: "
                 f"retrieval_latency_ms={_format_benchmark_cli_delta(delta.get('retrieval_latency_ms_delta'))} "
                 f"total_tokens={_format_benchmark_cli_delta(delta.get('total_tokens_delta'))}"
+            )
+        if omitted_efficiency_deltas:
+            lines.append(
+                f"Mode comparison {retrieval_mode} efficiency deltas omitted: {omitted_efficiency_deltas}"
             )
         matrix_run_proofs = mode_comparison.get("matrix_run_proofs", [])
         if not isinstance(matrix_run_proofs, list):

@@ -33,7 +33,13 @@ from zerker_memory.bench import (
     write_benchmark_comparison_artifacts,
     write_benchmark_matrix_comparison_artifacts,
 )
-from zerker_memory.cli import _append_benchmark_question_summary_lines, build_parser, main
+from zerker_memory.cli import (
+    _append_benchmark_efficiency_delta_lines,
+    _append_benchmark_memory_count_delta_lines,
+    _append_benchmark_question_summary_lines,
+    build_parser,
+    main,
+)
 from zerker_memory.store import sha256_text, stable_json
 
 
@@ -53,6 +59,41 @@ class BenchmarkHarnessTest(unittest.TestCase):
 
         self.assertIn("Stable win ids: q-0, q-1, q-2, q-3, q-4, q-5, q-6, q-7, q-8, q-9 ... (+2 more)", lines)
         self.assertNotIn("q-10", "\n".join(lines))
+
+    def test_benchmark_summary_bounds_per_question_delta_rows(self):
+        lines: list[str] = []
+        summary = {
+            "memory_count_deltas": [
+                {
+                    "question_id": f"q-{index}",
+                    "retrieval_mode": "fts-multihop",
+                    "retrieved_memory_count_delta": 1,
+                    "injected_memory_count_delta": 1,
+                    "withheld_memory_count_delta": 0,
+                }
+                for index in range(12)
+            ],
+            "efficiency_deltas": [
+                {
+                    "question_id": f"q-{index}",
+                    "retrieval_mode": "fts-multihop",
+                    "retrieval_latency_ms_delta": 1.0,
+                    "total_tokens_delta": 2,
+                }
+                for index in range(13)
+            ],
+        }
+
+        _append_benchmark_memory_count_delta_lines(lines, summary)
+        _append_benchmark_efficiency_delta_lines(lines, summary)
+
+        rendered = "\n".join(lines)
+        self.assertIn("Memory count delta q-9", rendered)
+        self.assertNotIn("Memory count delta q-10", rendered)
+        self.assertIn("Memory count deltas omitted: 2", rendered)
+        self.assertIn("Efficiency delta q-9", rendered)
+        self.assertNotIn("Efficiency delta q-10", rendered)
+        self.assertIn("Efficiency deltas omitted: 3", rendered)
 
     def test_list_benchmarks_includes_synthetic_longmemeval_and_locomo(self):
         result = list_benchmarks()
@@ -7182,12 +7223,13 @@ class BenchmarkHarnessTest(unittest.TestCase):
             ]
             expected_efficiency_deltas = [
                 {
-                    "question_id": question["question_id"],
+                    "question_id": comparison_question["question_id"],
                     "retrieval_mode": delta["retrieval_mode"],
                     "retrieval_latency_ms_delta": delta.get("retrieval_latency_ms_delta"),
                     "total_tokens_delta": delta.get("total_tokens_delta"),
                 }
-                for delta in question.get("deltas", [])
+                for comparison_question in matrix["comparison"]["questions"]
+                for delta in comparison_question.get("deltas", [])
                 if any(
                     delta.get(key) not in (None, 0)
                     for key in (
@@ -7220,7 +7262,7 @@ class BenchmarkHarnessTest(unittest.TestCase):
                     f"withheld={delta['withheld_memory_count_delta']:+d}",
                     output,
                 )
-            for delta in expected_efficiency_deltas:
+            for delta in expected_efficiency_deltas[:10]:
                 latency_delta = delta["retrieval_latency_ms_delta"]
                 token_delta = delta["total_tokens_delta"]
                 latency_display = f"{latency_delta:+.3f}" if isinstance(latency_delta, float) else f"{latency_delta:+d}"
@@ -7232,6 +7274,8 @@ class BenchmarkHarnessTest(unittest.TestCase):
                     f"total_tokens={token_display}",
                     output,
                 )
+            if len(expected_efficiency_deltas) > 10:
+                self.assertIn(f"Efficiency deltas omitted: {len(expected_efficiency_deltas) - 10}", output)
             self.assertIn(
                 f"Matrix JSON: {tmp_path / 'bench-cli' / 'summary-only-matrix' / 'benchmark-matrix.json'}",
                 output,
@@ -7485,6 +7529,111 @@ class BenchmarkHarnessTest(unittest.TestCase):
                 },
                 {(after_snapshot["memories"][0]["id"],)},
             )
+
+    def test_compact_longmemeval_matrix_isolates_ephemeral_stores_by_session(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            dataset = Path(tmp) / "longmemeval-compact-sessions.jsonl"
+            records = [
+                {
+                    "question_id": "session-alpha-1",
+                    "session_id": "session-alpha",
+                    "split": "small",
+                    "category": "single_session_user_recall",
+                    "history": ["The dashboard owner is Mina."],
+                    "question": "Who owns the dashboard?",
+                    "answer": "Mina.",
+                    "supporting_facts": ["The dashboard owner is Mina."],
+                    "should_abstain": False,
+                },
+                {
+                    "question_id": "session-beta-1",
+                    "session_id": "session-beta",
+                    "split": "small",
+                    "category": "single_session_user_recall",
+                    "history": ["The dashboard owner is Mina."],
+                    "question": "Who owns the dashboard in beta?",
+                    "answer": "Mina.",
+                    "supporting_facts": ["The dashboard owner is Mina."],
+                    "should_abstain": False,
+                },
+                {
+                    "question_id": "session-alpha-2",
+                    "session_id": "session-alpha",
+                    "split": "small",
+                    "category": "single_session_user_recall",
+                    "history": ["The dashboard owner is Mina."],
+                    "question": "Who is responsible for the dashboard?",
+                    "answer": "Mina.",
+                    "supporting_facts": ["The dashboard owner is Mina."],
+                    "should_abstain": False,
+                },
+            ]
+            dataset.write_text("\n".join(json.dumps(record, sort_keys=True) for record in records) + "\n", encoding="utf-8")
+
+            run_benchmark_matrix(
+                Path(tmp) / "bench",
+                "longmemeval",
+                dataset=dataset,
+                split="small",
+                seed=0,
+                run_id="longmemeval-compact-sessions",
+                mode="fts",
+                compact_artifacts=True,
+            )
+            matrix_dir = Path(tmp) / "bench" / "longmemeval-compact-sessions"
+            run_dir = matrix_dir / "fts"
+            manifest = json.loads((run_dir / "benchmark-run.json").read_text(encoding="utf-8"))
+            result_payload = json.loads((run_dir / "benchmark-result.json").read_text(encoding="utf-8"))
+            supporting_ids = {
+                question["question_id"]: question["expected_supporting_memory_ids"]
+                for question in result_payload["questions"]
+            }
+
+            self.assertEqual(manifest["store_lifecycle"], "per-session-ephemeral")
+            self.assertTrue(manifest["receipt_bundles_omitted"])
+            self.assertTrue(manifest["run_database_omitted"])
+            self.assertEqual(result_payload["store_lifecycle"], "per-session-ephemeral")
+            self.assertTrue(result_payload["final_snapshot_omitted"])
+            self.assertTrue(result_payload["run_database_omitted"])
+            self.assertIsNone(result_payload["paths"]["database"])
+            self.assertEqual(
+                [question["question_id"] for question in result_payload["questions"]],
+                [record["question_id"] for record in records],
+            )
+            self.assertEqual(supporting_ids["session-alpha-1"], supporting_ids["session-alpha-2"])
+            self.assertNotEqual(supporting_ids["session-alpha-1"], supporting_ids["session-beta-1"])
+            self.assertEqual(list(run_dir.rglob("*.sqlite")), [])
+            self.assertEqual(list((run_dir / "receipts").glob("*.bundle.json")), [])
+            self.assertTrue(verify_benchmark_result(run_dir / "benchmark-result.json")["ok"])
+            self.assertTrue(verify_benchmark_artifact(matrix_dir / "benchmark-matrix.json")["ok"])
+
+    def test_cli_compact_longmemeval_run_uses_runnable_manifest_command(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            dataset = self._write_longmemeval_jsonl(Path(tmp))
+            out = Path(tmp) / "bench"
+
+            result = self._main_json(
+                [
+                    "bench",
+                    "run",
+                    "longmemeval",
+                    "--dataset",
+                    str(dataset),
+                    "--split",
+                    "small",
+                    "--out",
+                    str(out),
+                    "--run-id",
+                    "compact-cli",
+                    "--compact-artifacts",
+                ]
+            )
+            manifest = json.loads((out / "compact-cli" / "benchmark-run.json").read_text(encoding="utf-8"))
+
+            self.assertTrue(result["ok"])
+            self.assertEqual(result["store_lifecycle"], "per-session-ephemeral")
+            self.assertIn("--compact-artifacts", manifest["command"])
+            self.assertEqual(list((out / "compact-cli").rglob("*.sqlite")), [])
 
     def test_longmemeval_json_array_split_filtering_works(self):
         with tempfile.TemporaryDirectory() as tmp:

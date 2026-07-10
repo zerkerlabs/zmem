@@ -60,10 +60,10 @@ Percentages are practical launch-grade alpha estimates, not benchmark scores.
 | L0 Trust Ledger | Receipts, Merkle lineage, restore/export proof | 80% | Mutation/lifecycle/restore receipts and compact v2 event witnesses exist; default MCP agents cannot claim trusted write/review authority | Add compact read-only mutation-chain summary and direct snapshot-restore receipt summary |
 | L1 Temporal KG | Current/history/superseded temporal memory | 55% | `query_at`, supersession, omitted-memory envelopes, runtime temporal context | Add contradiction/abstention runtime fixture and decide when true bi-temporal graph schema is needed |
 | L2 Lifecycle Compaction | Sessions, checkpoints, snapshots, retention | 45% | Checkpoint/snapshot store contracts plus read-only CLI summaries | Add write-facing `zmem session checkpoint` or retention policy without widening scope |
-| L3 Retrieval Baseline | FTS/BM25, semantic backfill, RRF, packing | 68% | Hybrid semantic, multi-hop RRF, temporal support-chain RRF, chronology mutation RRF, update-history relation-pair RRF shipped in `v0.1.2` | Rerun LoCoMo mode deltas in isolated output dirs |
+| L3 Retrieval Baseline | FTS/BM25, semantic backfill, RRF, packing | 72% | Same-commit LoCoMo evidence selects multihop as the best measured local mode, with explicit temporal and latency tradeoffs | Add adaptive routing that preserves temporal accuracy while retaining multihop gains |
 | L4 Consolidation | Hierarchical summaries and job ledger | 35% | Deterministic fixture, job lifecycle, reversible summary payloads, append-only summary ledger | Source candidates from live store or expose persisted summaries through read-only CLI |
 | L5 Identity / Workspaces | Multi-agent source lineage and conflicts | 50% | Source reports, claim conflicts, resolution basis, exact-tie abstention summaries | Persist merge decisions or add repo/tool lineage descriptors |
-| L6 Benchmark Harness | LoCoMo/LongMemEval/BEAM evidence | 68% | Full LoCoMo FTS, FTS-multihop, pseudo-embedding, and pseudo-rerank runs exist; compact stores are conversation-bounded and single-mode matrices no longer self-compare | Run a fresh same-commit matrix and LongMemEval-S |
+| L6 Benchmark Harness | LoCoMo/LongMemEval/BEAM evidence | 82% | Verified four-mode LoCoMo and LongMemEval matrices exist; compact stores are bounded by conversation/session and summary output is concise | Add explicit adaptive-mode evidence, then BEAM scale evidence |
 | Launch Oversight | Release pack, proof evidence, public release | 100% for v0.1.3 | Public verify `6/6`, assets `8/8`, return packet ready, `v0.1.3` published and deployed | Keep automation paused; repeat the gate only for the next release |
 | Website / Docs | Landing, proof page, docs, changelog | 100% for v0.1.3 | Agent-first copy, proof/docs routes, factual benchmark page, dedicated CI gates, and responsive QA | Keep factual surfaces aligned as retrieval evidence changes |
 | ActiveGraph Integration | Event substrate and compact traces | 45% | Source pack, `zmem.persist`, `zmem.recall`, `zmem-bench-locomo`, 5-question compact smoke | Clean `activegraph pack add zmem` smoke and batching/perf for full traces |
@@ -203,9 +203,10 @@ Built:
 - [x] LongMemEval-style harness.
 - [x] Metrics for F1, EM, latency, tokens, retrieval stats.
 - [x] Matrix receipts with hashes/proof roots.
-- [x] Full local LoCoMo FTS evidence: provisional accuracy `0.5967`, mean query tokens `693.3`.
-- [x] Full isolated LoCoMo FTS-multihop evidence: provisional accuracy `0.6042`, mean query tokens `418.8`.
-- [x] LongMemEval local matrix exists.
+- [x] Fresh same-commit four-mode LoCoMo matrix at `871f23d`: matrix verification `ok`, comparison verification `ok`, matrix hash `9f8b77ca...`, comparison hash `18cdca15...`.
+- [x] Full local LoCoMo FTS evidence: provisional accuracy `0.5967`, mean query tokens `536.0`.
+- [x] Full isolated LoCoMo FTS-multihop evidence: provisional accuracy `0.6067`, mean query tokens `425.8`.
+- [x] Fresh LongMemEval local matrix: `500` questions, matrix/comparison verification `ok`, matrix hash `e5dd8b06...`, comparison hash `a69090df...`.
 - [x] ActiveGraph compact 5-question smoke.
 - [x] Normal benchmark receipt bundles use compact v2 event witnesses by default; `--compact-artifacts` remains available to omit per-question bundles entirely.
 
@@ -215,8 +216,11 @@ Left:
 - [x] Full LoCoMo `fts-multihop`.
 - [x] Full LoCoMo `pseudo-embedding`: current-code Python 3.11 run, `1,986` questions, accuracy `0.5967`, token F1 `0.5969`, mean query tokens `536.0`, verified result hash `3d31a2ee...`.
 - [x] Full LoCoMo `pseudo-embedding-rerank`: `1,986` questions, accuracy `0.5967`, token F1 `0.5969`, zero SQLite artifacts, verified result hash `427864c9...`; no quality delta from pseudo-embedding.
-- [ ] Full LoCoMo `zmem-retrieval` alias coverage; this resolves to `pseudo-embedding-rerank`, so do not spend a duplicate full run after rerank is measured.
-- [ ] LongMemEval-S abstention/token efficiency run.
+- [x] Confirmed `zmem-retrieval` resolves to `pseudo-embedding-rerank`; no duplicate full run is needed.
+- [x] Same-commit category delta audit: multihop gains `98`, loses `78`, and nets `+20` questions while using `20.6%` fewer query tokens; temporal nets `-4`.
+- [x] LongMemEval-S abstention/token efficiency run: multihop `0.780` versus `0.740`, `20` gains and zero losses, `30/30` abstention for every mode, mean query tokens `2550.5` versus `2452.1` for FTS.
+- [x] Compact LongMemEval lifecycle: per-session ephemeral stores, zero retained SQLite/bundle artifacts, runnable direct and matrix CLI commands.
+- [x] Summary-only delta output bounded to ten examples plus omitted counts.
 - [ ] BEAM scale benchmark.
 - [ ] ActiveGraph batching/performance for full traces.
 - [ ] Public benchmark page/report polish after real deltas.
@@ -317,6 +321,6 @@ Every release tag should include:
 ## Current Highest-Leverage Next Move
 
 1. Keep benchmark runs in isolated output directories and on supported Python 3.10+ runtimes.
-2. Repack the full rerank artifact through the lean single-mode matrix format; a 260-question measurement was `39.5%` smaller and no longer duplicated the only result.
-3. Run a fresh same-commit LoCoMo matrix so mode deltas are admissible rather than directional; `zmem-retrieval` is the rerank alias, not a fifth independent mode.
-4. Run LongMemEval-S for abstention and token-efficiency evidence, then let category deltas choose the next L3 slice.
+2. Expose the existing local selective-multihop behavior as an explicit benchmark mode so the real product default can be measured against FTS and always-on multihop.
+3. Require the adaptive mode to preserve LongMemEval's `20` recovered questions while reducing LoCoMo's `78` regressions, especially the net four temporal losses.
+4. Add BEAM scale evidence after the adaptive route is measured; `zmem-retrieval` remains the rerank alias, not a fifth independent mode.

@@ -2,6 +2,15 @@
 
 All notable Zerker Memory alpha changes are summarized here.
 
+## Unreleased
+
+### Benchmark Operations
+
+- Made `--compact-artifacts` effective for LongMemEval matrices and direct runs. Compact execution now uses per-session ephemeral stores, omits per-question bundles and the run database, and leaves normal proof-rich runs unchanged.
+- Added direct `zmem bench run ... --compact-artifacts` support so recorded reproducibility commands are executable.
+- Bounded summary-only memory-count and efficiency deltas to ten examples plus an omitted count.
+- Completed a verified local `500`-question LongMemEval matrix: `fts-multihop` scored `0.780` versus `0.740` for FTS, pseudo-embedding, and pseudo-rerank; it recovered `20` questions with zero losses and all modes passed `30/30` abstention questions. These remain provisional local results, not leaderboard claims.
+
 ## 0.1.3 - 2026-07-10
 
 ### Security And Control

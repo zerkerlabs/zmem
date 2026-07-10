@@ -12,22 +12,19 @@ The current benchmark path is useful for product development and reproducible lo
 - LLM answer generation and external LongMemEval judging are explicit opt-in paths.
 - Public benchmark claims still require pinned dataset versions, reproducible commands, result bundles, and a verified scoring method.
 
-Current official LoCoMo local baseline:
+Current verified local evidence:
 
-- Run directory: `.zerker/bench/locomo-official-v1/fts/`.
-- Scored receipt: `scored_receipt.json`.
-- Result: F1 `0.3752394031509457`, EM `0.37210473313192344`, 1,986 questions, retrieval mode `fts`, eval scope `per-conversation`.
-- Trace SHA: `67a005bf87b4bafcd2d7ce1cf8bfff97d7f430788afd0472511f738594971d0c`.
-- Claim boundary: `scored_receipt.json` carries the public rule-based token-F1/EM claim with no LLM judge; `receipt.json` remains a broader provisional harness receipt.
+- LoCoMo four-mode matrix: `1,986` questions, multihop accuracy `0.6067`, other modes `0.5967`, matrix hash `9f8b77ca...`, comparison hash `18cdca15...`.
+- LongMemEval four-mode matrix: `500` questions, multihop accuracy `0.780`, other modes `0.740`, matrix hash `e5dd8b06...`, comparison hash `a69090df...`.
+- Both matrices and comparisons verify locally. They use the provisional local retrieval-recall scorer and are not leaderboard submissions.
+- The historical LoCoMo rule-based token-F1/EM artifact remains `0.3752394032` F1 and `0.3721047331` EM over `1,986` questions with trace SHA `67a005bf...`; do not compare it numerically with the current accuracy matrices.
 
 Next comparison queue:
 
-- Run LoCoMo `fts-multihop` next with `bench matrix --mode`; it directly tests the largest weakness from the FTS baseline.
-- Then run `pseudo-embedding`, `pseudo-embedding-rerank`, and `zmem-retrieval` under the same `locomo-official-v1` matrix run id.
-- Run LongMemEval-S after the first LoCoMo mode deltas. It directly tests abstention and token efficiency, which are the current gaps surfaced by LoCoMo adversarial scoring.
+- Expose and measure the existing selective-multihop path as an explicit adaptive mode.
+- Require the adaptive mode to keep LongMemEval's `20` recovered questions while reducing LoCoMo's `78` regressions, especially the net four temporal losses.
 - Add BEAM as the scale benchmark for 100K -> 10M token contexts. Treat it as a planned runner until dataset source, command, hashes, and receipt bundle are pinned.
-- Read multi-hop, temporal, open-domain, and adversarial deltas from the existing category summaries and dashboard first; if full runs are too expensive, add category filtering before more category-only sweeps.
-- Add a deterministic answerer abstention threshold for `retrieved_count == 0` or low-confidence retrieval, then verify on LoCoMo adversarial and LongMemEval-S.
+- Use the `97` all-mode LongMemEval misses and low LoCoMo multi-hop/open-domain scores to select the next retrieval-quality slice after routing.
 
 ## 1. Convert Official Files
 
@@ -35,7 +32,7 @@ LongMemEval:
 
 ```bash
 python3 scripts/bench/longmemeval_to_zmem.py \
-  --in data/longmemeval/longmemeval_oracle.json \
+  --in /path/to/longmemeval_oracle.json \
   --out data/longmemeval/longmemeval_oracle_zmem.json
 ```
 
@@ -43,7 +40,7 @@ LoCoMo:
 
 ```bash
 python3 scripts/bench/locomo_to_zmem.py \
-  --in data/locomo-repo/data/locomo10.json \
+  --in /path/to/locomo10.json \
   --out data/locomo/locomo_official_zmem.json
 ```
 
@@ -86,18 +83,15 @@ For LongMemEval:
 ```bash
 zmem bench matrix longmemeval \
   --dataset data/longmemeval/longmemeval_oracle_zmem.json \
-  --out .zerker/bench \
-  --run-id longmemeval-local-v1 \
-  --mode zmem-retrieval \
-  --seed 42
-
-zmem bench matrix locomo \
-  --dataset data/locomo/locomo_official_zmem.json \
-  --out .zerker/bench \
-  --run-id locomo-local-v1 \
-  --mode zmem-retrieval \
-  --seed 42
+  --out .zerker/bench/runs \
+  --run-id "longmemeval-matrix-$(date -u +%Y%m%dT%H%M%SZ)" \
+  --seed 42 \
+  --trace \
+  --compact-artifacts \
+  --summary-only
 ```
+
+Compact LongMemEval uses one ephemeral store per session and writes no run database or per-question bundle. Use a noncompact run only when retained proof artifacts are required.
 
 Then verify and render:
 
