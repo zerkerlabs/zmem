@@ -8,6 +8,8 @@ Final acceptance: published at `d029b99` as `v0.1.3`; GitHub Actions run `291191
 
 Post-release evidence: the first current-code full LoCoMo pseudo-embedding run completed with accuracy `0.5967`, token F1 `0.5969`, mean query tokens `536.0`, and adversarial abstention `1.0`. Treat comparisons to the older FTS artifact as directional until a fresh same-commit matrix is complete.
 
+The full pseudo-rerank run also completed at accuracy `0.5967` and matched pseudo-embedding on every category and correctness decision. This is useful negative evidence: the next retrieval investment should target multi-hop/open-domain support coverage, not another deterministic reranking layer.
+
 ### What changed
 
 - Agent MCP connections are narrow by default: propose, inject, explain, and verify. Trusted writes and review now require an explicit operator profile.

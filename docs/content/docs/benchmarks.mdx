@@ -7,15 +7,16 @@ ZMem should compete on benchmark accuracy, latency, token efficiency, and proof-
 
 ## Current Local LoCoMo Evidence
 
-ZMem has three complete `1,986`-question local retrieval-recall artifacts over the same SHA-pinned LoCoMo conversion:
+ZMem has four complete `1,986`-question local retrieval-recall artifacts over the same SHA-pinned LoCoMo conversion:
 
 | Mode | Accuracy | Mean query tokens | Single-hop | Multi-hop | Temporal | Open-domain | Adversarial abstention |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | `fts` | `0.5967` | `693.3` | `0.6005` | `0.0709` | `0.6293` | `0.1250` | `1.0000` |
 | `fts-multihop` | `0.6042` | `418.8` | `0.6195` | `0.0780` | `0.6075` | `0.1667` | `1.0000` |
 | `pseudo-embedding` | `0.5967` | `536.0` | `0.6005` | `0.0709` | `0.6293` | `0.1250` | `1.0000` |
+| `pseudo-embedding-rerank` | `0.5967` | `536.0` | `0.6005` | `0.0709` | `0.6293` | `0.1250` | `1.0000` |
 
-The current pseudo-embedding run matches the older FTS accuracy profile while using fewer query tokens. The multihop run remains stronger overall, on multi-hop, and on open-domain, while temporal accuracy is lower. These runs were produced at different code checkpoints, so the comparison is directional engineering evidence until a fresh same-commit matrix is complete, not a leaderboard win.
+Pseudo-rerank matches pseudo-embedding on every scored category and therefore adds no measured quality on this deterministic local path. The multihop run remains stronger overall, on multi-hop, and on open-domain, while temporal accuracy is lower. These runs were produced at different code checkpoints, so the comparison is directional engineering evidence until a fresh same-commit matrix is complete, not a leaderboard win.
 
 These values use ZMem's `provisional-local` retrieval-recall scorer. Both receipts set `public_benchmark_claim: false`. An older token F1/EM artifact (`0.3752` F1, `0.3721` EM) also exists, but it uses a different scoring path and must not be compared numerically with the accuracy table above.
 
@@ -49,6 +50,8 @@ zmem bench matrix locomo \
   --compact-artifacts \
   --summary-only
 ```
+
+A one-mode matrix records the verified result once; it does not compare the result to itself. Summary-only output bounds long question-id lists to ten examples plus an omitted count.
 
 Render and verify after the matrix finishes:
 
@@ -165,7 +168,7 @@ Next benchmark priorities:
 
 - LongMemEval-S: abstention and token-efficiency benchmark.
 - LoCoMo multi-hop and open-domain: improve the still-low categories without giving back temporal accuracy.
-- LoCoMo `pseudo-embedding-rerank`: measure reranking after per-conversation benchmark store growth is fixed. `zmem-retrieval` is the same mode alias, not a separate full run.
+- LoCoMo same-commit matrix: confirm mode deltas after removing single-mode comparison duplication. `zmem-retrieval` is the pseudo-rerank alias, not a separate full run.
 - BEAM: scale benchmark for 100K to 10M token memory pressure and causal traces.
 
 ## Public Claim Rules

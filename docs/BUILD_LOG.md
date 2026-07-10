@@ -1,3 +1,34 @@
+## 2026-07-10 - Lean single-mode benchmark matrices
+
+Shipped:
+
+- Removed the internal result-times-two self-comparison from one-mode matrices while keeping standalone `zmem bench compare` strict about requiring two inputs.
+- Kept single-mode comparison and matrix artifacts fully verifiable with one input hash/root, one run, zero deltas, and unchanged question summaries.
+- Bounded summary-only stable-win, stable-miss, and budget-context ID lists to ten entries plus an explicit omitted count.
+
+Verification:
+
+- New single-mode matrix regression verifies both comparison and matrix artifacts and proves the result is present exactly once.
+- New CLI summary regression proves long ID lists are bounded.
+- Real 260-question repack: `80.1 MB` to `48.5 MB` (`39.5%` reduction), with matrix and comparison verification still `ok`.
+
+## 2026-07-10 - Full pseudo-rerank evidence
+
+Shipped:
+
+- Completed a verified full LoCoMo pseudo-embedding-rerank run over `1,986` questions on commit `be26bbc` through the bounded compact store path.
+- Recorded accuracy `0.5966767372`, token F1 `0.5969195479`, EM `0.5966767372`, mean query tokens `536.0247`, and adversarial abstention `1.0`.
+- Result hash: `427864c91099152cda17d1f8f689a5b540aa675c6029abfe85c4d8e41e906dbd`; aggregate root: `e1a2cb28cc8b25e20bcce6f786bf9c7a3c02d07207d3089ba6f338b9be5e18b2`.
+
+Finding:
+
+- Pseudo-rerank matched pseudo-embedding on every scored category and all `1,986` correctness decisions. It does not address the current multi-hop (`0.0709`) or open-domain (`0.1250`) gaps.
+- Retrieval completed in under five minutes and left zero SQLite artifacts. Single-mode matrix self-comparison then inflated the final output to `617 MB`, total wall time to `413.49s`, and peak memory footprint to about `4.8 GB`.
+
+Next:
+
+- Repack the full rerank matrix, then run the fresh four-mode matrix.
+
 ## 2026-07-10 - Bounded compact LoCoMo stores
 
 Shipped:

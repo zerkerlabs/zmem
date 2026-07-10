@@ -70,6 +70,8 @@ zmem bench matrix locomo \
 
 For LoCoMo, compact mode processes one conversation store at a time and omits the run database. Use a non-compact run only when you specifically need the retained SQLite state, final snapshot, and per-question receipt bundles.
 
+A matrix restricted with `--mode` carries one verified result and zero comparison deltas; it does not duplicate that result as a synthetic baseline.
+
 Then render the comparison:
 
 ```bash

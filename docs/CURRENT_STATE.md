@@ -3,7 +3,7 @@
 This is the short orchestration dashboard for Zerker Memory. Every autonomous build run should update this file after it updates `docs/BUILD_LOG.md`.
 
 ## Release Coordination
-`2026-07-10T20:57:19Z`
+`2026-07-10T21:16:14Z`
 
 - Published and deployed `v0.1.3` at `d029b998875d26f4c3ae185d4499778e73c5c92e`. GitHub Actions run `29119164360` passed site, docs, Python 3.10/3.11/3.12 unit+eval, and release-smoke; production checks passed on `www.zmem.sh`, `/proof`, `/changelog`, and `docs.zmem.sh/docs` without console errors or horizontal overflow.
 - Completed the first post-release isolated LoCoMo run under Python 3.11: `.zerker/bench/locomo-v013-pseudo-embedding-py311-20260710/` contains `1,986` questions, result hash `3d31a2ee0a9ca73706dd3e64aecd53bfba5a8d06ee314487855c972ae3cc8367`, aggregate root `5adf3ecc29e5e88085040b26892d0e29031e012a4734a6fe94ea7cf9e7bf24fc`, and trace SHA `65f5797fe255775e6d0516f4ed0cf4191e63a9334b517f5cfb34cb152efa8825`.
@@ -11,7 +11,9 @@ This is the short orchestration dashboard for Zerker Memory. Every autonomous bu
 - Directional comparison to the older FTS run shows about `22.7%` fewer query tokens and `22.5%` fewer retrieved memories, but it is not an apples-to-apples mode claim: the old artifact predates `v0.1.3` and its aggregate root fails current verification.
 - Benchmark verification now handles legacy null report/snapshot paths and omitted-but-still-named bundle paths without crashing. It fails closed on the one genuine legacy aggregate-root mismatch.
 - Compact LoCoMo runs now use one ephemeral store per conversation and omit the unverified run database. A 260-question real-conversation measurement completed in `57.29s` at roughly `272` questions/minute with zero SQLite artifacts; all 260 correctness decisions and final answers matched the prior full run's same conversation.
-- All recurring ZMem automations are confirmed paused. Next: run a full isolated pseudo-rerank measurement on this bounded store path, then produce a fresh same-commit matrix and LongMemEval-S evidence.
+- Completed the full isolated pseudo-embedding-rerank run on commit `be26bbc`: `1,986` questions, accuracy `0.5967`, token F1 `0.5969`, mean query tokens `536.0`, result hash `427864c9...`, aggregate root `e1a2cb28...`, and zero SQLite artifacts. It matched pseudo-embedding on all scored categories and all `1,986` correctness decisions, so reranking produced no quality gain on this path.
+- Single-mode matrices no longer compare their only result to itself. A 260-question artifact repack fell from `80.1 MB` to `48.5 MB` (`39.5%` smaller), and summary-only output now bounds question-id lists to ten entries plus an omitted count.
+- All recurring ZMem automations are confirmed paused. Next: repack the full rerank matrix with the lean single-mode format, then run a fresh same-commit four-mode matrix and LongMemEval-S.
 
 ## Retrieval Baseline
 `2026-07-06T13:01:58Z`

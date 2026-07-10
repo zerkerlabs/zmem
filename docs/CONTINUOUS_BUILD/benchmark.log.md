@@ -1,5 +1,22 @@
 # Benchmark Lane Log
 
+## 2026-07-10T21:16:14Z - lean single-mode matrix packaging
+
+- Scope: removed the `result_paths * 2` compatibility workaround that made one-mode matrices compare a result to itself and duplicate question evidence.
+- Contract: standalone `bench compare` still requires two inputs; matrix-internal one-result comparisons are explicitly allowed, verifiable, and carry one input hash/root with zero deltas.
+- CLI: summary-only ID lists now show at most ten IDs plus `(+N more)`.
+- Real repack: the 260-question pseudo-embedding matrix fell from `81,984 KB` to `49,624 KB` (`39.5%` smaller), completed in `4.61s`, and verified both comparison and matrix artifacts.
+- Next safe slice: repack the full rerank artifact through this format, then run the fresh four-mode matrix.
+
+## 2026-07-10T21:11:08Z - full pseudo-rerank evidence
+
+- Run: `python3.11 -m zerker_memory bench matrix locomo --dataset data/locomo/locomo_official_zmem.json --split default --out .zerker/bench/runs --seed 42 --run-id locomo-be26bbc-pseudo-rerank-py311-20260710 --mode pseudo-embedding-rerank --trace --compact-artifacts --summary-only`.
+- Verified result: `1,986` questions, accuracy `0.5966767372`, token F1 `0.5969195479`, EM `0.5966767372`, mean query tokens `536.0247`, result hash `427864c91099152cda17d1f8f689a5b540aa675c6029abfe85c4d8e41e906dbd`, aggregate root `e1a2cb28cc8b25e20bcce6f786bf9c7a3c02d07207d3089ba6f338b9be5e18b2`.
+- Category scores: single-hop `0.6005`, multi-hop `0.0709`, temporal `0.6293`, open-domain `0.1250`, adversarial abstention `1.0`.
+- Comparison finding: all `1,986` correctness decisions, final answers, outcome reasons, retrieved counts, and injected counts match the earlier pseudo-embedding run. Reranking adds no quality on this deterministic local path.
+- Runtime: retrieval completed in under five minutes with zero SQLite artifacts; single-mode matrix self-comparison extended total wall time to `413.49s`, wrote `617 MB`, and peaked near `4.8 GB` memory.
+- Next safe slice: repack this result through the lean one-mode matrix format, then run one fresh same-commit four-mode matrix and LongMemEval-S.
+
 ## 2026-07-10T20:57:19Z - per-conversation compact store lifecycle
 
 - Scope: removed the full-run SQLite growth bottleneck from compact LoCoMo execution without changing normal proof-rich runs.

@@ -21,6 +21,18 @@ Primary mission brief:
 - Lane progress and release tracker: `docs/ZMEM_PROGRESS_TRACKER.md`
 - Lane logs: `docs/CONTINUOUS_BUILD/`
 
+Coordinator update `2026-07-10T21:16:14Z`:
+
+- Removed single-mode matrix self-comparison duplication while preserving strict two-input standalone comparisons and full artifact verification.
+- A 260-question repack fell from `80.1 MB` to `48.5 MB` (`39.5%` smaller); summary-only output now bounds long ID lists instead of printing thousands of entries.
+- Next operation is to repack the completed full rerank evidence, then run the fresh same-commit mode matrix. Broad recurring swarms remain paused.
+
+Coordinator update `2026-07-10T21:11:08Z`:
+
+- Completed and verified full LoCoMo pseudo-rerank at commit `be26bbc`: `1,986` questions, accuracy `0.5967`, token F1 `0.5969`, result hash `427864c9...`, aggregate root `e1a2cb28...`, and zero SQLite artifacts.
+- Pseudo-rerank matched pseudo-embedding on all category scores and every correctness decision, so the next L3 quality slice remains multi-hop/open-domain evidence coverage rather than another reranking layer.
+- The run exposed single-mode self-comparison duplication: `617 MB` output and about `4.8 GB` peak memory after retrieval completed. The following coordinator slice removes that duplication. Broad recurring swarms remain paused.
+
 Coordinator update `2026-07-10T20:57:19Z`:
 
 - Replaced compact LoCoMo's single growing run DB with a bounded per-conversation ephemeral store lifecycle; normal non-compact proof runs are unchanged.
