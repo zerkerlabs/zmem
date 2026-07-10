@@ -39,11 +39,11 @@ const proofSteps = [
 ];
 
 const benchmarkRows = [
-  { item: 'LoCoMo FTS official run', note: '1,986 questions, F1 0.3752, EM 0.3721, trace sha256 67a005bf...971d0c.' },
+  { item: 'LoCoMo adaptive route', note: '1,986 questions, 0.6108 local accuracy, 29 gains and one loss versus FTS. Matrix and comparison verify.' },
+  { item: 'Always-on multi-hop', note: '0.6067 local LoCoMo accuracy. It gains 98 and loses 78 versus FTS, so it remains an explicit specialist mode.' },
+  { item: 'LongMemEval', note: 'Adaptive scores 0.766 with 13 regression-free gains over FTS; always-on multi-hop reaches 0.780.' },
+  { item: 'Pseudo rerank', note: 'Matches FTS on every scored LoCoMo and LongMemEval category in the current deterministic local path.' },
   { item: 'ActiveGraph compact trace', note: 'Event-sourced trace.jsonl plus scored_receipt.json, without per-question bundle files.' },
-  { item: 'LoCoMo fts-multihop', note: 'Tests whether retrieval decomposition moves multi-hop and open-domain categories.' },
-  { item: 'LoCoMo rerank', note: 'Tests whether pseudo embedding rerank improves retrieval depth against the same dataset.' },
-  { item: 'LongMemEval-S', note: 'Highest-priority abstention and token-efficiency benchmark after LoCoMo deltas.' },
   { item: 'BEAM', note: 'Scale benchmark for 100K to 10M token memory pressure and causal traces.' },
   { item: 'Metrics', note: 'Accuracy, stable wins/misses, latency, tokens, abstention, and proof verification.' },
   { item: 'Public claims', note: 'Official rankings wait for primary-source methods and reproducible benchmark submissions.' },
@@ -72,7 +72,7 @@ $ ZMEM_TREESHIP_AUTO_SIGN=1 zmem remember --type semantic "fact"
 $ zmem treeship publish <action-id>
 # optional public proof URL`;
 
-const locomoNextRuns = `RUN_ID="locomo-$(date -u +%Y%m%dT%H%M%SZ)"
+const locomoAdaptiveRun = `RUN_ID="locomo-adaptive-$(date -u +%Y%m%dT%H%M%SZ)"
 
 zmem bench matrix locomo \\
   --dataset data/locomo/locomo_official_zmem.json \\
@@ -80,6 +80,8 @@ zmem bench matrix locomo \\
   --out .zerker/bench/runs \\
   --seed 42 \\
   --run-id "$RUN_ID" \\
+  --mode fts-adaptive \\
+  --trace \\
   --compact-artifacts \\
   --summary-only
 
@@ -196,13 +198,13 @@ export default function ProofPage() {
 
       <section className="py-20">
         <div className="mx-auto max-w-[1120px] px-6">
-          <p className="text-eyebrow text-zlime">Benchmark roadmap</p>
+          <p className="text-eyebrow text-zlime">Benchmark evidence</p>
           <h2 className="mt-3 max-w-[760px] font-heading text-4xl font-semibold tracking-tight text-zink">
-            Retrieval quality will be measured separately from proof quality.
+            Retrieval quality is measured separately from proof quality.
           </h2>
           <p className="mt-5 max-w-[680px] text-sm leading-relaxed text-zmuted">
-            ZMem should compete with open-source memory systems on retrieval while keeping its unique
-            differentiator: verifiable memory use. The benchmark harness is the next proof-bearing layer.
+            ZMem measures accuracy, regressions, latency, tokens, abstention, and proof verification.
+            The current numbers are local provisional evidence, not official leaderboard claims.
           </p>
           <div className="mt-10 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
             {benchmarkRows.map((row) => (
@@ -214,17 +216,17 @@ export default function ProofPage() {
           </div>
           <div className="mt-10 grid grid-cols-1 gap-8 lg:grid-cols-[0.9fr_1.1fr]">
             <Card>
-              <p className="text-eyebrow text-zmuted">Next run order</p>
+              <p className="text-eyebrow text-zmuted">Routing decision</p>
               <h3 className="mt-3 font-heading text-3xl font-semibold tracking-tight text-zink">
-                Depth first, then rerank.
+                Escalate only when the query needs it.
               </h3>
               <p className="mt-4 text-sm leading-relaxed text-zmuted">
-                The FTS baseline says retrieval depth is the bottleneck. Run fts-multihop first,
-                then pseudo embedding rerank, so the delta explains whether decomposition or
-                reranking moves the weak categories.
+                Always-on decomposition finds more individual answers but creates too many regressions.
+                The adaptive route keeps ordinary queries on their base route and records why a compound query was
+                escalated or suppressed.
               </p>
             </Card>
-            <CodeBlock code={locomoNextRuns} title="next LoCoMo runs" />
+            <CodeBlock code={locomoAdaptiveRun} title="reproduce adaptive LoCoMo" />
           </div>
         </div>
       </section>

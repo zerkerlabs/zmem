@@ -41,8 +41,11 @@ BENCHMARK_QUESTION_SCHEMA = "zerker.benchmark_question.v1"
 BENCHMARK_RETRIEVAL_CONFIG_SCHEMA = "zerker.benchmark_retrieval_config.v1"
 BENCHMARK_RETRIEVAL_PROVIDER_CONFIG_SCHEMA = "zerker.benchmark_retrieval_provider_config.v1"
 BENCHMARK_RETRIEVAL_MODES = ("fts", "fts-multihop", "pseudo-embedding", "pseudo-embedding-rerank")
+BENCHMARK_OPTIONAL_RETRIEVAL_MODES = ("fts-adaptive",)
 BENCHMARK_PROVIDER_RETRIEVAL_MODES = ("provider-embedding",)
-BENCHMARK_RETRIEVAL_RUN_MODES = BENCHMARK_RETRIEVAL_MODES + BENCHMARK_PROVIDER_RETRIEVAL_MODES
+BENCHMARK_RETRIEVAL_RUN_MODES = (
+    BENCHMARK_RETRIEVAL_MODES + BENCHMARK_OPTIONAL_RETRIEVAL_MODES + BENCHMARK_PROVIDER_RETRIEVAL_MODES
+)
 SYNTHETIC_DATASET_VERSION = "synthetic-local-v1"
 SYNTHETIC_ADAPTER_VERSION = "zerker.synthetic_benchmark.v1"
 LONGMEMEVAL_DATASET_VERSION = "local-dataset"
@@ -85,6 +88,9 @@ def resolve_benchmark_retrieval_config(mode: str, override: dict[str, Any] | Non
                 "model_id": "text-embedding-3-small",
             }
         )
+    if mode == "fts-adaptive":
+        config.pop("multi_hop")
+        config["routing"] = {"strategy": "store-auto-v1"}
     return _deep_merge(config, override or {})
 
 
@@ -4886,6 +4892,10 @@ def _retrieval_proof_block(
         "embedding_enabled": bool(embedding.get("enabled", False)),
         "reranker_enabled": bool(reranker.get("enabled", False)),
         "multi_hop_enabled": bool(multi_hop.get("enabled", False)),
+        "multi_hop_auto_enabled": bool(multi_hop.get("auto_enabled", False)),
+        "multi_hop_auto_evaluated": bool(multi_hop.get("auto_evaluated", False)),
+        "multi_hop_activation_reason": multi_hop.get("activation_reason"),
+        "multi_hop_suppression_reason": multi_hop.get("suppression_reason"),
         "multi_hop_strategy": multi_hop.get("strategy"),
         "decomposer_id": multi_hop.get("decomposer_id"),
         "decomposition_hash": multi_hop.get("decomposition_hash"),

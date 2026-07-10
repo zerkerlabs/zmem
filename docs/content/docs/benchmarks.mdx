@@ -7,7 +7,7 @@ ZMem should compete on benchmark accuracy, latency, token efficiency, and proof-
 
 ## Current Local LoCoMo Evidence
 
-ZMem has a verified four-mode matrix over the same `1,986` questions, SHA-pinned LoCoMo conversion, code checkpoint (`871f23d`), seed (`42`), and provisional local scorer:
+ZMem has a verified four-mode baseline over the same `1,986` questions, SHA-pinned LoCoMo conversion, code checkpoint (`871f23d`), seed (`42`), and provisional local scorer. A verified follow-up uses the same dataset, split, seed, and scorer to measure the next adaptive-routing checkpoint:
 
 | Mode | Accuracy | Mean query tokens | Single-hop | Multi-hop | Temporal | Open-domain | Adversarial abstention |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -15,10 +15,11 @@ ZMem has a verified four-mode matrix over the same `1,986` questions, SHA-pinned
 | `fts-multihop` | `0.6067` | `425.8` | `0.6219` | `0.0780` | `0.6168` | `0.1667` | `1.0000` |
 | `pseudo-embedding` | `0.5967` | `536.0` | `0.6005` | `0.0709` | `0.6293` | `0.1250` | `1.0000` |
 | `pseudo-embedding-rerank` | `0.5967` | `536.0` | `0.6005` | `0.0709` | `0.6293` | `0.1250` | `1.0000` |
+| `fts-adaptive` | `0.6108` | `532.8` | `0.6254` | `0.0745` | `0.6324` | `0.1771` | `1.0000` |
 
-`fts-multihop` is the measured winner, improving overall accuracy by `0.0101` and reducing mean query tokens by `20.6%` relative to `fts`. It gained `98` questions and lost `78`: net `+18` single-hop, `+2` multi-hop, `+4` open-domain, and `-4` temporal. Its p50 and p95 retrieval latency were `78.5%` and `50.7%` higher. That tradeoff supports selective multihop routing, not a global default switch.
+Always-on `fts-multihop` improved overall accuracy by `0.0101` and reduced mean query tokens by `20.6%` relative to `fts`, but it gained `98` questions and lost `78`, including a net four-question temporal regression. The conservative adaptive route instead gained `29` and lost `1` against FTS, finished eight questions ahead of always-on multi-hop, and improved every category over FTS. Its p50/p95 latency was `165.243/335.591ms`, compared with `145.434/308.934ms` for FTS.
 
-Pseudo-embedding and pseudo-rerank match plain FTS on every scored category and add no measured quality on this deterministic local path. The verified matrix hash is `9f8b77ca...`; the comparison hash is `18cdca15...`. The run used conversation-bounded ephemeral stores and left zero SQLite artifacts.
+Pseudo-embedding and pseudo-rerank match plain FTS on every scored category and add no measured quality on this deterministic local path. The baseline matrix/comparison hashes are `9f8b77ca...` and `18cdca15...`; the adaptive follow-up hashes are `7e8825aa...` and `3bcd5d22...`. Both use conversation-bounded ephemeral stores and leave zero SQLite artifacts.
 
 These values use ZMem's `provisional-local` retrieval-recall scorer. The receipts set `public_benchmark_claim: false`. An older token F1/EM artifact (`0.3752` F1, `0.3721` EM) also exists, but it uses a different scoring path and must not be compared numerically with the accuracy table above.
 
@@ -46,8 +47,8 @@ To isolate one mode, give it its own run id:
 zmem bench matrix locomo \
   --dataset data/locomo/locomo_official_zmem.json \
   --out .zerker/bench/runs \
-  --run-id "${RUN_ID}-pseudo-rerank" \
-  --mode pseudo-embedding-rerank \
+  --run-id "${RUN_ID}-adaptive" \
+  --mode fts-adaptive \
   --seed 42 \
   --compact-artifacts \
   --summary-only
@@ -68,9 +69,9 @@ zmem bench verify ".zerker/bench/runs/$RUN_ID/benchmark-matrix.json" --summary-o
 
 The harness already writes per-category summaries and comparison rows. Use the rendered report/dashboard to answer:
 
-- does `fts-multihop` improve multi-hop,
+- does adaptive routing improve multi-hop,
 - does it preserve temporal,
-- does rerank improve open-domain,
+- does it avoid unnecessary decomposition,
 - does any mode improve adversarial abstention.
 
 There is not a category-filter CLI yet. If full runs are too expensive, add category filtering before running many category-only sweeps.
@@ -152,8 +153,9 @@ The verified local `500`-question matrix uses the same dataset, seed, code, and 
 | `fts-multihop` | `0.780` | `2550.5` | `0.8462` | `0.5865` | `0.7669` | `1.0000` |
 | `pseudo-embedding` | `0.740` | `2452.1` | `0.7821` | `0.5338` | `0.7143` | `1.0000` |
 | `pseudo-embedding-rerank` | `0.740` | `2452.1` | `0.7821` | `0.5338` | `0.7143` | `1.0000` |
+| `fts-adaptive` | `0.766` | `2486.7` | `0.8077` | `0.5714` | `0.7594` | `1.0000` |
 
-Multihop recovers `20` questions with zero losses: `+5` knowledge update, `+7` multi-session, `+7` temporal, and `+1` single-session user recall. It uses `4.0%` more query tokens and has higher retrieval latency. The matrix hash is `e5dd8b06...`; the comparison hash is `a69090df...`.
+Always-on multihop recovers `20` questions with zero losses: `+5` knowledge update, `+7` multi-session, `+7` temporal, and `+1` single-session user recall. Adaptive routing keeps `13` of those gains with zero losses while using fewer tokens and lower latency than always-on multi-hop. The four-mode baseline hashes are `e5dd8b06...` and `a69090df...`; the adaptive follow-up hashes are `b97e6101...` and `d5772c8d...`.
 
 With `--compact-artifacts`, LongMemEval uses one ephemeral store per session, preserves reuse within a session, and writes no run database or per-question receipt bundles. The complete four-mode matrix finished in `174.84s` and independently verified. Normal runs still retain the shared database, snapshots, and proof bundles.
 
@@ -193,8 +195,7 @@ zmem bench matrix locomo \
 
 Next benchmark priorities:
 
-- Adaptive retrieval routing: retain the measured multihop gains while avoiding temporal regressions and unnecessary latency.
-- LongMemEval stable-miss analysis: use the `97` all-mode misses to select the next retrieval-quality slice after adaptive routing.
+- Stable-miss analysis: use the `773` adaptive LoCoMo misses and `117` adaptive LongMemEval misses to select one bounded retrieval-quality slice.
 - LoCoMo multi-hop and open-domain: improve the still-low categories without giving back temporal accuracy.
 - BEAM: scale benchmark for 100K to 10M token memory pressure and causal traces.
 

@@ -21,6 +21,14 @@ Primary mission brief:
 - Lane progress and release tracker: `docs/ZMEM_PROGRESS_TRACKER.md`
 - Lane logs: `docs/CONTINUOUS_BUILD/`
 
+Coordinator update `2026-07-10T22:46:58Z`:
+
+- Added and verified explicit `fts-adaptive` routing with receipt-visible activation, evaluation, and suppression reasons.
+- Conservative semantic routing now escalates only explicit composition signals, while fallback/no-match compound queries retain multi-hop recovery.
+- Full LoCoMo adaptive evidence: `0.6108`, `29` gains and `1` loss versus FTS, eight questions ahead of always-on multi-hop, matrix `7e8825aa...`, comparison `3bcd5d22...`.
+- Full LongMemEval adaptive evidence: `0.766`, `13` gains and zero losses versus FTS, matrix `b97e6101...`, comparison `d5772c8d...`.
+- Broad recurring swarms remain paused. The next L3 slice must come from stable-miss evidence and preserve the measured LoCoMo regression boundary.
+
 Coordinator update `2026-07-10T22:11:39Z`:
 
 - Fixed the LongMemEval compact path before the fresh matrix could repeat the old global-chain storage failure. Compact runs now use per-session ephemeral stores, retain session-level memory reuse, omit bundles/database/final snapshot, and expose a runnable direct CLI flag.

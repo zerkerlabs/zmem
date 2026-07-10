@@ -75,6 +75,8 @@ MULTI_HOP_STRATEGY = "local_query_decomposition_v1"
 MULTI_HOP_MAX_SUBQUERIES = 8
 MULTI_HOP_PER_SUBQUERY_LIMIT = 5
 MULTI_HOP_AUTO_MIN_SUBQUERIES = 2
+MULTI_HOP_SEMANTIC_AUTO_TERMS = {"average", "between", "current", "days", "most", "total"}
+MULTI_HOP_SEMANTIC_AUTO_PHRASES = ("number of", "what time", " plus ")
 AUTHORITY_RANKS = {"none": 0, "low": 1, "medium": 2, "high": 3, "policy": 4}
 TEMPORAL_HISTORY_TERMS = {
     "before",
@@ -1756,6 +1758,15 @@ def _has_direct_deploy_target_multi_hop_signal(subqueries: list[dict[str, Any]])
     )
 
 
+def _has_semantic_multi_hop_composition_signal(query: str) -> bool:
+    normalized = " ".join(query.lower().split())
+    terms = set(query_terms(normalized))
+    padded = f" {normalized} "
+    return bool(terms.intersection(MULTI_HOP_SEMANTIC_AUTO_TERMS)) or any(
+        phrase in padded for phrase in MULTI_HOP_SEMANTIC_AUTO_PHRASES
+    )
+
+
 def _owner_relation_multi_hop_basis_matches(
     selected_search_basis: str,
     *,
@@ -1817,6 +1828,16 @@ def _effective_multi_hop_retrieval_config(
     )
     if len(subqueries) < MULTI_HOP_AUTO_MIN_SUBQUERIES:
         return resolved or None
+    if search_mode == "semantic" and not _has_semantic_multi_hop_composition_signal(query):
+        resolved["multi_hop"] = {
+            "enabled": False,
+            "auto_enabled": False,
+            "auto_evaluated": True,
+            "suppression_reason": "semantic-query-lacks-composition-signal",
+            "max_subqueries": MULTI_HOP_MAX_SUBQUERIES,
+            "per_subquery_limit": MULTI_HOP_PER_SUBQUERY_LIMIT,
+        }
+        return resolved
     if search_mode == "semantic":
         activation_reason = "semantic-compound-query"
     elif search_mode == "none":
@@ -10873,7 +10894,7 @@ class MemoryStore:
         subqueries: list[dict[str, Any]] = []
         rank_transitions: list[dict[str, Any]] = []
         multi_hop_fusion = None
-        disabled_reason = None if enabled else "disabled-by-config"
+        disabled_reason = None if enabled else str(multi_hop_config.get("suppression_reason") or "disabled-by-config")
 
         if enabled and max_subqueries and per_subquery_limit:
             subqueries = decompose_multi_hop_query(
@@ -11070,7 +11091,9 @@ class MemoryStore:
             "schema": MULTI_HOP_DECOMPOSITION_SCHEMA,
             "enabled": enabled,
             "auto_enabled": bool(multi_hop_config.get("auto_enabled", False)),
+            "auto_evaluated": bool(multi_hop_config.get("auto_evaluated", False)),
             "activation_reason": multi_hop_config.get("activation_reason"),
+            "suppression_reason": multi_hop_config.get("suppression_reason"),
             "decomposer_id": MULTI_HOP_DECOMPOSER_ID if enabled else None,
             "strategy": MULTI_HOP_STRATEGY,
             "parent_query_hash": parent_query_hash,

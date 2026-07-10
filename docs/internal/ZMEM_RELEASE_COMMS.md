@@ -1,5 +1,17 @@
 # ZMem Release Comms
 
+## 2026-07-10 - adaptive retrieval checkpoint
+
+Audience: internal Zerker product and engineering.
+
+ZMem now has a measured conservative adaptive route. It lets the store decide when a compound query needs multi-hop expansion and records that activation or suppression in the retrieval proof.
+
+On the local provisional LoCoMo path, adaptive scored `0.6108` versus `0.5967` for FTS and `0.6067` for always-on multi-hop. Against FTS it gained `29` questions and lost `1`, while preserving temporal accuracy and improving open-domain recall. On LongMemEval it scored `0.766` versus `0.740` for FTS, gaining `13` questions with zero losses; always-on multi-hop remains the specialist high-recall result at `0.780`.
+
+Product decision: normal store behavior stays selective. Always-on multi-hop remains explicit rather than becoming a blanket default. Public claims must continue to describe these as verified local provisional results, not official leaderboard rankings or competitor comparisons.
+
+Next build move: inspect adaptive stable misses, choose one bounded multi-hop/open-domain support failure, and reject any change that widens LoCoMo beyond the current one-loss regression boundary. BEAM remains the next scale benchmark after that quality slice.
+
 ## 2026-07-10 - v0.1.3 release checkpoint
 
 Audience: internal Zerker product, engineering, and launch coordination.

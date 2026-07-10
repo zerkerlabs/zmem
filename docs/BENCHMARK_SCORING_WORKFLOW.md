@@ -16,13 +16,13 @@ Current verified local evidence:
 
 - LoCoMo four-mode matrix: `1,986` questions, multihop accuracy `0.6067`, other modes `0.5967`, matrix hash `9f8b77ca...`, comparison hash `18cdca15...`.
 - LongMemEval four-mode matrix: `500` questions, multihop accuracy `0.780`, other modes `0.740`, matrix hash `e5dd8b06...`, comparison hash `a69090df...`.
+- Adaptive follow-up: LoCoMo `0.6108` with `29` gains and `1` loss versus FTS; LongMemEval `0.766` with `13` gains and zero losses versus FTS. Both matrix/comparison pairs verify and retain no SQLite databases or question bundles.
 - Both matrices and comparisons verify locally. They use the provisional local retrieval-recall scorer and are not leaderboard submissions.
 - The historical LoCoMo rule-based token-F1/EM artifact remains `0.3752394032` F1 and `0.3721047331` EM over `1,986` questions with trace SHA `67a005bf...`; do not compare it numerically with the current accuracy matrices.
 
 Next comparison queue:
 
-- Expose and measure the existing selective-multihop path as an explicit adaptive mode.
-- Require the adaptive mode to keep LongMemEval's `20` recovered questions while reducing LoCoMo's `78` regressions, especially the net four temporal losses.
+- Use adaptive stable misses to select one bounded multi-hop/open-domain retrieval improvement without widening the one-loss LoCoMo regression boundary.
 - Add BEAM as the scale benchmark for 100K -> 10M token contexts. Treat it as a planned runner until dataset source, command, hashes, and receipt bundle are pinned.
 - Use the `97` all-mode LongMemEval misses and low LoCoMo multi-hop/open-domain scores to select the next retrieval-quality slice after routing.
 
@@ -63,7 +63,7 @@ zmem bench matrix locomo \
   --summary-only
 ```
 
-`zmem-retrieval` currently resolves to `pseudo-embedding-rerank`; do not run both as separate full measurements.
+`zmem-retrieval` remains a compatibility alias for `pseudo-embedding-rerank`; do not run both as separate full measurements. Use explicit `--mode fts-adaptive` to measure store auto-routing.
 
 For LoCoMo, compact mode processes one conversation store at a time and omits the run database. Use a non-compact run only when you specifically need the retained SQLite state, final snapshot, and per-question receipt bundles.
 
@@ -101,7 +101,7 @@ zmem bench dashboard .zerker/bench/longmemeval-local-v1
 zmem bench public-page .zerker/bench/longmemeval-local-v1
 ```
 
-The `zmem-retrieval` mode is a stable alias for the strongest current local retrieval mode in the harness. The stored result still records the concrete mode.
+The `zmem-retrieval` mode is a compatibility alias for pseudo-rerank. The measured product-routing path is explicit as `fts-adaptive`, and the stored result records that concrete mode.
 
 For compact ActiveGraph traces, smoke first:
 

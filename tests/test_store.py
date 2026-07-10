@@ -4758,6 +4758,44 @@ class MemoryStoreTest(unittest.TestCase):
         self.assertEqual(retrieval["multi_hop"]["fusion"]["ranked_candidate_ids"][0], rollback.id)
         self.assertIn(owner.id, retrieval["multi_hop"]["fusion"]["ranked_candidate_ids"])
 
+    def test_compound_semantic_query_without_composition_signal_suppresses_auto_multi_hop(self):
+        self.store.remember(
+            "Project Atlas owner Morgan rollback policy notes.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.99,
+        )
+        self.store.remember(
+            "DeployWindow rollback policy is canary first for Project Atlas.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.95,
+        )
+        self.store.remember(
+            "Project Atlas owner is Morgan.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+            trust=0.95,
+        )
+
+        result = self.store.search_with_meta(
+            "Who is responsible for Project Atlas and its DeployWindow rollback plan?",
+            scope="project",
+        )
+        multi_hop = result["retrieval"]["multi_hop"]
+
+        self.assertEqual(result["search_mode"], "semantic")
+        self.assertTrue(result["retrieval"]["query_lookup"]["semantic_rescue"]["applied"])
+        self.assertFalse(multi_hop["enabled"])
+        self.assertFalse(multi_hop["auto_enabled"])
+        self.assertTrue(multi_hop["auto_evaluated"])
+        self.assertIsNone(multi_hop["activation_reason"])
+        self.assertEqual(multi_hop["suppression_reason"], "semantic-query-lacks-composition-signal")
+        self.assertEqual(multi_hop["disabled_reason"], "semantic-query-lacks-composition-signal")
+
     def test_compound_fts_identifier_query_auto_enables_multi_hop_and_introduces_missing_fact(self):
         overview = self.store.remember(
             "Project Atlas owner Morgan DeployWindow rollback policy notes.",

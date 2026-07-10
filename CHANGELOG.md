@@ -6,6 +6,10 @@ All notable Zerker Memory alpha changes are summarized here.
 
 ### Benchmark Operations
 
+- Added the optional `fts-adaptive` benchmark mode. It measures ZMem's query-by-query store routing without forcing multi-hop on every question, and records activation or suppression reasons in each retrieval proof.
+- Tightened semantic multi-hop escalation to explicit composition signals while preserving fallback and no-lexical-match escalation. Broad semantic matches now remain on the base route unless the query asks for a composed answer.
+- Completed verified adaptive follow-up runs with compact artifacts and no retained SQLite databases or per-question bundles. On local LoCoMo, adaptive scored `0.6108` versus `0.5967` for FTS and `0.6067` for always-on multi-hop, gaining `29` questions and losing `1` against FTS. On local LongMemEval, adaptive scored `0.766` versus `0.740` for FTS, gaining `13` questions with zero losses; always-on multi-hop remains highest there at `0.780`.
+- Kept the benchmark claim boundary explicit: these are provisional local retrieval-recall measurements, not official leaderboard submissions or vendor comparisons.
 - Made `--compact-artifacts` effective for LongMemEval matrices and direct runs. Compact execution now uses per-session ephemeral stores, omits per-question bundles and the run database, and leaves normal proof-rich runs unchanged.
 - Added direct `zmem bench run ... --compact-artifacts` support so recorded reproducibility commands are executable.
 - Bounded summary-only memory-count and efficiency deltas to ten examples plus an omitted count.

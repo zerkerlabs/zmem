@@ -1,5 +1,16 @@
 # Benchmark Lane Log
 
+## 2026-07-10T22:46:58Z - conservative adaptive routing evidence
+
+- Added optional `fts-adaptive`, which omits forced multi-hop configuration and lets the existing store router decide per question.
+- Retrieval proofs now preserve `multi_hop_auto_enabled`, `multi_hop_auto_evaluated`, activation reason, and suppression reason.
+- Tightened semantic escalation to explicit composition signals while retaining fallback and no-lexical-match escalation.
+- LoCoMo: `1,986` questions, accuracy `0.6108`, `29` gains and `1` loss versus FTS, eight net questions ahead of always-on multi-hop, mean query tokens `532.8`, matrix/comparison verification `ok`, zero SQLite/bundle artifacts.
+- LongMemEval: `500` questions, accuracy `0.766`, `13` gains and zero losses versus FTS, mean query tokens `2486.7`, matrix/comparison verification `ok`, zero SQLite/bundle artifacts.
+- Proof: LoCoMo matrix `7e8825aa...`, comparison `3bcd5d22...`; LongMemEval matrix `b97e6101...`, comparison `d5772c8d...`.
+- Decision: use conservative adaptive routing for normal store behavior; keep always-on multi-hop explicit for workloads where its extra LongMemEval recall is worth the regression risk.
+- Next safe slice: classify the adaptive stable misses and improve one multi-hop/open-domain support seam without widening LoCoMo beyond the measured one-loss boundary.
+
 ## 2026-07-10T22:11:39Z - bounded LongMemEval matrix and mode evidence
 
 - Scope: fixed compact LongMemEval execution, verified the full local matrix, and bounded summary-only output.

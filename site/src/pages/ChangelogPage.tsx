@@ -2,6 +2,10 @@ import Card from '@/components/Card';
 
 const updates = [
   {
+    title: 'Adaptive retrieval checkpoint',
+    detail: 'ZMem now escalates to multi-hop only when the query needs it and records the routing reason. Verified local LoCoMo improved to 0.6108 with 29 gains and one loss versus FTS.',
+  },
+  {
     title: 'Compact receipt bundles',
     detail: 'V2 keeps the complete event log committed by its Merkle root while carrying only the supporting write-event witnesses needed for portable verification. Existing v1 bundles still verify.',
   },
@@ -27,7 +31,7 @@ const updates = [
   },
   {
     title: 'Benchmark boundary',
-    detail: 'LoCoMo and LongMemEval evidence exists, but public ranking claims wait for isolated reruns and official-method alignment.',
+    detail: 'Verified local LoCoMo and LongMemEval matrices now cover FTS, always-on multi-hop, pseudo modes, and adaptive routing. They are reproducible product evidence, not official leaderboard rankings.',
   },
 ];
 
@@ -69,12 +73,12 @@ export default function ChangelogPage() {
         <div className="mx-auto max-w-[900px] px-6">
           <p className="text-eyebrow text-zlime">Current benchmark fact</p>
           <h2 className="mt-3 font-heading text-4xl font-semibold tracking-tight text-zink">
-            FTS baseline is useful, but it exposed the next problem.
+            Adaptive routing leads the local LoCoMo comparison.
           </h2>
           <p className="mt-5 text-sm leading-relaxed text-zmuted">
-            The official LoCoMo FTS run scored strongest on single-hop and temporal queries,
-            while multi-hop, open-domain, and adversarial abstention stayed weak. That is why
-            the next runs focus on fts-multihop, pseudo embedding rerank, LongMemEval-S, and BEAM.
+            In ZMem's verified local provisional run, adaptive routing answered 1,213 of 1,986
+            questions correctly. It gained 29 questions and lost one against FTS, while always-on
+            multi-hop gained more individual questions but also introduced 78 regressions.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
             <a

@@ -3,7 +3,7 @@
 This is the short orchestration dashboard for Zerker Memory. Every autonomous build run should update this file after it updates `docs/BUILD_LOG.md`.
 
 ## Release Coordination
-`2026-07-10T22:11:39Z`
+`2026-07-10T22:46:58Z`
 
 - Published and deployed `v0.1.3` at `d029b998875d26f4c3ae185d4499778e73c5c92e`. GitHub Actions run `29119164360` passed site, docs, Python 3.10/3.11/3.12 unit+eval, and release-smoke; production checks passed on `www.zmem.sh`, `/proof`, `/changelog`, and `docs.zmem.sh/docs`.
 - Completed and independently verified a fresh four-mode LoCoMo matrix at commit `871f23d`, seed `42`, and the same `1,986` questions. Matrix hash: `9f8b77ca186ddf90821534f5f1eb83396f109f7720065e8d46207aab62796ecd`; comparison hash: `18cdca154817642f6e5d5b3844a1fb048f936aefe1ae3f2e47a262f29f868b80`.
@@ -16,8 +16,13 @@ This is the short orchestration dashboard for Zerker Memory. Every autonomous bu
 - Completed and independently verified the fresh `500`-question LongMemEval four-mode matrix. `fts-multihop` scored `0.780` versus `0.740` for all other modes, gaining `20` questions with zero losses; all modes passed `30/30` abstention questions.
 - LongMemEval multihop gains span knowledge update (`+5`), multi-session (`+7`), temporal reasoning (`+7`), and single-session user recall (`+1`). It costs `4.0%` more query tokens and higher p50/p95 latency, so LoCoMo still provides the routing guardrail.
 - LongMemEval matrix hash: `e5dd8b0657259f66952e95d3cef403011ee7a0f65daaa2d73abb86c1598e80e7`; comparison hash: `a69090dffc378fc201549d08b81ca719b512f9b609a8ed01b89197a26ffa9d1f`. The complete four-mode run took `174.84s`, produced zero databases/bundles, and verified independently.
+- Added an explicit optional `fts-adaptive` mode that lets the store route each query instead of forcing multi-hop. Retrieval proofs now expose whether auto-routing was evaluated, activated, or suppressed and why.
+- Tightened broad semantic auto-routing to require an explicit composition signal. Fallback and no-lexical-match compound queries still escalate; broad semantic matches without composition stay on the base route.
+- Verified the conservative adaptive route on all `1,986` LoCoMo questions: accuracy `0.6108`, mean query tokens `532.8`, p50/p95 latency `165.243/335.591ms`, `29` gains and `1` loss versus FTS. It improves every category over FTS, including temporal (`0.6324` versus `0.6293`) and open-domain (`0.1771` versus `0.1250`). Matrix hash `7e8825aa...`; comparison hash `3bcd5d22...`.
+- Verified the same route on all `500` LongMemEval questions: accuracy `0.766`, mean query tokens `2486.7`, `13` gains and zero losses versus FTS. Always-on multi-hop remains higher at `0.780`, so it stays available as a specialist mode instead of becoming the global route. Matrix hash `b97e6101...`; comparison hash `d5772c8d...`.
+- Product decision: keep the conservative adaptive route for normal store behavior, keep `fts-multihop` explicit for workloads that favor recall over regression risk, and do not make blanket decomposition the default.
 - Summary-only benchmark delta rows are now bounded to ten examples plus an omitted count; the same LongMemEval matrix summary falls from `1,624` lines to `43`.
-- All recurring ZMem automations remain paused. Next: expose and benchmark the existing selective multihop behavior as an explicit adaptive mode, then require LoCoMo temporal safety before changing the product default.
+- All recurring ZMem automations remain paused. Next: use the remaining stable misses to improve multi-hop and open-domain support without giving back the adaptive route's one-loss LoCoMo boundary, then add BEAM scale evidence.
 
 ## Retrieval Baseline
 `2026-07-06T13:01:58Z`

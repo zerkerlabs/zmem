@@ -11,8 +11,10 @@ from zerker_memory.retrieval_providers import EmbeddingProviderResult
 from zerker_memory.bench import (
     BENCHMARK_COMPARISON_SCHEMA,
     BENCHMARK_MATRIX_COMPARISON_SCHEMA,
+    BENCHMARK_OPTIONAL_RETRIEVAL_MODES,
     BENCHMARK_RETRIEVAL_CONFIG_SCHEMA,
     BENCHMARK_RETRIEVAL_MODES,
+    BENCHMARK_RETRIEVAL_RUN_MODES,
     BENCHMARK_SCORE_SUMMARY_SCHEMA,
     _comparison_question_summary,
     compare_benchmark_matrices,
@@ -434,6 +436,134 @@ class BenchmarkHarnessTest(unittest.TestCase):
         self.assertFalse(first["embedding"]["enabled"])
         self.assertFalse(first["reranker"]["enabled"])
         self.assertEqual(first["multi_hop"]["decomposer_id"], "zmem-local-query-decomposer-v1")
+
+    def test_fts_adaptive_config_defers_multi_hop_activation_to_store_routing(self):
+        first = resolve_benchmark_retrieval_config("fts-adaptive")
+        second = resolve_benchmark_retrieval_config("fts-adaptive")
+
+        self.assertIn("fts-adaptive", BENCHMARK_OPTIONAL_RETRIEVAL_MODES)
+        self.assertIn("fts-adaptive", BENCHMARK_RETRIEVAL_RUN_MODES)
+        self.assertNotIn("fts-adaptive", BENCHMARK_RETRIEVAL_MODES)
+        self.assertEqual(benchmark_retrieval_config_hash(first), benchmark_retrieval_config_hash(second))
+        self.assertEqual(first["routing"], {"strategy": "store-auto-v1"})
+        self.assertNotIn("multi_hop", first)
+        self.assertFalse(first["embedding"]["enabled"])
+        self.assertFalse(first["reranker"]["enabled"])
+
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "bench",
+                "matrix",
+                "locomo",
+                "--dataset",
+                "/tmp/locomo.jsonl",
+                "--out",
+                "/tmp/bench",
+                "--mode",
+                "fts-adaptive",
+            ]
+        )
+        self.assertEqual(args.mode, "fts-adaptive")
+
+    def test_fts_adaptive_benchmark_proof_records_store_auto_activation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            dataset = Path(tmp) / "locomo-adaptive.jsonl"
+            dataset.write_text(
+                json.dumps(
+                    {
+                        "question_id": "adaptive-owner-rollback",
+                        "sample_id": "adaptive-dialog",
+                        "split": "dev",
+                        "category": "multi_hop",
+                        "history": [
+                            "Deployment approvals owner rollback policy notes.",
+                            "Rollback policy is canary first for deployment approvals.",
+                            "Deployment approver is Priya.",
+                        ],
+                        "question": "who owns deployment approvals rollback policy notes",
+                        "answer": "Priya owns deployment approvals; rollback is canary first.",
+                        "supporting_facts": [
+                            "Rollback policy is canary first for deployment approvals.",
+                            "Deployment approver is Priya.",
+                        ],
+                        "should_abstain": False,
+                    },
+                    sort_keys=True,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            result = run_locomo_benchmark(
+                Path(tmp) / "bench",
+                dataset,
+                "dev",
+                run_id="adaptive",
+                retrieval_mode="fts-adaptive",
+                compact_artifacts=True,
+            )
+            payload = json.loads(Path(result["result_path"]).read_text(encoding="utf-8"))
+            question = payload["questions"][0]
+
+            self.assertTrue(question["correct"])
+            self.assertTrue(question["retrieval_proof"]["multi_hop_enabled"])
+            self.assertTrue(question["retrieval_proof"]["multi_hop_auto_enabled"])
+            self.assertEqual(
+                question["retrieval_proof"]["multi_hop_activation_reason"],
+                "fts-direct-subject-compound-query",
+            )
+            self.assertTrue(verify_benchmark_result(Path(result["result_path"]))["ok"])
+
+    def test_fts_adaptive_benchmark_proof_records_store_auto_suppression(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            dataset = Path(tmp) / "locomo-adaptive-suppressed.jsonl"
+            dataset.write_text(
+                json.dumps(
+                    {
+                        "question_id": "adaptive-atlas-rollback",
+                        "sample_id": "adaptive-atlas-dialog",
+                        "split": "dev",
+                        "category": "multi_hop",
+                        "history": [
+                            "Project Atlas owner Morgan rollback policy notes.",
+                            "DeployWindow rollback policy is canary first for Project Atlas.",
+                            "Project Atlas owner is Morgan.",
+                        ],
+                        "question": "Who is responsible for Project Atlas and its DeployWindow rollback plan?",
+                        "answer": "Morgan is responsible; the rollback plan is canary first.",
+                        "supporting_facts": [
+                            "DeployWindow rollback policy is canary first for Project Atlas.",
+                            "Project Atlas owner is Morgan.",
+                        ],
+                        "should_abstain": False,
+                    },
+                    sort_keys=True,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            result = run_locomo_benchmark(
+                Path(tmp) / "bench",
+                dataset,
+                "dev",
+                run_id="adaptive-suppressed",
+                retrieval_mode="fts-adaptive",
+                compact_artifacts=True,
+            )
+            payload = json.loads(Path(result["result_path"]).read_text(encoding="utf-8"))
+            proof = payload["questions"][0]["retrieval_proof"]
+
+            self.assertFalse(proof["multi_hop_enabled"])
+            self.assertFalse(proof["multi_hop_auto_enabled"])
+            self.assertTrue(proof["multi_hop_auto_evaluated"])
+            self.assertIsNone(proof["multi_hop_activation_reason"])
+            self.assertEqual(
+                proof["multi_hop_suppression_reason"],
+                "semantic-query-lacks-composition-signal",
+            )
+            self.assertTrue(verify_benchmark_result(Path(result["result_path"]))["ok"])
 
     def test_synthetic_pseudo_embedding_mode_is_recorded_and_verifies(self):
         with tempfile.TemporaryDirectory() as tmp:

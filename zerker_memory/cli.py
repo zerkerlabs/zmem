@@ -671,7 +671,11 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
     bench_sub = bench.add_subparsers(dest="bench_command", required=True)
     bench_sub.add_parser("list", help="List available benchmarks")
     bench_run = bench_sub.add_parser("run", help="Run a benchmark")
-    from .bench import BENCHMARK_RETRIEVAL_MODES, BENCHMARK_RETRIEVAL_RUN_MODES
+    from .bench import (
+        BENCHMARK_OPTIONAL_RETRIEVAL_MODES,
+        BENCHMARK_RETRIEVAL_MODES,
+        BENCHMARK_RETRIEVAL_RUN_MODES,
+    )
 
     bench_run.add_argument("benchmark", choices=["synthetic", "longmemeval", "locomo"])
     bench_run.add_argument("--dataset", type=Path, help="Local dataset path for benchmark adapters that require one")
@@ -712,7 +716,11 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
     bench_matrix.add_argument("--run-id")
     bench_matrix.add_argument(
         "--mode",
-        choices=list(BENCHMARK_RETRIEVAL_MODES) + ["zmem-retrieval"],
+        choices=(
+            list(BENCHMARK_RETRIEVAL_MODES)
+            + list(BENCHMARK_OPTIONAL_RETRIEVAL_MODES)
+            + ["zmem-retrieval"]
+        ),
         help="Run only one retrieval mode.",
     )
     bench_matrix.add_argument("--answerer", choices=["deterministic", "llm"], default="deterministic")

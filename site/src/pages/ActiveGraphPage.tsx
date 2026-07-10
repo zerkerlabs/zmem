@@ -130,14 +130,14 @@ export default function ActiveGraphPage() {
       <section className="py-20">
         <div className="mx-auto grid max-w-[1120px] grid-cols-1 gap-8 px-6 lg:grid-cols-[0.9fr_1.1fr]">
           <div>
-            <p className="text-eyebrow text-zlime">Next benchmark runs</p>
+            <p className="text-eyebrow text-zlime">Benchmark integration</p>
             <h2 className="mt-3 font-heading text-4xl font-semibold tracking-tight text-zink">
-              Test retrieval depth before adding more ingestion machinery.
+              Preserve the selected route as a compact causal trace.
             </h2>
             <p className="mt-5 text-sm leading-relaxed text-zmuted">
-              The complete local FTS LoCoMo run showed the bottleneck clearly: multi-hop and open-domain
-              retrieval are the weak categories. Run multihop first, then pseudo embedding rerank,
-              using separate compact traces so the runs cannot overwrite each other.
+              The standard matrices now show where adaptive and always-on multi-hop differ. ActiveGraph
+              can preserve the chosen retrieval run as a replayable event chain without producing a
+              large receipt bundle for every question.
             </p>
             <CodeBlock code={envVars} title="runtime knobs" className="mt-6" />
           </div>
