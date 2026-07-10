@@ -647,6 +647,35 @@ class BenchmarkHarnessTest(unittest.TestCase):
             self.assertFalse(comparison["compatibility"]["same_retrieval_mode"])
             self.assertEqual(comparison["compatibility"]["comparison_axis"], "retrieval_mode")
 
+    def test_compare_reports_legacy_null_artifact_paths_as_verification_failure(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "bench"
+            legacy = run_synthetic_benchmark(out, seed=0, run_id="legacy", retrieval_mode="fts")
+            current = run_synthetic_benchmark(out, seed=0, run_id="current", retrieval_mode="fts-multihop")
+            legacy_path = Path(legacy["result_path"])
+            legacy_payload = json.loads(legacy_path.read_text(encoding="utf-8"))
+            legacy_payload["paths"]["snapshots"]["after"] = None
+            legacy_payload["paths"]["report"] = None
+            legacy_payload["proof"]["artifact_hashes"]["snapshots"]["after"] = None
+            legacy_payload["proof"]["artifact_hashes"]["report"] = None
+            legacy_payload["proof"]["artifact_hashes"]["receipt_bundles"] = {}
+            legacy_payload["proof"]["receipt_bundles_omitted"] = True
+            for question in legacy_payload["questions"]:
+                (legacy_path.parent / question["receipt_bundle_path"]).unlink()
+            legacy_payload["result_hash"] = sha256_text(
+                stable_json({key: value for key, value in legacy_payload.items() if key != "result_hash"})
+            )
+            legacy_path.write_text(json.dumps(legacy_payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+            comparison = compare_benchmark_results([legacy_path, Path(current["result_path"])])
+
+            self.assertFalse(comparison["ok"])
+            self.assertEqual(comparison["proof"]["verification_status"], "failed")
+            self.assertIn(
+                "aggregate_merkle_root",
+                comparison["proof"]["verification_failures"][0]["failed_checks"],
+            )
+
     def test_compare_preserves_question_level_evidence_and_memory_deltas(self):
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp) / "bench"

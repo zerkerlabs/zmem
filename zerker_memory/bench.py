@@ -1733,6 +1733,10 @@ def verify_benchmark_result(result_json: Path) -> dict[str, Any]:
     with tempfile.TemporaryDirectory() as tmp:
         verifier_store = MemoryStore(Path(tmp) / "verify.sqlite")
         for name, rel_path in result.get("paths", {}).get("snapshots", {}).items():
+            if not rel_path:
+                stored_hash = artifact_hashes.get("snapshots", {}).get(name)
+                add_check(f"snapshot:{name}", stored_hash is None, "snapshot omitted")
+                continue
             snapshot_path = run_dir / rel_path
             try:
                 snapshot_result = verifier_store.verify_snapshot(_read_json(snapshot_path))
@@ -1766,13 +1770,14 @@ def verify_benchmark_result(result_json: Path) -> dict[str, Any]:
                     )
 
             bundle_rel_path = question.get("receipt_bundle_path")
+            if receipt_bundles_omitted:
+                add_check(f"bundle:{action_id}", True, "receipt bundle omitted by compact artifacts mode")
+                continue
             if not bundle_rel_path:
                 add_check(
                     f"bundle:{action_id}",
-                    receipt_bundles_omitted,
-                    "receipt bundle omitted by compact artifacts mode"
-                    if receipt_bundles_omitted
-                    else "missing receipt_bundle_path",
+                    False,
+                    "missing receipt_bundle_path",
                 )
                 continue
             bundle_path = run_dir / bundle_rel_path
@@ -7225,27 +7230,44 @@ def _comparison_target_split_label(target: dict[str, Any]) -> str:
 def _recompute_artifact_hashes(run_dir: Path, result: dict[str, Any]) -> dict[str, Any]:
     paths = result.get("paths", {})
     questions = result.get("questions", [])
+    report_path = paths.get("report")
+    proof = result.get("proof", {})
+    receipt_bundles_omitted = bool(proof.get("receipt_bundles_omitted")) if isinstance(proof, dict) else False
     return {
         "benchmark_run": _file_hash(run_dir / paths["benchmark_run"]),
         "questions": {question["question_id"]: _file_hash(run_dir / question["question_path"]) for question in questions},
         "receipt_bundles": {
             question["action_id"]: _file_hash(run_dir / question["receipt_bundle_path"])
             for question in questions
-            if question.get("receipt_bundle_path")
+            if question.get("receipt_bundle_path") and not receipt_bundles_omitted
         },
         "snapshots": {
-            name: _file_hash(run_dir / rel_path)
+            name: _file_hash(run_dir / rel_path) if rel_path else None
             for name, rel_path in paths.get("snapshots", {}).items()
         },
-        "report": _file_hash(run_dir / paths["report"]),
+        "report": _file_hash(run_dir / report_path) if report_path else None,
     }
 
 
 def _artifact_hash_list(artifact_hashes: dict[str, Any]) -> list[str]:
-    hashes = [artifact_hashes["benchmark_run"], artifact_hashes["report"]]
-    hashes.extend(artifact_hashes["snapshots"][name] for name in sorted(artifact_hashes["snapshots"]))
-    hashes.extend(artifact_hashes["questions"][name] for name in sorted(artifact_hashes["questions"]))
-    hashes.extend(artifact_hashes["receipt_bundles"][name] for name in sorted(artifact_hashes["receipt_bundles"]))
+    hashes = [artifact_hashes["benchmark_run"]]
+    if artifact_hashes.get("report"):
+        hashes.append(artifact_hashes["report"])
+    hashes.extend(
+        artifact_hashes["snapshots"][name]
+        for name in sorted(artifact_hashes["snapshots"])
+        if artifact_hashes["snapshots"][name]
+    )
+    hashes.extend(
+        artifact_hashes["questions"][name]
+        for name in sorted(artifact_hashes["questions"])
+        if artifact_hashes["questions"][name]
+    )
+    hashes.extend(
+        artifact_hashes["receipt_bundles"][name]
+        for name in sorted(artifact_hashes["receipt_bundles"])
+        if artifact_hashes["receipt_bundles"][name]
+    )
     return hashes
 
 
