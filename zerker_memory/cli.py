@@ -2141,11 +2141,19 @@ def _append_benchmark_question_summary_lines(lines: list[str], question_summary:
         ]
     )
     if stable_miss_ids:
-        lines.append(f"Stable miss ids: {', '.join(str(question_id) for question_id in stable_miss_ids)}")
+        lines.append(f"Stable miss ids: {_bounded_benchmark_id_list(stable_miss_ids)}")
     if stable_win_ids:
-        lines.append(f"Stable win ids: {', '.join(str(question_id) for question_id in stable_win_ids)}")
+        lines.append(f"Stable win ids: {_bounded_benchmark_id_list(stable_win_ids)}")
     if stable_win_ids and int(question_summary.get("visible_delta_question_count", 0) or 0) == 0:
-        lines.append(f"Recovered stable win spotlight ids: {', '.join(str(question_id) for question_id in stable_win_ids)}")
+        lines.append(f"Recovered stable win spotlight ids: {_bounded_benchmark_id_list(stable_win_ids)}")
+
+
+def _bounded_benchmark_id_list(values: object, *, limit: int = 10) -> str:
+    ids = [str(value) for value in values] if isinstance(values, list) else []
+    rendered = ", ".join(ids[:limit])
+    if len(ids) > limit:
+        rendered += f" ... (+{len(ids) - limit} more)"
+    return rendered
 
 
 def _append_benchmark_budget_context_lines(lines: list[str], summary: dict[str, object]) -> None:
@@ -2155,7 +2163,7 @@ def _append_benchmark_budget_context_lines(lines: list[str], summary: dict[str, 
     lines.append(f"Budget-dropped stable context: {summary.get('budget_context_question_count', len(budget_context_question_ids))}")
     lines.append(
         "Budget-dropped stable context ids: "
-        + ", ".join(str(question_id) for question_id in budget_context_question_ids)
+        + _bounded_benchmark_id_list(budget_context_question_ids)
     )
 
 
@@ -2312,12 +2320,12 @@ def _append_benchmark_mode_comparison_lines(lines: list[str], mode_comparisons: 
         if stable_miss_ids:
             lines.append(
                 f"Mode comparison {retrieval_mode} stable miss ids: "
-                f"{', '.join(str(question_id) for question_id in stable_miss_ids)}"
+                f"{_bounded_benchmark_id_list(stable_miss_ids)}"
             )
         if stable_win_ids:
             lines.append(
                 f"Mode comparison {retrieval_mode} stable win ids: "
-                f"{', '.join(str(question_id) for question_id in stable_win_ids)}"
+                f"{_bounded_benchmark_id_list(stable_win_ids)}"
             )
         budget_context_ids = mode_comparison.get("budget_context_question_ids", [])
         if not isinstance(budget_context_ids, list):
@@ -2339,7 +2347,7 @@ def _append_benchmark_mode_comparison_lines(lines: list[str], mode_comparisons: 
         if budget_context_ids:
             lines.append(
                 f"Mode comparison {retrieval_mode} budget context ids: "
-                f"{', '.join(str(question_id) for question_id in budget_context_ids)}"
+                f"{_bounded_benchmark_id_list(budget_context_ids)}"
             )
         for delta in _mode_comparison_memory_count_deltas(mode_comparison):
             lines.append(

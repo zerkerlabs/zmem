@@ -33,11 +33,27 @@ from zerker_memory.bench import (
     write_benchmark_comparison_artifacts,
     write_benchmark_matrix_comparison_artifacts,
 )
-from zerker_memory.cli import build_parser, main
+from zerker_memory.cli import _append_benchmark_question_summary_lines, build_parser, main
 from zerker_memory.store import sha256_text, stable_json
 
 
 class BenchmarkHarnessTest(unittest.TestCase):
+    def test_benchmark_summary_bounds_long_question_id_lists(self):
+        lines: list[str] = []
+
+        _append_benchmark_question_summary_lines(
+            lines,
+            {
+                "question_count": 12,
+                "visible_delta_question_count": 0,
+                "stable_misses": {"count": 0, "question_ids": []},
+                "stable_wins": {"count": 12, "question_ids": [f"q-{index}" for index in range(12)]},
+            },
+        )
+
+        self.assertIn("Stable win ids: q-0, q-1, q-2, q-3, q-4, q-5, q-6, q-7, q-8, q-9 ... (+2 more)", lines)
+        self.assertNotIn("q-10", "\n".join(lines))
+
     def test_list_benchmarks_includes_synthetic_longmemeval_and_locomo(self):
         result = list_benchmarks()
 
@@ -2206,6 +2222,30 @@ class BenchmarkHarnessTest(unittest.TestCase):
                 self.assertTrue(mode_run["result_hash"])
                 self.assertTrue(mode_run["aggregate_merkle_root"])
             self.assertNotEqual(matrix["comparison_hash"], comparison["comparison_hash"])
+
+    def test_single_mode_matrix_does_not_self_compare_duplicate_result(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            matrix = run_benchmark_matrix(
+                Path(tmp),
+                "synthetic",
+                seed=0,
+                run_id="single-mode-matrix",
+                mode="fts",
+            )
+            matrix_path = Path(matrix["matrix_path"])
+            comparison_path = self._resolve_matrix_artifact_path(matrix, matrix["comparison_path"])
+            comparison = json.loads(comparison_path.read_text(encoding="utf-8"))
+
+            self.assertEqual(comparison["result_count"], 1)
+            self.assertEqual(len(comparison["runs"]), 1)
+            self.assertEqual(comparison["deltas"], [])
+            self.assertEqual(len(comparison["proof"]["input_result_hashes"]), 1)
+            self.assertTrue(all(len(question["runs"]) == 1 for question in comparison["questions"]))
+            self.assertTrue(all(question["deltas"] == [] for question in comparison["questions"]))
+            self.assertTrue(verify_benchmark_artifact(comparison_path)["ok"])
+            self.assertTrue(verify_benchmark_artifact(matrix_path)["ok"])
+            with self.assertRaisesRegex(ValueError, "at least two"):
+                compare_benchmark_results([Path(matrix["mode_runs"][0]["result_path"])])
 
     def test_comparison_report_surfaces_verification_summary_and_question_evidence(self):
         with tempfile.TemporaryDirectory() as tmp:

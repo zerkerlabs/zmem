@@ -901,8 +901,7 @@ def run_benchmark_matrix(
         mode_results.append(mode_result)
         result_paths.append(Path(mode_result["result_path"]))
 
-    comparison_input_paths = result_paths if len(result_paths) > 1 else result_paths * 2
-    comparison = compare_benchmark_results(comparison_input_paths)
+    comparison = compare_benchmark_results(result_paths, _allow_single=True)
     comparison_path = matrix_dir / "benchmark-comparison.json"
     matrix_path = matrix_dir / "benchmark-matrix.json"
     report_path = matrix_dir / "matrix-report.md"
@@ -1885,7 +1884,7 @@ def verify_benchmark_comparison(comparison_json: Path) -> dict[str, Any]:
 
     if result_paths:
         try:
-            reconstructed = compare_benchmark_results(result_paths)
+            reconstructed = compare_benchmark_results(result_paths, _allow_single=len(result_paths) == 1)
         except (FileNotFoundError, json.JSONDecodeError, ValueError) as exc:
             add_check("reconstructed_payload", False, str(exc))
         else:
@@ -2136,8 +2135,8 @@ def verify_benchmark_matrix_comparison(comparison_json: Path) -> dict[str, Any]:
     }
 
 
-def compare_benchmark_results(result_jsons: list[Path]) -> dict[str, Any]:
-    if len(result_jsons) < 2:
+def compare_benchmark_results(result_jsons: list[Path], *, _allow_single: bool = False) -> dict[str, Any]:
+    if len(result_jsons) < 2 and not (_allow_single and len(result_jsons) == 1):
         raise ValueError("compare requires at least two benchmark result JSON paths")
 
     loaded_runs = []
