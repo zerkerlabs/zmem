@@ -13,6 +13,8 @@ zmem status --summary-only
 
 The installer creates the local environment, initializes `.zerker/`, runs the day-one checks, generates the manual agent pack, and ends on the compact readiness snapshot.
 
+ZMem requires Python 3.10 or newer. Memory is stored in local SQLite files; encryption at rest is not included, so use your operating system's disk encryption when the workspace contains sensitive material.
+
 ## From A Fresh Clone
 
 ```bash
@@ -36,14 +38,3 @@ zmem doctor
 `zmem status --summary-only` is the shortest truth surface. It reports workspace state, proof counts, agent handoff readiness, and the next useful command.
 
 Use it after installs, restores, benchmark runs, receipt refreshes, and agent config changes.
-
-## Release Smoke
-
-Before tagging or public launch work:
-
-```bash
-python3 scripts/release_smoke.py --summary-only
-python3 scripts/release_smoke.py --require-install-mode packaged
-```
-
-The summary path checks local packaging, receipts, and install readiness. The packaged path verifies that the install flow still works from the release artifact.

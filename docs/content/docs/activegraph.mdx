@@ -68,7 +68,7 @@ config:
 
 ## Compact Benchmark Runner
 
-The ActiveGraph runner exists to avoid per-question receipt bundles during large runs. Instead of writing a large bundle for every question, it writes one compact JSON line per question:
+The ActiveGraph runner is still the minimum-storage path for large runs. Instead of writing a receipt bundle for every question, it writes one compact JSON line per question. Standard ZMem bundles now use compact v2 event witnesses, but the ActiveGraph trace avoids per-question bundle overhead entirely:
 
 ```json
 {

@@ -5,81 +5,57 @@ description: Run proof-backed synthetic, LongMemEval-style, and LoCoMo-style ben
 
 ZMem should compete on benchmark accuracy, latency, token efficiency, and proof-backed reproducibility. The current benchmark harness is designed for internal development and honest public evidence, not unsupported leaderboard claims.
 
-## Official LoCoMo FTS Baseline
+## Current Local LoCoMo Evidence
 
-The first full LoCoMo FTS run is recorded under `.zerker/bench/locomo-official-v1/fts/`.
+ZMem has two complete `1,986`-question local retrieval-recall artifacts over the same SHA-pinned LoCoMo conversion:
 
-- Questions: `1,986`
-- F1: `0.3752394031509457`
-- EM: `0.37210473313192344`
-- Retrieval mode: `fts`
-- Trace SHA: `67a005bf87b4bafcd2d7ce1cf8bfff97d7f430788afd0472511f738594971d0c`
+| Mode | Accuracy | Mean query tokens | Single-hop | Multi-hop | Temporal | Open-domain | Adversarial abstention |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `fts` | `0.5967` | `693.3` | `0.6005` | `0.0709` | `0.6293` | `0.1250` | `1.0000` |
+| `fts-multihop` | `0.6042` | `418.8` | `0.6195` | `0.0780` | `0.6075` | `0.1667` | `1.0000` |
 
-Per category:
+The multihop run improved overall, single-hop, multi-hop, open-domain, and token use, while temporal accuracy declined. That is useful engineering evidence, not a leaderboard win.
 
-- Single-hop: `0.6049` F1 / `0.6005` EM
-- Multi-hop: `0.0758` F1 / `0.0709` EM
-- Temporal: `0.6293` F1 / `0.6293` EM
-- Open-domain: `0.1369` F1 / `0.1250` EM
-- Adversarial abstention: `0.0` F1 / `0.0` EM
+These values use ZMem's `provisional-local` retrieval-recall scorer. Both receipts set `public_benchmark_claim: false`. An older token F1/EM artifact (`0.3752` F1, `0.3721` EM) also exists, but it uses a different scoring path and must not be compared numerically with the accuracy table above.
 
-This result says retrieval depth is the immediate bottleneck. The next runs compare multihop decomposition against reranking on the same dataset.
+## Run An Isolated LoCoMo Matrix
 
-## Next LoCoMo Runs
-
-Run the same dataset through stronger modes with `bench matrix --mode`. This keeps the run shape comparable to the FTS baseline while writing matrix comparison artifacts.
-
-Run multihop first:
+Use a new run id for every matrix and keep concurrent jobs out of the same target. `--compact-artifacts` preserves hashes, traces, summaries, and receipts without writing a bundle for every question. When per-question bundles are enabled, they use compact `zerker.receipt_bundle.v2` event witnesses by default instead of embedding the full pre-action history.
 
 ```bash
+RUN_ID="locomo-$(date -u +%Y%m%dT%H%M%SZ)"
+
 zmem bench matrix locomo \
   --dataset data/locomo/locomo_official_zmem.json \
-  --out .zerker/bench \
-  --run-id locomo-official-v1 \
-  --mode fts-multihop \
-  --seed 42
+  --out .zerker/bench/runs \
+  --run-id "$RUN_ID" \
+  --seed 42 \
+  --compact-artifacts \
+  --summary-only
 ```
 
-Then run dense/rerank modes:
+That single command runs the local mode matrix sequentially and writes comparison artifacts under `.zerker/bench/runs/$RUN_ID/`. Do not launch another job with the same run id.
+
+To isolate one mode, give it its own run id:
 
 ```bash
 zmem bench matrix locomo \
   --dataset data/locomo/locomo_official_zmem.json \
-  --out .zerker/bench \
-  --run-id locomo-official-v1 \
-  --mode pseudo-embedding \
-  --seed 42
-
-zmem bench matrix locomo \
-  --dataset data/locomo/locomo_official_zmem.json \
-  --out .zerker/bench \
-  --run-id locomo-official-v1 \
+  --out .zerker/bench/runs \
+  --run-id "${RUN_ID}-pseudo-rerank" \
   --mode pseudo-embedding-rerank \
-  --seed 42
-
-zmem bench matrix locomo \
-  --dataset data/locomo/locomo_official_zmem.json \
-  --out .zerker/bench \
-  --run-id locomo-official-v1 \
-  --mode zmem-retrieval \
-  --seed 42
+  --seed 42 \
+  --compact-artifacts \
+  --summary-only
 ```
 
-Why this order:
-
-- `fts-multihop` tests whether query decomposition moves the weakest multi-hop and open-domain categories.
-- `pseudo-embedding` separates dense recall from reranking.
-- `pseudo-embedding-rerank` tests whether reranking improves retrieval depth against the same fixed dataset and seed.
-- `zmem-retrieval` is the stable alias for the strongest current local retrieval mode. It currently resolves to the concrete rerank mode in the stored result.
-- The same `--out`, `--seed`, and dataset keep the comparison clean.
-
-Render and verify after the modes finish:
+Render and verify after the matrix finishes:
 
 ```bash
-zmem bench report .zerker/bench/locomo-official-v1 --summary-only
-zmem bench dashboard .zerker/bench/locomo-official-v1
-zmem bench public-page .zerker/bench/locomo-official-v1
-zmem bench verify .zerker/bench/locomo-official-v1/benchmark-matrix.json --summary-only
+zmem bench report ".zerker/bench/runs/$RUN_ID" --summary-only
+zmem bench dashboard ".zerker/bench/runs/$RUN_ID"
+zmem bench public-page ".zerker/bench/runs/$RUN_ID"
+zmem bench verify ".zerker/bench/runs/$RUN_ID/benchmark-matrix.json" --summary-only
 ```
 
 ## Category Deltas
@@ -95,24 +71,26 @@ There is not a category-filter CLI yet. If full runs are too expensive, add cate
 
 ## Token Budget Sweep
 
-Use the same mode and dataset at a few budgets to separate "retrieval found the wrong thing" from "retrieval found the right thing but packing dropped it."
+Use distinct run ids at a few budgets to separate "retrieval found the wrong thing" from "retrieval found the right thing but packing dropped it."
 
 ```bash
 zmem bench matrix locomo \
   --dataset data/locomo/locomo_official_zmem.json \
-  --out .zerker/bench \
-  --run-id locomo-official-v1-budget-384 \
+  --out .zerker/bench/runs \
+  --run-id "locomo-budget-384-$(date -u +%Y%m%dT%H%M%SZ)" \
   --mode fts-multihop \
   --seed 42 \
-  --context-budget-tokens 384
+  --context-budget-tokens 384 \
+  --compact-artifacts
 
 zmem bench matrix locomo \
   --dataset data/locomo/locomo_official_zmem.json \
-  --out .zerker/bench \
-  --run-id locomo-official-v1-budget-768 \
+  --out .zerker/bench/runs \
+  --run-id "locomo-budget-768-$(date -u +%Y%m%dT%H%M%SZ)" \
   --mode fts-multihop \
   --seed 42 \
-  --context-budget-tokens 768
+  --context-budget-tokens 768 \
+  --compact-artifacts
 ```
 
 Add the same sweep for `pseudo-embedding-rerank` only if multihop shows signal or budget-dropped context appears in the reports.
@@ -185,15 +163,9 @@ zmem bench matrix locomo \
 Next benchmark priorities:
 
 - LongMemEval-S: abstention and token-efficiency benchmark.
-- LoCoMo `fts-multihop`: decomposition delta against the recorded FTS baseline.
-- LoCoMo `pseudo-embedding`: dense-recall delta against the same baseline.
-- LoCoMo `pseudo-embedding-rerank`: reranking delta against the same baseline.
+- LoCoMo multi-hop and open-domain: improve the still-low categories without giving back temporal accuracy.
+- LoCoMo `pseudo-embedding` and `pseudo-embedding-rerank`: measure dense recall and reranking in one isolated matrix.
 - BEAM: scale benchmark for 100K to 10M token memory pressure and causal traces.
-
-Fast product fix to test:
-
-- Add a deterministic abstention path when retrieved memory is empty or confidence is below threshold.
-- Verify it against LoCoMo adversarial abstention and LongMemEval-S.
 
 ## Public Claim Rules
 

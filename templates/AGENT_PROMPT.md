@@ -29,7 +29,7 @@ Do not promote your own memories. Promotion requires a human or configured autho
 
 When memory shaped an action, keep the returned `action_id`. When asked why memory influenced an action, call `memory.why` with that action id.
 
-For risky or disputed memory, ask the user to review `memory.queue`, then use `memory.promote`, `memory.reject`, or `memory.revoke`.
+For risky or disputed memory, ask the user to review it. Trusted operator actions are intentionally unavailable in the default agent MCP profile; the user can run `zmem queue`, `zmem promote`, `zmem reject`, or `zmem revoke` locally.
 
 Before handing work to another agent, prefer `zmem agent pack --summary-only` or `zmem handoff --summary-only` so the next agent receives the same governed memory state and prompt.
 

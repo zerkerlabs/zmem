@@ -10,7 +10,7 @@ import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 from .policy import POLICY_ENGINE, authority_at_least, decide_memory, load_policy_config, max_authority
 from .retrieval_providers import (
@@ -39,7 +39,10 @@ SESSION_END_SCHEMA = "zerker.session_end.v1"
 SESSION_CHECKPOINT_SCHEMA = "zerker.session_checkpoint.v1"
 SESSION_SNAPSHOT_SCHEMA = "zerker.session_snapshot.v1"
 SESSION_SNAPSHOT_RETENTION_SCHEMA = "zerker.session_snapshot_retention.v1"
-BUNDLE_SCHEMA = "zerker.receipt_bundle.v1"
+BUNDLE_SCHEMA_V1 = "zerker.receipt_bundle.v1"
+BUNDLE_SCHEMA_V2 = "zerker.receipt_bundle.v2"
+BUNDLE_SCHEMA = BUNDLE_SCHEMA_V2
+BUNDLE_SCHEMAS = frozenset({BUNDLE_SCHEMA_V1, BUNDLE_SCHEMA_V2})
 MEMORY_TREE_SCHEMA = "zerker.memory_tree.v1"
 RETRIEVAL_SCHEMA = "zerker.retrieval.v1"
 RETRIEVAL_RANK_CONFIG_SCHEMA = "zerker.retrieval_rank_config.v1"
@@ -7834,6 +7837,255 @@ def verify_merkle_proof(leaf_hash: str, proof: list[dict[str, Any]], root: str) 
     return computed == root
 
 
+def event_hash_from_record(event: Mapping[str, Any]) -> str:
+    required_string_fields = (
+        "event_schema",
+        "hash_alg",
+        "event_type",
+        "actor_id",
+        "payload_hash",
+        "prev_event_hash",
+        "created_at",
+    )
+    for field in required_string_fields:
+        if not isinstance(event.get(field), str) or not event[field]:
+            raise ValueError(f"event witness {field} is invalid")
+    if event.get("event_schema") != EVENT_SCHEMA:
+        raise ValueError("event witness schema is unsupported")
+    if event.get("hash_alg") != HASH_ALG:
+        raise ValueError("event witness hash algorithm is unsupported")
+    for field in ("memory_id", "action_id"):
+        if field not in event or event[field] is not None and not isinstance(event[field], str):
+            raise ValueError(f"event witness {field} is invalid")
+    return sha256_text(
+        stable_json(
+            {
+                "event_schema": event["event_schema"],
+                "hash_alg": event["hash_alg"],
+                "event_type": event["event_type"],
+                "memory_id": event["memory_id"],
+                "action_id": event["action_id"],
+                "actor_id": event["actor_id"],
+                "payload_hash": event["payload_hash"],
+                "prev_event_hash": event["prev_event_hash"],
+                "created_at": event["created_at"],
+            }
+        )
+    )
+
+
+def validate_indexed_merkle_witness(
+    *,
+    leaf_hash: str,
+    leaf_index: int,
+    leaf_count: int,
+    proof: list[dict[str, Any]],
+    root: str,
+) -> None:
+    if type(leaf_count) is not int or leaf_count <= 0:
+        raise ValueError("event witness leaf_count is invalid")
+    if type(leaf_index) is not int or leaf_index < 0 or leaf_index >= leaf_count:
+        raise ValueError("event witness leaf_index is invalid")
+    if not isinstance(root, str) or not root:
+        raise ValueError("event witness root is invalid")
+    if not isinstance(proof, list):
+        raise ValueError("event witness proof is invalid")
+
+    cursor = leaf_index
+    level_count = leaf_count
+    for item in proof:
+        if not isinstance(item, dict):
+            raise ValueError("event witness proof entry is invalid")
+        sibling_index = cursor - 1 if cursor % 2 else cursor + 1
+        if sibling_index >= level_count:
+            sibling_index = cursor
+        expected_position = "left" if sibling_index < cursor else "right"
+        if item.get("position") != expected_position:
+            raise ValueError("event witness proof position is invalid")
+        if not isinstance(item.get("hash"), str) or not item["hash"]:
+            raise ValueError("event witness proof hash is invalid")
+        cursor //= 2
+        level_count = (level_count + 1) // 2
+    if level_count != 1:
+        raise ValueError("event witness proof length is invalid")
+    if not verify_merkle_proof(leaf_hash, proof, root):
+        raise ValueError("event witness Merkle proof is invalid")
+
+
+def validate_receipt_bundle_core(bundle: Mapping[str, Any]) -> dict[str, Any]:
+    schema = bundle.get("bundle_schema")
+    if schema not in BUNDLE_SCHEMAS:
+        raise ValueError("unsupported bundle schema")
+    if bundle.get("hash_alg") != HASH_ALG:
+        raise ValueError("unsupported bundle hash algorithm")
+    if bundle.get("merkle_alg") != MERKLE_ALG:
+        raise ValueError("unsupported bundle merkle algorithm")
+    bundle_hash = bundle.get("bundle_hash")
+    if not isinstance(bundle_hash, str) or not bundle_hash:
+        raise ValueError("bundle missing bundle_hash")
+    without_hash = dict(bundle)
+    without_hash.pop("bundle_hash", None)
+    if sha256_text(stable_json(without_hash)) != bundle_hash:
+        raise ValueError("bundle_hash mismatch")
+
+    receipt = bundle.get("receipt")
+    if not isinstance(receipt, Mapping):
+        raise ValueError("bundle missing receipt")
+    if bundle.get("action_id") != receipt.get("action_id"):
+        raise ValueError("bundle action_id mismatch")
+    receipt_merkle_root = receipt.get("merkle_root")
+    if not isinstance(receipt_merkle_root, str) or not receipt_merkle_root:
+        raise ValueError("bundle receipt merkle_root is invalid")
+    proof = bundle.get("proof")
+    if not isinstance(proof, Mapping):
+        raise ValueError("bundle missing proof")
+
+    if schema == BUNDLE_SCHEMA_V1:
+        events = bundle.get("supporting_events")
+        if not isinstance(events, list):
+            raise ValueError("bundle supporting_events must be a list")
+        if any(not isinstance(event, Mapping) for event in events):
+            raise ValueError("bundle supporting event is invalid")
+        computed_merkle_root = merkle_root([str(event.get("event_hash", "")) for event in events])
+        if computed_merkle_root != receipt_merkle_root:
+            raise ValueError("bundle merkle_root mismatch")
+        if proof.get("computed_merkle_root") != computed_merkle_root:
+            raise ValueError("bundle proof computed_merkle_root mismatch")
+        if proof.get("receipt_merkle_root") != receipt_merkle_root:
+            raise ValueError("bundle proof receipt_merkle_root mismatch")
+        if proof.get("event_count") != len(events):
+            raise ValueError("bundle proof event_count mismatch")
+        if proof.get("verified") is not True:
+            raise ValueError("bundle proof is not verified")
+        return {
+            "computed_merkle_root": computed_merkle_root,
+            "event_count": len(events),
+            "event_witness_count": 0,
+            "event_witnesses_verified": None,
+            "proof_event_count": proof.get("event_count"),
+            "proof_verified": proof.get("verified"),
+        }
+
+    event_log = bundle.get("event_log")
+    witnesses = bundle.get("event_witnesses")
+    if not isinstance(event_log, Mapping):
+        raise ValueError("bundle event_log is invalid")
+    if not isinstance(witnesses, list):
+        raise ValueError("bundle event_witnesses must be a list")
+    event_count = event_log.get("event_count")
+    if type(event_count) is not int or event_count < 0:
+        raise ValueError("bundle event_log event_count is invalid")
+    event_log_root = event_log.get("merkle_root")
+    if event_log_root != receipt_merkle_root:
+        raise ValueError("bundle event_log merkle_root mismatch")
+    if proof.get("event_count") != event_count:
+        raise ValueError("bundle proof event_count mismatch")
+    if proof.get("event_witness_count") != len(witnesses):
+        raise ValueError("bundle proof event_witness_count mismatch")
+    if proof.get("event_log_merkle_root") != event_log_root:
+        raise ValueError("bundle proof event_log_merkle_root mismatch")
+    if proof.get("receipt_merkle_root") != receipt_merkle_root:
+        raise ValueError("bundle proof receipt_merkle_root mismatch")
+    if proof.get("event_witnesses_verified") is not True:
+        raise ValueError("bundle proof event_witnesses_verified mismatch")
+    if proof.get("verified") is not True:
+        raise ValueError("bundle proof is not verified")
+
+    first_seq = event_log.get("first_seq")
+    last_seq = event_log.get("last_seq")
+    last_event_hash = event_log.get("last_event_hash")
+    if event_count == 0:
+        if witnesses:
+            raise ValueError("empty event log cannot contain witnesses")
+        if first_seq is not None or last_seq is not None or last_event_hash is not None:
+            raise ValueError("empty event log anchors are invalid")
+        if event_log_root != merkle_root([]):
+            raise ValueError("empty event log merkle_root mismatch")
+    else:
+        if type(first_seq) is not int or type(last_seq) is not int:
+            raise ValueError("bundle event_log sequence anchors are invalid")
+        if last_seq < first_seq or event_count > last_seq - first_seq + 1:
+            raise ValueError("bundle event_log sequence anchors are invalid")
+        if not isinstance(last_event_hash, str) or not last_event_hash:
+            raise ValueError("bundle event_log last_event_hash is invalid")
+        if not witnesses:
+            raise ValueError("non-empty event log requires witnesses")
+
+    witnessed_indexes: set[int] = set()
+    witnessed_hashes: set[str] = set()
+    witnessed_sequences: list[tuple[int, int]] = []
+    for witness in witnesses:
+        if not isinstance(witness, Mapping):
+            raise ValueError("bundle event witness is invalid")
+        leaf_index = witness.get("leaf_index")
+        event = witness.get("event")
+        witness_proof = witness.get("proof")
+        if type(leaf_index) is not int:
+            raise ValueError("event witness leaf_index is invalid")
+        if leaf_index in witnessed_indexes:
+            raise ValueError("bundle event witness leaf_index is duplicated")
+        if not isinstance(event, Mapping):
+            raise ValueError("bundle event witness event is invalid")
+        event_hash = event.get("event_hash")
+        if not isinstance(event_hash, str) or not event_hash:
+            raise ValueError("event witness event_hash is invalid")
+        if event_hash in witnessed_hashes:
+            raise ValueError("bundle event witness event_hash is duplicated")
+        if event_hash_from_record(event) != event_hash:
+            raise ValueError("event witness event_hash mismatch")
+        if (
+            type(event.get("seq")) is not int
+            or event["seq"] < first_seq
+            or event["seq"] > last_seq
+        ):
+            raise ValueError("event witness sequence mismatch")
+        validate_indexed_merkle_witness(
+            leaf_hash=event_hash,
+            leaf_index=leaf_index,
+            leaf_count=event_count,
+            proof=witness_proof,
+            root=event_log_root,
+        )
+        witnessed_indexes.add(leaf_index)
+        witnessed_hashes.add(event_hash)
+        witnessed_sequences.append((leaf_index, event["seq"]))
+
+    ordered_sequences = [seq for _, seq in sorted(witnessed_sequences)]
+    if any(left >= right for left, right in zip(ordered_sequences, ordered_sequences[1:])):
+        raise ValueError("event witness sequence order mismatch")
+
+    if event_count and (
+        event_count - 1 not in witnessed_indexes
+        or not any(
+            witness.get("leaf_index") == event_count - 1
+            and isinstance(witness.get("event"), Mapping)
+            and witness["event"].get("event_hash") == last_event_hash
+            and witness["event"].get("seq") == last_seq
+            for witness in witnesses
+        )
+    ):
+        raise ValueError("bundle final event anchor witness is missing")
+
+    supporting_receipts = bundle.get("supporting_memory_write_receipts") or {}
+    if not isinstance(supporting_receipts, Mapping):
+        raise ValueError("bundle supporting_memory_write_receipts is invalid")
+    for supporting_receipt in supporting_receipts.values():
+        if not isinstance(supporting_receipt, Mapping):
+            raise ValueError("bundle supporting write receipt is invalid")
+        event_hash = supporting_receipt.get("event_hash")
+        if not isinstance(event_hash, str) or event_hash not in witnessed_hashes:
+            raise ValueError("bundle supporting write event witness is missing")
+
+    return {
+        "computed_merkle_root": event_log_root,
+        "event_count": event_count,
+        "event_witness_count": len(witnesses),
+        "event_witnesses_verified": True,
+        "proof_event_count": proof.get("event_count"),
+        "proof_verified": proof.get("verified"),
+    }
+
+
 def _status_from_event(event_type: str, payload: dict[str, Any]) -> str | None:
     if event_type in {"PROPOSED", "OBSERVED"}:
         status = str(payload.get("status") or "")
@@ -7922,9 +8174,21 @@ class MemoryStore:
         self.treeship_config_path = treeship_config_path or _env_path("ZMEM_TREESHIP_CONFIG")
         self.treeship_strict = _env_flag("ZMEM_TREESHIP_STRICT") if treeship_strict is None else treeship_strict
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self.conn = sqlite3.connect(self.db_path)
+        if self.db_path.parent.name == ".zerker":
+            try:
+                self.db_path.parent.chmod(0o700)
+            except OSError:
+                pass
+        self.conn = sqlite3.connect(self.db_path, timeout=5.0)
+        try:
+            self.db_path.chmod(0o600)
+        except OSError:
+            pass
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA foreign_keys = ON")
+        self.conn.execute("PRAGMA busy_timeout = 5000")
+        self.conn.execute("PRAGMA journal_mode = WAL")
+        self.conn.execute("PRAGMA synchronous = NORMAL")
 
     def init(self) -> None:
         self.conn.executescript(
@@ -11588,7 +11852,7 @@ class MemoryStore:
     def receipt(self, action_id: str) -> dict[str, Any]:
         return self.why(action_id)
 
-    def receipt_bundle(self, action_id: str) -> dict[str, Any]:
+    def receipt_bundle(self, action_id: str, *, compact: bool = True) -> dict[str, Any]:
         self.init()
         receipt = self.why(action_id)
         action_row = self.conn.execute(
@@ -11624,31 +11888,97 @@ class MemoryStore:
             for row in event_rows
         ]
         event_hashes = [event["event_hash"] for event in events]
-        bundle = {
-            "bundle_schema": BUNDLE_SCHEMA,
+        supporting_memory_ids = receipt["retrieved_memory_ids"]
+        supporting_memories = [self.get(mid).to_dict() for mid in supporting_memory_ids if self._exists(mid)]
+        supporting_write_receipts = {
+            mid: self.memory_write_receipt(mid)
+            for mid in supporting_memory_ids
+            if self._exists(mid) and self._has_write_receipt(mid)
+        }
+        event_log_root = merkle_root(event_hashes)
+        bundle: dict[str, Any] = {
+            "bundle_schema": BUNDLE_SCHEMA if compact else BUNDLE_SCHEMA_V1,
             "hash_alg": HASH_ALG,
             "merkle_alg": MERKLE_ALG,
             "created_at": now_iso(),
             "action_id": action_id,
             "receipt": receipt,
-            "supporting_memory_ids": receipt["retrieved_memory_ids"],
-            "supporting_memories": [self.get(mid).to_dict() for mid in receipt["retrieved_memory_ids"] if self._exists(mid)],
-            "supporting_memory_write_receipts": {
-                mid: self.memory_write_receipt(mid)
-                for mid in receipt["retrieved_memory_ids"]
-                if self._exists(mid) and self._has_write_receipt(mid)
-            },
-            "supporting_events": events,
-            "proof": {
+            "supporting_memory_ids": supporting_memory_ids,
+            "supporting_memories": supporting_memories,
+            "supporting_memory_write_receipts": supporting_write_receipts,
+        }
+        memory_tree_root = receipt.get("memory_tree", {}).get("root")
+        memory_tree_verified = (
+            self.verify_memory_tree(receipt.get("memory_tree", {})) if receipt.get("memory_tree") else None
+        )
+        if not compact:
+            bundle["supporting_events"] = events
+            bundle["proof"] = {
                 "event_count": len(events),
-                "computed_merkle_root": merkle_root(event_hashes),
+                "computed_merkle_root": event_log_root,
                 "receipt_merkle_root": receipt["merkle_root"],
-                "memory_tree_root": receipt.get("memory_tree", {}).get("root"),
-                "memory_tree_verified": self.verify_memory_tree(receipt.get("memory_tree", {}))
-                if receipt.get("memory_tree")
-                else None,
-                "verified": merkle_root(event_hashes) == receipt["merkle_root"],
-            },
+                "memory_tree_root": memory_tree_root,
+                "memory_tree_verified": memory_tree_verified,
+                "verified": event_log_root == receipt["merkle_root"],
+            }
+            bundle["bundle_hash"] = sha256_text(stable_json(bundle))
+            return bundle
+
+        event_index_by_hash = {event_hash: index for index, event_hash in enumerate(event_hashes)}
+        witness_event_hashes = {
+            str(write_receipt.get("event_hash") or "")
+            for write_receipt in supporting_write_receipts.values()
+        }
+        witness_event_hashes.discard("")
+        if event_hashes:
+            witness_event_hashes.add(event_hashes[-1])
+        missing_event_hashes = sorted(witness_event_hashes - set(event_index_by_hash))
+        if missing_event_hashes:
+            raise ValueError(
+                "supporting write event not found before action: " + ", ".join(missing_event_hashes)
+            )
+
+        event_witnesses = []
+        for event_hash in sorted(witness_event_hashes, key=event_index_by_hash.__getitem__):
+            index = event_index_by_hash[event_hash]
+            row = event_rows[index]
+            event_witnesses.append(
+                {
+                    "leaf_index": index,
+                    "event": {
+                        "seq": row["seq"],
+                        "event_schema": EVENT_SCHEMA,
+                        "hash_alg": HASH_ALG,
+                        "event_type": row["event_type"],
+                        "memory_id": row["memory_id"],
+                        "action_id": row["action_id"],
+                        "actor_id": row["actor_id"],
+                        "payload_hash": row["payload_hash"],
+                        "prev_event_hash": row["prev_event_hash"],
+                        "event_hash": row["event_hash"],
+                        "created_at": row["created_at"],
+                    },
+                    "proof": merkle_proof(event_hashes, index),
+                }
+            )
+
+        bundle["event_log"] = {
+            "event_count": len(events),
+            "first_seq": events[0]["seq"] if events else None,
+            "last_seq": events[-1]["seq"] if events else None,
+            "last_event_hash": event_hashes[-1] if event_hashes else None,
+            "merkle_root": event_log_root,
+        }
+        bundle["event_witnesses"] = event_witnesses
+        bundle["proof"] = {
+            "event_count": len(events),
+            "event_witness_count": len(event_witnesses),
+            "event_log_merkle_root": event_log_root,
+            "receipt_merkle_root": receipt["merkle_root"],
+            "memory_tree_root": memory_tree_root,
+            "memory_tree_verified": memory_tree_verified,
+            "event_witnesses_verified": event_log_root == receipt["merkle_root"],
+            "verified": event_log_root == receipt["merkle_root"],
         }
         bundle["bundle_hash"] = sha256_text(stable_json(bundle))
         return bundle
@@ -11658,10 +11988,21 @@ class MemoryStore:
         without_hash.pop("bundle_hash", None)
         computed_bundle_hash = sha256_text(stable_json(without_hash))
         receipt = bundle.get("receipt", {})
+        if not isinstance(receipt, Mapping):
+            receipt = {}
         events = bundle.get("supporting_events", [])
+        event_log = bundle.get("event_log", {})
         supporting_memory_ids = bundle.get("supporting_memory_ids", [])
-        computed_merkle_root = merkle_root([event.get("event_hash", "") for event in events])
         proof = bundle.get("proof", {})
+        computed_merkle_root = (
+            merkle_root(
+                [event.get("event_hash", "") for event in events if isinstance(event, Mapping)]
+            )
+            if bundle.get("bundle_schema") == BUNDLE_SCHEMA_V1 and isinstance(events, list)
+            else event_log.get("merkle_root")
+            if isinstance(event_log, Mapping)
+            else None
+        )
         result = {
             "ok": True,
             "bundle_schema": bundle.get("bundle_schema"),
@@ -11670,7 +12011,15 @@ class MemoryStore:
             "computed_bundle_hash": computed_bundle_hash,
             "receipt_merkle_root": receipt.get("merkle_root"),
             "computed_merkle_root": computed_merkle_root,
-            "event_count": len(events),
+            "event_count": len(events)
+            if bundle.get("bundle_schema") == BUNDLE_SCHEMA_V1 and isinstance(events, list)
+            else event_log.get("event_count")
+            if isinstance(event_log, Mapping)
+            else 0,
+            "event_witness_count": len(bundle.get("event_witnesses", []))
+            if isinstance(bundle.get("event_witnesses"), list)
+            else 0,
+            "event_witnesses_verified": None,
             "proof_event_count": proof.get("event_count") if isinstance(proof, dict) else None,
             "proof_verified": proof.get("verified") if isinstance(proof, dict) else None,
             "memory_tree_verified": self.verify_memory_tree(receipt.get("memory_tree", {})) if receipt.get("memory_tree") else None,
@@ -11683,30 +12032,8 @@ class MemoryStore:
             "semantic_truth_guaranteed": False,
         }
         try:
-            if bundle.get("bundle_schema") != BUNDLE_SCHEMA:
-                raise ValueError("unsupported bundle schema")
-            if bundle.get("hash_alg") != HASH_ALG:
-                raise ValueError("unsupported bundle hash algorithm")
-            if bundle.get("merkle_alg") != MERKLE_ALG:
-                raise ValueError("unsupported bundle merkle algorithm")
-            if not isinstance(bundle.get("bundle_hash"), str):
-                raise ValueError("bundle missing bundle_hash")
-            if computed_bundle_hash != bundle["bundle_hash"]:
-                raise ValueError("bundle_hash mismatch")
-            if bundle.get("action_id") != receipt.get("action_id"):
-                raise ValueError("bundle action_id mismatch")
-            if computed_merkle_root != receipt.get("merkle_root"):
-                raise ValueError("bundle merkle_root mismatch")
-            if not isinstance(proof, dict):
-                raise ValueError("bundle missing proof")
-            if proof.get("computed_merkle_root") != computed_merkle_root:
-                raise ValueError("bundle proof computed_merkle_root mismatch")
-            if proof.get("receipt_merkle_root") != receipt.get("merkle_root"):
-                raise ValueError("bundle proof receipt_merkle_root mismatch")
-            if proof.get("event_count") != len(events):
-                raise ValueError("bundle proof event_count mismatch")
-            if proof.get("verified") is not True:
-                raise ValueError("bundle proof is not verified")
+            core_verification = validate_receipt_bundle_core(bundle)
+            result.update(core_verification)
             if receipt.get("memory_tree") and not self.verify_memory_tree(receipt["memory_tree"]):
                 raise ValueError("bundle memory_tree verification failed")
             if receipt.get("memory_tree") and proof.get("memory_tree_verified") is not True:

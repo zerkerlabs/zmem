@@ -59,6 +59,7 @@ from zerker_memory.cli import (
     provider_overrides,
     render_agent_guide,
     render_handoff_summary,
+    render_inject_summary,
     render_agent_install_summary,
     render_launch_assets_summary,
     render_launch_proof_summary,
@@ -84,6 +85,7 @@ from zerker_memory.cli import (
     render_retrieval_provider_readiness_summary,
     render_restore_summary,
     render_status_summary,
+    render_why_summary,
     prelaunch_next_steps,
     public_verify_status,
     restore_snapshot_file,
@@ -110,6 +112,52 @@ from zerker_memory.store import MemoryStore
 
 
 class CliOnboardingTest(unittest.TestCase):
+    def test_inject_and_why_accept_compact_summary_flags(self):
+        inject = build_parser().parse_args(["inject", "continue release", "--agent", "codex", "--summary-only"])
+        why = build_parser().parse_args(["why", "act_123", "--summary"])
+
+        self.assertTrue(inject.summary_only)
+        self.assertTrue(why.summary)
+
+    def test_compact_memory_summaries_are_bounded_and_explain_governance(self):
+        receipt = {
+            "action_id": "act_123",
+            "agent_id": "codex",
+            "risk": "medium",
+            "task": "continue the release",
+            "retrieved_memory_ids": ["mem_1", "mem_2"],
+            "injected_memory_ids": ["mem_1"],
+            "memories": [
+                {
+                    "id": "mem_1",
+                    "type": "semantic",
+                    "status": "active",
+                    "content": "The release branch is ready for verification.",
+                }
+            ],
+            "injected": [
+                {
+                    "id": "mem_1",
+                    "type": "semantic",
+                    "status": "active",
+                    "content": "The release branch is ready for verification.",
+                }
+            ],
+            "withheld": [{"memory_id": "mem_2", "reason": "untrusted source"}],
+            "merkle_root": "abc123",
+        }
+
+        inject_summary = render_inject_summary(receipt)
+        why_summary = render_why_summary(receipt, verified=True)
+
+        self.assertIn("Injected: 1 | Withheld: 1", inject_summary)
+        self.assertIn("Explain: zmem why act_123 --summary-only", inject_summary)
+        self.assertIn("Memory that shaped the action", why_summary)
+        self.assertIn("Memory kept out", why_summary)
+        self.assertIn("Verification: ok", why_summary)
+        self.assertLess(len(inject_summary), 1200)
+        self.assertLess(len(why_summary), 1200)
+
     def test_runtime_reexec_command_filter_is_scoped(self):
         self.assertTrue(command_supports_runtime_reexec("doctor"))
         self.assertTrue(command_supports_runtime_reexec("status"))
@@ -247,7 +295,10 @@ class CliOnboardingTest(unittest.TestCase):
 
         server = config["mcpServers"]["zerker-memory"]
         self.assertEqual(server["command"], "zmem")
-        self.assertEqual(server["args"], ["--db", ".zerker/memory.sqlite", "--policy", ".zerker/policy.json", "mcp"])
+        self.assertEqual(
+            server["args"],
+            ["--db", ".zerker/memory.sqlite", "--policy", ".zerker/policy.json", "mcp", "--profile", "agent"],
+        )
 
     def test_agent_presets_include_launch_targets(self):
         self.assertIn("codex", agent_presets())
@@ -1250,7 +1301,10 @@ class CliOnboardingTest(unittest.TestCase):
         self.assertEqual(result["schema"], "zerker.agent_config.v1")
         self.assertEqual(result["preset"], "claude-code")
         self.assertIn("Claude Code", result["install_hint"])
-        self.assertEqual(server["args"], ["--db", ".zerker/memory.sqlite", "--policy", ".zerker/policy.json", "mcp"])
+        self.assertEqual(
+            server["args"],
+            ["--db", ".zerker/memory.sqlite", "--policy", ".zerker/policy.json", "mcp", "--profile", "agent"],
+        )
 
     def test_build_agent_server_snippet_returns_single_server_entry(self):
         result = build_agent_server_snippet(
@@ -1264,7 +1318,10 @@ class CliOnboardingTest(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual(result["schema"], "zerker.agent_server_snippet.v1")
         self.assertEqual(result["server"]["command"], "zmem")
-        self.assertEqual(result["server"]["args"], ["--db", ".zerker/memory.sqlite", "--policy", ".zerker/policy.json", "mcp"])
+        self.assertEqual(
+            result["server"]["args"],
+            ["--db", ".zerker/memory.sqlite", "--policy", ".zerker/policy.json", "mcp", "--profile", "agent"],
+        )
 
     def test_agent_config_parser(self):
         args = build_parser().parse_args(["agent", "config", "codex", "--no-policy", "--out", "/tmp/codex-mcp.json"])
@@ -6819,7 +6876,9 @@ class CliOnboardingTest(unittest.TestCase):
         self.assertIn(f"Action id: {receipt['action_id']}", summary)
         self.assertIn("Bundle verify: ok", summary)
         self.assertIn("Supporting memories: 1", summary)
-        self.assertIn("Supporting events: 1", summary)
+        self.assertIn("Schema: zerker.receipt_bundle.v2", summary)
+        self.assertIn("Event log entries: 1", summary)
+        self.assertIn("Event witnesses: 1", summary)
         self.assertIn("Supporting write receipts: 1", summary)
         self.assertIn("Supporting provenance verify: ok", summary)
         self.assertIn("Memory tree verify: ok", summary)
@@ -8861,7 +8920,7 @@ class CliOnboardingTest(unittest.TestCase):
             self.assertTrue((root / ".zerker" / "AGENT_PROMPT.md").exists())
             payload = json.loads(config_path.read_text())
             self.assertIn("zerker-memory", payload["mcpServers"])
-            self.assertEqual(payload["mcpServers"]["zerker-memory"]["args"][-1], "mcp")
+            self.assertEqual(payload["mcpServers"]["zerker-memory"]["args"][-3:], ["mcp", "--profile", "agent"])
 
     def test_install_agent_preset_writes_openclaw_json_when_target_is_explicit(self):
         with tempfile.TemporaryDirectory() as tmp:

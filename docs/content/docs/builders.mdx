@@ -11,7 +11,7 @@ Use the smallest surface that fits your integration:
 
 - **CLI:** best for scripts, local workflows, demos, and CI checks.
 - **MCP server:** best for agents that need memory through a tool protocol.
-- **Local SQLite store:** best for product surfaces that need direct inspection or dashboards.
+- **Local SQLite store:** best for read-only inspection, exports, or dashboards. Route writes through ZMem so receipts and lifecycle rules are preserved.
 - **Receipts and bundles:** best for audit, debugging, and sharing evidence.
 - **Handoff artifacts:** best for moving state across projects, machines, or agent sessions.
 
@@ -21,13 +21,13 @@ Use the smallest surface that fits your integration:
 zmem init --with-policy --with-agent-prompt --with-mcp-config
 zmem status --summary-only
 zmem agent pack --summary-only
-zmem --db .zerker/memory.sqlite mcp
+zmem --db .zerker/memory.sqlite mcp --profile agent
 ```
 
 When an agent takes a memory-influenced action, keep the receipt id. That id is the bridge between the user-facing answer and the proof path.
 
 ```bash
-zmem why <action-id>
+zmem why <action-id> --summary-only
 zmem verify <action-id>
 zmem bundle <action-id> --out-dir .zerker/exports
 ```
@@ -54,3 +54,5 @@ For any important action, expose a compact explanation: what memory was retrieve
 ## Design Principle
 
 Do not make users choose between convenience and trust. The best ZMem integrations make memory feel native to the agent while keeping provenance, review, and verification one click away.
+
+Do not write directly to ZMem tables. The schema is inspectable, but direct writes bypass event-chain, receipt, policy, and lifecycle behavior.

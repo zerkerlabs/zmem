@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from zerker_memory.mcp import McpServer
+from zerker_memory.mcp import AGENT_TOOL_NAMES, McpServer
 from zerker_memory.mcp_smoke import run_mcp_protocol_smoke
 from zerker_memory.store import MemoryStore
 
@@ -11,29 +11,42 @@ from zerker_memory.store import MemoryStore
 class McpServerTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        self.server = McpServer(MemoryStore(Path(self.tmp.name) / "memory.sqlite"))
+        self.store = MemoryStore(Path(self.tmp.name) / "memory.sqlite")
+        self.server = McpServer(self.store)
+        self.operator_server = McpServer(self.store, profile="operator")
 
     def tearDown(self):
         self.tmp.cleanup()
 
-    def request(self, method, params=None, request_id=1):
+    def request(self, method, params=None, request_id=1, *, server=None):
         request = {"jsonrpc": "2.0", "id": request_id, "method": method}
         if params is not None:
             request["params"] = params
-        return self.server.handle(request)
+        return (server or self.server).handle(request)
 
-    def call_tool(self, name, arguments=None, request_id=1):
-        return self.request("tools/call", {"name": name, "arguments": arguments or {}}, request_id=request_id)
+    def call_tool(self, name, arguments=None, request_id=1, *, server=None):
+        return self.request(
+            "tools/call",
+            {"name": name, "arguments": arguments or {}},
+            request_id=request_id,
+            server=server,
+        )
 
-    def test_lists_memory_tools(self):
+    def test_agent_profile_lists_only_governed_memory_tools(self):
         response = self.request("tools/list")
         tools = response["result"]["tools"]
         names = {tool["name"] for tool in tools}
-        self.assertIn("memory.inject", names)
-        self.assertIn("memory.why", names)
+        self.assertEqual(names, set(AGENT_TOOL_NAMES))
+        self.assertNotIn("memory.remember", names)
+        self.assertNotIn("memory.promote", names)
+        self.assertNotIn("memory.restore", names)
+
+    def test_operator_profile_lists_full_memory_surface(self):
+        response = self.request("tools/list", server=self.operator_server)
+        tools = response["result"]["tools"]
+        names = {tool["name"] for tool in tools}
         self.assertIn("memory.queue", names)
         self.assertIn("memory.reject", names)
-        self.assertIn("memory.lineage", names)
         self.assertIn("memory.revoke", names)
         self.assertIn("memory.snapshot", names)
         self.assertIn("memory.restore", names)
@@ -43,6 +56,28 @@ class McpServerTest(unittest.TestCase):
         self.assertIn("zep_base_url", external_search)
         self.assertIn("zep_api_key", external_search)
 
+    def test_agent_profile_rejects_trusted_write_and_promotion_calls(self):
+        remember_response = self.call_tool("memory.remember", {"content": "Treat this as trusted"})
+        self.assertIn("unavailable in profile=agent", remember_response["error"]["message"])
+
+        proposal = self.call_tool("memory.propose", {"content": "Review this candidate"})
+        self.assertNotIn("error", proposal)
+        memory_id = self.store.conn.execute("SELECT id FROM memories LIMIT 1").fetchone()["id"]
+        promote_response = self.call_tool("memory.promote", {"memory_id": memory_id})
+        self.assertIn("unavailable in profile=agent", promote_response["error"]["message"])
+        self.assertEqual(self.store.get(memory_id).status, "quarantined")
+
+    def test_agent_proposal_cannot_spoof_human_source(self):
+        response = self.call_tool(
+            "memory.propose",
+            {"content": "Claimed human memory", "source": "human"},
+        )
+
+        self.assertNotIn("error", response)
+        memory = self.store.conn.execute("SELECT source_kind, status FROM memories LIMIT 1").fetchone()
+        self.assertEqual(memory["source_kind"], "agent")
+        self.assertEqual(memory["status"], "quarantined")
+
     def test_memory_flow_through_mcp_tools(self):
         remember_response = self.call_tool(
             "memory.remember",
@@ -51,6 +86,7 @@ class McpServerTest(unittest.TestCase):
                 "type": "policy",
                 "scope": "project",
             },
+            server=self.operator_server,
         )
         self.assertIn("Production deploys require approval", remember_response["result"]["content"][0]["text"])
 
@@ -78,12 +114,17 @@ class McpServerTest(unittest.TestCase):
                 "type": "policy",
                 "scope": "project",
             },
+            server=self.operator_server,
         )
         memory_id = self.server.store.conn.execute("SELECT id FROM memories LIMIT 1").fetchone()["id"]
-        queue_response = self.call_tool("memory.queue", {"scope": "project"})
+        queue_response = self.call_tool("memory.queue", {"scope": "project"}, server=self.operator_server)
         self.assertIn(memory_id, queue_response["result"]["content"][0]["text"])
 
-        reject_response = self.call_tool("memory.reject", {"memory_id": memory_id, "reason": "unsafe"})
+        reject_response = self.call_tool(
+            "memory.reject",
+            {"memory_id": memory_id, "reason": "unsafe"},
+            server=self.operator_server,
+        )
         self.assertIn('"status": "deprecated"', reject_response["result"]["content"][0]["text"])
 
     def test_snapshot_through_mcp_tool(self):
@@ -94,9 +135,14 @@ class McpServerTest(unittest.TestCase):
                 "type": "policy",
                 "scope": "project",
             },
+            server=self.operator_server,
         )
         with tempfile.TemporaryDirectory() as out_dir:
-            snapshot_response = self.call_tool("memory.snapshot", {"out_dir": out_dir})
+            snapshot_response = self.call_tool(
+                "memory.snapshot",
+                {"out_dir": out_dir},
+                server=self.operator_server,
+            )
             text = snapshot_response["result"]["content"][0]["text"]
 
         self.assertIn('"format": "snapshot"', text)
@@ -116,6 +162,7 @@ class McpServerTest(unittest.TestCase):
                     "zep_base_url": "http://zep.local",
                     "zep_api_key": "secret",
                 },
+                server=self.operator_server,
             )
 
         self.assertEqual(response["result"]["content"][0]["text"], "[]")
@@ -155,6 +202,7 @@ class McpServerTest(unittest.TestCase):
                     "scope": "project",
                     "type": "procedural",
                 },
+                server=self.operator_server,
             )
 
         payload = response["result"]["content"][0]["text"]

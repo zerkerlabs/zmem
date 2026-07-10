@@ -5,7 +5,9 @@
       "args": [
         "--db",
         ".zerker/memory.sqlite",
-        "mcp"
+        "mcp",
+        "--profile",
+        "agent"
       ]
     }
   }

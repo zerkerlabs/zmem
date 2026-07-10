@@ -21,9 +21,13 @@ zmem bundle <action-id> --out-dir .zerker/exports
 zmem bundle verify .zerker/exports/<bundle>.bundle.json
 ```
 
-A receipt bundle proves which governed memories were available before the action and whether the receipt Merkle root matches the supporting event chain.
+A receipt bundle proves which governed memories were available before the action and whether their supporting write events belong to the event log committed by the action receipt.
 
-Core fields include the bundle hash, action receipt, supporting memories, supporting events, computed Merkle root, receipt Merkle root, and verification status.
+New bundles use `zerker.receipt_bundle.v2`. They include the bundle hash, action receipt, supporting memories and write receipts, a commitment to the complete pre-action event log, and compact Merkle inclusion witnesses for the supporting write events and final pre-action event. They do not repeat every historical event payload.
+
+Older `zerker.receipt_bundle.v1` artifacts remain verifiable. V1 embeds the full pre-action event list; v2 is the default for CLI exports, handoffs, Treeship statements, and normal benchmark artifacts.
+
+The proof verifies inclusion, lineage, and tamper evidence relative to the receipt root. It does not claim that remembered content is semantically true.
 
 ## Treeship Statement
 

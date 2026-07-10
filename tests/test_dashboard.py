@@ -772,7 +772,7 @@ class DashboardTest(unittest.TestCase):
             receipt = store.inject("deploy service to production", agent_id="codex", risk="high", scope="project")
             result = store.receipt_bundle(receipt["action_id"])
 
-        self.assertEqual(result["bundle_schema"], "zerker.receipt_bundle.v1")
+        self.assertEqual(result["bundle_schema"], "zerker.receipt_bundle.v2")
         self.assertTrue(result["proof"]["verified"])
         self.assertEqual(result["action_id"], receipt["action_id"])
 

@@ -523,6 +523,21 @@ def run_mcp_request(process: subprocess.Popen[str], request: dict[str, Any]) -> 
         return json.loads(line)
 
 
+def stop_mcp_process(process: subprocess.Popen[str]) -> None:
+    if process.stdin is not None:
+        process.stdin.close()
+    process.terminate()
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait(timeout=5)
+    if process.stdout is not None:
+        process.stdout.close()
+    if process.stderr is not None:
+        process.stderr.close()
+
+
 def run_mcp_smoke(
     command: list[str],
     *,
@@ -531,8 +546,40 @@ def run_mcp_smoke(
     policy_path: Path,
     env: dict[str, str] | None = None,
 ) -> dict[str, Any]:
+    operator_process = subprocess.Popen(
+        [*command, "--db", str(db_path), "--policy", str(policy_path), "--profile", "operator"],
+        cwd=cwd,
+        env=env,
+        text=True,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    try:
+        remember = run_mcp_request(
+            operator_process,
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/call",
+                "params": {
+                    "name": "memory.remember",
+                    "arguments": {
+                        "content": "Production deploys require approval",
+                        "type": "policy",
+                        "scope": "project",
+                    },
+                },
+            },
+        )
+    finally:
+        stop_mcp_process(operator_process)
+
+    if "error" in remember:
+        raise SystemExit(f"MCP operator seed failed: {remember['error']['message']}")
+    remember_payload = json.loads(remember["result"]["content"][0]["text"])
     process = subprocess.Popen(
-        [*command, "--db", str(db_path), "--policy", str(policy_path)],
+        [*command, "--db", str(db_path), "--policy", str(policy_path), "--profile", "agent"],
         cwd=cwd,
         env=env,
         text=True,
@@ -560,27 +607,11 @@ def run_mcp_smoke(
         process.stdin.write(json.dumps(initialized, separators=(",", ":")) + "\n")
         process.stdin.flush()
         tools = run_mcp_request(process, {"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
-        remember = run_mcp_request(
-            process,
-            {
-                "jsonrpc": "2.0",
-                "id": 3,
-                "method": "tools/call",
-                "params": {
-                    "name": "memory.remember",
-                    "arguments": {
-                        "content": "Production deploys require approval",
-                        "type": "policy",
-                        "scope": "project",
-                    },
-                },
-            },
-        )
         inject = run_mcp_request(
             process,
             {
                 "jsonrpc": "2.0",
-                "id": 4,
+                "id": 3,
                 "method": "tools/call",
                 "params": {
                     "name": "memory.inject",
@@ -601,7 +632,7 @@ def run_mcp_smoke(
             process,
             {
                 "jsonrpc": "2.0",
-                "id": 5,
+                "id": 4,
                 "method": "tools/call",
                 "params": {"name": "memory.why", "arguments": {"action_id": action_id}},
             },
@@ -610,27 +641,15 @@ def run_mcp_smoke(
             process,
             {
                 "jsonrpc": "2.0",
-                "id": 6,
+                "id": 5,
                 "method": "tools/call",
                 "params": {"name": "memory.verify", "arguments": {"action_id": action_id}},
             },
         )
     finally:
-        if process.stdin is not None:
-            process.stdin.close()
-        process.terminate()
-        try:
-            process.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            process.wait(timeout=5)
-        if process.stdout is not None:
-            process.stdout.close()
-        if process.stderr is not None:
-            process.stderr.close()
+        stop_mcp_process(process)
 
     tool_names = [tool["name"] for tool in tools["result"]["tools"]]
-    remember_payload = json.loads(remember["result"]["content"][0]["text"])
     why_payload = json.loads(why["result"]["content"][0]["text"])
     verify_payload = json.loads(verify["result"]["content"][0]["text"])
     if initialize["result"]["serverInfo"]["name"] != "zerker-memory":
@@ -639,8 +658,8 @@ def run_mcp_smoke(
         raise SystemExit("MCP tools/list missing memory.inject")
     if "memory.why" not in tool_names:
         raise SystemExit("MCP tools/list missing memory.why")
-    if remember_payload["content"] != "Production deploys require approval":
-        raise SystemExit("MCP remember returned unexpected content")
+    if {"memory.remember", "memory.promote", "memory.restore"}.intersection(tool_names):
+        raise SystemExit("MCP agent profile exposed trusted operator tools")
     if not verify_payload.get("ok"):
         raise SystemExit("MCP verify did not verify the action")
     return {

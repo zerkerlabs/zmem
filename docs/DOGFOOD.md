@@ -19,7 +19,7 @@ Use this MCP config shape:
   "mcpServers": {
     "zerker-memory": {
       "command": "zmem",
-      "args": ["--db", ".zerker/memory.sqlite", "mcp"]
+      "args": ["--db", ".zerker/memory.sqlite", "mcp", "--profile", "agent"]
     }
   }
 }

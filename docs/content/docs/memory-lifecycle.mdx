@@ -22,7 +22,7 @@ Most local workflows use a project store:
 zmem --db .zerker/memory.sqlite ui
 ```
 
-The local console should make memory status visible: proposed, approved, revoked, expired, withheld, injected, or budget-dropped.
+The local console makes memory status visible: proposed, quarantined, active, deprecated, revoked, forgotten, withheld, injected, or budget-dropped.
 
 ## Snapshots
 
@@ -42,4 +42,3 @@ zmem --db .zerker/restored.sqlite restore .zerker/exports/<snapshot>.snapshot.js
 ## Product Principle
 
 Memory should be easy for agents to use and hard to smuggle into trust. Status, provenance, and revocation need to be first-class product surfaces.
-

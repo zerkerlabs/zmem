@@ -7,6 +7,8 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from .store import MemoryStore
+
 
 JSON = dict[str, Any]
 
@@ -21,6 +23,17 @@ def run_mcp_protocol_smoke(
 ) -> JSON:
     with tempfile.TemporaryDirectory() as tmp:
         db = db_path or Path(tmp) / "mcp-smoke.sqlite"
+        seed_store = MemoryStore(db, policy_path=policy_path)
+        seed_store.init()
+        remembered = seed_store.remember(
+            "Use Zerker Memory as the durable memory source for this project",
+            memory_type="semantic",
+            scope=scope,
+            source_kind="human",
+            status="active",
+            labels=["mcp-smoke"],
+        )
+        seed_store.conn.close()
         command = [
             python_executable or sys.executable,
             "-m",
@@ -30,7 +43,7 @@ def run_mcp_protocol_smoke(
         ]
         if policy_path is not None:
             command.extend(["--policy", str(policy_path)])
-        command.append("mcp")
+        command.extend(["mcp", "--profile", "agent"])
         proc = subprocess.Popen(
             command,
             stdin=subprocess.PIPE,
@@ -46,20 +59,12 @@ def run_mcp_protocol_smoke(
             tool_names = [tool["name"] for tool in tools["result"]["tools"]]
             require("memory.inject" in tool_names, "memory.inject missing from MCP tools/list")
             require("memory.why" in tool_names, "memory.why missing from MCP tools/list")
-            remember = client.call_tool(
-                3,
-                "memory.remember",
-                {
-                    "content": "Use Zerker Memory as the durable memory source for this project",
-                    "type": "semantic",
-                    "scope": scope,
-                    "source": "human",
-                    "labels": ["mcp-smoke"],
-                },
+            require(
+                not {"memory.remember", "memory.promote", "memory.restore"}.intersection(tool_names),
+                "trusted operator tools leaked into the agent MCP profile",
             )
-            remembered = parse_tool_text(remember)
             inject = client.call_tool(
-                4,
+                3,
                 "memory.inject",
                 {
                     "task": "use Zerker Memory as the durable memory source",
@@ -72,15 +77,15 @@ def run_mcp_protocol_smoke(
             require(injection.get("action_id"), "memory.inject did not return action_id")
             require(injection.get("injected_memory_ids"), "memory.inject did not inject the smoke memory")
             action_id = injection["action_id"]
-            why = parse_tool_text(client.call_tool(5, "memory.why", {"action_id": action_id}))
-            verified = parse_tool_text(client.call_tool(6, "memory.verify", {"action_id": action_id}))
+            why = parse_tool_text(client.call_tool(4, "memory.why", {"action_id": action_id}))
+            verified = parse_tool_text(client.call_tool(5, "memory.verify", {"action_id": action_id}))
             require(verified.get("ok") is True, "memory.verify returned false")
             return {
                 "ok": True,
                 "schema": "zerker.mcp_smoke.v1",
                 "server": initialize["result"]["serverInfo"],
                 "tool_count": len(tool_names),
-                "memory_id": remembered["id"],
+                "memory_id": remembered.id,
                 "action_id": action_id,
                 "injected_memory_ids": injection["injected_memory_ids"],
                 "why": {

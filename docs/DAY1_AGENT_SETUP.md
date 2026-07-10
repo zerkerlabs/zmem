@@ -173,9 +173,11 @@ The agent loop is:
 Before task: memory.inject
 During task: use only injected memories
 After task: memory.propose
-Review: memory.queue, memory.promote, memory.reject, memory.revoke
 Audit: memory.why, memory.verify
+Human review: zmem queue, zmem promote, zmem reject, zmem revoke
 ```
+
+Generated configs use the narrow `agent` MCP profile. Trusted review tools are not available to the agent itself.
 
 ## Shell-Based Agents
 

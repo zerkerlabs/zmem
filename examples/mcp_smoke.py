@@ -6,6 +6,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+from zerker_memory.store import MemoryStore
+
 
 def send(proc: subprocess.Popen, request: dict) -> dict:
     assert proc.stdin is not None
@@ -18,8 +20,18 @@ def send(proc: subprocess.Popen, request: dict) -> dict:
 def main() -> int:
     with tempfile.TemporaryDirectory() as tmp:
         db = Path(tmp) / "memory.sqlite"
+        store = MemoryStore(db)
+        store.init()
+        store.remember(
+            "Production deploys require approval",
+            memory_type="policy",
+            scope="project",
+            source_kind="human",
+            status="active",
+        )
+        store.conn.close()
         proc = subprocess.Popen(
-            [sys.executable, "-m", "zerker_memory", "--db", str(db), "mcp"],
+            [sys.executable, "-m", "zerker_memory", "--db", str(db), "mcp", "--profile", "agent"],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             text=True,
@@ -35,10 +47,11 @@ def main() -> int:
                         "id": 3,
                         "method": "tools/call",
                         "params": {
-                            "name": "memory.remember",
+                            "name": "memory.inject",
                             "arguments": {
-                                "content": "Production deploys require approval",
-                                "type": "policy",
+                                "task": "deploy to production",
+                                "agent": "example-agent",
+                                "risk": "high",
                                 "scope": "project",
                             },
                         },

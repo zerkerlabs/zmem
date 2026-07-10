@@ -30,12 +30,23 @@ The pack includes the exact export path, doctor command, prompt path, snippet fa
 ## MCP Server
 
 ```bash
-zmem --db .zerker/memory.sqlite mcp
+zmem --db .zerker/memory.sqlite mcp --profile agent
 ```
 
-Use `examples/mcp_config.example.json` as the reference shape for MCP-capable clients.
+Generated configs use this narrow `agent` profile. It exposes only `memory.propose`, `memory.inject`, `memory.why`, and `memory.verify`, so an agent cannot write trusted memory, approve its own proposal, inspect quarantine, or restore state.
+
+Use `examples/mcp_config.example.json` as the reference shape for MCP-capable clients. Review and maintenance belong in the local CLI or UI:
+
+```bash
+zmem queue
+zmem promote <memory-id>
+zmem reject <memory-id> --reason "unsafe or stale"
+zmem revoke <memory-id> --reason "no longer valid"
+zmem ui
+```
+
+A full `--profile operator` MCP server exists for a trusted local review client. Do not attach it to an autonomous or untrusted agent.
 
 ## Agent Rule
 
-Agents should request approved memory before acting, cite injected memory in their reasoning surface, and leave behind a receipt for memory-influenced actions. The point is not just recall; it is accountable recall.
-
+Agents should request governed memory before acting, use only the returned memories as durable context, and keep the action id when memory shaped work. The point is not just recall; it is inspectable recall.

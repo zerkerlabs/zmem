@@ -2,15 +2,29 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any, Callable
 
+from . import __version__
 from .providers import SUPPORTED_PROVIDERS, build_provider_adapter, provider_import_settings
 from .store import MemoryStore, default_db_path, default_policy_path
 
 
 JSON = dict[str, Any]
+
+
+MCP_PROFILES = ("agent", "operator")
+AGENT_TOOL_NAMES = frozenset(
+    {
+        "memory.propose",
+        "memory.inject",
+        "memory.why",
+        "memory.verify",
+    }
+)
+PROPOSAL_SOURCE_KINDS = frozenset({"agent", "tool", "document", "import"})
 
 
 TOOL_SCHEMAS: list[JSON] = [
@@ -43,7 +57,7 @@ TOOL_SCHEMAS: list[JSON] = [
                 "content": {"type": "string"},
                 "type": {"type": "string", "enum": ["episodic", "semantic", "procedural", "policy"], "default": "semantic"},
                 "scope": {"type": "string", "default": "global"},
-                "source": {"type": "string", "enum": ["human", "system", "tool", "document", "agent", "import"], "default": "agent"},
+                "source": {"type": "string", "enum": sorted(PROPOSAL_SOURCE_KINDS), "default": "agent"},
                 "labels": {"type": "array", "items": {"type": "string"}, "default": []},
                 "source_uri": {"type": "string"},
                 "actor_uri": {"type": "string"},
@@ -232,8 +246,14 @@ TOOL_SCHEMAS: list[JSON] = [
 
 
 class McpServer:
-    def __init__(self, store: MemoryStore):
+    def __init__(self, store: MemoryStore, *, profile: str = "agent"):
+        if profile not in MCP_PROFILES:
+            raise ValueError(f"unknown MCP profile: {profile}")
         self.store = store
+        self.profile = profile
+        self.allowed_tools = (
+            AGENT_TOOL_NAMES if profile == "agent" else frozenset(tool["name"] for tool in TOOL_SCHEMAS)
+        )
         self.store.init()
 
     def handle(self, request: JSON) -> JSON | None:
@@ -246,13 +266,16 @@ class McpServer:
                     {
                         "protocolVersion": "2024-11-05",
                         "capabilities": {"tools": {}},
-                        "serverInfo": {"name": "zerker-memory", "version": "0.1.0"},
+                        "serverInfo": {"name": "zerker-memory", "version": __version__},
                     },
                 )
             if method == "notifications/initialized":
                 return None
             if method == "tools/list":
-                return self._result(request_id, {"tools": TOOL_SCHEMAS})
+                return self._result(
+                    request_id,
+                    {"tools": [tool for tool in TOOL_SCHEMAS if tool["name"] in self.allowed_tools]},
+                )
             if method == "tools/call":
                 params = request.get("params") or {}
                 name = params.get("name")
@@ -284,6 +307,12 @@ class McpServer:
         }
         if name not in handlers:
             raise ValueError(f"unknown tool: {name}")
+        if name not in self.allowed_tools:
+            raise PermissionError(
+                f"MCP tool {name} is unavailable in profile={self.profile}; "
+                "agents should use memory.propose or memory.inject, while trusted local review "
+                "requires --profile operator"
+            )
         return handlers[name](args)
 
     def _remember(self, args: JSON) -> JSON:
@@ -303,11 +332,15 @@ class McpServer:
         return record.to_dict()
 
     def _propose(self, args: JSON) -> JSON:
+        source_kind = "agent" if self.profile == "agent" else args.get("source", "agent")
+        if source_kind not in PROPOSAL_SOURCE_KINDS:
+            allowed = ", ".join(sorted(PROPOSAL_SOURCE_KINDS))
+            raise ValueError(f"memory.propose source must be one of: {allowed}")
         record = self.store.remember(
             required_str(args, "content"),
             memory_type=args.get("type", "semantic"),
             scope=args.get("scope", "global"),
-            source_kind=args.get("source", "agent"),
+            source_kind=source_kind,
             labels=args.get("labels", []),
             source_uri=args.get("source_uri"),
             actor_uri=args.get("actor_uri"),
@@ -461,12 +494,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run the Zerker Memory MCP server over stdio")
     parser.add_argument("--db", type=Path, default=default_db_path(), help="SQLite database path")
     parser.add_argument("--policy", type=Path, default=default_policy_path(), help="Policy config JSON path")
+    parser.add_argument(
+        "--profile",
+        choices=MCP_PROFILES,
+        default=os.environ.get("ZMEM_MCP_PROFILE", "agent"),
+        help="Capability profile (default: agent)",
+    )
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    run_stdio(McpServer(MemoryStore(args.db, policy_path=args.policy)))
+    run_stdio(McpServer(MemoryStore(args.db, policy_path=args.policy), profile=args.profile))
     return 0
 
 

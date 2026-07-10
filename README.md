@@ -19,7 +19,7 @@ Short version:
 - Typed memories: episodic, semantic, procedural, and policy.
 - Quarantine, review queue, promote, reject, revoke, lineage, and revocation propagation.
 - Symbolic injection policy using status, trust, authority, scope, labels, type, and task risk.
-- Merkle-backed event log, action receipts, `why`, receipt bundles, snapshots, verify, and restore.
+- Merkle-backed event log, action receipts, `why`, compact v2 receipt bundles with legacy v1 verification, snapshots, verify, and restore.
 - CLI entrypoints: `zmem`, `zerker-memory`, compatibility `zerker`, and `zerker-memory-mcp`.
 - Local review console with receipt actions, proof inspector, release-pack, handoff, restore, launch-asset, and return-packet actions.
 - Agent setup for Codex, Claude Code, Cursor, OpenClaw, Hermes, and generic MCP clients.
@@ -320,13 +320,13 @@ By default, Zerker stores data at:
 Run the MCP server over stdio:
 
 ```bash
-zmem mcp
+zmem mcp --profile agent
 ```
 
 Or with an explicit database path:
 
 ```bash
-zmem --db /path/to/memory.sqlite mcp
+zmem --db /path/to/memory.sqlite mcp --profile agent
 ```
 
 Example MCP client config:
@@ -336,7 +336,7 @@ Example MCP client config:
   "mcpServers": {
     "zerker-memory": {
       "command": "zmem",
-      "args": ["--db", ".zerker/memory.sqlite", "mcp"]
+      "args": ["--db", ".zerker/memory.sqlite", "mcp", "--profile", "agent"]
     }
   }
 }
@@ -403,13 +403,26 @@ zmem agent guide generic
 
 For Cursor, OpenClaw, Hermes, and generic MCP clients, the guide now mirrors the shortest default path: `zmem agent install <preset>` writes the project-local export under `.zerker/agents/`, and `zmem doctor --agent <preset>` verifies that default export before import. Use `--config-path` only when you intentionally want a non-default file location.
 
-MCP tools:
+The default `agent` profile is deliberately narrow. It lets an agent request governed memory, propose new memory, explain an action, and verify its receipt:
+
+```text
+memory.propose
+memory.inject
+memory.why
+memory.verify
+```
+
+Trusted review and maintenance stay outside the agent connection. Use the CLI/UI, or start an explicit local operator server that you do not attach to an untrusted agent:
+
+```bash
+zmem mcp --profile operator
+```
+
+The operator profile adds:
 
 ```text
 memory.remember
-memory.propose
 memory.search
-memory.inject
 memory.inspect
 memory.queue
 memory.promote
@@ -417,8 +430,6 @@ memory.reject
 memory.lineage
 memory.revoke
 memory.forget
-memory.why
-memory.verify
 memory.external_search
 memory.external_import
 memory.snapshot

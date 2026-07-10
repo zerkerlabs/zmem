@@ -82,7 +82,7 @@ Product signal note: the current wedge is validated by builder demand for local,
 - Lineage and revocation propagation.
 - Merkle event log.
 - Action receipts and `why`.
-- Verifiable receipt bundles.
+- Compact v2 receipt bundles with supporting-event Merkle witnesses and backward-compatible v1 verification.
 - Bundle verification now enforces proof metadata consistency before Treeship export.
 - Stable JSON export.
 - Treeship statement export backed by receipt-bundle proof.

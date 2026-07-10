@@ -598,6 +598,8 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
     inject.add_argument("--agent", required=True)
     inject.add_argument("--risk", choices=["low", "medium", "high"], default="medium")
     inject.add_argument("--scope")
+    inject.add_argument("--summary", action="store_true", help="Print a compact summary before the JSON receipt")
+    inject.add_argument("--summary-only", action="store_true", help="Print only the compact memory decision summary")
 
     run = sub.add_parser("run", help="Run a command with governed memory context")
     run.add_argument("--agent", required=True)
@@ -609,6 +611,8 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
 
     why = sub.add_parser("why", help="Explain which memories were used for an action")
     why.add_argument("action_id")
+    why.add_argument("--summary", action="store_true", help="Print a compact explanation before the JSON receipt")
+    why.add_argument("--summary-only", action="store_true", help="Print only the compact action explanation")
 
     inspect = sub.add_parser("inspect", help="Inspect one memory")
     inspect.add_argument("memory_id")
@@ -909,6 +913,12 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
     bt_export.add_argument("--out-dir", type=Path, help="Directory for default BT export artifacts")
 
     mcp = sub.add_parser("mcp", help="Run the MCP server over stdio")
+    mcp.add_argument(
+        "--profile",
+        choices=("agent", "operator"),
+        default=os.environ.get("ZMEM_MCP_PROFILE", "agent"),
+        help="Capability profile (default: agent)",
+    )
     mcp.set_defaults(command="mcp")
 
     return parser
@@ -1536,7 +1546,11 @@ def main(argv: list[str] | None = None) -> int:
                     print_json(result)
                 return 0 if result["ok"] else 1
         if args.command == "inject":
-            print_json(store.inject(args.task, agent_id=args.agent, risk=args.risk, scope=args.scope))
+            receipt = store.inject(args.task, agent_id=args.agent, risk=args.risk, scope=args.scope)
+            if args.summary or args.summary_only:
+                print(render_inject_summary(receipt), end="")
+            if not args.summary_only:
+                print_json(receipt)
             return 0
         if args.command == "run":
             from .runner import run_with_memory
@@ -1554,7 +1568,11 @@ def main(argv: list[str] | None = None) -> int:
             print_json(run_receipt)
             return int(run_receipt["exit_code"])
         if args.command == "why":
-            print_json(store.why(args.action_id))
+            receipt = store.why(args.action_id)
+            if args.summary or args.summary_only:
+                print(render_why_summary(receipt, verified=store.verify(args.action_id)), end="")
+            if not args.summary_only:
+                print_json(receipt)
             return 0
         if args.command == "inspect":
             print_json(store.get(args.memory_id).to_dict())
@@ -1919,7 +1937,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "mcp":
             from .mcp import McpServer, run_stdio
 
-            run_stdio(McpServer(store))
+            run_stdio(McpServer(store, profile=args.profile))
             return 0
     except (KeyError, ValueError) as exc:
         print_json({"ok": False, "error": str(exc)})
@@ -1969,6 +1987,71 @@ def provider_live_overrides(args) -> dict[str, dict[str, str | None]]:
         }
     )
     return overrides
+
+
+def _summary_text(value: object, *, limit: int = 120) -> str:
+    text = " ".join(str(value or "").split())
+    if len(text) <= limit:
+        return text
+    return text[: limit - 3].rstrip() + "..."
+
+
+def _append_summary_items(lines: list[str], heading: str, items: list[dict], *, limit: int = 5) -> None:
+    if not items:
+        return
+    lines.append(f"{heading}:")
+    for item in items[:limit]:
+        memory_id = item.get("id") or item.get("memory_id") or "unknown"
+        detail = item.get("content") or item.get("reason") or ""
+        metadata = "/".join(str(item.get(key)) for key in ("type", "status") if item.get(key))
+        marker = f" [{metadata}]" if metadata else ""
+        suffix = f" {_summary_text(detail)}" if detail else ""
+        lines.append(f"  - {memory_id}{marker}{suffix}")
+    if len(items) > limit:
+        lines.append(f"  - ... {len(items) - limit} more")
+
+
+def render_inject_summary(receipt: dict[str, Any]) -> str:
+    memories = [item for item in receipt.get("memories", []) if isinstance(item, dict)]
+    withheld = [item for item in receipt.get("withheld", []) if isinstance(item, dict)]
+    lines = [
+        "ZMem memory decision",
+        f"Action: {receipt.get('action_id', 'unknown')}",
+        f"Agent: {receipt.get('agent_id', 'unknown')} | Risk: {receipt.get('risk', 'unknown')}",
+        f"Task: {_summary_text(receipt.get('task'))}",
+        (
+            f"Retrieved: {len(receipt.get('retrieved_memory_ids', []))} | "
+            f"Injected: {len(receipt.get('injected_memory_ids', []))} | "
+            f"Withheld: {len(withheld)}"
+        ),
+        f"Proof root: {receipt.get('merkle_root', 'unknown')}",
+    ]
+    _append_summary_items(lines, "Injected memory", memories)
+    _append_summary_items(lines, "Withheld memory", withheld)
+    lines.append(f"Explain: zmem why {receipt.get('action_id', '<action-id>')} --summary-only")
+    return "\n".join(lines) + "\n"
+
+
+def render_why_summary(receipt: dict[str, Any], *, verified: bool | None = None) -> str:
+    injected = [item for item in receipt.get("injected", []) if isinstance(item, dict)]
+    withheld = [item for item in receipt.get("withheld", []) if isinstance(item, dict)]
+    verification = "not checked" if verified is None else ("ok" if verified else "failed")
+    lines = [
+        "ZMem action explanation",
+        f"Action: {receipt.get('action_id', 'unknown')}",
+        f"Agent: {receipt.get('agent_id', 'unknown')} | Risk: {receipt.get('risk', 'unknown')}",
+        f"Task: {_summary_text(receipt.get('task'))}",
+        (
+            f"Retrieved: {len(receipt.get('retrieved_memory_ids', []))} | "
+            f"Injected: {len(receipt.get('injected_memory_ids', []))} | "
+            f"Withheld: {len(withheld)}"
+        ),
+        f"Verification: {verification}",
+        f"Proof root: {receipt.get('merkle_root', 'unknown')}",
+    ]
+    _append_summary_items(lines, "Memory that shaped the action", injected)
+    _append_summary_items(lines, "Memory kept out", withheld)
+    return "\n".join(lines) + "\n"
 
 
 def build_retrieval_provider_readiness_report(*, config_path: Path | None = None, env: dict[str, str] | None = None) -> dict:
@@ -2680,7 +2763,7 @@ def build_mcp_config(*, name: str, command: str, db_path: Path, policy_path: Pat
     args = ["--db", str(db_path)]
     if policy_path is not None:
         args.extend(["--policy", str(policy_path)])
-    args.append("mcp")
+    args.extend(["mcp", "--profile", "agent"])
     return {"mcpServers": {name: {"command": command, "args": args}}}
 
 
@@ -4223,7 +4306,7 @@ Do not promote your own memories. Promotion requires a human or configured autho
 
 When asked why memory influenced an action, call `memory.why` with the action id.
 
-For risky or disputed memory, ask the user to review `memory.queue`, then use `memory.promote`, `memory.reject`, or `memory.revoke`.
+For risky or disputed memory, ask the user to review it. Trusted operator actions are intentionally unavailable in the default agent MCP profile; the user can run `zmem queue`, `zmem promote`, `zmem reject`, or `zmem revoke` locally.
 """
 
 
@@ -5940,9 +6023,9 @@ def build_bundle_verification_result(store: MemoryStore, *, bundle_path: Path) -
     bundle_verify = store.verify_bundle(bundle_payload)
 
     supporting_memory_ids = bundle_payload.get("supporting_memory_ids")
-    supporting_events = bundle_payload.get("supporting_events")
     supporting_memory_count = len(supporting_memory_ids) if isinstance(supporting_memory_ids, list) else 0
-    supporting_event_count = len(supporting_events) if isinstance(supporting_events, list) else 0
+    supporting_event_count = int(bundle_verify.get("event_count") or 0)
+    event_witness_count = int(bundle_verify.get("event_witness_count") or 0)
     supporting_provenance_ok = bool(bundle_verify.get("supporting_provenance_verified"))
     supporting_provenance = {
         "ok": supporting_provenance_ok,
@@ -5958,11 +6041,13 @@ def build_bundle_verification_result(store: MemoryStore, *, bundle_path: Path) -
         "ok": bundle_verify["ok"],
         "schema": "zerker.bundle_verification_result.v1",
         "path": str(resolved_bundle_path),
+        "bundle_schema": bundle_payload.get("bundle_schema"),
         "action_id": bundle_payload.get("action_id"),
         "bundle_hash": bundle_payload.get("bundle_hash"),
         "bundle_verify": bundle_verify,
         "supporting_memory_count": supporting_memory_count,
         "supporting_event_count": supporting_event_count,
+        "event_witness_count": event_witness_count,
         "supporting_provenance": supporting_provenance,
         "trusted_provenance_verified": bool(bundle_verify.get("trusted_provenance_verified")),
         "semantic_truth_guaranteed": False,
@@ -5980,15 +6065,24 @@ def render_bundle_verification_summary(result: dict[str, Any]) -> str:
         for item in supporting_provenance.get("attestation_artifacts", [])
         if str(item.get("artifact_id") or "")
     ]
+    event_summary = (
+        [
+            f"Event log entries: {int(result.get('supporting_event_count') or 0)}",
+            f"Event witnesses: {int(result.get('event_witness_count') or 0)}",
+        ]
+        if result.get("bundle_schema") == "zerker.receipt_bundle.v2"
+        else [f"Supporting events: {int(result.get('supporting_event_count') or 0)}"]
+    )
     lines = [
         "Receipt bundle verify",
         "",
         f"Ready: {'yes' if result.get('ok') else 'no'}",
         f"Bundle: {result.get('path')}",
+        f"Schema: {result.get('bundle_schema')}",
         f"Action id: {result.get('action_id')}",
         f"Bundle hash: {result.get('bundle_hash')}",
         f"Supporting memories: {int(result.get('supporting_memory_count') or 0)}",
-        f"Supporting events: {int(result.get('supporting_event_count') or 0)}",
+        *event_summary,
         f"Supporting write receipts: {int(supporting_provenance.get('receipt_count') or 0)}",
         f"Bundle verify: {'ok' if bundle_verify.get('ok') else 'failed'}",
         (

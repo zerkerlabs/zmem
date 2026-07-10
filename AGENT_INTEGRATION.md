@@ -3,20 +3,22 @@
 ZMem exposes a stdio MCP server:
 
 ```bash
-python3 -m zerker_memory mcp
+python3 -m zerker_memory mcp --profile agent
 ```
 
 Use a project-local database when you want memory scoped to a repo:
 
 ```bash
-zmem --db .zerker/memory.sqlite mcp
+zmem --db .zerker/memory.sqlite mcp --profile agent
 ```
 
 Use a project policy file when you need stricter thresholds or denied labels:
 
 ```bash
-zmem --db .zerker/memory.sqlite --policy .zerker/policy.json mcp
+zmem --db .zerker/memory.sqlite --policy .zerker/policy.json mcp --profile agent
 ```
+
+`agent` is the default and exposes only `memory.propose`, `memory.inject`, `memory.why`, and `memory.verify`. It cannot write trusted memory, approve its own proposals, inspect quarantine, or restore state.
 
 ## Agent Loop
 
@@ -83,25 +85,25 @@ Agent-generated memories are reviewable by default. Do not promote your own prop
 
 ### Human Or System Review
 
-List the review queue:
+Review stays outside the default agent connection. A trusted user can use the CLI or local UI:
 
-```text
-memory.queue
-```
-
-Call:
-
-```text
-memory.promote
+```bash
+zmem queue
+zmem promote <memory-id>
+zmem reject <memory-id> --reason "unsafe or stale"
+zmem revoke <memory-id> --reason "no longer valid"
+zmem ui
 ```
 
 Use promotion for memories that should become active. Policy memory should only become authoritative through explicit promotion.
 
-Reject unsafe, stale, or low-value memories with:
+For a trusted local review client, the full MCP surface is available explicitly:
 
-```text
-memory.reject
+```bash
+zmem mcp --profile operator
 ```
+
+Do not attach the operator profile to an untrusted or autonomous agent.
 
 ### Audit
 
@@ -160,13 +162,20 @@ Do not promote your own memories. Promotion requires a human or configured autho
 When asked why an action used memory, call memory.why with the action id.
 ```
 
-## Tools
+## Agent Tools
+
+```text
+memory.propose   create a reviewable agent memory proposal
+memory.inject    retrieve authorized memory plus an action receipt
+memory.why       explain an action receipt
+memory.verify    verify an action receipt
+```
+
+## Operator Tools
 
 ```text
 memory.remember  trusted direct write, usually human/system
-memory.propose   agent/tool/document memory proposal
 memory.search    search local memory
-memory.inject    authorized retrieval plus action receipt
 memory.inspect   inspect one memory
 memory.queue     list proposed/quarantined memories waiting for review
 memory.promote   activate/promote a memory
@@ -174,8 +183,6 @@ memory.reject    reject a proposed/quarantined memory
 memory.lineage   show source and derived-memory relationships
 memory.revoke    revoke a memory and derived descendants
 memory.forget    mark a memory forgotten
-memory.why       explain an action receipt
-memory.verify    verify an action receipt
 memory.external_search search a configured external provider
 memory.external_import import external candidates into Zerker quarantine
 memory.snapshot  export full memory state, receipts, and Merkle chain

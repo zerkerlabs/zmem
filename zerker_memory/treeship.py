@@ -9,14 +9,11 @@ from typing import Any, Mapping
 
 from zerker_memory import __version__
 from zerker_memory.store import (
-    BUNDLE_SCHEMA,
-    HASH_ALG,
     WRITE_RECEIPT_SCHEMA,
     LIFECYCLE_RECEIPT_SCHEMA,
-    MERKLE_ALG,
-    merkle_root,
     sha256_text,
     stable_json,
+    validate_receipt_bundle_core,
 )
 
 
@@ -84,6 +81,7 @@ def to_treeship_statement(receipt: Mapping[str, Any]) -> dict[str, Any]:
             {
                 "bundle_hash": _required_str(bundle, "bundle_hash"),
                 "bundle_event_count": int(proof.get("event_count", 0)),
+                "bundle_event_witness_count": int(proof.get("event_witness_count", 0)),
                 "bundle_verified": bool(proof.get("verified")),
                 "supporting_write_receipt_count": supporting_provenance["supporting_write_receipt_count"],
                 "verified_supporting_write_receipt_count": supporting_provenance[
@@ -417,7 +415,9 @@ def _redact_inline_payload(argv: list[str]) -> list[str]:
 
 
 def _is_bundle(value: Mapping[str, Any]) -> bool:
-    return "bundle_schema" in value or "receipt" in value and "supporting_events" in value
+    return "bundle_schema" in value or "receipt" in value and (
+        "supporting_events" in value or "event_witnesses" in value
+    )
 
 
 def _bundle_receipt(bundle: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -429,39 +429,7 @@ def _bundle_receipt(bundle: Mapping[str, Any]) -> Mapping[str, Any]:
 
 
 def _validate_bundle(bundle: Mapping[str, Any]) -> None:
-    if bundle.get("bundle_schema") != BUNDLE_SCHEMA:
-        raise ValueError("unsupported bundle schema")
-    if bundle.get("hash_alg") != HASH_ALG:
-        raise ValueError("unsupported bundle hash algorithm")
-    if bundle.get("merkle_alg") != MERKLE_ALG:
-        raise ValueError("unsupported bundle merkle algorithm")
-    bundle_hash = _required_str(bundle, "bundle_hash")
-    without_hash = dict(bundle)
-    without_hash.pop("bundle_hash", None)
-    if sha256_text(stable_json(without_hash)) != bundle_hash:
-        raise ValueError("bundle_hash mismatch")
-    receipt = bundle.get("receipt")
-    if not isinstance(receipt, Mapping):
-        raise ValueError("bundle missing receipt")
-    if bundle.get("action_id") != receipt.get("action_id"):
-        raise ValueError("bundle action_id mismatch")
-    events = bundle.get("supporting_events")
-    if not isinstance(events, list):
-        raise ValueError("bundle supporting_events must be a list")
-    computed_merkle_root = merkle_root([str(event.get("event_hash", "")) for event in events if isinstance(event, Mapping)])
-    if computed_merkle_root != receipt.get("merkle_root"):
-        raise ValueError("bundle merkle_root mismatch")
-    proof = bundle.get("proof")
-    if not isinstance(proof, Mapping):
-        raise ValueError("bundle missing proof")
-    if proof.get("computed_merkle_root") != computed_merkle_root:
-        raise ValueError("bundle proof computed_merkle_root mismatch")
-    if proof.get("receipt_merkle_root") != receipt.get("merkle_root"):
-        raise ValueError("bundle proof receipt_merkle_root mismatch")
-    if proof.get("event_count") != len(events):
-        raise ValueError("bundle proof event_count mismatch")
-    if proof.get("verified") is not True:
-        raise ValueError("bundle proof is not verified")
+    validate_receipt_bundle_core(bundle)
 
 def _bundle_supporting_provenance_summary(bundle: Mapping[str, Any]) -> dict[str, Any]:
     supporting_memory_ids = bundle.get("supporting_memory_ids")

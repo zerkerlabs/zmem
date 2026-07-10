@@ -1,4 +1,5 @@
 import json
+import stat
 import tempfile
 import unittest
 from pathlib import Path
@@ -41,6 +42,35 @@ class MemoryStoreTest(unittest.TestCase):
             "UPDATE events SET created_at = ? WHERE memory_id = ? AND event_type = ?",
             (created_at, memory_id, event_type),
         )
+
+    def test_store_uses_private_concurrent_sqlite_defaults(self):
+        mode = stat.S_IMODE(self.store.db_path.stat().st_mode)
+        self.assertEqual(mode, 0o600)
+        self.assertEqual(self.store.conn.execute("PRAGMA journal_mode").fetchone()[0], "wal")
+        self.assertGreaterEqual(self.store.conn.execute("PRAGMA busy_timeout").fetchone()[0], 5000)
+        self.assertEqual(self.store.conn.execute("PRAGMA synchronous").fetchone()[0], 1)
+
+    def test_two_store_connections_can_write_to_the_same_database(self):
+        second = MemoryStore(self.store.db_path)
+        second.init()
+        try:
+            first_memory = self.store.remember(
+                "First agent memory",
+                memory_type="semantic",
+                scope="project",
+                source_kind="human",
+            )
+            second_memory = second.remember(
+                "Second agent memory",
+                memory_type="semantic",
+                scope="project",
+                source_kind="human",
+            )
+        finally:
+            second.conn.close()
+
+        self.assertEqual(self.store.get(first_memory.id).content, "First agent memory")
+        self.assertEqual(self.store.get(second_memory.id).content, "Second agent memory")
 
     def test_policy_memory_can_be_promoted_and_injected(self):
         memory = self.store.remember(

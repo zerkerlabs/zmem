@@ -7,7 +7,14 @@ from unittest.mock import patch
 from unittest import mock
 
 from zerker_memory.exporter import export_bundle, export_snapshot
-from zerker_memory.store import MemoryStore, merkle_root, sha256_text, stable_json
+from zerker_memory.store import (
+    BUNDLE_SCHEMA_V1,
+    BUNDLE_SCHEMA_V2,
+    MemoryStore,
+    merkle_root,
+    sha256_text,
+    stable_json,
+)
 
 
 class SnapshotTest(unittest.TestCase):
@@ -847,7 +854,7 @@ class SnapshotTest(unittest.TestCase):
 
         bundle = self.store.receipt_bundle(receipt["action_id"])
 
-        self.assertEqual(bundle["bundle_schema"], "zerker.receipt_bundle.v1")
+        self.assertEqual(bundle["bundle_schema"], BUNDLE_SCHEMA_V2)
         self.assertEqual(bundle["action_id"], receipt["action_id"])
         self.assertEqual(bundle["proof"]["receipt_merkle_root"], receipt["merkle_root"])
         self.assertTrue(bundle["proof"]["verified"])
@@ -855,6 +862,10 @@ class SnapshotTest(unittest.TestCase):
         self.assertEqual(bundle["supporting_memories"][0]["id"], memory.id)
         self.assertEqual(bundle["supporting_memory_write_receipts"][memory.id]["memory_id"], memory.id)
         self.assertGreaterEqual(bundle["proof"]["event_count"], 1)
+        self.assertNotIn("supporting_events", bundle)
+        self.assertEqual(bundle["event_log"]["merkle_root"], receipt["merkle_root"])
+        self.assertEqual(bundle["proof"]["event_witness_count"], len(bundle["event_witnesses"]))
+        self.assertTrue(bundle["proof"]["event_witnesses_verified"])
 
     def test_export_bundle_writes_hashed_artifact(self):
         self.store.remember(
@@ -872,7 +883,145 @@ class SnapshotTest(unittest.TestCase):
 
             self.assertTrue(path.exists())
             self.assertEqual(result["format"], "bundle")
-            self.assertEqual(json.loads(path.read_text())["bundle_schema"], "zerker.receipt_bundle.v1")
+            self.assertEqual(json.loads(path.read_text())["bundle_schema"], BUNDLE_SCHEMA_V2)
+
+    def test_receipt_bundle_can_still_generate_and_verify_legacy_v1(self):
+        self.store.remember(
+            "Production deploys require approval",
+            memory_type="policy",
+            scope="project",
+            source_kind="human",
+        )
+        receipt = self.store.inject("deploy service to production", agent_id="codex", risk="high", scope="project")
+
+        bundle = self.store.receipt_bundle(receipt["action_id"], compact=False)
+        result = self.store.verify_bundle(bundle)
+
+        self.assertEqual(bundle["bundle_schema"], BUNDLE_SCHEMA_V1)
+        self.assertIn("supporting_events", bundle)
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["event_witness_count"], 0)
+
+    def test_compact_receipt_bundle_rejects_tampered_event_witness(self):
+        self.store.remember(
+            "Archive note unrelated to deploys",
+            memory_type="episodic",
+            scope="project",
+            source_kind="human",
+        )
+        self.store.remember(
+            "Production deploys require approval",
+            memory_type="policy",
+            scope="project",
+            source_kind="human",
+        )
+        receipt = self.store.inject("deploy approval", agent_id="codex", risk="high", scope="project")
+        bundle = self.store.receipt_bundle(receipt["action_id"])
+        bundle["event_witnesses"][0]["event"]["actor_id"] = "tampered-actor"
+        bundle["bundle_hash"] = sha256_text(stable_json({k: v for k, v in bundle.items() if k != "bundle_hash"}))
+
+        result = self.store.verify_bundle(bundle)
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"], "event witness event_hash mismatch")
+
+    def test_compact_receipt_bundle_requires_supporting_write_event_witness(self):
+        memory = self.store.remember(
+            "Production deploys require approval",
+            memory_type="policy",
+            scope="project",
+            source_kind="human",
+        )
+        self.store.remember(
+            "Archive note unrelated to deploys",
+            memory_type="episodic",
+            scope="project",
+            source_kind="human",
+        )
+        receipt = self.store.inject("deploy approval", agent_id="codex", risk="high", scope="project")
+        bundle = self.store.receipt_bundle(receipt["action_id"])
+        supporting_event_hash = bundle["supporting_memory_write_receipts"][memory.id]["event_hash"]
+        bundle["event_witnesses"] = [
+            witness
+            for witness in bundle["event_witnesses"]
+            if witness["event"]["event_hash"] != supporting_event_hash
+        ]
+        bundle["proof"]["event_witness_count"] = len(bundle["event_witnesses"])
+        bundle["bundle_hash"] = sha256_text(stable_json({k: v for k, v in bundle.items() if k != "bundle_hash"}))
+
+        result = self.store.verify_bundle(bundle)
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"], "bundle supporting write event witness is missing")
+
+    def test_compact_receipt_bundle_rejects_tampered_merkle_witness(self):
+        self.store.remember(
+            "Production deploys require approval",
+            memory_type="policy",
+            scope="project",
+            source_kind="human",
+        )
+        self.store.remember(
+            "Archive note unrelated to deploys",
+            memory_type="episodic",
+            scope="project",
+            source_kind="human",
+        )
+        receipt = self.store.inject("deploy approval", agent_id="codex", risk="high", scope="project")
+        bundle = self.store.receipt_bundle(receipt["action_id"])
+        bundle["event_witnesses"][0]["proof"][0]["hash"] = "0" * 64
+        bundle["bundle_hash"] = sha256_text(stable_json({k: v for k, v in bundle.items() if k != "bundle_hash"}))
+
+        result = self.store.verify_bundle(bundle)
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"], "event witness Merkle proof is invalid")
+
+    def test_compact_receipt_bundle_accepts_valid_event_sequence_gaps(self):
+        self.store.remember(
+            "Production deploys require approval",
+            memory_type="policy",
+            scope="project",
+            source_kind="human",
+        )
+        self.store.remember(
+            "Archive note unrelated to deploys",
+            memory_type="episodic",
+            scope="project",
+            source_kind="human",
+        )
+        receipt = self.store.inject("deploy approval", agent_id="codex", risk="high", scope="project")
+        self.store.conn.execute("UPDATE events SET seq = 30 WHERE seq = 3")
+        self.store.conn.execute("UPDATE events SET seq = 20 WHERE seq = 2")
+        self.store.conn.commit()
+
+        bundle = self.store.receipt_bundle(receipt["action_id"])
+        result = self.store.verify_bundle(bundle)
+
+        self.assertEqual(bundle["event_log"]["event_count"], 2)
+        self.assertEqual(bundle["event_log"]["first_seq"], 1)
+        self.assertEqual(bundle["event_log"]["last_seq"], 20)
+        self.assertTrue(result["ok"])
+
+    def test_compact_receipt_bundle_is_materially_smaller_than_legacy_v1(self):
+        self.store.remember(
+            "Production deploys require quorum approval",
+            memory_type="policy",
+            scope="project",
+            source_kind="human",
+        )
+        for _ in range(30):
+            self.store.inject("production quorum approval", agent_id="codex", risk="high", scope="project")
+        receipt = self.store.inject("production quorum approval", agent_id="codex", risk="high", scope="project")
+
+        compact_bundle = self.store.receipt_bundle(receipt["action_id"])
+        legacy_bundle = self.store.receipt_bundle(receipt["action_id"], compact=False)
+        compact_size = len(stable_json(compact_bundle).encode("utf-8"))
+        legacy_size = len(stable_json(legacy_bundle).encode("utf-8"))
+
+        self.assertTrue(self.store.verify_bundle(compact_bundle)["ok"])
+        self.assertTrue(self.store.verify_bundle(legacy_bundle)["ok"])
+        self.assertLess(compact_size, legacy_size * 0.25)
 
     def test_verify_bundle_accepts_valid_bundle(self):
         self.store.remember(
