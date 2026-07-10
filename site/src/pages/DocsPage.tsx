@@ -10,15 +10,15 @@ npm run dev
 # open http://localhost:3000/docs`;
 
 const quickStart = `# install and inspect
-curl -fsSL https://zmem.sh/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/zerkerlabs/zmem/main/install.sh | bash
 zmem status --summary-only
 
 # connect an agent
 zmem agent pack --summary-only
 zmem ui
 
-# prove what shaped an action
-zmem why <action-id>`;
+# explain what shaped an action
+zmem why <action-id> --summary-only`;
 
 const primaryGuides = [
   {
@@ -32,14 +32,14 @@ const primaryGuides = [
     label: 'Agent setup',
     title: 'Connect Codex, Claude Code, Cursor, Hermes, and MCP tools',
     href: `${docsBase}/agents`,
-    detail: 'Give agents a simple memory API without making every chat invent its own continuity layer.',
+    detail: 'Give agents a simple local memory API without making every chat invent its own continuity layer.',
     command: 'zmem agent pack --summary-only',
   },
   {
     label: 'Daily use',
     title: 'Review and operate memory',
     href: `${docsBase}/memory-lifecycle`,
-    detail: 'Promote, reject, revoke, snapshot, and inspect the memories agents are allowed to reuse.',
+    detail: 'Promote, reject, revoke, snapshot, and inspect the memories agents can reuse safely.',
     command: 'zmem ui',
   },
   {
@@ -47,7 +47,7 @@ const primaryGuides = [
     title: 'Verify receipts',
     href: `${docsBase}/receipts`,
     detail: 'See which memories were returned, which were withheld, and the receipt that anchors the set.',
-    command: 'zmem why <action-id>',
+    command: 'zmem why <action-id> --summary-only',
   },
 ];
 
@@ -124,11 +124,11 @@ export default function DocsPage() {
               className="mt-5 max-w-[820px] font-heading font-bold leading-[0.96] text-zink"
               style={{ fontSize: 'clamp(42px, 7vw, 82px)' }}
             >
-              Get agents connected to governed memory.
+              Set up memory an agent can actually use.
             </h1>
             <p className="mt-6 max-w-[650px] text-[17px] leading-relaxed text-zmuted">
-              Install ZMem, connect your agent runtime, review what memory is allowed back
-              into context, and verify the receipt when it matters.
+              Install ZMem, connect your agent runtime, give it a narrow memory interface,
+              and inspect what memory shaped its work.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <a
@@ -215,7 +215,7 @@ export default function DocsPage() {
             </h2>
             <p className="mt-4 text-sm leading-relaxed text-zmuted">
               The full docs are there when you need depth. This page should get an agent
-              connected, visible, and provable without three clicks of searching.
+              connected, visible, and leaving receipts without three clicks of searching.
             </p>
           </Card>
           <CodeBlock code={quickStart} title="zmem quick start" highlightedLines={[0, 4, 8]} />

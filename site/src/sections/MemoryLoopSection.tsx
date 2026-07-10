@@ -6,29 +6,29 @@ const cards = [
   {
     icon: Search,
     iconColor: '#92D66F',
-    title: 'Request',
-    description: 'Before a task, an agent asks for memory scoped by agent, risk, and project boundary.',
+    title: 'Ask',
+    description: 'Before a task, an agent asks for memory scoped to the project, agent, and risk level.',
     code: 'zmem inject --agent codex --risk medium "task"',
   },
   {
     icon: BookOpen,
     iconColor: '#F0B35A',
     title: 'Propose',
-    description: 'New agent-discovered facts can enter review without becoming trusted memory automatically.',
+    description: 'New agent-discovered facts can enter review without becoming active memory automatically.',
     code: 'zmem propose "new fact" --source agent',
   },
   {
     icon: Shield,
     iconColor: '#92D66F',
-    title: 'Promote',
-    description: 'Humans or policies can promote useful memory, reject noise, quarantine risk, or revoke stale state.',
+    title: 'Review',
+    description: 'Humans or policies promote useful memory, reject noise, quarantine risk, or revoke stale state.',
     code: 'zmem queue --scope project',
   },
   {
     icon: FileCheck,
     iconColor: '#E06F62',
-    title: 'Inject',
-    description: 'Only admissible memory reaches the agent. The receipt records what was injected and withheld.',
+    title: 'Use',
+    description: 'Only scoped, active memory reaches the agent. The receipt records what was used and withheld.',
     code: 'zmem why <action-id>',
   },
 ];
@@ -46,13 +46,13 @@ export default function MemoryLoopSection() {
           className="section-heading max-w-[800px] font-heading font-bold text-zink"
           style={{ fontSize: 'clamp(36px, 5vw, 64px)', letterSpacing: '-0.03em', lineHeight: 1.0 }}
         >
-          Retrieval is not permission.
+          Not every memory belongs in context.
         </h2>
 
         <p className="section-desc mt-6 max-w-[640px] text-[17px] leading-relaxed text-zmuted">
-          Agents can already retrieve context. ZMem makes memory admissible:
-          source, scope, status, authority, review, and a receipt for why it was
-          allowed to shape action.
+          Agents may find old notes, proposed facts, and conflicting claims. ZMem keeps memory
+          local, reviews changes, and returns only scoped, active memory for the task, with a
+          receipt for what stayed out.
         </p>
 
         <div

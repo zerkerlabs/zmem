@@ -71,32 +71,31 @@ export default function HeroSection() {
             className="mb-6 text-eyebrow text-zlime"
             style={{ animation: 'fadeSlideUp 0.6s 0.3s ease-out forwards', opacity: 0 }}
           >
-            Governed memory for agents that act
+            Local-first memory for AI agents
           </p>
 
-          <KineticHeadline text="Give agents memory you can trust." delay={0.5} />
+          <KineticHeadline text="Agents remember. You stay in control." delay={0.5} />
 
           <p
             className="mx-auto mt-6 max-w-[640px] text-[17px] leading-relaxed text-[#D8D8D8] max-sm:hidden"
             style={{ animation: 'fadeSlideUp 0.6s 0.8s ease-out forwards', opacity: 0, textShadow: '0 4px 18px rgba(0,0,0,0.9)' }}
           >
-            ZMem is a local-first memory system for AI agents. It stores project memory,
-            reviews agent-proposed facts, gates what enters context, explains why memory
-            shaped an action, and carries verified state across agents and machines.
+            ZMem carries project memory across runs, keeps unreviewed or stale facts out of
+            context, and records which memories shaped each action.
           </p>
 
           <p
             className="mx-auto mt-6 max-w-[320px] text-[17px] leading-relaxed text-[#D8D8D8] sm:hidden"
             style={{ animation: 'fadeSlideUp 0.6s 0.8s ease-out forwards', opacity: 0, textShadow: '0 4px 18px rgba(0,0,0,0.9)' }}
           >
-            Local memory for agents. Use only what is admissible.
+            Persistent agent memory with review, receipts, and local control.
           </p>
 
           <p
             className="mx-auto mt-4 hidden max-w-[600px] text-[14px] leading-relaxed text-[#AFAFAF] sm:block"
             style={{ animation: 'fadeSlideUp 0.6s 0.9s ease-out forwards', opacity: 0, textShadow: '0 4px 18px rgba(0,0,0,0.9)' }}
           >
-            Store locally. Review before trust. Inject only admissible memory. Revoke what goes bad.
+            Store locally. Review changes. Revoke stale facts. Verify what shaped the work.
           </p>
 
           <div
@@ -113,7 +112,7 @@ export default function HeroSection() {
               onClick={() => scrollTo('#memory-loop')}
               className="rounded-full border border-zline bg-transparent px-8 py-3.5 text-cta text-zink transition-all duration-150 hover:border-zlime hover:text-zlime"
             >
-              See admissible memory
+              See the memory workflow
             </button>
             <a
               href="https://github.com/zerkerlabs/zmem"

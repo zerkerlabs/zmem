@@ -33,7 +33,7 @@ const proofSteps = [
   },
   {
     title: 'The proof can be shared',
-    detail: 'Local bundles stay private by default. Treeship can attest write-receipt digests or publish a public proof URL when sharing is useful.',
+    detail: 'Compact v2 bundles stay local by default and keep older v1 artifacts verifiable. Treeship can attest a digest or publish a proof URL when sharing is useful.',
     command: 'zmem treeship publish <action-id>',
   },
 ];
@@ -54,13 +54,13 @@ Receipt mode: enabled
 Merkle root: sha256:7bb4...91e2
 Agent context: scoped
 Write attestation: optional digest-only Treeship artifact
-Proof export: local bundle
+Proof export: compact v2 local bundle
 Public proof: optional Treeship URL`;
 
-const proofCode = `$ zmem inject --agent codex --risk medium "continue release"
+const proofCode = `$ zmem inject --agent codex --risk medium --summary-only "continue release"
 # returns action id
 
-$ zmem why <action-id>
+$ zmem why <action-id> --summary-only
 # shows injected memory, withheld memory, and source details
 
 $ zmem verify <action-id>
@@ -72,21 +72,20 @@ $ ZMEM_TREESHIP_AUTO_SIGN=1 zmem remember --type semantic "fact"
 $ zmem treeship publish <action-id>
 # optional public proof URL`;
 
-const locomoNextRuns = `zmem bench run locomo \\
-  --dataset data/locomo/locomo_official_zmem.json \\
-  --split default \\
-  --out .zerker/bench/locomo-official-v1 \\
-  --seed 42 \\
-  --run-id fts-multihop \\
-  --retrieval-mode fts-multihop
+const locomoNextRuns = `RUN_ID="locomo-$(date -u +%Y%m%dT%H%M%SZ)"
 
-zmem bench run locomo \\
+zmem bench matrix locomo \\
   --dataset data/locomo/locomo_official_zmem.json \\
   --split default \\
-  --out .zerker/bench/locomo-official-v1 \\
+  --out .zerker/bench/runs \\
   --seed 42 \\
-  --run-id pseudo-embedding-rerank \\
-  --retrieval-mode pseudo-embedding-rerank`;
+  --run-id "$RUN_ID" \\
+  --compact-artifacts \\
+  --summary-only
+
+zmem bench verify \\
+  ".zerker/bench/runs/$RUN_ID/benchmark-matrix.json" \\
+  --summary-only`;
 
 export default function ProofPage() {
   return (
@@ -116,8 +115,8 @@ export default function ProofPage() {
             </h2>
             <p className="mt-4 text-sm leading-relaxed text-zmuted">
               ZMem keeps memory and receipts on the user's machine first. When a team needs evidence,
-              ZMem can share a receipt bundle, publish a proof URL, or ask Treeship to attest only
-              the compact write-receipt digest.
+              ZMem can share a compact receipt bundle, publish a proof URL, or ask Treeship to attest
+              only the write-receipt digest.
             </p>
           </Card>
           <CodeBlock code={statusCode} title="zmem status --summary-only" />

@@ -2,28 +2,32 @@ import Card from '@/components/Card';
 
 const updates = [
   {
-    title: 'ActiveGraph source pack',
-    detail: 'Pack manifest, behavior handlers, and entry point for cross-run ActiveGraph memory.',
+    title: 'Compact receipt bundles',
+    detail: 'V2 keeps the complete event log committed by its Merkle root while carrying only the supporting write-event witnesses needed for portable verification. Existing v1 bundles still verify.',
   },
   {
-    title: 'Compact benchmark runner',
-    detail: 'Event-sourced LoCoMo runner writes trace.jsonl and scored_receipt.json, avoiding per-question receipt bundles.',
+    title: 'v0.1.2 release checkpoint',
+    detail: 'The continuous swarm hardening work is landed, tagged, CI-green, and packaged as the current public alpha release.',
   },
   {
-    title: 'Official LoCoMo FTS baseline',
-    detail: '1,986-question rule-scored run recorded at F1 0.3752 and EM 0.3721 with a public-claim receipt.',
+    title: 'Agent-first memory workflow',
+    detail: 'Homepage, docs, and release copy now explain ZMem as local memory agents can use across runs, with review, scoped use, and receipts.',
   },
   {
-    title: 'Retrieval fork-and-diff queue',
-    detail: 'fts-multihop and pseudo-embedding-rerank are queued to test depth and reranking against the same dataset.',
+    title: 'Trust ledger hardening',
+    detail: 'Mutation, bundle, export, and restore receipts are more explicit about what changed and what can be verified locally.',
   },
   {
-    title: 'Causal memory receipts',
-    detail: 'Memory writes can carry caused_by_event so agent memory points back to the event that produced it.',
+    title: 'Retrieval explanation improvements',
+    detail: 'Receipts now expose more of the support-chain, stale/current, withheld, and budget-dropped reasoning behind agent context.',
   },
   {
-    title: 'ActiveGraph install check',
-    detail: 'The source integration includes the pack manifest and smoke path for verification in an ActiveGraph environment.',
+    title: 'Workspace provenance',
+    detail: 'Connected-agent, source, conflict, parent-action, and restore-continuity views make multi-agent memory easier to inspect.',
+  },
+  {
+    title: 'Benchmark boundary',
+    detail: 'LoCoMo and LongMemEval evidence exists, but public ranking claims wait for isolated reruns and official-method alignment.',
   },
 ];
 
@@ -37,11 +41,11 @@ export default function ChangelogPage() {
             className="mt-5 max-w-[900px] font-heading font-bold leading-[0.95] text-zink"
             style={{ fontSize: 'clamp(44px, 7vw, 92px)' }}
           >
-            What changed in the frontier build.
+            What ZMem is shipping.
           </h1>
           <p className="mt-6 max-w-[700px] text-[17px] leading-relaxed text-zmuted">
-            ZMem now has a clearer benchmark story, an ActiveGraph integration path,
-            and public-facing documentation for the next retrieval comparisons.
+            The current release is live. This page also tracks the next verified product
+            improvements before they become a tagged release.
           </p>
         </div>
       </section>

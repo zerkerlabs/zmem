@@ -14,7 +14,7 @@ Queue:     proposed + quarantined
 Status:    active / rejected / revoked`,
   },
   {
-    title: 'Authority Gate',
+    title: 'Context Control',
     codeTitle: 'zmem inject --agent codex --risk medium "task"',
     code: `Input:      agent + task + risk + scope
 Policy:     .zerker/policy.json
@@ -43,14 +43,14 @@ export default function TrustArchitectureSection() {
           className="section-heading max-w-[800px] font-heading font-bold text-zink"
           style={{ fontSize: 'clamp(36px, 5vw, 64px)', letterSpacing: '-0.03em', lineHeight: 1.0 }}
         >
-          Use ZMem alone, or as the memory gate for your stack.
+          Use ZMem alone, or as the memory control layer for your stack.
         </h2>
 
         <p className="section-desc mt-6 max-w-[640px] text-[17px] leading-relaxed text-zmuted">
           ZMem ships with its own local memory system: typed memories, lifecycle states,
           review queues, policy-gated injection, lineage, revocation, snapshots, restore,
-          and receipts. If you already use a memory or retrieval provider, ZMem can govern
-          what crosses from candidate context into admissible agent memory.
+          and receipts. If you already use a memory or retrieval provider, ZMem can decide
+          which candidates become approved agent memory.
         </p>
 
         <div className="mt-16 grid grid-cols-1 gap-5 md:grid-cols-3">

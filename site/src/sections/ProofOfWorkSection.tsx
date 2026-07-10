@@ -1,22 +1,15 @@
 import NodeNetworkBg from '@/components/NodeNetworkBg';
 import Card from '@/components/Card';
 
-const tableRows = [
-  { feature: 'Local memory store', shipped: 'Private SQLite state per workspace', proof: 'zmem status --summary-only' },
-  { feature: 'Hybrid-ready retrieval', shipped: 'FTS baseline with benchmark hooks', proof: 'zmem search "query" --scope project' },
-  { feature: 'Typed memory records', shipped: 'Semantic, episodic, policy, and task memory', proof: 'zmem remember --type semantic "fact"' },
-  { feature: 'Review lifecycle', shipped: 'Queue, promote, revoke, restore', proof: 'zmem queue --scope project' },
-  { feature: 'Agent context injection', shipped: 'Scoped context for Codex and MCP clients', proof: 'zmem inject --agent codex --risk medium "task"' },
-  { feature: 'MCP server', shipped: 'Agent-readable tools over local memory', proof: 'python3 -m zerker_memory mcp' },
-  { feature: 'Agent setup packs', shipped: 'Codex, Claude Code, Cursor, and generic MCP setup', proof: 'zmem agent pack --summary-only' },
-  { feature: 'Memory receipts', shipped: 'Records what memory shaped an action', proof: 'zmem why <action-id>' },
-  { feature: 'Merkle verification', shipped: 'Tamper-evident local proof roots', proof: 'zmem verify <action-id>' },
-  { feature: 'Portable handoff', shipped: 'Move memory state between sessions or machines', proof: 'zmem handoff --summary-only' },
-  { feature: 'Digest-only write attestation', shipped: 'Optional Treeship artifact for write receipt hashes', proof: 'ZMEM_TREESHIP_AUTO_SIGN=1' },
-  { feature: 'ActiveGraph pack', shipped: 'Cross-run memory with causal event ids', proof: 'pack/pack.yaml' },
-  { feature: 'Compact benchmark traces', shipped: 'trace.jsonl plus scored_receipt.json', proof: 'zmem-bench-locomo --dataset <file>' },
-  { feature: 'LoCoMo FTS baseline', shipped: '1,986 questions scored with public receipt', proof: '.zerker/bench/locomo-official-v1/fts' },
-  { feature: 'Benchmark evidence', shipped: 'LongMemEval, LoCoMo, and BEAM queue', proof: 'zmem bench run locomo ...' },
+const readyNowRows = [
+  { feature: 'Local memory store', detail: 'Local SQLite state per workspace', proof: 'zmem status --summary-only' },
+  { feature: 'Typed memory records', detail: 'Semantic, episodic, procedural, and policy memory', proof: 'zmem remember --type semantic "fact"' },
+  { feature: 'Review lifecycle', detail: 'Queue, promote, reject, revoke, restore', proof: 'zmem queue --scope project' },
+  { feature: 'Agent context use', detail: 'Scoped memory for Codex and MCP clients', proof: 'zmem inject --agent codex --risk medium "task"' },
+  { feature: 'Memory receipts', detail: 'Shows what reached context and what stayed out', proof: 'zmem why <action-id> --summary-only' },
+  { feature: 'Portable handoff', detail: 'Move memory state between agents or machines', proof: 'zmem handoff --summary-only' },
+  { feature: 'Agent setup packs', detail: 'Codex, Claude Code, Cursor, Hermes, and generic MCP', proof: 'zmem agent pack --summary-only' },
+  { feature: 'Optional Treeship proof', detail: 'Digest-only write attestation and public proof URLs', proof: 'ZMEM_TREESHIP_AUTO_SIGN=1' },
 ];
 
 export default function ProofOfWorkSection() {
@@ -38,30 +31,30 @@ export default function ProofOfWorkSection() {
           below maps to a local command or artifact in the repo.
         </p>
 
-        <Card className="mt-16 overflow-hidden p-0">
-          {/* Table Header */}
-          <div className="hidden border-b border-zline px-6 py-4 md:grid md:grid-cols-[34%_32%_34%]">
-            <span className="text-eyebrow text-zmuted">Feature</span>
-            <span className="text-eyebrow text-zmuted">What it means</span>
-            <span className="text-eyebrow text-zmuted">Try it</span>
-          </div>
-
-          {/* Table Rows */}
-          {tableRows.map((row, i) => (
-            <div
-              key={i}
-              className="proof-row border-b border-[rgba(42,42,42,0.5)] px-6 py-3.5 transition-colors duration-200 hover:bg-[rgba(146,214,111,0.03)] md:grid md:grid-cols-[34%_32%_34%] md:items-center"
-            >
-              <span className="text-sm text-zink">{row.feature}</span>
-              <span className="mt-1 hidden text-caption text-zmuted md:block">{row.shipped}</span>
-              <code className="mt-1 hidden font-mono text-[11px] text-[#D9E3D0] md:block">{row.proof}</code>
+        <div className="mt-16">
+          <Card className="overflow-hidden p-0">
+            <div className="border-b border-zline px-6 py-5">
+              <p className="text-eyebrow text-zlime">Ready now</p>
+              <h3 className="mt-2 font-heading text-2xl font-semibold tracking-tight text-zink">
+                The product surface agents can use today.
+              </h3>
             </div>
-          ))}
-        </Card>
+            {readyNowRows.map((row) => (
+              <div key={row.feature} className="border-b border-[rgba(42,42,42,0.5)] px-6 py-4">
+                <div className="grid grid-cols-1 gap-2 md:grid-cols-[32%_34%_34%] md:items-center">
+                  <span className="text-sm font-semibold text-zink">{row.feature}</span>
+                  <span className="text-sm leading-relaxed text-zmuted">{row.detail}</span>
+                  <code className="break-words font-mono text-[11px] text-[#D9E3D0]">{row.proof}</code>
+                </div>
+              </div>
+            ))}
+          </Card>
+        </div>
 
         <p className="mt-6 text-sm text-zdim">
           Memory transitions should leave receipts. For the deeper model, see{' '}
-          <a href="/proof" className="text-zlime transition-colors hover:text-zink">how ZMem proof works</a>.
+          <a href="/proof" className="text-zlime transition-colors hover:text-zink">how ZMem proof works</a>
+          {' '}or review the <a href="/changelog" className="text-zlime transition-colors hover:text-zink">release history</a>.
         </p>
       </div>
     </section>

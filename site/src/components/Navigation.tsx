@@ -49,7 +49,6 @@ export default function Navigation() {
     { label: 'Handoff', target: '#handoff' },
     { label: 'Proof', target: '/proof' },
     { label: 'Docs', target: '/docs' },
-    { label: 'Install', target: '#install' },
   ];
 
   return (

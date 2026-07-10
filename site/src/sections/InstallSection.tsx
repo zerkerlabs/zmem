@@ -75,7 +75,7 @@ export default function InstallSection() {
         </div>
 
         <p className="mt-3 text-center text-caption text-zdim">
-          Requires: Python 3.9+, 50MB disk space
+          Requires Python 3.10+. Memory stays in local SQLite files you control.
         </p>
 
         {/* Quick Start Steps */}

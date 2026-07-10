@@ -12,21 +12,23 @@ behaviors:
   - zmem.bench.answer_generated
   - zmem.bench.question_completed`;
 
-const benchmarkCommands = `zmem bench run locomo \\
-  --dataset data/locomo/locomo_official_zmem.json \\
-  --split default \\
-  --out .zerker/bench/locomo-official-v1 \\
-  --seed 42 \\
-  --run-id fts-multihop \\
-  --retrieval-mode fts-multihop
+const benchmarkCommands = `RUN_ID="activegraph-$(date -u +%Y%m%dT%H%M%SZ)"
 
-zmem bench run locomo \\
+zmem-bench-locomo \\
   --dataset data/locomo/locomo_official_zmem.json \\
   --split default \\
-  --out .zerker/bench/locomo-official-v1 \\
-  --seed 42 \\
-  --run-id pseudo-embedding-rerank \\
-  --retrieval-mode pseudo-embedding-rerank`;
+  --out ".zerker/bench/activegraph/\${RUN_ID}-multihop" \\
+  --run-id "\${RUN_ID}-multihop" \\
+  --retrieval-mode fts-multihop \\
+  --limit 5
+
+zmem-bench-locomo \\
+  --dataset data/locomo/locomo_official_zmem.json \\
+  --split default \\
+  --out ".zerker/bench/activegraph/\${RUN_ID}-hybrid" \\
+  --run-id "\${RUN_ID}-hybrid" \\
+  --retrieval-mode hybrid \\
+  --limit 5`;
 
 const envVars = `ZMEM_RETRIEVAL_MODE=fts
 ZMEM_TREESHIP_ENABLED=false`;
@@ -133,9 +135,9 @@ export default function ActiveGraphPage() {
               Test retrieval depth before adding more ingestion machinery.
             </h2>
             <p className="mt-5 text-sm leading-relaxed text-zmuted">
-              The official FTS LoCoMo run showed the bottleneck clearly: multi-hop and open-domain
+              The complete local FTS LoCoMo run showed the bottleneck clearly: multi-hop and open-domain
               retrieval are the weak categories. Run multihop first, then pseudo embedding rerank,
-              so the delta tells us whether decomposition or reranking is moving the score.
+              using separate compact traces so the runs cannot overwrite each other.
             </p>
             <CodeBlock code={envVars} title="runtime knobs" className="mt-6" />
           </div>

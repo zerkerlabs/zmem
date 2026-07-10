@@ -4,7 +4,7 @@ const footerColumns = [
   {
     heading: 'Product',
     links: [
-      { label: 'Memory Gate', href: '/#memory-loop' },
+      { label: 'Memory Workflow', href: '/#memory-loop' },
       { label: 'Handoff', href: '/#handoff' },
       { label: 'Install', href: '/#install' },
       { label: 'Proof', href: '/proof' },
@@ -44,8 +44,8 @@ export default function FooterSection() {
               <span className="font-heading text-xl font-bold text-zlime">ZMem</span>
             </div>
             <p className="mt-3 text-sm leading-relaxed text-zmuted">
-              ZMem gives agents memory they can use, inspect, govern, prove, revoke,
-              and carry forward. Store local, review before trust, inject only admissible memory.
+              ZMem helps agents remember across runs, keep stale or risky facts out of context,
+              and show what memory shaped each action. Local by default; portable for proof and handoff.
             </p>
             <div className="mt-4 flex items-center gap-4">
               <a
