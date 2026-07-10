@@ -21,6 +21,12 @@ Primary mission brief:
 - Lane progress and release tracker: `docs/ZMEM_PROGRESS_TRACKER.md`
 - Lane logs: `docs/CONTINUOUS_BUILD/`
 
+Coordinator update `2026-07-10T20:57:19Z`:
+
+- Replaced compact LoCoMo's single growing run DB with a bounded per-conversation ephemeral store lifecycle; normal non-compact proof runs are unchanged.
+- A real 260-question pseudo-embedding measurement completed in `57.29s` at roughly `272` questions/minute, left zero SQLite artifacts, and matched the previous run on all correctness decisions and final answers.
+- This removes the observed late-run slowdown from roughly `30` questions/minute and clears the next isolated full pseudo-rerank run. Broad recurring swarms remain paused.
+
 Coordinator update `2026-07-10T20:44:24Z`:
 
 - `v0.1.3` is published and deployed at `d029b99`; remote CI run `29119164360` and production site/docs checks are green.

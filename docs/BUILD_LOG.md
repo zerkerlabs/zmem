@@ -1,3 +1,22 @@
+## 2026-07-10 - Bounded compact LoCoMo stores
+
+Shipped:
+
+- Changed compact LoCoMo execution from one ever-growing run database to one ephemeral store per conversation while preserving history reuse within each conversation and original question order.
+- Made compact result/manifest metadata explicit with `store_lifecycle=per-conversation-ephemeral`, `run_database_omitted=true`, and a null database artifact path.
+- Kept non-compact runs unchanged: they still retain the shared run database, final snapshot, and per-question receipt bundles.
+
+Verification:
+
+- New interleaved two-conversation regression proves reuse within a conversation, isolation across conversations, result verification, stable output order, and zero SQLite artifacts.
+- Largest real LoCoMo conversation: `260` pseudo-embedding questions in `57.29s`, about `272` questions/minute, with zero SQLite files in the output.
+- Against the same 260 questions in the previous full run: `260/260` correctness decisions and final answers matched; accuracy remained `0.6192307692`.
+- `python3.11 -m unittest discover -s tests -q` -> `1,217` tests passed; eval `11/11`, docs typecheck/build, and release smoke also passed.
+
+Next:
+
+- Run full isolated pseudo-rerank on the bounded compact path, then rerun all distinct modes at one code checkpoint.
+
 ## 2026-07-10 - Full pseudo-embedding evidence and legacy benchmark compatibility
 
 Shipped:

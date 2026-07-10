@@ -68,6 +68,8 @@ zmem bench matrix locomo \
 
 `zmem-retrieval` currently resolves to `pseudo-embedding-rerank`; do not run both as separate full measurements.
 
+For LoCoMo, compact mode processes one conversation store at a time and omits the run database. Use a non-compact run only when you specifically need the retained SQLite state, final snapshot, and per-question receipt bundles.
+
 Then render the comparison:
 
 ```bash

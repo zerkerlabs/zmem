@@ -21,7 +21,7 @@ These values use ZMem's `provisional-local` retrieval-recall scorer. Both receip
 
 ## Run An Isolated LoCoMo Matrix
 
-Use a new run id for every matrix and keep concurrent jobs out of the same target. `--compact-artifacts` preserves hashes, traces, summaries, and receipts without writing a bundle for every question. When per-question bundles are enabled, they use compact `zerker.receipt_bundle.v2` event witnesses by default instead of embedding the full pre-action history.
+Use a new run id for every matrix and keep concurrent jobs out of the same target. For LoCoMo, `--compact-artifacts` uses one ephemeral store per conversation and leaves no run database behind; it preserves result hashes, traces, summaries, and receipt commitments without writing a bundle for every question. When per-question bundles are enabled, they use compact `zerker.receipt_bundle.v2` event witnesses by default instead of embedding the full pre-action history.
 
 ```bash
 RUN_ID="locomo-$(date -u +%Y%m%dT%H%M%SZ)"

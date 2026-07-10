@@ -1,5 +1,14 @@
 # Benchmark Lane Log
 
+## 2026-07-10T20:57:19Z - per-conversation compact store lifecycle
+
+- Scope: removed the full-run SQLite growth bottleneck from compact LoCoMo execution without changing normal proof-rich runs.
+- Behavior: `--compact-artifacts` groups questions by `sample_id`, uses one ephemeral SQLite store at a time, preserves question order in result artifacts, and records `store_lifecycle=per-conversation-ephemeral` plus `run_database_omitted=true`.
+- Real measurement: the largest official conversation (`conv-42`, `260` questions) completed pseudo-embedding in `57.29s`, roughly `272` questions/minute, and left zero SQLite files under the matrix output.
+- Equivalence: all `260` correctness decisions, final answers, categories, abstention decisions, retrieved counts, and injected counts matched the earlier full pseudo-embedding artifact for `conv-42`; accuracy remained `0.6192307692`.
+- Boundary: one equal-score retrieval tie changed context by two tokens without changing the answer or score. Non-compact runs retain the shared database, final snapshot, and receipt bundles exactly as before.
+- Next safe slice: full isolated `pseudo-embedding-rerank`, followed by a fresh same-commit four-mode matrix and LongMemEval-S.
+
 ## 2026-07-10T20:44:24Z - v0.1.3 pseudo-embedding full run and legacy verifier hardening
 
 - Scope: ran the first post-release full LoCoMo mode under a unique isolated target, then hardened comparison of older compact artifacts.
