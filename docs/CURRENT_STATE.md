@@ -2,6 +2,15 @@
 
 This is the short orchestration dashboard for Zerker Memory. Every autonomous build run should update this file after it updates `docs/BUILD_LOG.md`.
 
+## Release Coordination
+`2026-07-10T19:34:22Z`
+
+- Prepared `v0.1.3` from two reviewed checkpoints: `ebb387d` for agent capability boundaries, compact CLI summaries, SQLite hardening, and receipt-bundle v2; `766a668` for the public site, docs dependencies, and web CI.
+- Default agent MCP access is now limited to propose, inject, explain, and verify. Trusted writes, review, imports, snapshots, and restore require the explicit local operator profile.
+- Receipt bundles now use compact supporting-event Merkle witnesses by default while retaining v1 verification. A 31-event repeated-action fixture measured 35,453 bytes for v2 versus 963,288 bytes for v1.
+- Verification passed with 1,215 tests, eval 11/11, release smoke, strict prelaunch, site lint/build, docs typecheck/build, zero high-severity runtime dependency findings, and responsive browser QA with no console errors or horizontal overflow.
+- Broad swarms and launch oversight remain paused. The next active lane is isolated retrieval benchmarking: pseudo-embedding, pseudo-embedding-rerank, zmem-retrieval, then LongMemEval-S.
+
 ## Retrieval Baseline
 `2026-07-06T13:01:58Z`
 

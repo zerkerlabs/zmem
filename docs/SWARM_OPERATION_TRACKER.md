@@ -21,6 +21,13 @@ Primary mission brief:
 - Lane progress and release tracker: `docs/ZMEM_PROGRESS_TRACKER.md`
 - Lane logs: `docs/CONTINUOUS_BUILD/`
 
+Coordinator update `2026-07-10T19:34:22Z`:
+
+- Prepared the cross-lane `v0.1.3` release checkpoint from `ebb387d` and `766a668`; no autonomous swarm output was merged from the obsolete `codex/zmem-continuous-build-checkpoint` branch.
+- The release adds the default-safe agent MCP profile, compact daily-use CLI summaries, private/concurrent SQLite defaults, compact receipt-bundle v2 with legacy v1 verification, simplified agent-first public copy, patched web dependencies, and dedicated site/docs CI jobs.
+- Full local release verification is green: 1,215 tests, eval 11/11, release smoke, strict prelaunch, both web builds, dependency audits, and responsive browser QA.
+- Broad swarms and launch oversight remain paused through tagging and deployment. After release acceptance, resume only isolated L6 benchmark runs and let the resulting category deltas choose the next L3 retrieval slice.
+
 Coordinator update `2026-07-06T13:01:18Z`:
 
 - Temporal KG advanced on one bounded L1 regression-lock slice only: [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_store.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_store.py) and [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_runner.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/tests/test_runner.py) now durably cover the already-shipped unfiltered no-search `query_at(..., current_resolution="all")` identity envelope, and the durable lane/docs were updated in [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/temporal-kg.log.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CONTINUOUS_BUILD/temporal-kg.log.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/SWARM_OPERATION_TRACKER.md), [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/CURRENT_STATE.md), and [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/BUILD_LOG.md`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/docs/BUILD_LOG.md]).

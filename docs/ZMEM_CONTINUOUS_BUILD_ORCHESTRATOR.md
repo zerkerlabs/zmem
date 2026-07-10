@@ -14,13 +14,13 @@ Use this language precisely:
 
 ## Current Product Truth
 
-As of 2026-07-06, the product has a published `v0.1.2` alpha release
+As of 2026-07-10, the product has a published `v0.1.3` alpha release
 and a lane-by-lane progress board:
 
 - Progress tracker: [`ZMEM_PROGRESS_TRACKER.md`](ZMEM_PROGRESS_TRACKER.md)
-- Current public release: `v0.1.2`
-- Current release tag: `v0.1.2`
-- Current unpublished lane diff: none. Swarms are paused while the release tag and deploy are completed.
+- Current public release: `v0.1.3`
+- Current release tag: `v0.1.3`
+- Current unpublished lane diff: none. Broad swarms and launch oversight are paused; isolated retrieval benchmarks are the next active lane.
 
 The product already has meaningful working surface:
 
@@ -49,9 +49,9 @@ The frontier report does not change the product thesis. It changes the order of 
 
 Current frontier benchmark TODO, from the official LoCoMo FTS baseline:
 
-1. Finish LoCoMo `fts-multihop` first. A conventional run against the shared `locomo-official-v1` target failed on 2026-06-23 after the active mode directory was archived during the run, so keep `zmem-benchmark-harness-swarm` paused while manual full benchmark runs are active.
-2. Use either an isolated conventional output path or a full ActiveGraph compact trace path for the next `fts-multihop` attempt. Do not launch `pseudo-embedding`, `pseudo-embedding-rerank`, or `zmem-retrieval` until `fts-multihop` category deltas are available.
-3. After `fts-multihop`, run LoCoMo `pseudo-embedding`, `pseudo-embedding-rerank`, and `zmem-retrieval` against the same dataset/seed, then inspect multi-hop, temporal, open-domain, and adversarial abstention deltas.
+1. Treat the recorded LoCoMo FTS and FTS-multihop runs as the current local baselines.
+2. Use unique run ids and isolated output directories for every remaining mode; never reuse the shared `locomo-official-v1` target while another run is active.
+3. Run LoCoMo `pseudo-embedding`, `pseudo-embedding-rerank`, and `zmem-retrieval` against the same dataset and seed, then inspect multi-hop, temporal, open-domain, and adversarial abstention deltas.
 4. Run LongMemEval-S next because it directly tests abstention and token efficiency.
 5. Add BEAM as the scale/collapse benchmark for 100K -> 10M token contexts; do not treat it as implemented until runner, dataset source, command, hashes, and receipts are pinned.
 6. Add the fastest answerer fix: deterministic abstention when `retrieved_count == 0` or retrieval confidence is below threshold, then verify on LoCoMo adversarial and LongMemEval-S.

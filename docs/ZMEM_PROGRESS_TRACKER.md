@@ -1,6 +1,6 @@
 # ZMem Progress Tracker
 
-Last updated: 2026-07-06
+Last updated: 2026-07-10
 
 This is the shared progress board for ZMem release and frontier work. It turns the
 continuous-build lanes into a checkpointable product plan: what is built, what is
@@ -22,20 +22,33 @@ Every push or meaningful automation drop should update this file alongside:
 | `v0.1.0` | Historical tag | `f460191` | Earlier launch checkpoint. Do not move this tag. |
 | `v0.1.1` | Published | `e9c80c5` | Previous public alpha release. CI passed on Python 3.10/3.11/3.12 plus release-smoke. |
 | `v0.1.2` | Published | `v0.1.2` tag | Continuous swarm hardening release. CI passed on Python 3.10/3.11/3.12 plus release-smoke. |
+| `v0.1.3` | Published | `v0.1.3` tag | Agent capability boundary, compact proof bundles, CLI summaries, and public site/docs hardening. |
 
 Current public release:
 
-- GitHub: `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.2`
+- GitHub: `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.3`
 - Site: `https://www.zmem.sh`
 - Raw installer: `https://raw.githubusercontent.com/zerkerlabs/zmem/main/install.sh`
 
-Current `v0.1.2` release checkpoint:
+Current `v0.1.3` release checkpoint:
 
-- Base checkpoint: `91c792f Land continuous swarm hardening`
-- Landed the paused swarm harvest as one coherent checkpoint because the lane output crossed `store.py`, `cli.py`, tests, dashboards, and shared control-room docs.
-- Local verification passed: `python3 -m unittest discover -s tests -q`, `python3 -m zerker_memory eval`, `python3 scripts/release_smoke.py --summary-only`, and `git diff --check`.
-- Remote verification passed in GitHub Actions on Python 3.10, 3.11, and 3.12 plus `release-smoke`.
-- Keep swarms paused until the release tag/deploy is complete, then restart only bounded lanes with isolated benchmark output directories.
+- Core checkpoint: `ebb387d Harden agent memory boundaries and compact proofs`.
+- Public experience checkpoint: `766a668 Polish ZMem public experience and web CI`.
+- Local verification passed: `1215` tests, eval `11/11`, release smoke, strict prelaunch, site lint/build, docs typecheck/build, dependency audits, and responsive browser QA.
+- Remote verification passed in GitHub Actions across Python 3.10, 3.11, and 3.12, release smoke, site, and docs jobs.
+- Keep broad swarms paused after the release. Resume Retrieval + Benchmark only with isolated output directories.
+
+Shipped in `v0.1.3`:
+
+- Default agent MCP access is now capability-limited; operator authority requires an explicit local profile.
+- SQLite uses private file permissions, WAL, and bounded lock waiting for concurrent local agents.
+- `inject` and `why` have compact daily-use summaries without changing their JSON defaults.
+- Public site/docs facts, benchmark storage guidance, and LoCoMo evidence are aligned with the current implementation.
+- Compact receipt bundle v2 replaces repeated full event histories with supporting-event Merkle witnesses by default; legacy v1 artifacts remain verifiable.
+- A 31-event repeated-action fixture measured a 96.32% serialized-size reduction (963,288 bytes to 35,453 bytes), with both formats verifying successfully.
+- Site and docs now have dedicated CI build gates.
+- Full Python tests (`1215`), eval (`11/11`), release smoke, both web builds, and production-preview responsive QA pass locally.
+- Docs audit and the site production-dependency audit report zero vulnerabilities; site development tooling still has advisories pending a separate Vite major upgrade.
 
 ## Lane Scoreboard
 
@@ -43,15 +56,15 @@ Percentages are practical launch-grade alpha estimates, not benchmark scores.
 
 | Lane | Focus | Alpha completion | Shipped state | Next acceptance target |
 | --- | --- | ---: | --- | --- |
-| L0 Trust Ledger | Receipts, Merkle lineage, restore/export proof | 70% | Mutation/lifecycle/restore receipts exist; handoff restore verifies and summarizes restore receipts | Add compact read-only mutation-chain summary and direct snapshot-restore receipt summary |
+| L0 Trust Ledger | Receipts, Merkle lineage, restore/export proof | 80% | Mutation/lifecycle/restore receipts and compact v2 event witnesses exist; default MCP agents cannot claim trusted write/review authority | Add compact read-only mutation-chain summary and direct snapshot-restore receipt summary |
 | L1 Temporal KG | Current/history/superseded temporal memory | 55% | `query_at`, supersession, omitted-memory envelopes, runtime temporal context | Add contradiction/abstention runtime fixture and decide when true bi-temporal graph schema is needed |
 | L2 Lifecycle Compaction | Sessions, checkpoints, snapshots, retention | 45% | Checkpoint/snapshot store contracts plus read-only CLI summaries | Add write-facing `zmem session checkpoint` or retention policy without widening scope |
 | L3 Retrieval Baseline | FTS/BM25, semantic backfill, RRF, packing | 68% | Hybrid semantic, multi-hop RRF, temporal support-chain RRF, chronology mutation RRF, update-history relation-pair RRF shipped in `v0.1.2` | Rerun LoCoMo mode deltas in isolated output dirs |
 | L4 Consolidation | Hierarchical summaries and job ledger | 35% | Deterministic fixture, job lifecycle, reversible summary payloads, append-only summary ledger | Source candidates from live store or expose persisted summaries through read-only CLI |
 | L5 Identity / Workspaces | Multi-agent source lineage and conflicts | 50% | Source reports, claim conflicts, resolution basis, exact-tie abstention summaries | Persist merge decisions or add repo/tool lineage descriptors |
-| L6 Benchmark Harness | LoCoMo/LongMemEval/BEAM evidence | 45% | Synthetic/LoCoMo/LongMemEval-style harnesses, full LoCoMo FTS baseline, ActiveGraph compact smoke | Resume with isolated dirs: LoCoMo `fts-multihop`, `pseudo-embedding`, `pseudo-embedding-rerank`, `zmem-retrieval`; then LongMemEval-S |
-| Launch Oversight | Release pack, proof evidence, public release | 92% | Public verify `6/6`, assets `8/8`, return packet ready, `v0.1.2` pushed and CI-green | Tag/deploy `v0.1.2`, then keep launch automation paused/archived after one clean post-release check |
-| Website / Docs | Landing, proof page, docs, changelog | 70% | Site live, proof page, changelog, ActiveGraph/blog/docs, benchmark docs | Add release writeup discipline: public changelog, public docs, internal comms after each push |
+| L6 Benchmark Harness | LoCoMo/LongMemEval/BEAM evidence | 50% | Full local LoCoMo FTS and FTS-multihop runs exist; compact isolated-run guidance replaces shared targets | Run isolated dense/rerank matrix, then LongMemEval-S and BEAM |
+| Launch Oversight | Release pack, proof evidence, public release | 100% for v0.1.3 | Public verify `6/6`, assets `8/8`, return packet ready, `v0.1.3` published and deployed | Keep automation paused; repeat the gate only for the next release |
+| Website / Docs | Landing, proof page, docs, changelog | 100% for v0.1.3 | Agent-first copy, proof/docs routes, factual benchmark page, dedicated CI gates, and responsive QA | Keep factual surfaces aligned as retrieval evidence changes |
 | ActiveGraph Integration | Event substrate and compact traces | 45% | Source pack, `zmem.persist`, `zmem.recall`, `zmem-bench-locomo`, 5-question compact smoke | Clean `activegraph pack add zmem` smoke and batching/perf for full traces |
 
 ## Lane Checklists
@@ -67,6 +80,10 @@ Built:
 - [x] Restore receipt verification.
 - [x] Receipt-aware handoff restore summary.
 - [x] Treeship-ready export/publish path.
+- [x] Default agent MCP profile excludes trusted write, review, import, and restore authority.
+- [x] Agent proposals cannot claim human/system source authority.
+- [x] Local SQLite defaults use private permissions, WAL, and bounded lock waiting.
+- [x] Compact v2 receipt bundles with indexed supporting-event witnesses and backward-compatible v1 verification.
 
 Left:
 
@@ -130,7 +147,7 @@ Built:
 
 Left:
 
-- [ ] Commit and push the current relation-history RRF diff.
+- [x] Relation-history RRF diff landed in the `v0.1.2` swarm hardening release.
 - [ ] Full benchmark reruns to prove deltas.
 - [ ] Real dense embeddings / sqlite-vec path.
 - [ ] Graph traversal fusion.
@@ -185,14 +202,16 @@ Built:
 - [x] LongMemEval-style harness.
 - [x] Metrics for F1, EM, latency, tokens, retrieval stats.
 - [x] Matrix receipts with hashes/proof roots.
-- [x] Official local LoCoMo FTS baseline: F1 `0.3752`, EM `0.3721`.
+- [x] Full local LoCoMo FTS evidence: provisional accuracy `0.5967`, mean query tokens `693.3`.
+- [x] Full isolated LoCoMo FTS-multihop evidence: provisional accuracy `0.6042`, mean query tokens `418.8`.
 - [x] LongMemEval local matrix exists.
 - [x] ActiveGraph compact 5-question smoke.
+- [x] Normal benchmark receipt bundles use compact v2 event witnesses by default; `--compact-artifacts` remains available to omit per-question bundles entirely.
 
 Left:
 
-- [ ] Resume benchmark runs with isolated output dirs.
-- [ ] Full LoCoMo `fts-multihop`.
+- [x] Benchmark docs and commands use isolated output dirs plus compact artifacts.
+- [x] Full LoCoMo `fts-multihop`.
 - [ ] Full LoCoMo `pseudo-embedding`.
 - [ ] Full LoCoMo `pseudo-embedding-rerank`.
 - [ ] Full LoCoMo `zmem-retrieval`.
@@ -212,14 +231,16 @@ Built:
 - [x] Return packet ready.
 - [x] Strict prelaunch gate green.
 - [x] GitHub release `v0.1.1` published.
+- [x] GitHub release `v0.1.2` published and deployed.
+- [x] GitHub release `v0.1.3` published and deployed.
 - [x] Site live at `zmem.sh`.
 - [x] CI green.
 
 Left:
 
 - [ ] Keep release docs/changelog synchronized after every push.
-- [ ] Decide whether to pause, archive, or delete old launch automation after one clean post-release check.
-- [ ] Publish ongoing release notes for `v0.1.2+`.
+- [x] Launch oversight paused after the clean `v0.1.3` release check.
+- [ ] Publish ongoing release notes for `v0.1.3+`.
 - [ ] Optional package registry publishing.
 
 ### Website / Docs
@@ -236,15 +257,20 @@ Built:
 - [x] Clean-shell proof docs.
 - [x] Site styling, favicon, static build, and deployment fixed.
 - [x] Homepage positioning refined around governed memory, memory authority, review before trust, provider overlay, and handoff.
+- [x] Homepage and docs copy simplified for agent-first, human-readable positioning in `v0.1.3`.
+- [x] Duplicate install nav affordance removed; public nav now has one primary install CTA.
+- [x] Site lint/build and docs typecheck/build are required CI jobs.
+- [x] Homepage no longer exposes internal benchmark backlog.
+- [x] Public install and benchmark commands use verified, collision-safe paths.
 
 Left:
 
-- [ ] Update public docs to reflect `v0.1.1` fully.
+- [x] Update public docs to reflect `v0.1.3` release state.
 - [ ] Add this progress tracker to public/internal navigation where appropriate.
-- [ ] Add an internal release communications brief after each release.
-- [ ] Keep changelog synced after each push.
-- [ ] Improve the public product matrix for "what shipped / what is next".
-- [ ] Optional docs-site deployment at `docs.zmem.sh`.
+- [x] Add an internal release communications brief after each release/checkpoint.
+- [x] Keep changelog synced for the `v0.1.3` release push.
+- [x] Run final mobile/desktop visual QA on the simplified copy.
+- [x] Improve the public product matrix around the ready-now product surface.
 
 ### ActiveGraph Integration
 
@@ -289,7 +315,7 @@ Every release tag should include:
 
 ## Current Highest-Leverage Next Move
 
-1. Push this `v0.1.2` candidate checkpoint and wait for CI.
-2. Resume benchmarks only after output dirs are isolated.
-3. Run LoCoMo `fts-multihop`, `pseudo-embedding`, `pseudo-embedding-rerank`, and `zmem-retrieval` as separate run ids.
+1. Resume benchmarks only with isolated output directories.
+2. Run LoCoMo `pseudo-embedding`, `pseudo-embedding-rerank`, and `zmem-retrieval` as separate run ids against the recorded FTS/FTS-multihop baselines.
+3. Run LongMemEval-S for abstention and token-efficiency evidence.
 4. Use the deltas to decide whether the next L3 slice is abstention, context expansion, or graph fusion.

@@ -1,3 +1,28 @@
+## 2026-07-10 - ZMem v0.1.3 agent boundary and compact-proof release
+
+Shipped:
+
+- Added default-safe MCP capability profiles: agents can propose, inject, explain, and verify; trusted writes and review require an explicit operator profile.
+- Added bounded `inject` and `why` summaries, private/WAL-backed SQLite defaults, and generated agent configs that request the narrow profile.
+- Added `zerker.receipt_bundle.v2`, replacing repeated full event histories with indexed supporting-event Merkle witnesses while preserving v1 verification.
+- Simplified and verified the public landing, docs, proof, and changelog surfaces; added site/docs CI and patched web dependency chains.
+- Recorded a 31-event storage fixture at 35,453 bytes for v2 versus 963,288 bytes for v1, a 96.32% reduction with both artifacts verified.
+
+Verification:
+
+- `python3 -m unittest discover -s tests -q` -> passed (`1,215` tests)
+- `python3 -m zerker_memory eval` -> passed (`11/11`)
+- `python3 scripts/release_smoke.py --summary-only` -> passed, including strict prelaunch and all release packets
+- `npm run lint && npm run build` in `site/` -> passed
+- `npm run typecheck && npm run build` in `docs/` -> passed
+- Site production dependency audit and docs dependency audit -> zero high-severity findings
+- Desktop and mobile browser QA -> no console errors or horizontal overflow
+
+Next:
+
+- Keep broad swarms paused and run retrieval benchmarks only in isolated output directories.
+- Compare pseudo-embedding, pseudo-embedding-rerank, and zmem-retrieval against the recorded LoCoMo baselines, then run LongMemEval-S.
+
 ## 2026-07-06 - Default no-search identity snapshots now have field-level bi-temporal regression locks
 
 Shipped:

@@ -6,8 +6,8 @@ const updates = [
     detail: 'V2 keeps the complete event log committed by its Merkle root while carrying only the supporting write-event witnesses needed for portable verification. Existing v1 bundles still verify.',
   },
   {
-    title: 'v0.1.2 release checkpoint',
-    detail: 'The continuous swarm hardening work is landed, tagged, CI-green, and packaged as the current public alpha release.',
+    title: 'v0.1.3 release checkpoint',
+    detail: 'Agent capability boundaries, compact proof bundles, daily-use summaries, and the public site and docs hardening are packaged as the current alpha release.',
   },
   {
     title: 'Agent-first memory workflow',

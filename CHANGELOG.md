@@ -2,6 +2,40 @@
 
 All notable Zerker Memory alpha changes are summarized here.
 
+## 0.1.3 - 2026-07-10
+
+### Security And Control
+
+- Added explicit MCP capability profiles. `agent` is now the default and exposes only proposal, governed injection, explanation, and verification; trusted writes, review, external imports, snapshots, and restore require `--profile operator`.
+- Prevented agent proposals from claiming human/system provenance, and updated generated Codex, Claude Code, Cursor, OpenClaw, Hermes, and generic MCP configs to request the agent profile explicitly.
+- Hardened local SQLite defaults with user-private database permissions, a private default `.zerker` directory, WAL mode, a five-second busy timeout, foreign keys, and normal synchronous durability for multi-agent local use.
+
+### Product And Builder Experience
+
+- Added bounded `zmem inject --summary-only` and `zmem why --summary-only` views while preserving JSON as the default machine contract.
+- Reworked the public hero around the plain-language promise: agents remember across runs while users retain local review, revocation, and proof controls.
+- Removed internal benchmark backlog from the homepage, corrected the public Python requirement to 3.10+, and replaced the broken short installer URL with the verified raw GitHub installer.
+- Updated LoCoMo docs with the current local FTS and FTS-multihop evidence, explicit non-leaderboard claim boundaries, unique run ids, and compact artifact guidance.
+- Added site lint/build and docs typecheck/build jobs to GitHub Actions.
+- Updated the docs dependency set and pinned fixed PostCSS/Lodash transitive releases; docs audit and site production-dependency audit now report zero vulnerabilities.
+
+### Portable Proof
+
+- Added `zerker.receipt_bundle.v2` as the default receipt bundle format. It commits to the complete pre-action event log while carrying only indexed Merkle witnesses for supporting write events and the final pre-action anchor.
+- Kept `zerker.receipt_bundle.v1` verification intact and exposed explicit legacy generation through `MemoryStore.receipt_bundle(action_id, compact=False)`.
+- Switched CLI exports, handoffs, Treeship statements, and benchmark bundle consumers to compact v2 by default without changing their command surface.
+- Added witness tamper, missing-provenance-witness, legacy compatibility, and serialized-size regression coverage. A 31-event repeated-action fixture measured 35,453 bytes for v2 versus 963,288 bytes for v1, a 96.32% reduction; both artifacts verified successfully.
+- Kept the claim boundary explicit: bundle verification proves inclusion and provenance relative to an anchored Merkle root, not semantic truth.
+
+### Verification
+
+- `python3 -m unittest discover -s tests -q` (`1215` tests)
+- `python3 -m zerker_memory eval` (`11/11`)
+- `python3 scripts/release_smoke.py --summary-only`
+- `npm ci && npm run lint && npm run build` in `site/`
+- `npm ci && npm run typecheck && npm run build` in `docs/`
+- Production-preview browser QA at desktop, tablet, and mobile with a clean console
+
 ## 0.1.2 - 2026-07-06
 
 ### Shipped
@@ -16,9 +50,9 @@ All notable Zerker Memory alpha changes are summarized here.
 
 ### Changed
 
-- Refined the public website positioning around ZMem as governed memory for agents that act: native local memory plus an authority gate before memory influences an agent.
-- Updated homepage copy to distinguish ZMem from generic durable context/search products: search finds context; ZMem decides what becomes trusted memory.
-- Locked the homepage/nav/footer structure around the launch sequence: hero, agent stack band, memory gate, native memory and authority gate, handoff, proof, and install.
+- Refined the public website positioning around ZMem as memory AI agents can rely on: local memory, review, scoped use, handoff, and receipts.
+- Updated homepage copy to distinguish ZMem from generic durable context/search products: search finds context; ZMem helps decide what memory should shape agent work.
+- Locked the homepage/nav/footer structure around the launch sequence: hero, agent stack band, memory workflow, native memory and context control, handoff, proof, and install.
 - Reframed proof language around lineage and memory influence, not semantic truth or unsupported cryptographic claims.
 - Verified the next L3 retrieval slice locally: update-history relation-pair RRF promotes explicit stale/current relation pairs over generic high-authority change anchors under tight context budgets.
 
