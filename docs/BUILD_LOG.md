@@ -1,3 +1,24 @@
+## 2026-07-10 - Full pseudo-embedding evidence and legacy benchmark compatibility
+
+Shipped:
+
+- Completed a full isolated Python 3.11 LoCoMo pseudo-embedding run over `1,986` questions with compact artifacts, a verified result hash/root, and independent token-F1/EM scoring.
+- Recorded accuracy `0.5967`, token F1 `0.5969`, EM `0.5967`, mean query tokens `536.0`, and adversarial abstention `1.0`; multi-hop (`0.0709`) and open-domain (`0.1250`) remain the quality bottlenecks.
+- Hardened benchmark verification so legacy compact results with null optional paths or omitted-but-still-named bundle paths fail closed instead of crashing comparison.
+- Preserved the unsupported Python 3.9 partial run under an explicit `.incomplete-py39-*` name and excluded it from evidence.
+
+Verification:
+
+- `zmem bench verify` on the new result and matrix -> ready, all checks passed
+- `scripts/bench/score_locomo.py` -> `0.5969195479` F1 / `0.5966767372` EM over `1,986` questions
+- Focused legacy comparison regression -> passed
+- Real legacy FTS verify -> no crash; fails only `aggregate_merkle_root` as expected
+
+Next:
+
+- Fix benchmark per-conversation store growth before launching pseudo-rerank.
+- Run a fresh same-commit matrix, then LongMemEval-S; do not duplicate `zmem-retrieval`, which aliases pseudo-rerank.
+
 ## 2026-07-10 - ZMem v0.1.3 agent boundary and compact-proof release
 
 Shipped:

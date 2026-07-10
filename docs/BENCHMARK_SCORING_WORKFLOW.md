@@ -51,45 +51,30 @@ The converters write ZMem-shaped JSON records. They do not download datasets and
 
 ## 2. Run Local Provisional Evidence
 
-Use this when you want a no-network retrieval/proof check:
+Use this when you want a no-network retrieval/proof check. Prefer one unique sequential matrix so no other process can archive an active mode directory:
 
 ```bash
-zmem bench matrix locomo \
-  --dataset data/locomo/locomo_official_zmem.json \
-  --out .zerker/bench \
-  --run-id locomo-official-v1 \
-  --mode fts-multihop \
-  --seed 42
+RUN_ID="locomo-matrix-$(date -u +%Y%m%dT%H%M%SZ)"
 
 zmem bench matrix locomo \
   --dataset data/locomo/locomo_official_zmem.json \
-  --out .zerker/bench \
-  --run-id locomo-official-v1 \
-  --mode pseudo-embedding \
-  --seed 42
-
-zmem bench matrix locomo \
-  --dataset data/locomo/locomo_official_zmem.json \
-  --out .zerker/bench \
-  --run-id locomo-official-v1 \
-  --mode pseudo-embedding-rerank \
-  --seed 42
-
-zmem bench matrix locomo \
-  --dataset data/locomo/locomo_official_zmem.json \
-  --out .zerker/bench \
-  --run-id locomo-official-v1 \
-  --mode zmem-retrieval \
-  --seed 42
+  --out .zerker/bench/runs \
+  --run-id "$RUN_ID" \
+  --seed 42 \
+  --trace \
+  --compact-artifacts \
+  --summary-only
 ```
+
+`zmem-retrieval` currently resolves to `pseudo-embedding-rerank`; do not run both as separate full measurements.
 
 Then render the comparison:
 
 ```bash
-zmem bench report .zerker/bench/locomo-official-v1 --summary-only
-zmem bench dashboard .zerker/bench/locomo-official-v1
-zmem bench public-page .zerker/bench/locomo-official-v1
-zmem bench verify .zerker/bench/locomo-official-v1/benchmark-matrix.json --summary-only
+zmem bench report ".zerker/bench/runs/$RUN_ID" --summary-only
+zmem bench dashboard ".zerker/bench/runs/$RUN_ID"
+zmem bench public-page ".zerker/bench/runs/$RUN_ID"
+zmem bench verify ".zerker/bench/runs/$RUN_ID/benchmark-matrix.json" --summary-only
 ```
 
 For LongMemEval:

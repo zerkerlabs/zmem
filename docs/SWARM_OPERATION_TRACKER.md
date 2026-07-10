@@ -21,6 +21,14 @@ Primary mission brief:
 - Lane progress and release tracker: `docs/ZMEM_PROGRESS_TRACKER.md`
 - Lane logs: `docs/CONTINUOUS_BUILD/`
 
+Coordinator update `2026-07-10T20:44:24Z`:
+
+- `v0.1.3` is published and deployed at `d029b99`; remote CI run `29119164360` and production site/docs checks are green.
+- With every recurring ZMem automation confirmed paused, the coordinator completed a unique Python 3.11 LoCoMo pseudo-embedding run at `.zerker/bench/locomo-v013-pseudo-embedding-py311-20260710/`: `1,986` questions, accuracy `0.5967`, token F1 `0.5969`, mean query tokens `536.0`, adversarial abstention `1.0`, result hash `3d31a2ee...`, and aggregate root `5adf3ecc...`.
+- The run did not improve multi-hop (`0.0709`) or open-domain (`0.1250`) over the old FTS profile. It used about `22.7%` fewer tokens directionally, but the old baseline predates this code checkpoint and its root no longer verifies, so this is not a clean mode-only claim.
+- The coordinator fixed a benchmark compatibility crash for legacy null optional paths and omitted bundle paths. Verification now fails closed on the genuine old aggregate-root mismatch rather than crashing or emitting hundreds of false missing-bundle failures.
+- Next operation: optimize per-conversation benchmark store lifecycle before another full mode run, then generate a fresh same-commit matrix and LongMemEval-S evidence. Broad swarms remain paused.
+
 Coordinator update `2026-07-10T19:34:22Z`:
 
 - Prepared the cross-lane `v0.1.3` release checkpoint from `ebb387d` and `766a668`; no autonomous swarm output was merged from the obsolete `codex/zmem-continuous-build-checkpoint` branch.

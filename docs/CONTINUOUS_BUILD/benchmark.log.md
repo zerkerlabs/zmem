@@ -1,5 +1,17 @@
 # Benchmark Lane Log
 
+## 2026-07-10T20:44:24Z - v0.1.3 pseudo-embedding full run and legacy verifier hardening
+
+- Scope: ran the first post-release full LoCoMo mode under a unique isolated target, then hardened comparison of older compact artifacts.
+- Supported run: `python3.11 -m zerker_memory bench matrix locomo --dataset data/locomo/locomo_official_zmem.json --split default --out .zerker/bench --run-id locomo-v013-pseudo-embedding-py311-20260710 --mode pseudo-embedding --seed 42 --trace --compact-artifacts --summary-only`.
+- Result: `1,986` questions, provisional-local accuracy `0.5966767372`, token F1 `0.5969195479`, EM `0.5966767372`, mean query tokens `536.0398`, result hash `3d31a2ee0a9ca73706dd3e64aecd53bfba5a8d06ee314487855c972ae3cc8367`, aggregate root `5adf3ecc29e5e88085040b26892d0e29031e012a4734a6fe94ea7cf9e7bf24fc`, trace SHA `65f5797fe255775e6d0516f4ed0cf4191e63a9334b517f5cfb34cb152efa8825`.
+- Category accuracy: single-hop `0.6005`, multi-hop `0.0709`, temporal `0.6293`, open-domain `0.1250`, adversarial abstention `1.0000`. The run therefore preserves temporal/abstention but does not improve the hardest multi-hop/open-domain categories.
+- Efficiency: `29,059` retrieved/injected memories and `1,064,575` query tokens, directionally `22.5%` and `22.7%` below the older FTS artifact. Do not attribute those deltas to mode alone because the baseline predates the current code checkpoint.
+- Runtime finding: wall time was `38m57s`; throughput fell from roughly `230` questions/minute early to roughly `30`/minute near completion as the shared per-run SQLite store grew to about `900 MB`.
+- Compatibility finding: the June FTS artifact retains null optional paths and names deleted receipt bundles. `bench compare` previously crashed on the null snapshot path; current code now treats omitted bundle paths as omitted and reports the remaining aggregate-root mismatch instead of crashing or silently accepting it.
+- A generic `python3` attempt was stopped at `531/1,986` after discovering it resolved to unsupported Python `3.9.6`; the quarantined directory is explicitly named `.zerker/bench/locomo-v013-pseudo-embedding.incomplete-py39-20260710/` and is excluded from the scoreboard.
+- Next safe slice: keep all automations paused, fix per-conversation benchmark store lifecycle/growth, then rerun same-commit FTS/FTS-multihop/pseudo-rerank evidence. `zmem-retrieval` is an alias for pseudo-rerank and should not consume a duplicate full run.
+
 ## 2026-06-23T06:05:00Z - interactive mode scoreboard
 
 - Scope: after the official LoCoMo target collision, ran an isolated interactive mode comparison and read the existing LongMemEval oracle matrix for current retrieval guidance.

@@ -22,7 +22,7 @@ Every push or meaningful automation drop should update this file alongside:
 | `v0.1.0` | Historical tag | `f460191` | Earlier launch checkpoint. Do not move this tag. |
 | `v0.1.1` | Published | `e9c80c5` | Previous public alpha release. CI passed on Python 3.10/3.11/3.12 plus release-smoke. |
 | `v0.1.2` | Published | `v0.1.2` tag | Continuous swarm hardening release. CI passed on Python 3.10/3.11/3.12 plus release-smoke. |
-| `v0.1.3` | Published | `v0.1.3` tag | Agent capability boundary, compact proof bundles, CLI summaries, and public site/docs hardening. |
+| `v0.1.3` | Published | `d029b99` / `v0.1.3` | Agent capability boundary, compact proof bundles, CLI summaries, and public site/docs hardening. |
 
 Current public release:
 
@@ -34,6 +34,7 @@ Current `v0.1.3` release checkpoint:
 
 - Core checkpoint: `ebb387d Harden agent memory boundaries and compact proofs`.
 - Public experience checkpoint: `766a668 Polish ZMem public experience and web CI`.
+- Final verified release head: `d029b99 Align release smoke with safe agent profile`.
 - Local verification passed: `1215` tests, eval `11/11`, release smoke, strict prelaunch, site lint/build, docs typecheck/build, dependency audits, and responsive browser QA.
 - Remote verification passed in GitHub Actions across Python 3.10, 3.11, and 3.12, release smoke, site, and docs jobs.
 - Keep broad swarms paused after the release. Resume Retrieval + Benchmark only with isolated output directories.
@@ -62,7 +63,7 @@ Percentages are practical launch-grade alpha estimates, not benchmark scores.
 | L3 Retrieval Baseline | FTS/BM25, semantic backfill, RRF, packing | 68% | Hybrid semantic, multi-hop RRF, temporal support-chain RRF, chronology mutation RRF, update-history relation-pair RRF shipped in `v0.1.2` | Rerun LoCoMo mode deltas in isolated output dirs |
 | L4 Consolidation | Hierarchical summaries and job ledger | 35% | Deterministic fixture, job lifecycle, reversible summary payloads, append-only summary ledger | Source candidates from live store or expose persisted summaries through read-only CLI |
 | L5 Identity / Workspaces | Multi-agent source lineage and conflicts | 50% | Source reports, claim conflicts, resolution basis, exact-tie abstention summaries | Persist merge decisions or add repo/tool lineage descriptors |
-| L6 Benchmark Harness | LoCoMo/LongMemEval/BEAM evidence | 50% | Full local LoCoMo FTS and FTS-multihop runs exist; compact isolated-run guidance replaces shared targets | Run isolated dense/rerank matrix, then LongMemEval-S and BEAM |
+| L6 Benchmark Harness | LoCoMo/LongMemEval/BEAM evidence | 55% | Full local LoCoMo FTS, FTS-multihop, and current-code pseudo-embedding runs exist; legacy compact artifacts fail closed instead of crashing compare | Fix per-conversation run-store growth, then run a fresh same-commit matrix and LongMemEval-S |
 | Launch Oversight | Release pack, proof evidence, public release | 100% for v0.1.3 | Public verify `6/6`, assets `8/8`, return packet ready, `v0.1.3` published and deployed | Keep automation paused; repeat the gate only for the next release |
 | Website / Docs | Landing, proof page, docs, changelog | 100% for v0.1.3 | Agent-first copy, proof/docs routes, factual benchmark page, dedicated CI gates, and responsive QA | Keep factual surfaces aligned as retrieval evidence changes |
 | ActiveGraph Integration | Event substrate and compact traces | 45% | Source pack, `zmem.persist`, `zmem.recall`, `zmem-bench-locomo`, 5-question compact smoke | Clean `activegraph pack add zmem` smoke and batching/perf for full traces |
@@ -212,9 +213,9 @@ Left:
 
 - [x] Benchmark docs and commands use isolated output dirs plus compact artifacts.
 - [x] Full LoCoMo `fts-multihop`.
-- [ ] Full LoCoMo `pseudo-embedding`.
+- [x] Full LoCoMo `pseudo-embedding`: current-code Python 3.11 run, `1,986` questions, accuracy `0.5967`, token F1 `0.5969`, mean query tokens `536.0`, verified result hash `3d31a2ee...`.
 - [ ] Full LoCoMo `pseudo-embedding-rerank`.
-- [ ] Full LoCoMo `zmem-retrieval`.
+- [ ] Full LoCoMo `zmem-retrieval` alias coverage; this resolves to `pseudo-embedding-rerank`, so do not spend a duplicate full run after rerank is measured.
 - [ ] LongMemEval-S abstention/token efficiency run.
 - [ ] BEAM scale benchmark.
 - [ ] ActiveGraph batching/performance for full traces.
@@ -315,7 +316,7 @@ Every release tag should include:
 
 ## Current Highest-Leverage Next Move
 
-1. Resume benchmarks only with isolated output directories.
-2. Run LoCoMo `pseudo-embedding`, `pseudo-embedding-rerank`, and `zmem-retrieval` as separate run ids against the recorded FTS/FTS-multihop baselines.
-3. Run LongMemEval-S for abstention and token-efficiency evidence.
-4. Use the deltas to decide whether the next L3 slice is abstention, context expansion, or graph fusion.
+1. Keep benchmark runs in isolated output directories and on supported Python 3.10+ runtimes.
+2. Fix the per-run SQLite growth that made the full pseudo-embedding run slow from roughly 230 questions/minute early to roughly 30/minute near completion.
+3. Run a fresh same-commit LoCoMo matrix; `zmem-retrieval` is an alias of `pseudo-embedding-rerank`, not a fifth independent mode.
+4. Run LongMemEval-S for abstention and token-efficiency evidence, then let category deltas choose the next L3 slice.

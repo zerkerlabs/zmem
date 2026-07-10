@@ -4,6 +4,10 @@
 
 Audience: internal Zerker product, engineering, and launch coordination.
 
+Final acceptance: published at `d029b99` as `v0.1.3`; GitHub Actions run `29119164360`, Vercel site/docs deployments, and production browser checks passed.
+
+Post-release evidence: the first current-code full LoCoMo pseudo-embedding run completed with accuracy `0.5967`, token F1 `0.5969`, mean query tokens `536.0`, and adversarial abstention `1.0`. Treat comparisons to the older FTS artifact as directional until a fresh same-commit matrix is complete.
+
 ### What changed
 
 - Agent MCP connections are narrow by default: propose, inject, explain, and verify. Trusted writes and review now require an explicit operator profile.
