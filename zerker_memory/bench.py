@@ -601,9 +601,17 @@ def run_locomo_benchmark(
     for path in (questions_dir, receipts_dir, snapshots_dir):
         path.mkdir(parents=True, exist_ok=True)
 
-    store = MemoryStore(run_dir / "memory.sqlite")
-    store.init()
-    before_snapshot = store.snapshot()
+    store: MemoryStore | None = None
+    if compact_artifacts:
+        with tempfile.TemporaryDirectory(prefix="zmem-locomo-before-") as tmp:
+            before_store = MemoryStore(Path(tmp) / "memory.sqlite")
+            before_store.init()
+            before_snapshot = before_store.snapshot()
+            before_store.conn.close()
+    else:
+        store = MemoryStore(run_dir / "memory.sqlite")
+        store.init()
+        before_snapshot = store.snapshot()
     before_snapshot_path = snapshots_dir / "before.snapshot.json"
     _write_json(before_snapshot_path, before_snapshot)
 
@@ -627,6 +635,8 @@ def run_locomo_benchmark(
         "retrieval_provider_config": retrieval_provider_config,
         "retrieval_reproducibility": _benchmark_retrieval_reproducibility(retrieval_mode),
         "receipt_bundles_omitted": compact_artifacts,
+        "store_lifecycle": "per-conversation-ephemeral" if compact_artifacts else "shared-run",
+        "run_database_omitted": compact_artifacts,
         "prompt_hashes": {
             "answerer": sha256_text("locomo local scaffold deterministic answerer"),
             "judge": sha256_text("locomo provisional exact-match local judge"),
@@ -651,37 +661,62 @@ def run_locomo_benchmark(
     manifest_path = run_dir / "benchmark-run.json"
     _write_json(manifest_path, manifest)
 
-    question_records = []
-    receipt_hashes = []
+    question_records: list[dict[str, Any]]
     questions = [_normalize_locomo_record(raw_record, index) for index, raw_record in filtered_with_indexes]
     question_ids = [question["question_id"] for question in questions]
     if len(set(question_ids)) != len(question_ids):
         raise ValueError("locomo filtered split contains duplicate question_id values")
-    for question in questions:
-        question_records.append(
-            _run_locomo_question(
-                store,
-                question,
-                questions_dir=questions_dir,
-                receipts_dir=receipts_dir,
-                context_budget_tokens=context_budget_tokens,
-                retrieval_mode=retrieval_mode,
-                retrieval_config=retrieval_config,
-                retrieval_config_hash=retrieval_config_hash,
-                retrieval_provider_config=retrieval_provider_runtime_config,
-                allow_network_providers=allow_network_providers,
-                answerer=answerer,
-                answerer_model=answerer_model,
-                write_receipt_bundle=not compact_artifacts,
-            )
+
+    def run_question(question_store: MemoryStore, question: dict[str, Any]) -> dict[str, Any]:
+        return _run_locomo_question(
+            question_store,
+            question,
+            questions_dir=questions_dir,
+            receipts_dir=receipts_dir,
+            context_budget_tokens=context_budget_tokens,
+            retrieval_mode=retrieval_mode,
+            retrieval_config=retrieval_config,
+            retrieval_config_hash=retrieval_config_hash,
+            retrieval_provider_config=retrieval_provider_runtime_config,
+            allow_network_providers=allow_network_providers,
+            answerer=answerer,
+            answerer_model=answerer_model,
+            write_receipt_bundle=not compact_artifacts,
         )
-        if question_records[-1].get("receipt_bundle_hash"):
-            receipt_hashes.append(question_records[-1]["receipt_bundle_hash"])
+
+    if compact_artifacts:
+        questions_by_sample: dict[str, list[dict[str, Any]]] = {}
+        for question in questions:
+            questions_by_sample.setdefault(str(question["sample_id"]), []).append(question)
+        records_by_question_id: dict[str, dict[str, Any]] = {}
+        for sample_questions in questions_by_sample.values():
+            with tempfile.TemporaryDirectory(prefix="zmem-locomo-conversation-") as tmp:
+                conversation_store = MemoryStore(Path(tmp) / "memory.sqlite")
+                conversation_store.init()
+                try:
+                    for question in sample_questions:
+                        record = run_question(conversation_store, question)
+                        records_by_question_id[record["question_id"]] = record
+                finally:
+                    conversation_store.conn.close()
+        question_records = [records_by_question_id[question_id] for question_id in question_ids]
+    else:
+        if store is None:
+            raise RuntimeError("shared benchmark store was not initialized")
+        question_records = [run_question(store, question) for question in questions]
+
+    receipt_hashes = [
+        record["receipt_bundle_hash"]
+        for record in question_records
+        if record.get("receipt_bundle_hash")
+    ]
 
     snapshot_paths = {"before": before_snapshot_path}
     if compact_artifacts:
         after_snapshot_path = None
     else:
+        if store is None:
+            raise RuntimeError("shared benchmark store was not initialized")
         after_snapshot = store.snapshot()
         after_snapshot_path = snapshots_dir / "after.snapshot.json"
         _write_json(after_snapshot_path, after_snapshot)
@@ -726,6 +761,8 @@ def run_locomo_benchmark(
         "retrieval_reproducibility": _benchmark_retrieval_reproducibility(retrieval_mode),
         "receipt_bundles_omitted": compact_artifacts,
         "final_snapshot_omitted": compact_artifacts,
+        "store_lifecycle": "per-conversation-ephemeral" if compact_artifacts else "shared-run",
+        "run_database_omitted": compact_artifacts,
         "summary": summary,
         "question_count": len(question_records),
         "questions": question_records,
@@ -736,6 +773,7 @@ def run_locomo_benchmark(
             "per_question_receipt_bundle_hashes": receipt_hashes,
             "receipt_bundles_omitted": compact_artifacts,
             "final_snapshot_omitted": compact_artifacts,
+            "run_database_omitted": compact_artifacts,
             "aggregate_result_hash": sha256_text(stable_json(summary)),
             "aggregate_merkle_root": aggregate_root,
             "local_verification": "ok",
@@ -746,6 +784,7 @@ def run_locomo_benchmark(
             "benchmark_run": "benchmark-run.json",
             "result": "benchmark-result.json",
             "report": "report.md",
+            "database": None if compact_artifacts else "memory.sqlite",
             "snapshots": {
                 name: str(path.relative_to(run_dir))
                 for name, path in snapshot_paths.items()
@@ -770,6 +809,8 @@ def run_locomo_benchmark(
         "retrieval_config": retrieval_config,
         "retrieval_provider_config": retrieval_provider_config,
         "retrieval_reproducibility": _benchmark_retrieval_reproducibility(retrieval_mode),
+        "store_lifecycle": result["store_lifecycle"],
+        "run_database_omitted": result["run_database_omitted"],
         "summary": summary,
         "proof": result["proof"],
     }

@@ -7600,6 +7600,73 @@ class BenchmarkHarnessTest(unittest.TestCase):
                 {(after_snapshot["memories"][0]["id"],)},
             )
 
+    def test_compact_locomo_isolates_ephemeral_stores_by_conversation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            dataset = Path(tmp) / "locomo-compact-conversations.jsonl"
+            records = [
+                {
+                    "question_id": "dialog-alpha-1",
+                    "sample_id": "dialog-alpha",
+                    "split": "dev",
+                    "category": "single_hop",
+                    "history": ["The dashboard owner is Mina."],
+                    "question": "Who owns the dashboard?",
+                    "answer": "Mina.",
+                    "supporting_facts": ["The dashboard owner is Mina."],
+                    "should_abstain": False,
+                },
+                {
+                    "question_id": "dialog-beta-1",
+                    "sample_id": "dialog-beta",
+                    "split": "dev",
+                    "category": "single_hop",
+                    "history": ["The dashboard owner is Mina."],
+                    "question": "Who owns the dashboard in beta?",
+                    "answer": "Mina.",
+                    "supporting_facts": ["The dashboard owner is Mina."],
+                    "should_abstain": False,
+                },
+                {
+                    "question_id": "dialog-alpha-2",
+                    "sample_id": "dialog-alpha",
+                    "split": "dev",
+                    "category": "single_hop",
+                    "history": ["The dashboard owner is Mina."],
+                    "question": "Who is responsible for the dashboard?",
+                    "answer": "Mina.",
+                    "supporting_facts": ["The dashboard owner is Mina."],
+                    "should_abstain": False,
+                },
+            ]
+            dataset.write_text("\n".join(json.dumps(record, sort_keys=True) for record in records) + "\n", encoding="utf-8")
+
+            result = run_locomo_benchmark(
+                Path(tmp) / "bench",
+                dataset,
+                "dev",
+                seed=0,
+                run_id="locomo-compact-conversations",
+                compact_artifacts=True,
+            )
+            run_dir = Path(result["run_dir"])
+            manifest = json.loads((run_dir / "benchmark-run.json").read_text(encoding="utf-8"))
+            result_payload = json.loads((run_dir / "benchmark-result.json").read_text(encoding="utf-8"))
+            supporting_ids = {
+                question["question_id"]: question["expected_supporting_memory_ids"]
+                for question in result_payload["questions"]
+            }
+
+            self.assertEqual(manifest["store_lifecycle"], "per-conversation-ephemeral")
+            self.assertTrue(manifest["run_database_omitted"])
+            self.assertEqual(result_payload["store_lifecycle"], "per-conversation-ephemeral")
+            self.assertTrue(result_payload["run_database_omitted"])
+            self.assertIsNone(result_payload["paths"]["database"])
+            self.assertEqual([question["question_id"] for question in result_payload["questions"]], [record["question_id"] for record in records])
+            self.assertEqual(supporting_ids["dialog-alpha-1"], supporting_ids["dialog-alpha-2"])
+            self.assertNotEqual(supporting_ids["dialog-alpha-1"], supporting_ids["dialog-beta-1"])
+            self.assertEqual(list(run_dir.rglob("*.sqlite")), [])
+            self.assertTrue(verify_benchmark_result(run_dir / "benchmark-result.json")["ok"])
+
     def test_locomo_json_wrapper_split_filtering_works(self):
         with tempfile.TemporaryDirectory() as tmp:
             dataset = Path(tmp) / "dataset.json"
