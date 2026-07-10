@@ -6,6 +6,10 @@ All notable Zerker Memory alpha changes are summarized here.
 
 ### Benchmark Operations
 
+- Made benchmark ingestion reproducible with deterministic memory ids and timestamps while preserving random ids and current timestamps for normal product writes.
+- Made relation and update-history expansion order by append-only observation sequence instead of coarse wall-clock timestamps, removing ranking drift caused by ingestion speed.
+- Verified two independent `227`-question LoCoMo repeats with the same `156/227` result and `147,710` query tokens, plus exact parity for decisions, answers, retrieved/injected ids, content hashes, and candidate-rank hashes.
+- Evaluated and rejected a broad FTS token-prefix fallback after it introduced decoy regressions. No unsafe morphology shortcut was shipped.
 - Added the optional `fts-adaptive` benchmark mode. It measures ZMem's query-by-query store routing without forcing multi-hop on every question, and records activation or suppression reasons in each retrieval proof.
 - Tightened semantic multi-hop escalation to explicit composition signals while preserving fallback and no-lexical-match escalation. Broad semantic matches now remain on the base route unless the query asks for a composed answer.
 - Completed verified adaptive follow-up runs with compact artifacts and no retained SQLite databases or per-question bundles. On local LoCoMo, adaptive scored `0.6108` versus `0.5967` for FTS and `0.6067` for always-on multi-hop, gaining `29` questions and losing `1` against FTS. On local LongMemEval, adaptive scored `0.766` versus `0.740` for FTS, gaining `13` questions with zero losses; always-on multi-hop remains highest there at `0.780`.

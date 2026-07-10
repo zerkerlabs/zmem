@@ -1,3 +1,24 @@
+## 2026-07-10 - Deterministic benchmark ingestion
+
+Shipped:
+
+- Added benchmark-only deterministic memory ids and timestamps while preserving normal `MemoryStore.remember()` defaults.
+- Ordered relation and update-history support expansion by append-only observation sequence instead of coarse wall-clock timestamps.
+- Preserved duplicate history positions during benchmark history reuse instead of resolving memories by content alone.
+
+Verification:
+
+- Two independent `227`-question LoCoMo repeats both scored `156/227` with `147,710` query tokens.
+- The repeats had zero differences in correctness, final answers, retrieved/injected ids, retrieved content hashes, and candidate-rank hashes.
+- `python3.11 -m unittest tests.test_bench tests.test_store -q` -> `493` tests passed.
+- `python3.11 -m unittest -q` -> `1,230` tests passed.
+- `python3.11 -m zerker_memory eval` -> `11/11` passed.
+- `python3.11 scripts/release_smoke.py --summary-only` -> strict publish ready, public verify `6/6`, launch assets `8/8`, and return packet ready.
+
+Decision:
+
+- Rejected a broad FTS token-prefix fallback after it introduced real decoy regressions. Future retrieval changes must first pass the stable repeat cohort with zero regressions.
+
 ## 2026-07-10 - Same-checkpoint LoCoMo mode matrix
 
 Evidence:

@@ -5386,7 +5386,7 @@ def _append_relation_support_rows(
           AND ({mutation_sql})
           AND {status_sql}
           {scope_sql}
-        ORDER BY {authority_order_sql} DESC, m.trust DESC, m.updated_at DESC, m.id ASC
+        ORDER BY {authority_order_sql} DESC, m.trust DESC, observation_seq DESC, m.id ASC
         LIMIT {limit}
         """,
         support_params,
@@ -8332,6 +8332,8 @@ class MemoryStore:
         caused_by_event: str | None = None,
         parent_action_id: str | None = None,
         environment_hash: str | None = None,
+        memory_id: str | None = None,
+        created_at: str | None = None,
     ) -> MemoryRecord:
         self.init()
         if memory_type not in MEMORY_TYPES:
@@ -8345,8 +8347,16 @@ class MemoryStore:
         status = status or self._default_status(source_kind, memory_type)
         if status not in STATUSES:
             raise ValueError(f"unsupported status: {status}")
-        memory_id = "mem_" + uuid.uuid4().hex[:16]
-        created_at = now_iso()
+        if memory_id is None:
+            memory_id = "mem_" + uuid.uuid4().hex[:16]
+        elif not isinstance(memory_id, str) or not memory_id.strip():
+            raise ValueError("memory_id must be a non-empty string")
+        elif self.conn.execute("SELECT 1 FROM memories WHERE id = ?", (memory_id,)).fetchone() is not None:
+            raise ValueError(f"memory id already exists: {memory_id}")
+        if created_at is None:
+            created_at = now_iso()
+        elif not isinstance(created_at, str) or not re.match(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$", created_at):
+            raise ValueError("created_at must be in ISO 8601 UTC form like 2024-01-01T00:00:00Z")
         content_hash = sha256_text(content)
         self.conn.execute(
             """
@@ -8393,6 +8403,7 @@ class MemoryStore:
                 "caused_by_event": caused_by_event,
                 "parent_action_id": parent_action_id,
             },
+            created_at=created_at,
         )
         self._append_write_receipt(
             memory_id=memory_id,
@@ -10247,7 +10258,7 @@ class MemoryStore:
                   AND ({update_sql})
                   AND {status_sql}
                   {scope_sql}
-                ORDER BY {authority_order_sql} DESC, m.trust DESC, m.updated_at DESC, m.id ASC
+                ORDER BY {authority_order_sql} DESC, m.trust DESC, observation_seq DESC, m.id ASC
                 LIMIT {limit}
                 """,
                 sibling_params,
@@ -14901,13 +14912,14 @@ class MemoryStore:
         payload: dict[str, Any],
         memory_id: str | None = None,
         action_id: str | None = None,
+        created_at: str | None = None,
     ) -> dict[str, Any]:
         prev_row = self.conn.execute("SELECT event_hash, merkle_root FROM events ORDER BY seq DESC LIMIT 1").fetchone()
         prev_hash = prev_row["event_hash"] if prev_row else sha256_text("genesis")
         prior_merkle_root = prev_row["merkle_root"] if prev_row else merkle_root([])
         payload_json = stable_json(payload)
         payload_hash = sha256_text(payload_json)
-        created_at = now_iso()
+        created_at = created_at or now_iso()
         event_material = stable_json(
             {
                 "event_schema": EVENT_SCHEMA,

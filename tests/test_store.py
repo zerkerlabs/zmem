@@ -3318,6 +3318,113 @@ class MemoryStoreTest(unittest.TestCase):
                 self.assertEqual(temporal["selected_relation_support_ids"], [support.id])
                 self.assertEqual(temporal["selected_current_support_ids"], [support.id])
 
+    def test_remember_accepts_a_stable_memory_id_for_reproducible_ingestion(self):
+        memory = self.store.remember(
+            "Caroline passed the adoption agency interviews last Friday.",
+            memory_type="episodic",
+            scope="project",
+            source_kind="human",
+            memory_id="mem_0123456789abcdef",
+            created_at="2024-01-01T00:00:00Z",
+        )
+
+        self.assertEqual(memory.id, "mem_0123456789abcdef")
+        self.assertEqual(memory.created_at, "2024-01-01T00:00:00Z")
+        with self.assertRaisesRegex(ValueError, "memory id already exists"):
+            self.store.remember(
+                "A duplicate memory identifier must be rejected.",
+                memory_type="episodic",
+                scope="project",
+                source_kind="human",
+                memory_id="mem_0123456789abcdef",
+            )
+
+    def test_current_update_sibling_expansion_uses_event_sequence_not_wall_clock(self):
+        scope = "project-deterministic-current-siblings"
+        anchor = self.store.remember(
+            "Audrey got a new place with a bigger backyard.",
+            memory_type="episodic",
+            scope=scope,
+            source_kind="human",
+        )
+        first_sibling = self.store.remember(
+            "Audrey changed apartments after the first move.",
+            memory_type="episodic",
+            scope=scope,
+            source_kind="human",
+        )
+        second_sibling = self.store.remember(
+            "Audrey moved to a new house and unpacked boxes.",
+            memory_type="episodic",
+            scope=scope,
+            source_kind="human",
+        )
+        trailing_anchor = self.store.remember(
+            "Audrey updated the place after moving again.",
+            memory_type="episodic",
+            scope=scope,
+            source_kind="human",
+        )
+        for memory, timestamp in (
+            (anchor, "2025-04-01T00:00:00Z"),
+            (first_sibling, "2025-03-01T00:00:00Z"),
+            (second_sibling, "2025-02-01T00:00:00Z"),
+            (trailing_anchor, "2025-01-01T00:00:00Z"),
+        ):
+            self._set_memory_clock(memory.id, timestamp)
+        self.store.conn.commit()
+
+        result = self.store.search_with_meta("When did Audrey move to a new place?", scope=scope)
+
+        self.assertEqual(
+            result["retrieval"]["query_lookup"]["current"]["update_sibling_candidate_ids"],
+            [second_sibling.id, first_sibling.id],
+        )
+
+    def test_relation_support_expansion_uses_event_sequence_not_wall_clock(self):
+        scope = "project-deterministic-relation-support"
+        first = self.store.remember(
+            "DB uses replica slot",
+            memory_type="semantic",
+            scope=scope,
+            source_kind="human",
+        )
+        second = self.store.remember(
+            "DB uses failover slot",
+            memory_type="semantic",
+            scope=scope,
+            source_kind="human",
+        )
+        first_support = self.store.remember(
+            "DB usage changed after failover drill",
+            memory_type="semantic",
+            scope=scope,
+            source_kind="human",
+            trust=0.99,
+        )
+        second_support = self.store.remember(
+            "DB usage changed after audit",
+            memory_type="semantic",
+            scope=scope,
+            source_kind="human",
+            trust=0.99,
+        )
+        for memory, timestamp in (
+            (first, "2025-04-01T00:00:00Z"),
+            (second, "2025-03-01T00:00:00Z"),
+            (first_support, "2025-02-01T00:00:00Z"),
+            (second_support, "2025-01-01T00:00:00Z"),
+        ):
+            self._set_memory_clock(memory.id, timestamp)
+        self.store.conn.commit()
+
+        result = self.store.search_with_meta("when did what is used by db change then", scope=scope)
+
+        self.assertEqual(
+            result["retrieval"]["chronology_support"]["selected_candidate_ids"],
+            [second_support.id, first_support.id],
+        )
+
     def test_search_with_meta_passive_history_queries_backfill_generic_change_anchor_support(self):
         cases = [
             (

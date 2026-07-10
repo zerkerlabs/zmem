@@ -21,6 +21,12 @@ Primary mission brief:
 - Lane progress and release tracker: `docs/ZMEM_PROGRESS_TRACKER.md`
 - Lane logs: `docs/CONTINUOUS_BUILD/`
 
+Coordinator update `2026-07-10T23:30:55Z`:
+
+- Removed benchmark nondeterminism caused by random ingestion ids, wall-clock benchmark timestamps, and second-resolution expansion tie-breaking. Normal product writes retain their existing defaults.
+- Two independent `227`-question LoCoMo repeats now match exactly on score (`156/227`), tokens (`147,710`), decisions, answers, retrieved/injected ids, content hashes, and candidate-rank hashes.
+- Tested and rejected a broad token-prefix fallback because stable evidence exposed decoy regressions. Broad recurring swarms remain paused; the next L3 slice must pass a zero-regression pilot against this stable cohort before any full rerun.
+
 Coordinator update `2026-07-10T22:46:58Z`:
 
 - Added and verified explicit `fts-adaptive` routing with receipt-visible activation, evaluation, and suppression reasons.

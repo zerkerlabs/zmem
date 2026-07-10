@@ -3,8 +3,11 @@
 This is the short orchestration dashboard for Zerker Memory. Every autonomous build run should update this file after it updates `docs/BUILD_LOG.md`.
 
 ## Release Coordination
-`2026-07-10T22:46:58Z`
+`2026-07-10T23:30:55Z`
 
+- Made benchmark ingestion and ranking repeatable without changing normal write defaults. Benchmark memories now receive deterministic ids and timestamps, while relation and update-history expansion use append-only observation sequence instead of wall-clock ties.
+- Two independent `227`-question LoCoMo repeats now match exactly: `156/227`, `147,710` query tokens, and zero differences in decisions, answers, retrieved/injected ids, content hashes, or candidate-rank hashes.
+- Rejected a broad FTS token-prefix fallback after stable evidence exposed decoy regressions. Next: improve one morphology or multi-hop support seam against the stable miss set under a zero-regression gate, then add BEAM scale evidence.
 - Published and deployed `v0.1.3` at `d029b998875d26f4c3ae185d4499778e73c5c92e`. GitHub Actions run `29119164360` passed site, docs, Python 3.10/3.11/3.12 unit+eval, and release-smoke; production checks passed on `www.zmem.sh`, `/proof`, `/changelog`, and `docs.zmem.sh/docs`.
 - Completed and independently verified a fresh four-mode LoCoMo matrix at commit `871f23d`, seed `42`, and the same `1,986` questions. Matrix hash: `9f8b77ca186ddf90821534f5f1eb83396f109f7720065e8d46207aab62796ecd`; comparison hash: `18cdca154817642f6e5d5b3844a1fb048f936aefe1ae3f2e47a262f29f868b80`.
 - `fts-multihop` is the measured winner: accuracy `0.6067` versus `0.5967` for FTS, pseudo-embedding, and pseudo-rerank. It uses `425.8` mean query tokens versus `536.0` for FTS, a `20.6%` reduction.

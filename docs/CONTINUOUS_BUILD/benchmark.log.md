@@ -1,5 +1,14 @@
 # Benchmark Lane Log
 
+## 2026-07-10T23:30:55Z - deterministic benchmark ingestion and ranking
+
+- Scope: isolated benchmark repeat drift before attempting another retrieval-quality change.
+- Root cause: benchmark memories used random ids and wall-clock timestamps, while two support-expansion paths broke ties with second-resolution `updated_at`. Ingestion timing could therefore change retrieved ids and context order.
+- Implementation: benchmark-only stable ids and timestamps are now accepted through optional store inputs; normal writes retain their existing random-id and current-time defaults. Relation and update-history expansion now use append-only observation sequence with an id tie-breaker.
+- Repeat evidence: two independent `227`-question LoCoMo runs both scored `156/227` with `147,710` query tokens and matched exactly on correctness, final answers, retrieved/injected ids, retrieved content hashes, and candidate-rank hashes.
+- Boundary: latency is intentionally not deterministic. A broad token-prefix fallback was tested and rejected after it produced real decoy regressions; no morphology shortcut shipped.
+- Next safe slice: use the stable miss set to test one bounded morphology or support-expansion improvement with a zero-regression pilot before any full benchmark rerun.
+
 ## 2026-07-10T22:46:58Z - conservative adaptive routing evidence
 
 - Added optional `fts-adaptive`, which omits forced multi-hop configuration and lets the existing store router decide per question.

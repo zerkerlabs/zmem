@@ -4010,6 +4010,30 @@ def _safe_filename(value: str) -> str:
     return safe or "question"
 
 
+def _benchmark_memory_id(
+    *,
+    scope: str,
+    memory_type: str,
+    index: int,
+    content: str,
+) -> str:
+    material = stable_json(
+        {
+            "scope": scope,
+            "memory_type": memory_type,
+            "index": index,
+            "content": content,
+        }
+    )
+    return "mem_" + sha256_text(material)[:16]
+
+
+def _benchmark_memory_timestamp(*, scope: str, index: int) -> str:
+    scope_offset = int(sha256_text(scope)[:8], 16) % (20 * 365 * 24 * 60 * 60)
+    timestamp = 946684800 + scope_offset + index
+    return datetime.fromtimestamp(timestamp, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 def _benchmark_memory_snapshot(memory: dict[str, Any], *, extra: dict[str, Any] | None = None) -> dict[str, Any]:
     snapshot = {
         "id": memory.get("id"),
@@ -4187,8 +4211,15 @@ def _run_question(
             source_kind=memory["source_kind"],
             labels=memory.get("labels", []),
             actor_id="benchmark",
+            memory_id=_benchmark_memory_id(
+                scope=scope,
+                memory_type=memory["memory_type"],
+                index=index,
+                content=memory["content"],
+            ),
+            created_at=_benchmark_memory_timestamp(scope=scope, index=index),
         )
-        for memory in question["setup_memories"]
+        for index, memory in enumerate(question["setup_memories"])
     ]
     started = time.perf_counter()
     receipt = store.inject(
@@ -4521,24 +4552,29 @@ def _remember_benchmark_history_once(
     scope: str,
     labels: list[str],
 ) -> list[Any]:
-    existing = store.list_memories(scope=scope, limit=max(len(history_memories), 1))
-    if not existing:
-        return [
-            store.remember(
+    memories = []
+    for index, memory in enumerate(history_memories):
+        memory_id = _benchmark_memory_id(
+            scope=scope,
+            memory_type=memory_type,
+            index=index,
+            content=memory["content"],
+        )
+        try:
+            existing = store.get(memory_id)
+        except KeyError:
+            existing = store.remember(
                 memory["content"],
                 memory_type=memory_type,
                 scope=scope,
                 source_kind="human",
                 labels=labels,
                 actor_id="benchmark",
+                memory_id=memory_id,
+                created_at=_benchmark_memory_timestamp(scope=scope, index=index),
             )
-            for memory in history_memories
-        ]
-
-    existing_by_content: dict[str, Any] = {}
-    for memory in existing:
-        existing_by_content.setdefault(memory.content, memory)
-    return [existing_by_content[memory["content"]] for memory in history_memories if memory["content"] in existing_by_content]
+        memories.append(existing)
+    return memories
 
 
 def _run_locomo_question(

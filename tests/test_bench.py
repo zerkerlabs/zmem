@@ -565,6 +565,58 @@ class BenchmarkHarnessTest(unittest.TestCase):
             )
             self.assertTrue(verify_benchmark_result(Path(result["result_path"]))["ok"])
 
+    def test_compact_locomo_repeats_use_stable_memory_ids_and_ranking(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            dataset = Path(tmp) / "locomo-repeat.jsonl"
+            support = "Caroline passed the adoption agency interviews last Friday."
+            dataset.write_text(
+                json.dumps(
+                    {
+                        "question_id": "repeatable-retrieval",
+                        "sample_id": "repeatable-dialog",
+                        "split": "dev",
+                        "category": "temporal_reasoning",
+                        "history": [
+                            "Caroline prepared adoption paperwork earlier in the month.",
+                            support,
+                        ],
+                        "question": "When did Caroline pass the adoption agency interviews?",
+                        "answer": "last Friday",
+                        "supporting_facts": [support],
+                        "should_abstain": False,
+                    },
+                    sort_keys=True,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            payloads = []
+            for run_id in ("repeat-a", "repeat-b"):
+                result = run_locomo_benchmark(
+                    Path(tmp) / "bench",
+                    dataset,
+                    "dev",
+                    run_id=run_id,
+                    retrieval_mode="fts-adaptive",
+                    compact_artifacts=True,
+                )
+                self.assertTrue(verify_benchmark_result(Path(result["result_path"]))["ok"])
+                payloads.append(json.loads(Path(result["result_path"]).read_text(encoding="utf-8")))
+
+            first = payloads[0]["questions"][0]
+            second = payloads[1]["questions"][0]
+            self.assertEqual(first["retrieved_memory_ids"], second["retrieved_memory_ids"])
+            self.assertEqual(first["injected_memory_ids"], second["injected_memory_ids"])
+            self.assertEqual(
+                [memory["content_hash"] for memory in first["retrieved_memories"]],
+                [memory["content_hash"] for memory in second["retrieved_memories"]],
+            )
+            self.assertEqual(
+                first["retrieval_proof"]["candidate_rank_hash"],
+                second["retrieval_proof"]["candidate_rank_hash"],
+            )
+
     def test_synthetic_pseudo_embedding_mode_is_recorded_and_verifies(self):
         with tempfile.TemporaryDirectory() as tmp:
             result = run_synthetic_benchmark(
@@ -905,7 +957,7 @@ class BenchmarkHarnessTest(unittest.TestCase):
             self.assertTrue(question["deltas"][0]["retrieved_memories_added"])
             self.assertIn("locker code is 4182", question["deltas"][0]["retrieved_memories_added"][0]["content"])
 
-    def test_compare_uses_memory_content_deltas_not_run_local_ids(self):
+    def test_compare_repeat_runs_have_no_memory_identity_or_content_deltas(self):
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp) / "bench"
             first = run_synthetic_benchmark(out, seed=0, run_id="same-a", retrieval_mode="fts")
@@ -918,7 +970,8 @@ class BenchmarkHarnessTest(unittest.TestCase):
                 if question["question_id"] == "synthetic-policy-recall"
             )
 
-            self.assertTrue(question["deltas"][0]["retrieved_memory_ids_added"])
+            self.assertEqual(question["deltas"][0]["retrieved_memory_ids_added"], [])
+            self.assertEqual(question["deltas"][0]["retrieved_memory_ids_removed"], [])
             self.assertEqual(question["deltas"][0]["retrieved_memories_added"], [])
             self.assertEqual(question["deltas"][0]["retrieved_memories_removed"], [])
             self.assertEqual(question["deltas"][0]["injected_memories_added"], [])
