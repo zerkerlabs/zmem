@@ -1190,8 +1190,8 @@ def main(argv: list[str] | None = None) -> int:
             snippet = parse_json(run([str(zmem), "agent", "snippet", preset], cwd=work))
             if snippet["server"]["command"] != "zmem":
                 raise SystemExit(f"{preset} agent snippet missing zmem command")
-            if snippet["server"]["args"][-1] != "mcp":
-                raise SystemExit(f"{preset} agent snippet missing mcp command tail")
+            if snippet["server"]["args"][-3:] != ["mcp", "--profile", "agent"]:
+                raise SystemExit(f"{preset} agent snippet missing safe agent-profile command tail")
             run([str(zmem), "agent", "checklist", preset], cwd=work)
             if not checklist_path.exists():
                 raise SystemExit(f"{preset} agent checklist did not write artifact")
