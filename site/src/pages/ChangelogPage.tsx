@@ -2,8 +2,20 @@ import Card from '@/components/Card';
 
 const updates = [
   {
-    title: 'Adaptive retrieval checkpoint',
-    detail: 'ZMem now escalates to multi-hop only when the query needs it and records the routing reason. Verified local LoCoMo improved to 0.6108 with 29 gains and one loss versus FTS.',
+    title: 'v0.1.4 retrieval and scale release',
+    detail: 'Bounded regular-inflection matching, a BEAM scale runner, and a real ActiveGraph pack and batched trace path now ship together.',
+  },
+  {
+    title: 'Zero-regression morphology gate',
+    detail: 'The stable 227-question cohort gained two answers and lost none. Full local runs then gained five LoCoMo answers and three LongMemEval answers with zero regressions.',
+  },
+  {
+    title: 'ActiveGraph pack verified',
+    detail: 'ActiveGraph 1.9 discovers and loads ZMem, persists real events, and records compact causal benchmark traces. A 227-question run produced 908 events in eight batched commits with zero receipt bundles.',
+  },
+  {
+    title: 'BEAM scale harness',
+    detail: 'ZMem now reads the official BEAM directory layout from 100K through 10M, resolves nested source ids, and commits compact per-question evidence. The first 100K smoke covered all ten categories.',
   },
   {
     title: 'Compact receipt bundles',
@@ -76,9 +88,10 @@ export default function ChangelogPage() {
             Adaptive routing leads the local LoCoMo comparison.
           </h2>
           <p className="mt-5 text-sm leading-relaxed text-zmuted">
-            In ZMem's verified local provisional run, adaptive routing answered 1,213 of 1,986
-            questions correctly. It gained 29 questions and lost one against FTS, while always-on
-            multi-hop gained more individual questions but also introduced 78 regressions.
+            In ZMem's verified local provisional run, adaptive routing answered 1,218 of 1,986
+            questions correctly, or 0.6133 accuracy. The bounded morphology change added five
+            answers with no regressions against the deterministic adaptive checkpoint. LongMemEval
+            improved from 0.766 to 0.772 with three gains and no losses.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
             <a

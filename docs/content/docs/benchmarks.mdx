@@ -1,6 +1,6 @@
 ---
 title: Benchmarks
-description: Run proof-backed synthetic, LongMemEval-style, and LoCoMo-style benchmark evidence.
+description: Run proof-backed BEAM, LongMemEval, LoCoMo, and synthetic benchmark evidence.
 ---
 
 ZMem should compete on benchmark accuracy, latency, token efficiency, and proof-backed reproducibility. The current benchmark harness is designed for internal development and honest public evidence, not unsupported leaderboard claims.
@@ -15,9 +15,11 @@ ZMem has a verified four-mode baseline over the same `1,986` questions, SHA-pinn
 | `fts-multihop` | `0.6067` | `425.8` | `0.6219` | `0.0780` | `0.6168` | `0.1667` | `1.0000` |
 | `pseudo-embedding` | `0.5967` | `536.0` | `0.6005` | `0.0709` | `0.6293` | `0.1250` | `1.0000` |
 | `pseudo-embedding-rerank` | `0.5967` | `536.0` | `0.6005` | `0.0709` | `0.6293` | `0.1250` | `1.0000` |
-| `fts-adaptive` | `0.6108` | `532.8` | `0.6254` | `0.0745` | `0.6324` | `0.1771` | `1.0000` |
+| `fts-adaptive` | `0.6133` | `533.3` | `0.6290` | `0.0745` | `0.6386` | `0.1771` | `1.0000` |
 
-Always-on `fts-multihop` improved overall accuracy by `0.0101` and reduced mean query tokens by `20.6%` relative to `fts`, but it gained `98` questions and lost `78`, including a net four-question temporal regression. The conservative adaptive route instead gained `29` and lost `1` against FTS, finished eight questions ahead of always-on multi-hop, and improved every category over FTS. Its p50/p95 latency was `165.243/335.591ms`, compared with `145.434/308.934ms` for FTS.
+Always-on `fts-multihop` improved overall accuracy by `0.0101` and reduced mean query tokens by `20.6%` relative to `fts`, but it gained `98` questions and lost `78`, including a net four-question temporal regression. The first conservative adaptive checkpoint gained `29` and lost `1` against FTS.
+
+The v0.1.4 morphology follow-up adds only regular inflection matches behind a two-exact-anchor and two-match-gain gate. It passed the stable 227-question cohort at `158/227` versus `156/227`, then improved full adaptive LoCoMo from `1,213` to `1,218` correct with five gains and zero losses. Three gains are single-hop and two are temporal. Mean query tokens moved from about `532.8` to `533.3`.
 
 Pseudo-embedding and pseudo-rerank match plain FTS on every scored category and add no measured quality on this deterministic local path. The baseline matrix/comparison hashes are `9f8b77ca...` and `18cdca15...`; the adaptive follow-up hashes are `7e8825aa...` and `3bcd5d22...`. Both use conversation-bounded ephemeral stores and leave zero SQLite artifacts.
 
@@ -113,12 +115,38 @@ zmem-bench-locomo \
   --dataset data/locomo/locomo_official_zmem.json \
   --out .zerker/bench/activegraph-locomo-smoke \
   --run-id activegraph-smoke-fts-multihop \
-  --retrieval-mode fts-multihop \
+  --retrieval-mode fts-adaptive \
   --split default \
-  --limit 5
+  --event-batch-size 128
 ```
 
-Then use it for longer compact traces after the standard matrix identifies the modes worth preserving.
+The full 227-question acceptance run produced 908 replayable events in eight commits, a 1 MB causal event database, a 196 KB trace, and zero receipt bundles. Its deterministic answerer is a trace smoke, not an official quality score. See [ActiveGraph](/docs/activegraph) for the real pack-loader verification flow.
+
+## BEAM Scale
+
+Point the adapter at the official BEAM repository's `chats/<scale>` directory or one conversation inside it. ZMem does not download or redistribute the dataset.
+
+```bash
+RUN_ID="beam-100k-$(date -u +%Y%m%dT%H%M%SZ)"
+
+zmem bench run beam \
+  --dataset /path/to/BEAM/chats/100K \
+  --split 100K \
+  --out .zerker/bench/runs \
+  --run-id "$RUN_ID" \
+  --retrieval-mode fts-adaptive \
+  --context-budget-tokens 4096 \
+  --trace \
+  --compact-artifacts
+
+zmem bench verify \
+  ".zerker/bench/runs/$RUN_ID/benchmark-result.json" \
+  --summary-only
+```
+
+The adapter supports `100K`, `500K`, `1M`, and `10M`. It hashes each chat and probing file, records observed messages/tokens/bytes, preserves official source chat ids, and reports source-reference coverage.
+
+The first untouched official 100K smoke covered 188 messages, 63,411 observed whitespace tokens, 20 probing questions across all ten categories, and 53/53 resolved source references. The reusable trace was 31 KB and the complete proof directory was about 700 KB. This is local evidence-recall instrumentation with `public_benchmark_claim: false`, not the official model-judged BEAM score.
 
 ## Synthetic Matrix
 
@@ -153,9 +181,9 @@ The verified local `500`-question matrix uses the same dataset, seed, code, and 
 | `fts-multihop` | `0.780` | `2550.5` | `0.8462` | `0.5865` | `0.7669` | `1.0000` |
 | `pseudo-embedding` | `0.740` | `2452.1` | `0.7821` | `0.5338` | `0.7143` | `1.0000` |
 | `pseudo-embedding-rerank` | `0.740` | `2452.1` | `0.7821` | `0.5338` | `0.7143` | `1.0000` |
-| `fts-adaptive` | `0.766` | `2486.7` | `0.8077` | `0.5714` | `0.7594` | `1.0000` |
+| `fts-adaptive` | `0.772` | `2510.6` | `0.8205` | `0.5714` | `0.7744` | `1.0000` |
 
-Always-on multihop recovers `20` questions with zero losses: `+5` knowledge update, `+7` multi-session, `+7` temporal, and `+1` single-session user recall. Adaptive routing keeps `13` of those gains with zero losses while using fewer tokens and lower latency than always-on multi-hop. The four-mode baseline hashes are `e5dd8b06...` and `a69090df...`; the adaptive follow-up hashes are `b97e6101...` and `d5772c8d...`.
+Always-on multihop recovers `20` questions with zero losses: `+5` knowledge update, `+7` multi-session, `+7` temporal, and `+1` single-session user recall. The first adaptive checkpoint kept `13` of those gains with zero losses. The v0.1.4 morphology gate adds three more regression-free wins, one knowledge update and two temporal, for `386/500`. It costs 11,968 additional tokens across the run.
 
 With `--compact-artifacts`, LongMemEval uses one ephemeral store per session, preserves reuse within a session, and writes no run database or per-question receipt bundles. The complete four-mode matrix finished in `174.84s` and independently verified. Normal runs still retain the shared database, snapshots, and proof bundles.
 
@@ -195,9 +223,9 @@ zmem bench matrix locomo \
 
 Next benchmark priorities:
 
-- Stable-miss analysis: use the `773` adaptive LoCoMo misses and `117` adaptive LongMemEval misses to select one bounded retrieval-quality slice.
+- Stable-miss analysis: use the `768` adaptive LoCoMo misses and `114` adaptive LongMemEval misses to select one bounded retrieval-quality slice.
 - LoCoMo multi-hop and open-domain: improve the still-low categories without giving back temporal accuracy.
-- BEAM: scale benchmark for 100K to 10M token memory pressure and causal traces.
+- BEAM: expand the verified 100K adapter smoke into isolated 500K, 1M, and 10M runs before making scale-quality claims.
 
 ## Public Claim Rules
 

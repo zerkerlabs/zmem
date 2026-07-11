@@ -2,7 +2,7 @@
 
 ## Current Status
 
-Zerker Memory is a functional local-first MVP.
+Zerker Memory is a functional open-source, local-first alpha with a public site, tagged releases, and a verified local proof path.
 
 It is ready for:
 
@@ -10,7 +10,9 @@ It is ready for:
 - MCP-capable agent experiments,
 - demos to builders/startups,
 - early enterprise architecture conversations,
-- GitHub open-source release as an alpha.
+- GitHub open-source use as an alpha,
+- receipt-backed local LoCoMo, LongMemEval, and BEAM development evidence,
+- ActiveGraph 1.9 pack experiments and compact causal traces.
 
 It is not yet:
 
@@ -24,20 +26,24 @@ Product signal note: the current wedge is validated by builder demand for local,
 
 ## Not Built Yet, In Priority Order
 
-1. Public repo launch surface: live GitHub publish proof for `zerkerlabs/zmem`, release tags, screenshots/GIFs, and the live raw `install.sh` URL.
-2. Hosted docs/landing deployment: polished public URL, analytics-light launch page, copy that matches the alpha boundary, and visible install proof.
-3. Signed Treeship publish path: move from Treeship-ready local proof export to a fully signed publish/verify workflow with stable public receipts.
-4. Hosted or team review console: shared queue, roles, approvals, retention controls, and audit export beyond the current local console.
-5. Direct integrations beyond local MCP: hardened adapters and docs for Mem0, Zep/Graphiti, Letta, LangMem, Cognee, and agent frameworks.
-6. Memory quality layer: memory strength, usage reinforcement, decay, compression/garbage collection thresholds, and curation policy templates.
-7. Structured introspection layer: schema guide, SQL-style user docs, and a "what do you know about X?" review surface.
-8. Shared memory and swarm coordination: team-scoped stores, conflict policy, permissions, collective memory receipts, and multi-agent handoff workflows.
-9. Enterprise hardening: tenant isolation, customer-managed keys, policy packs, SSO, audit log retention, and deployment guides for VPC/on-prem.
-10. Hosted recovery-memory control plane: cloud/VPC trace ingestion, dashboards, incident narratives, BT/fleet analytics, and benchmark reporting.
+1. Retrieval quality beyond the current adaptive route: stronger multi-hop and open-domain support expansion under the zero-regression gate.
+2. Real dense embeddings plus graph traversal fusion; current pseudo modes are measured local baselines, not vector retrieval.
+3. Isolated BEAM 500K, 1M, and 10M scale runs plus any official model-judged submission path.
+4. Production-host wiring for the ActiveGraph direct pre-call recall hook.
+5. Hosted or team review console: shared queue, roles, approvals, retention controls, and audit export beyond the current local console.
+6. Hardened integrations beyond local MCP and ActiveGraph for Mem0, Zep/Graphiti, Letta, LangMem, Cognee, and other agent frameworks.
+7. Memory quality layer: usage reinforcement, decay, live consolidation, compression thresholds, and curation policy templates.
+8. Shared memory and swarm coordination: team-scoped stores, conflict policy, permissions, collective receipts, and multi-agent handoff workflows.
+9. Enterprise hardening: tenant isolation, customer-managed keys, policy packs, SSO, audit retention, and VPC/on-prem guides.
+10. Package-registry publishing and a hosted recovery-memory control plane.
 
 ## Functional Today
 
 - CLI.
+- Deterministic adaptive retrieval with receipt-visible routing, packing, semantic rescue, and conservative regular-inflection evidence.
+- Verified local LoCoMo and LongMemEval matrices with explicit provisional claim boundaries.
+- BEAM official-layout adapter across 100K, 500K, 1M, and 10M buckets, with a verified 100K scale smoke.
+- Real ActiveGraph 1.9 pack discovery/loading, event persistence, direct recall hook, and batched compact trace runner.
 - `install.sh` one-command bootstrap for clone and curl-style setup.
 - `install.sh` now runs both day-1 smoke commands against the selected bootstrap target, defaulting to OpenClaw for the safe manual-pack path.
 - MCP server.
@@ -157,6 +163,8 @@ zmem export <action-id> --format treeship --out-dir .zerker/exports
 zmem provider import "deploy runbook" --provider mem0 --scope project --type procedural
 zmem provider doctor
 zmem provider doctor --live --mem0-base-url http://localhost:8888 --mem0-query "zerker mem0 smoke" --zep-base-url http://localhost:8000 --zep-query "zerker zep smoke"
+python scripts/verify_activegraph_pack.py --summary-only
+zmem bench run beam --dataset /path/to/BEAM/chats/100K --split 100K --out .zerker/bench/runs --run-id beam-100k-local --compact-artifacts
 zmem doctor
 zmem prelaunch
 python3 scripts/release_smoke.py --summary-only
@@ -174,11 +182,11 @@ Agent memory can be local-first, governed before injection, explainable after ac
 
 ## Next Production Gaps
 
-1. Real Treeship signing/push.
-2. Expand live provider smoke into hosted CI coverage.
-3. Graphiti adapter.
-4. Policy config expansion: per-agent, per-scope, and per-action rules.
-5. Vector search backend.
-6. Snapshot merge/import conflict rules.
-7. Hosted or VPC review workflow.
-8. Public package publishing.
+1. Multi-hop/open-domain retrieval improvements under the zero-regression gate.
+2. Dense vector and temporal graph fusion.
+3. BEAM 500K, 1M, and 10M evidence plus official scoring paths.
+4. ActiveGraph production-host pre-call integration.
+5. Expand live provider smoke into hosted CI coverage and add a Graphiti adapter.
+6. Policy config expansion: per-agent, per-scope, and per-action rules.
+7. Snapshot merge/import conflict rules.
+8. Hosted or VPC review workflow and public package publishing.

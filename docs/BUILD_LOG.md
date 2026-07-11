@@ -1,3 +1,39 @@
+## 2026-07-11 - v0.1.4 retrieval, BEAM, and ActiveGraph release candidate
+
+Shipped:
+
+- Added conservative regular-inflection rescue behind a two-exact-anchor and two-added-match gate, with receipt-visible morphology evidence.
+- Added `zmem bench run beam` for the official 100K, 500K, 1M, and 10M directory layout, compact source hashing, source-id coverage, and local evidence-recall proof artifacts.
+- Replaced the placeholder ActiveGraph entry point with a real ActiveGraph 1.9 pack, typed settings, canonical behaviors, and a repeatable loader verifier.
+- Batched ActiveGraph event writes through WAL, reused conversation ingestion, and kept full retrieval receipts out of event payloads.
+- Closed adapter-owned ActiveGraph store connections after each runtime operation without closing caller-provided stores.
+- Made fresh release smokes work under uv-managed POSIX Python by using symlinked venv executables, and excluded `.treeship`, `node_modules`, `.next`, and `.turbo` runtime/build state from release-surface copies.
+- Updated package version, changelog, CI, public site, docs, product status, progress tracker, orchestration state, and internal release communications for `0.1.4`.
+
+Evidence:
+
+- Stable morphology gate: `158/227` versus `156/227`, two gains, zero losses.
+- Full adaptive LoCoMo: `1,218/1,986` (`0.6133`), five gains, zero losses versus the deterministic adaptive checkpoint.
+- Full adaptive LongMemEval: `386/500` (`0.772`), three gains, zero losses.
+- Official BEAM 100K adapter smoke: 188 messages, 63,411 observed whitespace tokens, 20 questions across all ten categories, and 53/53 source references resolved; compact result verifies locally.
+- ActiveGraph acceptance: 227 questions, 5,882 memories, 908 replayable events, eight commits at batch size 128, roughly 1 MB event database, 196 KB trace, and zero receipt bundles.
+
+Verification:
+
+- `python3.11 -m unittest discover -s tests -q` -> `1,236` tests passed.
+- `python3.11 -m zerker_memory eval` -> `11/11` passed.
+- `python3.11 scripts/release_smoke.py --summary-only` -> strict publish ready, public verify `6/6`, launch assets `8/8`, return packet ready.
+- `TMPDIR=/private/tmp python3.11 scripts/release_smoke.py` -> full fresh-workspace smoke passed with ZMem `0.1.4` and editable packaged install mode.
+- Real ActiveGraph 1.9 discovery, idempotent loading, behavior resolution, event persistence, and four integration tests passed in an isolated environment.
+- `python -m build` produced `zerker_memory-0.1.4.tar.gz` and `zerker_memory-0.1.4-py3-none-any.whl`; the wheel reinstalled and reported `zmem 0.1.4`.
+- Site lint/build and docs typecheck/build passed; production dependency audits reported zero vulnerabilities.
+
+Claim boundary:
+
+- LoCoMo and LongMemEval remain verified local provisional evidence, not official rankings.
+- BEAM proves adapter/source coverage and compact evidence behavior, not the official model-judged score.
+- The installed ActiveGraph request behavior records immutable runtime events; current-call context injection requires the direct pre-call hook.
+
 ## 2026-07-10 - Deterministic benchmark ingestion
 
 Shipped:

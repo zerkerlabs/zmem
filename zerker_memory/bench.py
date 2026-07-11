@@ -52,6 +52,9 @@ LONGMEMEVAL_DATASET_VERSION = "local-dataset"
 LONGMEMEVAL_ADAPTER_VERSION = "zerker.longmemeval_local_scaffold.v1"
 LOCOMO_DATASET_VERSION = "local-dataset"
 LOCOMO_ADAPTER_VERSION = "zerker.locomo_local_scaffold.v1"
+BEAM_DATASET_VERSION = "official-local-export"
+BEAM_ADAPTER_VERSION = "zerker.beam_evidence_recall.v1"
+BEAM_SCALE_BUCKETS = ("100K", "500K", "1M", "10M")
 LOCAL_ABSTAIN_ANSWER = "I don't know"
 
 
@@ -174,6 +177,15 @@ def list_benchmarks() -> dict[str, Any]:
                 "version": LOCOMO_DATASET_VERSION,
                 "adapter_version": LOCOMO_ADAPTER_VERSION,
                 "description": "Local-only LoCoMo-style scaffold with provisional deterministic scoring.",
+            },
+            {
+                "name": "beam",
+                "dataset": "official BEAM chats directory",
+                "version": BEAM_DATASET_VERSION,
+                "adapter_version": BEAM_ADAPTER_VERSION,
+                "description": (
+                    "Hash-pinned BEAM scale adapter with compact receipts and deterministic evidence-recall scoring."
+                ),
             },
         ],
     }
@@ -875,6 +887,269 @@ def run_locomo_benchmark(
     }
 
 
+def run_beam_benchmark(
+    out_dir: Path,
+    dataset: Path,
+    split: str = "default",
+    *,
+    seed: int = 0,
+    run_id: str | None = None,
+    context_budget_tokens: int | None = None,
+    retrieval_mode: str = "fts",
+    retrieval_provider_config_path: Path | None = None,
+    allow_network_providers: bool = False,
+    answerer: str = "deterministic",
+    answerer_model: str = "gpt-4o",
+    write_trace: bool = False,
+) -> dict[str, Any]:
+    if answerer != "deterministic":
+        raise ValueError("BEAM v1 supports deterministic evidence-recall scoring only")
+    _validate_provider_benchmark_gate(retrieval_mode, retrieval_provider_config_path, allow_network_providers)
+    scale_bucket, conversation_dirs = _discover_beam_conversations(dataset, split)
+    source_manifest = _beam_source_manifest(dataset, conversation_dirs, scale_bucket)
+    dataset_hash = sha256_text(stable_json(source_manifest))
+    retrieval_config = resolve_benchmark_retrieval_config(
+        retrieval_mode,
+        {"split": scale_bucket, "benchmark": "beam"},
+    )
+    retrieval_config_hash = benchmark_retrieval_config_hash(retrieval_config)
+    retrieval_provider_config = _benchmark_retrieval_provider_config_metadata(
+        retrieval_provider_config_path,
+        allow_network_providers=allow_network_providers,
+    )
+    retrieval_provider_runtime_config = (
+        load_retrieval_provider_config(retrieval_provider_config_path) if retrieval_provider_config_path else None
+    )
+    run_id = run_id or f"beam-{scale_bucket.lower()}-seed-{seed}"
+    run_dir = out_dir / run_id
+    if run_dir.exists() and any(run_dir.iterdir()):
+        raise ValueError(f"benchmark run directory already exists: {run_dir}")
+    questions_dir = run_dir / "questions"
+    snapshots_dir = run_dir / "snapshots"
+    questions_dir.mkdir(parents=True, exist_ok=True)
+    snapshots_dir.mkdir(parents=True, exist_ok=True)
+
+    with tempfile.TemporaryDirectory(prefix="zmem-beam-before-") as tmp:
+        before_store = MemoryStore(Path(tmp) / "memory.sqlite")
+        before_store.init()
+        before_snapshot = before_store.snapshot()
+        before_store.conn.close()
+    before_snapshot_path = snapshots_dir / "before.snapshot.json"
+    _write_json(before_snapshot_path, before_snapshot)
+
+    manifest = {
+        "schema": BENCHMARK_RUN_SCHEMA,
+        "run_id": run_id,
+        "benchmark": "beam",
+        "dataset": str(dataset),
+        "dataset_version": BEAM_DATASET_VERSION,
+        "dataset_hash": dataset_hash,
+        "filtered_dataset_hash": dataset_hash,
+        "split": scale_bucket,
+        "adapter_version": BEAM_ADAPTER_VERSION,
+        "seed": seed,
+        "model": "local-deterministic-evidence-checker",
+        "judge": "none-official; local-evidence-recall-only",
+        "retrieval_mode": retrieval_mode,
+        "retrieval_config_schema": BENCHMARK_RETRIEVAL_CONFIG_SCHEMA,
+        "retrieval_config_hash": retrieval_config_hash,
+        "retrieval_config": retrieval_config,
+        "retrieval_provider_config": retrieval_provider_config,
+        "retrieval_reproducibility": _benchmark_retrieval_reproducibility(retrieval_mode),
+        "receipt_bundles_omitted": True,
+        "store_lifecycle": "per-conversation-ephemeral",
+        "run_database_omitted": True,
+        "source": {
+            "name": "BEAM",
+            "repository": "https://github.com/mohammadtavakoli78/BEAM",
+            "dataset": "https://huggingface.co/datasets/Mohammadta/BEAM",
+            "license": "CC-BY-SA-4.0",
+            "files": source_manifest["files"],
+        },
+        "scoring": {
+            "mode": "local-evidence-recall",
+            "category_labels": "official-beam",
+            "public_benchmark_claim": False,
+            "hosted_judge": False,
+            "official_answer_score": False,
+            "abstention_handling": "category-label-short-circuit",
+        },
+        "context_budget_tokens": context_budget_tokens,
+        "command": (
+            f"zmem bench run beam --dataset {dataset} --split {scale_bucket} "
+            f"--out {out_dir} --seed {seed} --run-id {run_id} --retrieval-mode {retrieval_mode}"
+            f"{_context_budget_command_arg(context_budget_tokens)}"
+            f"{_provider_config_command_arg(retrieval_provider_config_path)}"
+            f"{_allow_network_command_arg(allow_network_providers)} --compact-artifacts"
+        ),
+        "created_at": _now_iso(),
+    }
+    manifest_path = run_dir / "benchmark-run.json"
+    _write_json(manifest_path, manifest)
+
+    question_records: list[dict[str, Any]] = []
+    scale_summary = {
+        "declared_bucket": scale_bucket,
+        "conversation_count": 0,
+        "message_count": 0,
+        "observed_history_tokens": 0,
+        "observed_history_characters": 0,
+        "source_reference_count": 0,
+        "resolved_source_reference_count": 0,
+        "input_bytes": source_manifest["input_bytes"],
+    }
+    for conversation_dir in conversation_dirs:
+        questions, conversation_scale = _load_beam_conversation(conversation_dir, scale_bucket)
+        scale_summary["conversation_count"] += 1
+        scale_summary["message_count"] += conversation_scale["message_count"]
+        scale_summary["observed_history_tokens"] += conversation_scale["observed_history_tokens"]
+        scale_summary["observed_history_characters"] += conversation_scale["observed_history_characters"]
+        scale_summary["source_reference_count"] += conversation_scale["source_reference_count"]
+        scale_summary["resolved_source_reference_count"] += conversation_scale["resolved_source_reference_count"]
+        if not questions:
+            continue
+        scope = f"bench:beam:{questions[0]['sample_id']}"
+        with tempfile.TemporaryDirectory(prefix="zmem-beam-conversation-") as tmp:
+            conversation_store = MemoryStore(Path(tmp) / "memory.sqlite")
+            conversation_store.init()
+            try:
+                created_memories = _remember_benchmark_history_once(
+                    conversation_store,
+                    questions[0]["history_memories"],
+                    memory_type="episodic",
+                    scope=scope,
+                    labels=["benchmark", "beam", scale_bucket],
+                )
+                for question in questions:
+                    question_records.append(
+                        _run_locomo_question(
+                            conversation_store,
+                            question,
+                            questions_dir=questions_dir,
+                            receipts_dir=run_dir / "receipts",
+                            context_budget_tokens=context_budget_tokens,
+                            retrieval_mode=retrieval_mode,
+                            retrieval_config=retrieval_config,
+                            retrieval_config_hash=retrieval_config_hash,
+                            retrieval_provider_config=retrieval_provider_runtime_config,
+                            allow_network_providers=allow_network_providers,
+                            answerer=answerer,
+                            answerer_model=answerer_model,
+                            write_receipt_bundle=False,
+                            benchmark_name="beam",
+                            judge_name="local-evidence-recall",
+                            category_label_status="official-beam",
+                            created_memories=created_memories,
+                        )
+                    )
+            finally:
+                conversation_store.conn.close()
+
+    if not question_records:
+        raise ValueError(f"no BEAM probing questions found in: {dataset}")
+    question_ids = [record["question_id"] for record in question_records]
+    if len(set(question_ids)) != len(question_ids):
+        raise ValueError("BEAM dataset contains duplicate question ids")
+
+    summary = _summarize_questions(question_records)
+    summary["scoring"] = "local-evidence-recall"
+    summary["category_labels"] = "official-beam"
+    summary["public_benchmark_claim"] = False
+    scale_summary["source_reference_coverage"] = (
+        scale_summary["resolved_source_reference_count"] / scale_summary["source_reference_count"]
+        if scale_summary["source_reference_count"]
+        else 1.0
+    )
+    report_path = run_dir / "report.md"
+    report_text = _render_report_text(manifest, summary, question_records)
+    report_text += (
+        "\n## BEAM Scale\n\n"
+        f"- Declared bucket: `{scale_bucket}`\n"
+        f"- Conversations: `{scale_summary['conversation_count']}`\n"
+        f"- Messages: `{scale_summary['message_count']}`\n"
+        f"- Observed history tokens: `{scale_summary['observed_history_tokens']}`\n"
+        f"- Source-reference coverage: `{scale_summary['source_reference_coverage']:.3f}`\n"
+        "- Claim boundary: `local evidence recall; not the official BEAM answer score`\n"
+    )
+    report_path.write_text(report_text, encoding="utf-8")
+
+    artifact_hashes = {
+        "benchmark_run": _file_hash(manifest_path),
+        "questions": {
+            record["question_id"]: _file_hash(run_dir / record["question_path"])
+            for record in question_records
+        },
+        "receipt_bundles": {},
+        "snapshots": {"before": _file_hash(before_snapshot_path)},
+        "report": _file_hash(report_path),
+    }
+    result = {
+        "schema": BENCHMARK_RESULT_SCHEMA,
+        "run_id": run_id,
+        "benchmark": "beam",
+        "dataset": str(dataset),
+        "dataset_version": BEAM_DATASET_VERSION,
+        "dataset_hash": dataset_hash,
+        "filtered_dataset_hash": dataset_hash,
+        "split": scale_bucket,
+        "adapter_version": BEAM_ADAPTER_VERSION,
+        "seed": seed,
+        "context_budget_tokens": context_budget_tokens,
+        "retrieval_mode": retrieval_mode,
+        "retrieval_config_schema": BENCHMARK_RETRIEVAL_CONFIG_SCHEMA,
+        "retrieval_config_hash": retrieval_config_hash,
+        "retrieval_config": retrieval_config,
+        "retrieval_provider_config": retrieval_provider_config,
+        "retrieval_reproducibility": _benchmark_retrieval_reproducibility(retrieval_mode),
+        "receipt_bundles_omitted": True,
+        "final_snapshot_omitted": True,
+        "store_lifecycle": "per-conversation-ephemeral",
+        "run_database_omitted": True,
+        "scale": scale_summary,
+        "summary": summary,
+        "question_count": len(question_records),
+        "questions": question_records,
+        "proof": {
+            "hash_alg": "sha256",
+            "merkle_alg": "binary-sha256-v1",
+            "artifact_hashes": artifact_hashes,
+            "per_question_receipt_bundle_hashes": [],
+            "receipt_bundles_omitted": True,
+            "final_snapshot_omitted": True,
+            "run_database_omitted": True,
+            "aggregate_result_hash": sha256_text(stable_json(summary)),
+            "aggregate_merkle_root": merkle_root(_artifact_hash_list(artifact_hashes)),
+            "local_verification": "ok",
+            "treeship_artifact_id": None,
+            "public_verify_url": None,
+        },
+        "paths": {
+            "benchmark_run": "benchmark-run.json",
+            "result": "benchmark-result.json",
+            "report": "report.md",
+            "database": None,
+            "snapshots": {"before": "snapshots/before.snapshot.json"},
+        },
+    }
+    result["result_hash"] = _result_hash(result)
+    result_path = run_dir / "benchmark-result.json"
+    _write_json(result_path, result)
+    if write_trace:
+        _write_single_run_trace_artifacts(run_dir, result)
+    return {
+        "ok": True,
+        "run_id": run_id,
+        "run_dir": str(run_dir),
+        "result_path": str(result_path),
+        "report_path": str(report_path),
+        "retrieval_mode": retrieval_mode,
+        "retrieval_config_hash": retrieval_config_hash,
+        "scale": scale_summary,
+        "summary": summary,
+        "proof": result["proof"],
+    }
+
+
 def run_benchmark_matrix(
     out_dir: Path,
     benchmark: str,
@@ -1389,16 +1664,23 @@ def _write_retrieval_receipt(run_dir: Path, matrix: dict[str, Any]) -> None:
 
 def _write_single_run_receipt(run_dir: Path, result: dict[str, Any]) -> None:
     trace_path = run_dir / "trace.jsonl"
+    benchmark = str(result.get("benchmark", ""))
+    dataset_path = Path(str(result.get("dataset"))) if result.get("dataset") else None
+    dataset_sha256 = result.get("dataset_hash")
+    if dataset_path is not None and dataset_path.is_file():
+        dataset_sha256 = _file_hash(dataset_path)
+    if benchmark == "locomo":
+        dataset_commit = _read_optional_text(Path(".zerker/bench/provenance/locomo-commit.txt"))
+    elif benchmark == "longmemeval":
+        dataset_commit = _read_optional_text(Path(".zerker/bench/provenance/longmemeval-sha256.txt"))
+    else:
+        dataset_commit = None
     receipt = {
         "run_id": result.get("run_id"),
-        "dataset": _receipt_dataset_name(str(result.get("benchmark", ""))),
-        "dataset_commit": _read_optional_text(Path(".zerker/bench/provenance/locomo-commit.txt"))
-        if result.get("benchmark") == "locomo"
-        else _read_optional_text(Path(".zerker/bench/provenance/longmemeval-sha256.txt")),
-        "dataset_sha256": _file_hash(Path(str(result.get("dataset"))))
-        if result.get("dataset") and result.get("dataset") != "synthetic"
-        else result.get("dataset_hash"),
-        "adapter_version": "zmem-adapter-0.1.0",
+        "dataset": _receipt_dataset_name(benchmark),
+        "dataset_commit": dataset_commit,
+        "dataset_sha256": dataset_sha256,
+        "adapter_version": result.get("adapter_version", "zmem-adapter-0.1.0"),
         "harness_version": _zmem_version(),
         "model": "deterministic-oracle-retrieval",
         "judge": "oracle-recall (no LLM judge)",
@@ -1406,7 +1688,11 @@ def _write_single_run_receipt(run_dir: Path, result: dict[str, Any]) -> None:
         "eval_scope": "per-conversation",
         "retrieval_mode": result.get("retrieval_mode"),
         "public_benchmark_claim": False,
-        "claimable_as": "evidence-recall on official LoCoMo/LongMemEval datasets with SHA-pinned provenance",
+        "claimable_as": (
+            "local evidence-recall on official BEAM source references; not the official answer score"
+            if benchmark == "beam"
+            else "evidence-recall on official LoCoMo/LongMemEval datasets with SHA-pinned provenance"
+        ),
         "seed": result.get("seed"),
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
         "scores": result.get("summary", {}),
@@ -3799,6 +4085,234 @@ def _load_local_dataset_records(dataset: Path, benchmark_name: str = "longmemeva
     return records
 
 
+def _discover_beam_conversations(dataset: Path, split: str) -> tuple[str, list[Path]]:
+    dataset_text = str(dataset)
+    if "://" in dataset_text or dataset_text.startswith(("http:", "https:")):
+        raise ValueError("BEAM dataset must be a local official chats directory, not a URL")
+    if not dataset.exists():
+        raise ValueError(f"BEAM dataset not found: {dataset}")
+    if not dataset.is_dir():
+        raise ValueError(f"BEAM dataset must be an official chats directory: {dataset}")
+
+    if _is_beam_conversation_dir(dataset):
+        scale_bucket = _beam_scale_from_path(dataset)
+        if scale_bucket is None:
+            if split not in BEAM_SCALE_BUCKETS:
+                raise ValueError("BEAM conversation directory requires --split 100K, 500K, 1M, or 10M")
+            scale_bucket = split
+        if split not in ("default", scale_bucket):
+            raise ValueError(f"BEAM split {split} does not match conversation bucket {scale_bucket}")
+        return scale_bucket, [dataset]
+
+    if dataset.name in BEAM_SCALE_BUCKETS:
+        scale_bucket = dataset.name
+        bucket_dir = dataset
+        if split not in ("default", scale_bucket):
+            raise ValueError(f"BEAM split {split} does not match dataset bucket {scale_bucket}")
+    elif split in BEAM_SCALE_BUCKETS and (dataset / split).is_dir():
+        scale_bucket = split
+        bucket_dir = dataset / split
+    else:
+        raise ValueError(
+            "BEAM chats root requires --split 100K, 500K, 1M, or 10M; "
+            "a bucket or conversation directory can infer it"
+        )
+
+    conversation_dirs = sorted(
+        (path for path in bucket_dir.iterdir() if _is_beam_conversation_dir(path)),
+        key=_beam_conversation_sort_key,
+    )
+    if not conversation_dirs:
+        raise ValueError(f"no official BEAM conversations found in: {bucket_dir}")
+    return scale_bucket, conversation_dirs
+
+
+def _is_beam_conversation_dir(path: Path) -> bool:
+    return path.is_dir() and (path / "chat.json").is_file() and (
+        path / "probing_questions" / "probing_questions.json"
+    ).is_file()
+
+
+def _beam_scale_from_path(path: Path) -> str | None:
+    for candidate in (path, *path.parents):
+        if candidate.name in BEAM_SCALE_BUCKETS:
+            return candidate.name
+    return None
+
+
+def _beam_conversation_sort_key(path: Path) -> tuple[int, int | str]:
+    try:
+        return (0, int(path.name))
+    except ValueError:
+        return (1, path.name)
+
+
+def _beam_source_manifest(dataset: Path, conversation_dirs: list[Path], scale_bucket: str) -> dict[str, Any]:
+    files = []
+    input_bytes = 0
+    for conversation_dir in conversation_dirs:
+        for path in (
+            conversation_dir / "chat.json",
+            conversation_dir / "probing_questions" / "probing_questions.json",
+        ):
+            size = path.stat().st_size
+            input_bytes += size
+            files.append(
+                {
+                    "path": os.path.relpath(path, dataset),
+                    "bytes": size,
+                    "sha256": _file_hash(path),
+                }
+            )
+    return {
+        "schema": "zerker.beam_source_manifest.v1",
+        "scale_bucket": scale_bucket,
+        "conversation_count": len(conversation_dirs),
+        "input_bytes": input_bytes,
+        "files": files,
+    }
+
+
+def _load_beam_conversation(conversation_dir: Path, scale_bucket: str) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    chat = json.loads((conversation_dir / "chat.json").read_text(encoding="utf-8"))
+    probing = json.loads(
+        (conversation_dir / "probing_questions" / "probing_questions.json").read_text(encoding="utf-8")
+    )
+    if not isinstance(probing, dict):
+        raise ValueError(f"BEAM probing questions must be an object: {conversation_dir}")
+    messages = _flatten_beam_messages(chat)
+    if not messages:
+        raise ValueError(f"BEAM conversation has no chat messages: {conversation_dir}")
+    history_memories = [{"content": message["memory_content"]} for message in messages]
+    index_by_chat_id: dict[str, int] = {}
+    for index, message in enumerate(messages):
+        if message["chat_id"] is not None:
+            index_by_chat_id.setdefault(str(message["chat_id"]), index)
+
+    questions: list[dict[str, Any]] = []
+    source_reference_count = 0
+    resolved_source_reference_count = 0
+    conversation_id = conversation_dir.name
+    for category, entries in probing.items():
+        if not isinstance(entries, list):
+            continue
+        for index, entry in enumerate(entries):
+            if not isinstance(entry, dict) or not entry.get("question"):
+                continue
+            source_chat_ids = _beam_source_chat_ids(entry.get("source_chat_ids"))
+            supporting_index = [
+                index_by_chat_id[chat_id]
+                for chat_id in source_chat_ids
+                if chat_id in index_by_chat_id
+            ]
+            missing_source_chat_ids = [chat_id for chat_id in source_chat_ids if chat_id not in index_by_chat_id]
+            source_reference_count += len(source_chat_ids)
+            resolved_source_reference_count += len(supporting_index)
+            expected_answer = _beam_expected_answer(entry)
+            should_abstain = str(category) == "abstention"
+            questions.append(
+                {
+                    "question_id": f"{scale_bucket}:{conversation_id}:{category}:{index + 1}",
+                    "sample_id": f"{scale_bucket}:{conversation_id}",
+                    "split": scale_bucket,
+                    "category": str(category),
+                    "history_memories": history_memories,
+                    "query": str(entry["question"]),
+                    "expected_answer": LOCAL_ABSTAIN_ANSWER if should_abstain else expected_answer,
+                    "supporting_facts": [history_memories[item]["content"] for item in supporting_index],
+                    "supporting_index": sorted(set(supporting_index)),
+                    "should_abstain": should_abstain,
+                    "benchmark_metadata": {
+                        "scale_bucket": scale_bucket,
+                        "conversation_id": conversation_id,
+                        "official_category": str(category),
+                        "source_chat_ids": source_chat_ids,
+                        "missing_source_chat_ids": missing_source_chat_ids,
+                        "difficulty": entry.get("difficulty"),
+                        "rubric_hash": sha256_text(stable_json(entry.get("rubric", []))),
+                    },
+                }
+            )
+
+    history_text = "\n".join(memory["content"] for memory in history_memories)
+    return questions, {
+        "message_count": len(messages),
+        "observed_history_tokens": _token_count(history_text),
+        "observed_history_characters": len(history_text),
+        "source_reference_count": source_reference_count,
+        "resolved_source_reference_count": resolved_source_reference_count,
+    }
+
+
+def _flatten_beam_messages(chat: Any) -> list[dict[str, Any]]:
+    messages: list[dict[str, Any]] = []
+
+    def visit(node: Any, inherited_time_anchor: Any = None) -> None:
+        if isinstance(node, list):
+            for item in node:
+                visit(item, inherited_time_anchor)
+            return
+        if not isinstance(node, dict):
+            return
+        time_anchor = node.get("time_anchor", inherited_time_anchor)
+        if "role" in node and "content" in node:
+            role = str(node.get("role", "unknown"))
+            content = str(node.get("content", ""))
+            chat_id = node.get("id")
+            when = f" [{time_anchor}]" if time_anchor else ""
+            identifier = f" [chat_id:{chat_id}]" if chat_id is not None else ""
+            messages.append(
+                {
+                    "chat_id": chat_id,
+                    "memory_content": f"{role}{identifier}{when}: {content}",
+                }
+            )
+            return
+        for value in node.values():
+            visit(value, time_anchor)
+
+    visit(chat)
+    return messages
+
+
+def _beam_source_chat_ids(value: Any) -> list[str]:
+    ids: list[str] = []
+
+    def visit(item: Any) -> None:
+        if isinstance(item, bool) or item is None:
+            return
+        if isinstance(item, int):
+            candidate = str(item)
+        elif isinstance(item, str) and item.strip().isdigit():
+            candidate = str(int(item.strip()))
+        elif isinstance(item, dict):
+            for nested in item.values():
+                visit(nested)
+            return
+        elif isinstance(item, list):
+            for nested in item:
+                visit(nested)
+            return
+        else:
+            return
+        if candidate not in ids:
+            ids.append(candidate)
+
+    visit(value)
+    return ids
+
+
+def _beam_expected_answer(entry: dict[str, Any]) -> str:
+    for key in ("ideal_response", "ideal_answer", "answer", "ideal_summary", "expected_compliance"):
+        value = entry.get(key)
+        if value not in (None, ""):
+            return str(value)
+    rubric = entry.get("rubric")
+    if isinstance(rubric, list) and rubric:
+        return " ".join(str(item) for item in rubric)
+    return "Evidence available in the referenced chat messages."
+
+
 def _dataset_records_from_json(records: Any) -> Any:
     if isinstance(records, list):
         return records
@@ -4130,6 +4644,29 @@ def _benchmark_memory_evidence(
         "injected_memories": injected_memories,
         "withheld_memories": withheld_memories,
         "budget_dropped_memories": budget_dropped_memories,
+    }
+
+
+def _compact_benchmark_memory_evidence(
+    evidence: dict[str, list[dict[str, Any]]],
+) -> dict[str, list[dict[str, Any]]]:
+    keep = {
+        "id",
+        "content_hash",
+        "reason",
+        "rule",
+        "approx_tokens",
+        "packing_rank",
+        "packing_rank_basis",
+        "packing_priority",
+    }
+    return {
+        name: [
+            {key: value for key, value in memory.items() if key in keep}
+            for memory in memories
+            if isinstance(memory, dict)
+        ]
+        for name, memories in evidence.items()
     }
 
 
@@ -4592,8 +5129,18 @@ def _run_locomo_question(
     answerer: str = "deterministic",
     answerer_model: str = "gpt-4o",
     write_receipt_bundle: bool = True,
+    benchmark_name: str = "locomo",
+    judge_name: str = "provisional-exact-match-local",
+    category_label_status: str = "provisional-local",
+    created_memories: list[Any] | None = None,
 ) -> dict[str, Any]:
-    scope = f"bench:locomo:{question['sample_id']}"
+    scope = f"bench:{benchmark_name}:{question['sample_id']}"
+    benchmark_metadata = question.get("benchmark_metadata")
+    metadata_fields = (
+        {"benchmark_metadata": benchmark_metadata}
+        if isinstance(benchmark_metadata, dict)
+        else {}
+    )
     if question["should_abstain"] and answerer != "llm" and not write_receipt_bundle:
         answer = LOCAL_ABSTAIN_ANSWER
         correct = answer == question["expected_answer"]
@@ -4623,14 +5170,15 @@ def _run_locomo_question(
             final_answer=answer,
             support_status=support_status,
         )
-        action_id = f"locomo-abstain-{sha256_text(question['question_id'])[:16]}"
+        action_id = f"{benchmark_name}-abstain-{sha256_text(question['question_id'])[:16]}"
         record = {
             "schema": BENCHMARK_QUESTION_SCHEMA,
-            "dataset": "locomo",
+            "dataset": benchmark_name,
             "question_id": question["question_id"],
             "split": question["split"],
             "category": question["category"],
-            "category_label_status": "provisional-local",
+            "category_label_status": category_label_status,
+            **metadata_fields,
             "should_abstain": question["should_abstain"],
             "input_history_hash": sha256_text(stable_json(question["history_memories"])),
             "ground_truth_answer_hash": sha256_text(question["expected_answer"]),
@@ -4652,7 +5200,7 @@ def _run_locomo_question(
             "final_answer": answer,
             "reference": question["expected_answer"],
             "judge": {
-                "name": "provisional-exact-match-local",
+                "name": judge_name,
                 "score": 1.0 if correct else 0.0,
                 "correct": correct,
                 "provisional": True,
@@ -4699,7 +5247,8 @@ def _run_locomo_question(
         return {
             "question_id": question["question_id"],
             "category": question["category"],
-            "category_label_status": "provisional-local",
+            "category_label_status": category_label_status,
+            **metadata_fields,
             "should_abstain": question["should_abstain"],
             "correct": correct,
             "score": 1.0 if correct else 0.0,
@@ -4735,13 +5284,14 @@ def _run_locomo_question(
             "total_tokens": record["metrics"]["total_tokens"],
         }
 
-    created_memories = _remember_benchmark_history_once(
-        store,
-        question["history_memories"],
-        memory_type="episodic",
-        scope=scope,
-        labels=["benchmark", "locomo", question["category"]],
-    )
+    if created_memories is None:
+        created_memories = _remember_benchmark_history_once(
+            store,
+            question["history_memories"],
+            memory_type="episodic",
+            scope=scope,
+            labels=["benchmark", benchmark_name, question["category"]],
+        )
     started = time.perf_counter()
     receipt = store.inject(
         question["query"],
@@ -4761,6 +5311,8 @@ def _run_locomo_question(
     injected_ids = receipt["injected_memory_ids"]
     retrieved_ids = receipt["retrieved_memory_ids"]
     has_required_support = all(memory_id in injected_ids for memory_id in expected_supporting_ids)
+    if benchmark_name == "beam" and not expected_supporting_ids:
+        has_required_support = False
     answer_latency_ms = 0.0
     if answerer == "llm":
         answer_started = time.perf_counter()
@@ -4796,6 +5348,8 @@ def _run_locomo_question(
         retrieval=receipt["retrieval"],
     )
     memory_evidence = _benchmark_memory_evidence(store, bundle["receipt"], bundle)
+    if benchmark_name == "beam":
+        memory_evidence = _compact_benchmark_memory_evidence(memory_evidence)
     packing = receipt.get("retrieval", {}).get("packing", {}) if isinstance(receipt.get("retrieval"), dict) else {}
     budget_dropped = packing.get("budget_dropped", []) if isinstance(packing.get("budget_dropped"), list) else []
 
@@ -4808,11 +5362,12 @@ def _run_locomo_question(
     )
     record = {
         "schema": BENCHMARK_QUESTION_SCHEMA,
-        "dataset": "locomo",
+        "dataset": benchmark_name,
         "question_id": question["question_id"],
         "split": question["split"],
         "category": question["category"],
-        "category_label_status": "provisional-local",
+        "category_label_status": category_label_status,
+        **metadata_fields,
         "should_abstain": question["should_abstain"],
         "input_history_hash": sha256_text(stable_json(question["history_memories"])),
         "ground_truth_answer_hash": sha256_text(question["expected_answer"]),
@@ -4831,7 +5386,7 @@ def _run_locomo_question(
         "final_answer": answer,
         "reference": question["expected_answer"],
         "judge": {
-            "name": "provisional-exact-match-local",
+            "name": judge_name,
             "score": 1.0 if correct else 0.0,
             "correct": correct,
             "provisional": True,
@@ -4877,7 +5432,8 @@ def _run_locomo_question(
     return {
         "question_id": question["question_id"],
         "category": question["category"],
-        "category_label_status": "provisional-local",
+        "category_label_status": category_label_status,
+        **metadata_fields,
         "should_abstain": question["should_abstain"],
         "correct": correct,
         "score": 1.0 if correct else 0.0,

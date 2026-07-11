@@ -21,6 +21,14 @@ Primary mission brief:
 - Lane progress and release tracker: `docs/ZMEM_PROGRESS_TRACKER.md`
 - Lane logs: `docs/CONTINUOUS_BUILD/`
 
+Coordinator update `2026-07-11T19:03:37Z`:
+
+- Completed the bounded morphology slice under the stable zero-regression gate: `158/227` versus `156/227`, with two gains and no losses.
+- Only after the gate passed, reran full adaptive LoCoMo (`0.6133`, five gains, zero losses) and LongMemEval (`0.772`, three gains, zero losses).
+- Added and verified the official-layout BEAM adapter. The untouched 100K smoke covered all ten categories and resolved `53/53` source references; this remains scale/evidence instrumentation, not an official answer score.
+- Finished the real ActiveGraph 1.9 pack loader and batched trace path. The 227-question acceptance produced 908 events in eight commits with zero receipt bundles.
+- Preparing `v0.1.4`; all recurring swarms stay paused until local release gates and remote CI pass.
+
 Coordinator update `2026-07-10T23:30:55Z`:
 
 - Removed benchmark nondeterminism caused by random ingestion ids, wall-clock benchmark timestamps, and second-resolution expansion tie-breaking. Normal product writes retain their existing defaults.

@@ -11,7 +11,7 @@ const featureRows = [
   { feature: 'Attest write digests', proof: 'ZMEM_TREESHIP_AUTO_SIGN=1' },
   { feature: 'Publish public proof', proof: 'zmem treeship publish <action-id>' },
   { feature: 'Hand off state', proof: 'zmem handoff --summary-only' },
-  { feature: 'ActiveGraph memory', proof: 'pack/pack.yaml' },
+  { feature: 'ActiveGraph memory', proof: 'python scripts/verify_activegraph_pack.py --summary-only' },
   { feature: 'Compact benchmark trace', proof: 'zmem-bench-locomo --dataset <file>' },
 ];
 
@@ -39,12 +39,12 @@ const proofSteps = [
 ];
 
 const benchmarkRows = [
-  { item: 'LoCoMo adaptive route', note: '1,986 questions, 0.6108 local accuracy, 29 gains and one loss versus FTS. Matrix and comparison verify.' },
+  { item: 'LoCoMo adaptive route', note: '1,986 questions, 0.6133 local accuracy. Bounded morphology added five correct answers with zero regressions against the deterministic adaptive checkpoint.' },
   { item: 'Always-on multi-hop', note: '0.6067 local LoCoMo accuracy. It gains 98 and loses 78 versus FTS, so it remains an explicit specialist mode.' },
-  { item: 'LongMemEval', note: 'Adaptive scores 0.766 with 13 regression-free gains over FTS; always-on multi-hop reaches 0.780.' },
+  { item: 'LongMemEval', note: 'Adaptive scores 0.772. Bounded morphology added three correct answers with zero regressions; always-on multi-hop remains an explicit specialist mode.' },
   { item: 'Pseudo rerank', note: 'Matches FTS on every scored LoCoMo and LongMemEval category in the current deterministic local path.' },
-  { item: 'ActiveGraph compact trace', note: 'Event-sourced trace.jsonl plus scored_receipt.json, without per-question bundle files.' },
-  { item: 'BEAM', note: 'Scale benchmark for 100K to 10M token memory pressure and causal traces.' },
+  { item: 'ActiveGraph compact trace', note: 'A 227-question acceptance run wrote 908 events in eight batched commits, with trace.jsonl, one scored receipt, and zero per-question bundles.' },
+  { item: 'BEAM scale smoke', note: 'Official 100K layout, 20 questions across ten categories, 53 of 53 source references resolved, and a compact verified evidence bundle. This is not an official quality score.' },
   { item: 'Metrics', note: 'Accuracy, stable wins/misses, latency, tokens, abstention, and proof verification.' },
   { item: 'Public claims', note: 'Official rankings wait for primary-source methods and reproducible benchmark submissions.' },
 ];

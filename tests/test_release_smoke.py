@@ -11,6 +11,8 @@ from unittest.mock import patch
 
 from scripts.release_smoke import (
     build_live_provider_doctor_command,
+    copy_release_surface,
+    create_release_venv,
     create_venv_pth_install,
     create_local_wrappers,
     ensure_bootstrap_contract,
@@ -43,6 +45,36 @@ from zerker_memory.cli import main as cli_main
 
 
 class ReleaseSmokeTest(unittest.TestCase):
+    @patch("scripts.release_smoke.venv.EnvBuilder")
+    def test_create_release_venv_uses_symlinks_on_posix(self, builder):
+        target = Path("/tmp/zmem-release-venv")
+
+        create_release_venv(target)
+
+        builder.assert_called_once_with(with_pip=True, symlinks=os.name != "nt")
+        builder.return_value.create.assert_called_once_with(target)
+
+    def test_copy_release_surface_omits_generated_web_dependencies(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo = root / "repo"
+            destination = root / "release"
+            (repo / "docs" / "content").mkdir(parents=True)
+            (repo / "docs" / ".next").mkdir()
+            (repo / "site" / "node_modules").mkdir(parents=True)
+            (repo / ".treeship" / "sessions").mkdir(parents=True)
+            (repo / "docs" / "content" / "guide.mdx").write_text("guide\n", encoding="utf-8")
+            (repo / "docs" / ".next" / "cache.bin").write_text("cache\n", encoding="utf-8")
+            (repo / "site" / "node_modules" / "package.js").write_text("cache\n", encoding="utf-8")
+            (repo / ".treeship" / "sessions" / "events.jsonl").write_text("runtime\n", encoding="utf-8")
+
+            copy_release_surface(repo, destination)
+
+            self.assertTrue((destination / "docs" / "content" / "guide.mdx").exists())
+            self.assertFalse((destination / "docs" / ".next").exists())
+            self.assertFalse((destination / "site" / "node_modules").exists())
+            self.assertFalse((destination / ".treeship").exists())
+
     def test_ensure_status_summary_requires_status_heading(self):
         ensure_status_summary("Zerker Memory status\nWorkspace: ready\n", source="examples/first_run.sh")
 

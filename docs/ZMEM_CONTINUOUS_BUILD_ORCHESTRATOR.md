@@ -14,22 +14,23 @@ Use this language precisely:
 
 ## Current Product Truth
 
-As of 2026-07-10, the product has a published `v0.1.3` alpha release
-and a lane-by-lane progress board:
+As of 2026-07-11, the product has a published `v0.1.3` alpha release,
+a verified `v0.1.4` release candidate, and a lane-by-lane progress board:
 
 - Progress tracker: [`ZMEM_PROGRESS_TRACKER.md`](ZMEM_PROGRESS_TRACKER.md)
 - Current public release: `v0.1.3`
 - Current release tag: `v0.1.3`
-- Current unpublished lane diff: none. Broad swarms and launch oversight are paused; isolated retrieval benchmarks are the next active lane.
+- Current unpublished lane diff: the bounded morphology, BEAM, ActiveGraph, docs, and `v0.1.4` release package. Broad swarms and launch oversight are paused through release verification.
 
 The product already has meaningful working surface:
 
 - Local-first SQLite memory store and CLI.
 - Typed memory categories already in the product surface.
-- FTS/retrieval baseline, temporal/update-history handling, and multi-hop retrieval work in progress.
+- Deterministic adaptive FTS/retrieval, temporal/update-history handling, conservative morphology, and multi-hop retrieval work in progress.
 - Memory event/Merkle lineage and Treeship memory proof integration paths.
 - Release pack, launch proof, public verify handoffs, clean-shell operator packet, return packet, and launch asset verification.
-- Benchmark harness work for LongMemEval/LoCoMo-style runs, metrics, isolated DBs, reports, receipts, and provider metadata.
+- Benchmark harnesses for LongMemEval, LoCoMo, and the official BEAM scale layout, with metrics, isolated stores, reports, receipts, and provider metadata.
+- A real ActiveGraph 1.9 pack plus compact WAL-backed batched trace runner.
 - Agent setup and handoff docs for Codex, Claude Code, Cursor, OpenClaw, Hermes, and generic MCP.
 - Public landing/site work under `site/`.
 
@@ -47,14 +48,15 @@ The frontier report does not change the product thesis. It changes the order of 
 4. Router before graph sprawl: direct, parallel decomposition, chain-of-query, and temporal override should exist before a large graph extractor.
 5. Profiles after evidence: profile/character consolidation is promising, but it should follow measurable raw episodic retrieval and conflict/temporal behavior.
 
-Current frontier benchmark TODO, from the official LoCoMo FTS baseline:
+Current frontier benchmark TODO, from the verified adaptive checkpoints:
 
-1. Treat the recorded LoCoMo FTS and FTS-multihop runs as the current local baselines.
-2. Use unique run ids and isolated output directories for every remaining mode; never reuse the shared `locomo-official-v1` target while another run is active.
-3. Run LoCoMo `pseudo-embedding`, `pseudo-embedding-rerank`, and `zmem-retrieval` against the same dataset and seed, then inspect multi-hop, temporal, open-domain, and adversarial abstention deltas.
-4. Run LongMemEval-S next because it directly tests abstention and token efficiency.
-5. Add BEAM as the scale/collapse benchmark for 100K -> 10M token contexts; do not treat it as implemented until runner, dataset source, command, hashes, and receipts are pinned.
-6. Add the fastest answerer fix: deterministic abstention when `retrieved_count == 0` or retrieval confidence is below threshold, then verify on LoCoMo adversarial and LongMemEval-S.
+1. Treat adaptive LoCoMo `0.6133` and LongMemEval `0.772` as the current local provisional checkpoints, with their explicit non-leaderboard claim boundary.
+2. Keep unique run ids and isolated output directories for every run; never reuse a target while another process can touch it.
+3. Require every retrieval change to pass the deterministic 227-question zero-regression gate before any full rerun.
+4. Improve one remaining LoCoMo multi-hop/open-domain stable miss without giving back temporal or abstention behavior.
+5. Expand the verified BEAM 100K adapter smoke into isolated 500K, 1M, and 10M scale runs.
+6. Wire the ActiveGraph direct recall hook into a production host before describing current-call prompt injection as integrated.
+7. Add real dense embeddings and graph traversal fusion only behind same-dataset comparisons and proof artifacts.
 
 Score projections, competitor comparisons, and "official benchmark" language stay internal until reproduced with pinned datasets, commands, hashes, and receipt bundles.
 
@@ -107,9 +109,9 @@ Use this when the user is present and actively working with Codex. Do not wait h
 
 Current live-session stance:
 
-- Continue manually from swarm drops instead of waiting for cron.
-- Retrieval just dropped a context-packing support-chain slice; inspect and verify it before new retrieval work.
-- The next coordinator action should be checkpointing or splitting the reviewed diff before spawning more overlapping workers.
+- Keep all recurring swarms paused through the `v0.1.4` local and remote release gates.
+- Do not start another retrieval slice until the current release diff is committed, pushed, tagged, and recorded.
+- After release, resume one bounded L3/L6 task at a time from the progress tracker rather than waiting for cron.
 
 ## Final Acceptance Gates
 

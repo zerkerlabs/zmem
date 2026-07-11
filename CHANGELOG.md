@@ -2,7 +2,7 @@
 
 All notable Zerker Memory alpha changes are summarized here.
 
-## Unreleased
+## 0.1.4 - 2026-07-11
 
 ### Benchmark Operations
 
@@ -18,6 +18,39 @@ All notable Zerker Memory alpha changes are summarized here.
 - Added direct `zmem bench run ... --compact-artifacts` support so recorded reproducibility commands are executable.
 - Bounded summary-only memory-count and efficiency deltas to ten examples plus an omitted count.
 - Completed a verified local `500`-question LongMemEval matrix: `fts-multihop` scored `0.780` versus `0.740` for FTS, pseudo-embedding, and pseudo-rerank; it recovered `20` questions with zero losses and all modes passed `30/30` abstention questions. These remain provisional local results, not leaderboard claims.
+
+### Retrieval Quality
+
+- Added a conservative regular-inflection rescue for semantic fallback. It activates only with at least two exact query anchors and two additional inflection matches, so broad prefix matching cannot pull in weak decoys.
+- Passed the required zero-regression gate: `158/227` versus `156/227` on the stable morphology cohort, with two gains and zero losses.
+- Improved full local LoCoMo adaptive evidence from `1,213/1,986` (`0.6108`) to `1,218/1,986` (`0.6133`), with five gains and zero losses.
+- Improved full local LongMemEval adaptive evidence from `383/500` (`0.766`) to `386/500` (`0.772`), with three gains and zero losses. The added retrieval costs `11,968` tokens across the 500-question run.
+
+### BEAM Scale Harness
+
+- Added `zmem bench run beam` for the official BEAM `chats/<scale>/<conversation>` layout across `100K`, `500K`, `1M`, and `10M` buckets.
+- BEAM runs hash every source chat and probing file, preserve official source chat ids, record observed scale, and emit compact verifiable evidence artifacts.
+- The first official 100K smoke covered 188 messages, 63,411 observed whitespace tokens, 20 questions, all ten BEAM categories, and 53/53 resolved source references. Its result verifies locally.
+- BEAM scores are explicitly local evidence-recall diagnostics with `public_benchmark_claim: false`; they are not the official model-judged BEAM answer score.
+
+### ActiveGraph
+
+- Replaced the placeholder entry point with a real ActiveGraph 1.9 `Pack` object at `zerker_memory.pack:pack`, typed settings, and canonical `zmem.persist` / `zmem.recall` behaviors.
+- Added the optional install extra `zerker-memory[activegraph]` and a repeatable `scripts/verify_activegraph_pack.py` discovery, idempotent-load, behavior, event, and persistence smoke.
+- Batched the compact event log with WAL and bounded commits, shared each conversation across its questions, and stopped copying full retrieval receipts into every event.
+- Closed SQLite connections created by runtime pack behaviors after each operation while leaving caller-owned stores open.
+- A full 227-question acceptance run wrote 908 replayable events in eight commits, a 1 MB causal event database, a 196 KB trace, and zero receipt bundles.
+
+### Release Engineering
+
+- Made fresh-workspace release smoke use symlinked virtualenv executables on POSIX, so uv-managed standalone Python builds retain their base-prefix and can bootstrap pip.
+- Excluded local `.treeship`, web `node_modules`, and Next.js/Turborepo caches from the release-surface copy. The same full smoke now stays storage-bounded instead of copying more than a gigabyte of generated state.
+- Built and reinstalled both the `0.1.4` wheel and source distribution before release.
+
+### Claim Boundaries
+
+- LoCoMo and LongMemEval values remain verified local provisional retrieval evidence, not official leaderboard rankings.
+- The ActiveGraph source hook can return context before a host model call. The installed ActiveGraph behavior observes immutable runtime events and records memory provenance/read receipts; it is not a pre-provider prompt interceptor.
 
 ## 0.1.3 - 2026-07-10
 
@@ -97,10 +130,10 @@ All notable Zerker Memory alpha changes are summarized here.
 - Added next-run guidance for `fts-multihop` and `pseudo-embedding-rerank` so retrieval depth and reranking can be compared against the same LoCoMo dataset.
 - Added the frontier benchmark queue: LongMemEval-S for abstention and token efficiency, plus BEAM for scale and causal-memory stress.
 
-### Current Boundary
+### Boundary At That Checkpoint
 
-- The ActiveGraph integration is built at source level and covered by local tests.
-- A real `activegraph pack add zmem` loader/install smoke still needs a networked environment.
+- The ActiveGraph integration was source-level at this checkpoint; `0.1.4` replaces it with a real ActiveGraph 1.9 pack and loader verification.
+- The old proposed `activegraph pack add` smoke is superseded by `activegraph pack list` plus `python scripts/verify_activegraph_pack.py --summary-only`.
 - Public benchmark claims remain scoped to the recorded rule-based token F1/EM receipts until official benchmark submission rules are satisfied.
 
 ## 0.1.0-alpha - Local-first proof memory MVP

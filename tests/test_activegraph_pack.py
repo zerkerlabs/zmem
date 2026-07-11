@@ -1,7 +1,10 @@
 import json
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from zerker_memory.bench.activegraph_runner import run_locomo_activegraph_benchmark, score_trace
 from zerker_memory.integrations.activegraph import handle_event
@@ -13,9 +16,10 @@ class ActiveGraphPackTest(unittest.TestCase):
         manifest = (Path(__file__).resolve().parents[1] / "pack" / "pack.yaml").read_text(encoding="utf-8")
 
         self.assertIn("name: zmem", manifest)
-        self.assertIn("entry_point: zerker_memory.integrations.activegraph", manifest)
+        self.assertIn("entry_point: zerker_memory.pack:pack", manifest)
         self.assertIn("  - zmem.persist", manifest)
         self.assertIn("  - zmem.recall", manifest)
+        self.assertIn("benchmark_stages:", manifest)
         self.assertIn("ZMEM_RETRIEVAL_MODE:", manifest)
         self.assertIn('default: "fts"', manifest)
 
@@ -52,6 +56,46 @@ class ActiveGraphPackTest(unittest.TestCase):
                 receipt["treeship_statement"]["object"]["caused_by_event"],
                 "ag_evt_write_1",
             )
+
+    @patch("zerker_memory.integrations.activegraph.MemoryStore")
+    def test_runtime_owned_store_connections_are_closed(self, memory_store):
+        owned = memory_store.return_value
+        owned.remember.return_value = SimpleNamespace(
+            id="mem_owned",
+            content_hash="sha256:owned",
+            type="semantic",
+            scope="ag:owned",
+            to_dict=lambda: {"id": "mem_owned"},
+        )
+        handle_event(
+            {
+                "id": "ag_evt_owned_write",
+                "type": "object.created",
+                "session_id": "owned",
+                "payload": {"content": "The owned store is closed after persistence."},
+            },
+            db_path=Path("owned.sqlite"),
+        )
+        owned.conn.close.assert_called_once_with()
+
+        owned.reset_mock()
+        owned.inject.return_value = {
+            "action_id": "act_owned",
+            "task_hash": "sha256:task",
+            "merkle_root": "sha256:root",
+            "memories": [],
+            "retrieval": {},
+        }
+        handle_event(
+            {
+                "id": "ag_evt_owned_read",
+                "type": "llm.requested",
+                "session_id": "owned",
+                "payload": {"query": "What happens to the owned store?"},
+            },
+            db_path=Path("owned.sqlite"),
+        )
+        owned.conn.close.assert_called_once_with()
 
     def test_locomo_activegraph_runner_writes_compact_trace_without_bundles(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -90,11 +134,63 @@ class ActiveGraphPackTest(unittest.TestCase):
             self.assertEqual(len(trace_path.read_text(encoding="utf-8").splitlines()), 5)
             self.assertTrue(scored_path.exists())
             self.assertEqual(list(run_dir.rglob("*.bundle.json")), [])
+            self.assertEqual(result["event_count"], 20)
+            self.assertEqual(result["event_batch_size"], 128)
+            self.assertEqual(result["event_commit_count"], 1)
+            with sqlite3.connect(run_dir / "activegraph.sqlite") as conn:
+                self.assertEqual(conn.execute("SELECT COUNT(*) FROM events").fetchone()[0], 20)
 
             scored = score_trace(trace_path)
             self.assertEqual(scored["question_count"], 5)
             self.assertFalse(scored["public_benchmark_claim"])
             self.assertEqual(scored["aggregate_merkle_root"], result["scored_receipt"]["aggregate_merkle_root"])
+            self.assertEqual(result["scored_receipt"]["activegraph_event_log"]["commit_count"], 1)
+
+    def test_activegraph_runner_ingests_shared_conversation_once(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            dataset = tmp_path / "shared.jsonl"
+            history = ["Kestrel owner is Priya.", "Kestrel deploy window is Friday."]
+            records = [
+                {
+                    "question_id": "owner",
+                    "sample_id": "kestrel",
+                    "split": "dev",
+                    "category": "single_hop",
+                    "history": history,
+                    "question": "Who owns Kestrel?",
+                    "answer": history[0],
+                    "supporting_facts": [history[0]],
+                },
+                {
+                    "question_id": "window",
+                    "sample_id": "kestrel",
+                    "split": "dev",
+                    "category": "single_hop",
+                    "history": history,
+                    "question": "When is the Kestrel deploy window?",
+                    "answer": history[1],
+                    "supporting_facts": [history[1]],
+                },
+            ]
+            dataset.write_text("\n".join(json.dumps(record) for record in records) + "\n", encoding="utf-8")
+
+            result = run_locomo_activegraph_benchmark(
+                dataset,
+                run_id="shared",
+                out=tmp_path / "runs",
+                retrieval_mode="fts",
+                split="dev",
+            )
+            store = MemoryStore(Path(result["memory_db"]))
+            memories = store.list_memories(scope="bench:activegraph:kestrel")
+            store.conn.close()
+
+            self.assertEqual(result["conversation_count"], 1)
+            self.assertEqual(result["history_memory_count"], 2)
+            self.assertEqual(len(memories), 2)
+            self.assertEqual(result["event_count"], 8)
+            self.assertEqual(result["event_commit_count"], 1)
 
 
 if __name__ == "__main__":

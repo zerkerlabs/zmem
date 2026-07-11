@@ -3,29 +3,19 @@
 This is the short orchestration dashboard for Zerker Memory. Every autonomous build run should update this file after it updates `docs/BUILD_LOG.md`.
 
 ## Release Coordination
-`2026-07-10T23:30:55Z`
+`2026-07-11T19:03:37Z`
 
-- Made benchmark ingestion and ranking repeatable without changing normal write defaults. Benchmark memories now receive deterministic ids and timestamps, while relation and update-history expansion use append-only observation sequence instead of wall-clock ties.
-- Two independent `227`-question LoCoMo repeats now match exactly: `156/227`, `147,710` query tokens, and zero differences in decisions, answers, retrieved/injected ids, content hashes, or candidate-rank hashes.
-- Rejected a broad FTS token-prefix fallback after stable evidence exposed decoy regressions. Next: improve one morphology or multi-hop support seam against the stable miss set under a zero-regression gate, then add BEAM scale evidence.
-- Published and deployed `v0.1.3` at `d029b998875d26f4c3ae185d4499778e73c5c92e`. GitHub Actions run `29119164360` passed site, docs, Python 3.10/3.11/3.12 unit+eval, and release-smoke; production checks passed on `www.zmem.sh`, `/proof`, `/changelog`, and `docs.zmem.sh/docs`.
-- Completed and independently verified a fresh four-mode LoCoMo matrix at commit `871f23d`, seed `42`, and the same `1,986` questions. Matrix hash: `9f8b77ca186ddf90821534f5f1eb83396f109f7720065e8d46207aab62796ecd`; comparison hash: `18cdca154817642f6e5d5b3844a1fb048f936aefe1ae3f2e47a262f29f868b80`.
-- `fts-multihop` is the measured winner: accuracy `0.6067` versus `0.5967` for FTS, pseudo-embedding, and pseudo-rerank. It uses `425.8` mean query tokens versus `536.0` for FTS, a `20.6%` reduction.
-- The win is not uniform. Against FTS, multihop gained `98` questions and lost `78`: net `+18` single-hop, `+2` multi-hop, `+4` open-domain, and `-4` temporal. Its p50 and p95 retrieval latency were `78.5%` and `50.7%` higher.
-- Product decision: do not make multihop the global default yet. Build an adaptive route that retains its gains while preserving plain FTS on queries where decomposition is likely to hurt, especially temporal questions.
-- Pseudo-embedding and pseudo-rerank matched FTS on every scored category. Do not spend the next retrieval slice on another deterministic reranker.
-- Compact LoCoMo runs now use one ephemeral store per conversation, leave zero SQLite artifacts, and one-mode matrices no longer duplicate their only result. The full four-mode run completed `7,944` retrieval questions in `30m06s`.
-- Fixed `--compact-artifacts` for LongMemEval: compact runs now use per-session ephemeral stores, omit per-question bundles and the run database, and preserve normal proof-rich runs unchanged. Direct `zmem bench run` now accepts the same flag recorded in reproducibility commands.
-- Completed and independently verified the fresh `500`-question LongMemEval four-mode matrix. `fts-multihop` scored `0.780` versus `0.740` for all other modes, gaining `20` questions with zero losses; all modes passed `30/30` abstention questions.
-- LongMemEval multihop gains span knowledge update (`+5`), multi-session (`+7`), temporal reasoning (`+7`), and single-session user recall (`+1`). It costs `4.0%` more query tokens and higher p50/p95 latency, so LoCoMo still provides the routing guardrail.
-- LongMemEval matrix hash: `e5dd8b0657259f66952e95d3cef403011ee7a0f65daaa2d73abb86c1598e80e7`; comparison hash: `a69090dffc378fc201549d08b81ca719b512f9b609a8ed01b89197a26ffa9d1f`. The complete four-mode run took `174.84s`, produced zero databases/bundles, and verified independently.
-- Added an explicit optional `fts-adaptive` mode that lets the store route each query instead of forcing multi-hop. Retrieval proofs now expose whether auto-routing was evaluated, activated, or suppressed and why.
-- Tightened broad semantic auto-routing to require an explicit composition signal. Fallback and no-lexical-match compound queries still escalate; broad semantic matches without composition stay on the base route.
-- Verified the conservative adaptive route on all `1,986` LoCoMo questions: accuracy `0.6108`, mean query tokens `532.8`, p50/p95 latency `165.243/335.591ms`, `29` gains and `1` loss versus FTS. It improves every category over FTS, including temporal (`0.6324` versus `0.6293`) and open-domain (`0.1771` versus `0.1250`). Matrix hash `7e8825aa...`; comparison hash `3bcd5d22...`.
-- Verified the same route on all `500` LongMemEval questions: accuracy `0.766`, mean query tokens `2486.7`, `13` gains and zero losses versus FTS. Always-on multi-hop remains higher at `0.780`, so it stays available as a specialist mode instead of becoming the global route. Matrix hash `b97e6101...`; comparison hash `d5772c8d...`.
-- Product decision: keep the conservative adaptive route for normal store behavior, keep `fts-multihop` explicit for workloads that favor recall over regression risk, and do not make blanket decomposition the default.
-- Summary-only benchmark delta rows are now bounded to ten examples plus an omitted count; the same LongMemEval matrix summary falls from `1,624` lines to `43`.
-- All recurring ZMem automations remain paused. Next: use the remaining stable misses to improve multi-hop and open-domain support without giving back the adaptive route's one-loss LoCoMo boundary, then add BEAM scale evidence.
+- Preparing `v0.1.4` from the nine post-v0.1.3 benchmark-operation commits plus the current retrieval, BEAM, ActiveGraph, docs, and release-gate changes. `v0.1.3` remains the public release until the final suite and remote CI pass.
+- Bounded regular-inflection rescue passed the required stable gate at `158/227` versus `156/227`, with two gains and zero regressions. The rule requires two exact anchors and two additional inflection matches.
+- Full adaptive LoCoMo improved from `1,213/1,986` to `1,218/1,986` (`0.6133`) with five gains and zero losses. Full LongMemEval improved from `383/500` to `386/500` (`0.772`) with three gains and zero losses.
+- Added `zmem bench run beam` for the official 100K, 500K, 1M, and 10M directory layout. The first untouched 100K smoke covered 188 messages, 63,411 observed whitespace tokens, 20 questions, all ten categories, and 53/53 resolved source references; its compact result verifies.
+- Replaced the ActiveGraph placeholder with a real ActiveGraph 1.9 pack and typed settings. Real discovery, idempotent runtime loading, canonical behavior resolution, `pack.loaded`, and event-to-ZMem persistence all pass.
+- The ActiveGraph 227-question batching acceptance wrote 908 events in eight commits, a roughly 1 MB causal database, a 196 KB trace, and zero per-question receipt bundles.
+- Claim boundaries remain explicit: local LoCoMo/LongMemEval values are provisional, BEAM is evidence-recall/scale instrumentation rather than an official model-judged score, and the installed ActiveGraph request behavior is an audit hook rather than a prompt interceptor.
+- Recurring ZMem automations remain paused through release verification. Next after release: one more zero-regression multi-hop/open-domain retrieval slice, isolated BEAM 500K/1M/10M runs, and production-host wiring for ActiveGraph's direct pre-call recall hook.
+- Final local release gates pass: `1,236` tests, eval `11/11`, full fresh-workspace release smoke, site lint/build, docs typecheck/build, production dependency audits, real ActiveGraph 1.9 verification, and wheel/sdist build plus wheel reinstall.
+- Release smoke is now portable under uv-managed POSIX Python and omits generated `.treeship`, `node_modules`, `.next`, and `.turbo` state from its release copy.
+- Remaining release step: commit and push, wait for remote CI, then tag and publish `v0.1.4` without resuming the swarms.
 
 ## Retrieval Baseline
 `2026-07-06T13:01:58Z`

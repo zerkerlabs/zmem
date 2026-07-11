@@ -1,5 +1,14 @@
 # ActiveGraph Integration Lane Log
 
+## 2026-07-11T19:03:37Z - real pack loader and batched acceptance
+
+- Replaced the placeholder entry point with a concrete ActiveGraph 1.9 `Pack` at `zerker_memory.pack:pack`, typed settings, and canonical `zmem.persist` / `zmem.recall` behaviors.
+- Added an optional ActiveGraph dependency extra and `scripts/verify_activegraph_pack.py`; real discovery, idempotent loading, `pack.loaded`, behavior resolution, and an `object.created` persistence smoke pass.
+- Added WAL-backed bounded event commits, conversation reuse, compact retrieval summaries, and `--event-batch-size`.
+- The stable 227-question acceptance wrote 908 events in eight commits, a roughly 1 MB `activegraph.sqlite`, a 196 KB trace, and zero receipt bundles.
+- The direct source `recall()` hook can return pre-call context. The installed immutable `llm.requested` behavior records the read/receipt and is not represented as a prompt interceptor.
+- Next safe slice: production-host pre-call wiring and a larger selected-mode trace only when retrieval evidence justifies preserving it.
+
 ## 2026-06-23T04:41:53Z - public docs and site surface
 
 - Scope: documented the source-level ActiveGraph integration on the public website and docs.

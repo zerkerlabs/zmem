@@ -26,6 +26,7 @@ from zerker_memory.bench import (
     render_benchmark_report,
     render_public_benchmark_page,
     resolve_benchmark_retrieval_config,
+    run_beam_benchmark,
     run_benchmark_matrix,
     run_locomo_benchmark,
     run_longmemeval_benchmark,
@@ -97,13 +98,96 @@ class BenchmarkHarnessTest(unittest.TestCase):
         self.assertNotIn("Efficiency delta q-10", rendered)
         self.assertIn("Efficiency deltas omitted: 3", rendered)
 
-    def test_list_benchmarks_includes_synthetic_longmemeval_and_locomo(self):
+    def test_list_benchmarks_includes_supported_adapters(self):
         result = list_benchmarks()
 
         self.assertEqual(result["schema"], "zerker.benchmark_list.v1")
         self.assertIn("synthetic", {benchmark["name"] for benchmark in result["benchmarks"]})
         self.assertIn("longmemeval", {benchmark["name"] for benchmark in result["benchmarks"]})
         self.assertIn("locomo", {benchmark["name"] for benchmark in result["benchmarks"]})
+        self.assertIn("beam", {benchmark["name"] for benchmark in result["benchmarks"]})
+
+    def test_beam_official_directory_adapter_records_scale_and_verifies(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            conversation_dir = Path(tmp) / "chats" / "100K" / "1"
+            probing_dir = conversation_dir / "probing_questions"
+            probing_dir.mkdir(parents=True)
+            (conversation_dir / "chat.json").write_text(
+                json.dumps(
+                    [
+                        {
+                            "batch_number": 1,
+                            "time_anchor": "March-15-2024",
+                            "turns": [
+                                [
+                                    {"role": "user", "id": 0, "content": "Tell me about the notebook."},
+                                    {
+                                        "role": "assistant",
+                                        "id": 1,
+                                        "content": "Which notebook do you mean?",
+                                    },
+                                    {
+                                        "role": "user",
+                                        "id": 2,
+                                        "content": "The Kestrel deployment notebook is cobalt blue.",
+                                    },
+                                ]
+                            ],
+                        }
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            (probing_dir / "probing_questions.json").write_text(
+                json.dumps(
+                    {
+                        "information_extraction": [
+                            {
+                                "question": "What color is the Kestrel deployment notebook?",
+                                "answer": "cobalt blue",
+                                "difficulty": "easy",
+                                "source_chat_ids": [2],
+                                "rubric": ["cobalt blue"],
+                            }
+                        ],
+                        "abstention": [
+                            {
+                                "question": "What material is the notebook made from?",
+                                "ideal_response": "The chat does not say.",
+                                "difficulty": "easy",
+                                "rubric": ["not stated"],
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = run_beam_benchmark(
+                Path(tmp) / "bench",
+                conversation_dir,
+                run_id="beam-smoke",
+                retrieval_mode="fts-adaptive",
+                write_trace=True,
+            )
+            result_path = Path(result["result_path"])
+            payload = json.loads(result_path.read_text(encoding="utf-8"))
+
+            self.assertEqual(payload["benchmark"], "beam")
+            self.assertEqual(payload["split"], "100K")
+            self.assertEqual(payload["scale"]["conversation_count"], 1)
+            self.assertEqual(payload["scale"]["message_count"], 3)
+            self.assertEqual(payload["scale"]["source_reference_coverage"], 1.0)
+            self.assertEqual(payload["summary"]["question_count"], 2)
+            self.assertEqual(payload["summary"]["scoring"], "local-evidence-recall")
+            self.assertFalse(payload["summary"]["public_benchmark_claim"])
+            self.assertTrue(all(question["correct"] for question in payload["questions"]))
+            self.assertEqual(
+                payload["questions"][0]["benchmark_metadata"]["source_chat_ids"],
+                ["2"],
+            )
+            self.assertTrue((result_path.parent / "trace.jsonl").exists())
+            self.assertTrue(verify_benchmark_result(result_path)["ok"])
 
     def test_synthetic_run_writes_proof_bearing_layout_and_verifies(self):
         with tempfile.TemporaryDirectory() as tmp:

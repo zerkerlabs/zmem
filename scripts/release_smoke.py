@@ -55,6 +55,11 @@ def try_run(cmd: list[str], *, cwd: Path, env: dict[str, str] | None = None) -> 
     return True
 
 
+def create_release_venv(path: Path) -> None:
+    # uv-managed standalone Python builds are not relocatable when copied on POSIX.
+    venv.EnvBuilder(with_pip=True, symlinks=os.name != "nt").create(path)
+
+
 def parse_json(output: str) -> dict[str, Any]:
     return json.loads(output[output.find("{") :])
 
@@ -737,9 +742,13 @@ def copy_release_surface(repo: Path, destination: Path) -> None:
         destination,
         ignore=shutil.ignore_patterns(
             ".git",
+            ".treeship",
             ".venv",
             ".zerker",
+            ".next",
+            ".turbo",
             "__pycache__",
+            "node_modules",
             "*.pyc",
             "*.pyo",
             "*.sqlite",
@@ -1065,7 +1074,7 @@ def main(argv: list[str] | None = None) -> int:
         venv_dir = root / ".venv"
         work = root / "work"
         work.mkdir()
-        venv.EnvBuilder(with_pip=True).create(venv_dir)
+        create_release_venv(venv_dir)
         python = venv_bin(venv_dir, "python")
         zmem = venv_bin(venv_dir, "zmem")
         zerker_memory = venv_bin(venv_dir, "zerker-memory")

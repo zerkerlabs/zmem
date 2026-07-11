@@ -1,22 +1,34 @@
 ---
 title: ActiveGraph
-description: Use ZMem with ActiveGraph for cross-session memory and compact benchmark traces.
+description: Install the real ZMem ActiveGraph pack, persist cross-run memory, and keep compact causal benchmark traces.
 ---
 
-ActiveGraph gives agents an event chain. ZMem uses that chain to persist memory across runs, recall approved context before LLM calls, and produce compact benchmark traces.
+ActiveGraph gives agents an append-only event chain. ZMem can persist useful events as local memory, retain the causal event id, and write compact benchmark traces that stay replayable without one receipt bundle per question.
 
-## What Is Built
+## Install And Verify
 
-- `pack/pack.yaml` defines the ZMem ActiveGraph pack.
-- `zerker_memory.integrations.activegraph` implements the source-level behaviors.
-- `zerker_memory.bench.activegraph_runner` provides the compact event-sourced benchmark runner.
-- `activegraph.packs` points to the ZMem pack entry point.
+ActiveGraph discovers packs through Python entry points. Install the optional integration in the same environment as ActiveGraph:
 
-## Behaviors
+```bash
+python -m pip install -e '.[activegraph]'
+activegraph pack list
+python scripts/verify_activegraph_pack.py --summary-only
+```
+
+Expected result:
+
+```text
+ActiveGraph pack verify: PASS
+Failed checks: none
+```
+
+The verifier uses ActiveGraph's real discovery and runtime APIs. It checks the `zerker_memory.pack:pack` entry point, idempotent loading, `pack.loaded`, both canonical behaviors, and an actual `object.created` event persisted into ZMem.
+
+## Runtime Behaviors
 
 ### `zmem.persist`
 
-Fires on:
+The installed pack listens for:
 
 - `object.created`
 - `patch.applied`
@@ -25,68 +37,66 @@ Fires on:
 - `policy.created`
 - `relation.created`
 
-It maps events into ZMem memory types, calls the real store, and attaches `caused_by_event` so the memory points back to the ActiveGraph event that produced it. The default scope is `ag:{session_id}`.
-
-When `ZMEM_TREESHIP_ENABLED=true`, the behavior can emit a Treeship memory-write artifact.
+The behavior writes to the real ZMem store under `ag:{run_id}` by default and records `caused_by_event` so the memory points back to the ActiveGraph event that produced it.
 
 ### `zmem.recall`
 
-Fires on `llm.requested`.
+The source adapter's `recall()` function returns a `prepend_context` payload for hosts that invoke it before a model call. Retrieval is selected with `fts`, `semantic`, or `hybrid`.
 
-It calls ZMem injection with:
+The installed ActiveGraph 1.9 behavior observes the immutable `llm.requested` event and records the corresponding local read receipt. ActiveGraph emits that event immediately before calling its provider, so this behavior is an audit hook, not a pre-provider prompt interceptor. Use the source adapter at the host boundary when current-call prompt injection is required.
 
-```bash
-ZMEM_RETRIEVAL_MODE=fts
-```
+## Typed Pack
 
-The retrieval mode can be changed at runtime, which lets operators fork-and-diff FTS, multihop, semantic, hybrid, or rerank paths without changing code.
-
-When `ZMEM_TREESHIP_ENABLED=true`, the behavior can emit a Treeship memory-read artifact.
-
-## Pack Manifest
+The loader entry point resolves to a concrete ActiveGraph `Pack` object:
 
 ```yaml
 name: zmem
-version: "0.1.0"
-description: "Cross-session memory and bench runner for ActiveGraph agents"
-entry_point: zerker_memory.integrations.activegraph
+version: "0.1.4"
+entry_point: zerker_memory.pack:pack
 behaviors:
   - zmem.persist
   - zmem.recall
-  - zmem.bench.question_started
-  - zmem.bench.memory_retrieved
-  - zmem.bench.answer_generated
-  - zmem.bench.question_completed
 config:
   ZMEM_RETRIEVAL_MODE:
     default: "fts"
-    description: "Retrieval mode: fts, semantic, or hybrid"
   ZMEM_TREESHIP_ENABLED:
     default: "false"
-    description: "Emit Treeship attestation artifacts on memory ops"
 ```
+
+The benchmark's four reactive stage names remain runner stages, not fake runtime pack behaviors.
 
 ## Compact Benchmark Runner
 
-The ActiveGraph runner is still the minimum-storage path for large runs. Instead of writing a receipt bundle for every question, it writes one compact JSON line per question. Standard ZMem bundles now use compact v2 event witnesses, but the ActiveGraph trace avoids per-question bundle overhead entirely:
+`zmem-bench-locomo` writes:
 
-```json
-{
-  "question_id": "locomo_0421",
-  "retrieval_mode": "fts-multihop",
-  "retrieved_count": 6,
-  "receipt_id": "rec_...",
-  "trace_sha256": "sha256:...",
-  "ag_event_id": "evt_...",
-  "ag_run_id": "run_...",
-  "line_hash": "sha256:..."
-}
+- `activegraph.sqlite`, the causal event log;
+- `memory.sqlite`, the actual local memory store;
+- `trace.jsonl`, one compact proof line per question;
+- `scored_receipt.json`, aggregate hashes and run metadata;
+- zero per-question receipt bundles.
+
+```bash
+zmem-bench-locomo \
+  --dataset data/locomo/locomo_official_zmem.json \
+  --out .zerker/bench/activegraph \
+  --run-id "activegraph-$(date -u +%Y%m%dT%H%M%SZ)" \
+  --retrieval-mode fts-adaptive \
+  --split default \
+  --event-batch-size 128
 ```
 
-After the run, `score_trace()` writes `scored_receipt.json` with aggregate accuracy, mean F1, per-category scores, the aggregate Merkle root over line hashes, and the reproducibility claim.
+The runner uses WAL, commits events in bounded batches, ingests each conversation once, and stores compact retrieval summaries instead of copying the complete receipt into every event.
 
-## Current Boundary
+## Verified Acceptance
 
-The integration is built at source level and covered by local tests. A real `activegraph pack add zmem` loader/install smoke still needs a networked environment.
+The v0.1.4 acceptance run used the stable 227-question cohort:
 
-Do not claim a public ActiveGraph integration release until that loader smoke passes.
+- 227 questions across 10 conversations;
+- 5,882 local memories;
+- 908 replayable ActiveGraph events;
+- 8 event-log commits at batch size 128;
+- 1 MB `activegraph.sqlite`;
+- 196 KB `trace.jsonl`;
+- zero `*.bundle.json` files.
+
+This proves loader compatibility, event durability, and bounded trace storage. The runner's simple deterministic answerer is not an official LoCoMo quality score.

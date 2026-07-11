@@ -1,5 +1,26 @@
 # ZMem Release Comms
 
+## 2026-07-11 - v0.1.4 release candidate
+
+Audience: internal Zerker product, engineering, and release coordination.
+
+This release packages the nine post-v0.1.3 benchmark-operation commits with one bounded retrieval improvement, the first BEAM scale adapter, and a production-shaped ActiveGraph pack.
+
+The retrieval change is deliberately narrow. Conservative regular-inflection matching activates only when a candidate already shares at least two exact query anchors and gains at least two additional inflection matches. It improved the stable 227-question cohort from `156` to `158` with zero losses. Only after that gate passed, full adaptive LoCoMo improved from `1,213/1,986` to `1,218/1,986` (`0.6133`) with five gains and zero losses, and LongMemEval improved from `383/500` to `386/500` (`0.772`) with three gains and zero losses.
+
+BEAM is now an implemented scale harness, not a roadmap row. The first untouched official 100K adapter smoke covered 188 messages, 63,411 observed whitespace tokens, 20 questions across all ten categories, and resolved all 53 source references. Its compact result verifies locally. This is evidence-recall and scale instrumentation, not the official model-judged BEAM quality score.
+
+ActiveGraph 1.9 now discovers a real `zerker_memory.pack:pack`, loads it idempotently, resolves both canonical behaviors, and persists a real object event into ZMem. A 227-question batched trace wrote 908 events in eight commits, produced an approximately 1 MB event database and 196 KB trace, and wrote zero per-question receipt bundles. The direct source hook can return context before a host model call; the installed request behavior records an immutable runtime event and must not be described as a prompt interceptor.
+
+Release smoke also uncovered and fixed two local packaging hazards: copied uv-managed Python executables lost their base-prefix on macOS, and the release-surface copy included local web caches plus `.treeship` runtime data. POSIX smokes now use symlinked venv executables and omit generated dependency/runtime directories. The optimized full smoke passes, and the `0.1.4` wheel and source distribution both build.
+
+### Release claim boundaries
+
+- LoCoMo and LongMemEval values are verified local provisional retrieval evidence, not official leaderboard rankings.
+- The BEAM smoke proves adapter/source coverage and compact evidence behavior, not an official BEAM answer score.
+- ActiveGraph loader, event persistence, and batching are verified; production-host pre-call injection still requires the explicit direct recall hook.
+- Tag only after the full Python suite, eval, release smoke, site/docs builds, package build, real ActiveGraph verifier, and remote CI are green.
+
 ## 2026-07-10 - adaptive retrieval checkpoint
 
 Audience: internal Zerker product and engineering.

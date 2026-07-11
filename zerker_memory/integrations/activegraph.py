@@ -45,92 +45,117 @@ def behavior_names() -> list[str]:
     ]
 
 
-def persist(event: Any, *, store: MemoryStore | None = None, db_path: Path | None = None) -> ActiveGraphMemoryResult:
+def persist(
+    event: Any,
+    *,
+    store: MemoryStore | None = None,
+    db_path: Path | None = None,
+    treeship_enabled: bool | None = None,
+) -> ActiveGraphMemoryResult:
     event_type = _event_type(event)
     if event_type not in PERSIST_EVENT_TYPES:
         raise ValueError(f"zmem.persist does not handle ActiveGraph event type: {event_type}")
+    owns_store = store is None
     store = store or MemoryStore(db_path)
-    payload = _event_payload(event)
-    session_id = _session_id(event, payload)
-    event_id = _event_id(event, payload)
-    scope = str(payload.get("scope") or f"ag:{session_id}")
-    content = _memory_content(event_type, payload)
-    memory_type = _memory_type(event_type, payload)
-    memory = store.remember(
-        content,
-        memory_type=memory_type,
-        scope=scope,
-        source_kind=_source_kind(event_type),
-        actor_id=str(payload.get("actor_id") or payload.get("agent_id") or "activegraph"),
-        labels=["activegraph", event_type],
-        source_uri=f"activegraph://event/{event_id}",
-        session_id=f"activegraph://session/{session_id}",
-        caused_by_event=event_id,
-        status=str(payload.get("status") or "active"),
-    )
-    treeship = _maybe_emit_treeship(
-        "memory.write.v1",
-        {
-            "memory_id": memory.id,
-            "content_hash": memory.content_hash,
-            "memory_type": memory.type,
-            "scope": memory.scope,
-            "activegraph_event_id": event_id,
-            "activegraph_run_id": _run_id(event, payload),
-            "supersedes": payload.get("supersedes"),
-        },
-    )
-    return ActiveGraphMemoryResult(
-        behavior=PERSIST_BEHAVIOR,
-        event_id=event_id,
-        scope=scope,
-        memory_id=memory.id,
-        treeship=treeship,
-        payload=memory.to_dict(),
-    )
+    try:
+        payload = _event_payload(event)
+        session_id = _session_id(event, payload)
+        event_id = _event_id(event, payload)
+        scope = str(payload.get("scope") or f"ag:{session_id}")
+        content = _memory_content(event_type, payload)
+        memory_type = _memory_type(event_type, payload)
+        memory = store.remember(
+            content,
+            memory_type=memory_type,
+            scope=scope,
+            source_kind=_source_kind(event_type),
+            actor_id=str(payload.get("actor_id") or payload.get("agent_id") or "activegraph"),
+            labels=["activegraph", event_type],
+            source_uri=f"activegraph://event/{event_id}",
+            session_id=f"activegraph://session/{session_id}",
+            caused_by_event=event_id,
+            status=str(payload.get("status") or "active"),
+        )
+        treeship = _maybe_emit_treeship(
+            "memory.write.v1",
+            {
+                "memory_id": memory.id,
+                "content_hash": memory.content_hash,
+                "memory_type": memory.type,
+                "scope": memory.scope,
+                "activegraph_event_id": event_id,
+                "activegraph_run_id": _run_id(event, payload),
+                "supersedes": payload.get("supersedes"),
+            },
+            enabled=treeship_enabled,
+        )
+        return ActiveGraphMemoryResult(
+            behavior=PERSIST_BEHAVIOR,
+            event_id=event_id,
+            scope=scope,
+            memory_id=memory.id,
+            treeship=treeship,
+            payload=memory.to_dict(),
+        )
+    finally:
+        if owns_store:
+            store.conn.close()
 
 
-def recall(event: Any, *, store: MemoryStore | None = None, db_path: Path | None = None) -> ActiveGraphMemoryResult:
+def recall(
+    event: Any,
+    *,
+    store: MemoryStore | None = None,
+    db_path: Path | None = None,
+    retrieval_mode: str | None = None,
+    treeship_enabled: bool | None = None,
+) -> ActiveGraphMemoryResult:
+    owns_store = store is None
     store = store or MemoryStore(db_path)
-    payload = _event_payload(event)
-    session_id = _session_id(event, payload)
-    event_id = _event_id(event, payload)
-    scope = str(payload.get("scope") or f"ag:{session_id}")
-    task = str(payload.get("prompt") or payload.get("query") or payload.get("task") or "")
-    retrieval_mode = os.environ.get("ZMEM_RETRIEVAL_MODE", "fts")
-    receipt = store.inject(
-        task,
-        agent_id=str(payload.get("agent_id") or "activegraph"),
-        risk=str(payload.get("risk") or "low"),
-        scope=scope,
-        retrieval_config=_retrieval_config(retrieval_mode),
-    )
-    memory_prefix = _memory_prefix(receipt.get("memories", []))
-    treeship = _maybe_emit_treeship(
-        "memory.read.v1",
-        {
-            "zmem_receipt_id": receipt["action_id"],
-            "trace_sha256": sha256_text(stable_json(receipt.get("retrieval", {}))),
-            "activegraph_event_id": event_id,
-            "activegraph_run_id": _run_id(event, payload),
-            "query_hash": receipt["task_hash"],
-            "retrieval_mode": retrieval_mode,
-            "memories_returned": len(receipt.get("memories", [])),
-            "scope": scope,
-        },
-    )
-    return ActiveGraphMemoryResult(
-        behavior=RECALL_BEHAVIOR,
-        event_id=event_id,
-        scope=scope,
-        receipt_id=receipt["action_id"],
-        treeship=treeship,
-        payload={
-            "prepend_context": memory_prefix,
-            "receipt": receipt,
-            "retrieval_mode": retrieval_mode,
-        },
-    )
+    try:
+        payload = _event_payload(event)
+        session_id = _session_id(event, payload)
+        event_id = _event_id(event, payload)
+        scope = str(payload.get("scope") or f"ag:{session_id}")
+        task = str(payload.get("prompt") or payload.get("query") or payload.get("task") or "")
+        retrieval_mode = retrieval_mode or os.environ.get("ZMEM_RETRIEVAL_MODE", "fts")
+        receipt = store.inject(
+            task,
+            agent_id=str(payload.get("agent_id") or "activegraph"),
+            risk=str(payload.get("risk") or "low"),
+            scope=scope,
+            retrieval_config=_retrieval_config(retrieval_mode),
+        )
+        memory_prefix = _memory_prefix(receipt.get("memories", []))
+        treeship = _maybe_emit_treeship(
+            "memory.read.v1",
+            {
+                "zmem_receipt_id": receipt["action_id"],
+                "trace_sha256": sha256_text(stable_json(receipt.get("retrieval", {}))),
+                "activegraph_event_id": event_id,
+                "activegraph_run_id": _run_id(event, payload),
+                "query_hash": receipt["task_hash"],
+                "retrieval_mode": retrieval_mode,
+                "memories_returned": len(receipt.get("memories", [])),
+                "scope": scope,
+            },
+            enabled=treeship_enabled,
+        )
+        return ActiveGraphMemoryResult(
+            behavior=RECALL_BEHAVIOR,
+            event_id=event_id,
+            scope=scope,
+            receipt_id=receipt["action_id"],
+            treeship=treeship,
+            payload={
+                "prepend_context": memory_prefix,
+                "receipt": receipt,
+                "retrieval_mode": retrieval_mode,
+            },
+        )
+    finally:
+        if owns_store:
+            store.conn.close()
 
 
 def handle_event(event: Any, *, store: MemoryStore | None = None, db_path: Path | None = None) -> ActiveGraphMemoryResult | None:
@@ -174,10 +199,17 @@ def _source_kind(event_type: str) -> str:
 
 
 def _memory_content(event_type: str, payload: Mapping[str, Any]) -> str:
-    for key in ("memory", "content", "text", "response", "output", "summary"):
-        value = payload.get(key)
-        if value not in (None, ""):
-            return str(value)
+    candidates: list[Mapping[str, Any]] = [payload]
+    object_payload = payload.get("object")
+    if isinstance(object_payload, Mapping):
+        data = object_payload.get("data")
+        if isinstance(data, Mapping):
+            candidates.insert(0, data)
+    for candidate in candidates:
+        for key in ("memory", "content", "text", "response", "output", "summary"):
+            value = candidate.get(key)
+            if value not in (None, ""):
+                return str(value)
     return json.dumps({"event_type": event_type, "payload": dict(payload)}, sort_keys=True)
 
 
@@ -190,8 +222,15 @@ def _memory_prefix(memories: list[dict[str, Any]]) -> str:
     return "\n".join(lines) + "\n\n"
 
 
-def _maybe_emit_treeship(kind: str, payload: dict[str, Any]) -> dict[str, Any] | None:
-    if os.environ.get("ZMEM_TREESHIP_ENABLED", "false").lower() not in {"1", "true", "yes"}:
+def _maybe_emit_treeship(
+    kind: str,
+    payload: dict[str, Any],
+    *,
+    enabled: bool | None = None,
+) -> dict[str, Any] | None:
+    if enabled is None:
+        enabled = os.environ.get("ZMEM_TREESHIP_ENABLED", "false").lower() in {"1", "true", "yes"}
+    if not enabled:
         return None
     out_dir = Path(os.environ.get("ZMEM_TREESHIP_OUT", ".zerker/activegraph/treeship"))
     out_dir.mkdir(parents=True, exist_ok=True)

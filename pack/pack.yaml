@@ -1,10 +1,11 @@
 name: zmem
-version: "0.1.0"
+version: "0.1.4"
 description: "Cross-session memory and bench runner for ActiveGraph agents"
-entry_point: zerker_memory.integrations.activegraph
+entry_point: zerker_memory.pack:pack
 behaviors:
   - zmem.persist
   - zmem.recall
+benchmark_stages:
   - zmem.bench.question_started
   - zmem.bench.memory_retrieved
   - zmem.bench.answer_generated

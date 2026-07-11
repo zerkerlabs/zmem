@@ -2,32 +2,30 @@ import Card from '@/components/Card';
 import CodeBlock from '@/components/CodeBlock';
 
 const packManifest = `name: zmem
-version: "0.1.0"
-entry_point: zerker_memory.integrations.activegraph
+version: "0.1.4"
+entry_point: zerker_memory.pack:pack
 behaviors:
   - zmem.persist
   - zmem.recall
+benchmark_stages:
   - zmem.bench.question_started
   - zmem.bench.memory_retrieved
   - zmem.bench.answer_generated
   - zmem.bench.question_completed`;
+
+const installCommands = `python -m pip install -e '.[activegraph]'
+activegraph pack list
+python scripts/verify_activegraph_pack.py --summary-only`;
 
 const benchmarkCommands = `RUN_ID="activegraph-$(date -u +%Y%m%dT%H%M%SZ)"
 
 zmem-bench-locomo \\
   --dataset data/locomo/locomo_official_zmem.json \\
   --split default \\
-  --out ".zerker/bench/activegraph/\${RUN_ID}-multihop" \\
-  --run-id "\${RUN_ID}-multihop" \\
-  --retrieval-mode fts-multihop \\
-  --limit 5
-
-zmem-bench-locomo \\
-  --dataset data/locomo/locomo_official_zmem.json \\
-  --split default \\
-  --out ".zerker/bench/activegraph/\${RUN_ID}-hybrid" \\
-  --run-id "\${RUN_ID}-hybrid" \\
-  --retrieval-mode hybrid \\
+  --out ".zerker/bench/activegraph/\${RUN_ID}" \\
+  --run-id "\${RUN_ID}" \\
+  --retrieval-mode fts-adaptive \\
+  --event-batch-size 128 \\
   --limit 5`;
 
 const envVars = `ZMEM_RETRIEVAL_MODE=fts
@@ -40,7 +38,7 @@ const behaviorRows = [
   },
   {
     name: 'zmem.recall',
-    detail: 'Injects approved memory into LLM requests, controlled by ZMEM_RETRIEVAL_MODE.',
+    detail: 'Returns approved context through the direct pre-call hook. The installed behavior records recall after ActiveGraph emits its immutable request event.',
   },
   {
     name: 'compact bench runner',
@@ -48,7 +46,7 @@ const behaviorRows = [
   },
   {
     name: 'pack install check',
-    detail: 'Use the pack manifest and local smoke path to verify the integration in your ActiveGraph environment.',
+    detail: 'A real ActiveGraph 1.9 loader test verifies discovery, idempotent loading, both behaviors, and event-to-memory persistence.',
   },
 ];
 
@@ -94,7 +92,7 @@ export default function ActiveGraphPage() {
             </h2>
             <p className="mt-5 text-sm leading-relaxed text-zmuted">
               The integration is intentionally small: persist memories from ActiveGraph events,
-              recall memories before LLM calls, and run benchmarks as compact event traces.
+              expose approved context before model calls, and run benchmarks as compact event traces.
             </p>
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -112,17 +110,20 @@ export default function ActiveGraphPage() {
 
       <section className="bg-zsurface py-20">
         <div className="mx-auto grid max-w-[1120px] grid-cols-1 gap-8 px-6 lg:grid-cols-[0.95fr_1.05fr]">
-          <Card>
-            <p className="text-eyebrow text-zmuted">Pack shape</p>
-            <h2 className="mt-3 font-heading text-3xl font-semibold tracking-tight text-zink">
-              The pack is behavior-first.
-            </h2>
-            <p className="mt-4 text-sm leading-relaxed text-zmuted">
-              Behaviors listen for ActiveGraph events, call the real ZMem store, preserve the
-              causal event pointer, and can optionally attach Treeship digest attestations to
-              memory-write receipts without sending raw memory content to Treeship.
-            </p>
-          </Card>
+          <div className="grid gap-6">
+            <Card>
+              <p className="text-eyebrow text-zmuted">Pack shape</p>
+              <h2 className="mt-3 font-heading text-3xl font-semibold tracking-tight text-zink">
+                The pack is behavior-first.
+              </h2>
+              <p className="mt-4 text-sm leading-relaxed text-zmuted">
+                Behaviors listen for ActiveGraph events, call the real ZMem store, preserve the
+                causal event pointer, and can optionally attach Treeship digest attestations to
+                memory-write receipts without sending raw memory content to Treeship.
+              </p>
+            </Card>
+            <CodeBlock code={installCommands} title="verify the installed pack" />
+          </div>
           <CodeBlock code={packManifest} title="pack/pack.yaml" />
         </div>
       </section>
@@ -138,6 +139,10 @@ export default function ActiveGraphPage() {
               The standard matrices now show where adaptive and always-on multi-hop differ. ActiveGraph
               can preserve the chosen retrieval run as a replayable event chain without producing a
               large receipt bundle for every question.
+            </p>
+            <p className="mt-4 text-sm leading-relaxed text-zmuted">
+              A 227-question acceptance run wrote 908 events in eight commits, produced no receipt
+              bundles, and kept its event database to about 1 MB.
             </p>
             <CodeBlock code={envVars} title="runtime knobs" className="mt-6" />
           </div>

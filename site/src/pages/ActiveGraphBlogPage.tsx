@@ -83,14 +83,20 @@ export default function ActiveGraphBlogPage() {
 
         <section className="py-20">
           <div className="mx-auto max-w-[900px] px-6">
-            <p className="text-eyebrow text-zlime">Current boundary</p>
+            <p className="text-eyebrow text-zlime">Verified boundary</p>
             <h2 className="mt-3 font-heading text-4xl font-semibold tracking-tight text-zink">
-              Built as a source integration pack, with install smoke still gated.
+              A real pack, with an explicit prompt boundary.
             </h2>
             <p className="mt-5 text-sm leading-relaxed text-zmuted">
-              The repository now contains the pack manifest, behavior handlers, compact benchmark
-              runner, and tests around the ZMem side of the integration. The remaining check is
-              a real ActiveGraph loader/install smoke in a networked environment.
+              ActiveGraph 1.9 discovers and loads the ZMem pack, resolves both runtime behaviors,
+              and persists a real object event into ZMem. The direct recall hook returns context
+              before a host calls its model. ActiveGraph's installed request behavior cannot rewrite
+              the already-emitted current request, so it records that recall rather than pretending
+              to mutate it.
+            </p>
+            <p className="mt-4 text-sm leading-relaxed text-zmuted">
+              The compact runner also completed a 227-question acceptance pass: 908 events, eight
+              batched commits, a roughly 1 MB event database, and zero per-question receipt bundles.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <a

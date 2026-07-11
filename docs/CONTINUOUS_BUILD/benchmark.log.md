@@ -1,5 +1,14 @@
 # Benchmark Lane Log
 
+## 2026-07-11T19:03:37Z - zero-regression morphology, full reruns, and BEAM scale
+
+- Added conservative regular-inflection rescue behind a two-exact-anchor and two-additional-match gate.
+- Stable acceptance improved from `156/227` to `158/227` with zero regressions before any full rerun was allowed.
+- Full adaptive LoCoMo improved from `1,213/1,986` to `1,218/1,986` (`0.6133`) with five gains and no losses; full LongMemEval improved from `383/500` to `386/500` (`0.772`) with three gains and no losses.
+- Added `zmem bench run beam` for the official 100K, 500K, 1M, and 10M layout. The first untouched 100K smoke covered 188 messages, 63,411 observed whitespace tokens, 20 questions across all ten categories, and 53/53 source references.
+- Claim boundary: BEAM output is compact local evidence-recall instrumentation with `public_benchmark_claim: false`, not an official model-judged BEAM score.
+- Next safe slice: expand to isolated 500K/1M/10M scale runs and improve one remaining multi-hop/open-domain stable miss under the same zero-regression gate.
+
 ## 2026-07-10T23:30:55Z - deterministic benchmark ingestion and ranking
 
 - Scope: isolated benchmark repeat drift before attempting another retrieval-quality change.

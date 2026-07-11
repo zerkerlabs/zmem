@@ -16,15 +16,17 @@ Current verified local evidence:
 
 - LoCoMo four-mode matrix: `1,986` questions, multihop accuracy `0.6067`, other modes `0.5967`, matrix hash `9f8b77ca...`, comparison hash `18cdca15...`.
 - LongMemEval four-mode matrix: `500` questions, multihop accuracy `0.780`, other modes `0.740`, matrix hash `e5dd8b06...`, comparison hash `a69090df...`.
-- Adaptive follow-up: LoCoMo `0.6108` with `29` gains and `1` loss versus FTS; LongMemEval `0.766` with `13` gains and zero losses versus FTS. Both matrix/comparison pairs verify and retain no SQLite databases or question bundles.
+- The bounded v0.1.4 morphology follow-up passed the stable cohort at `158/227` versus `156/227`, with two gains and zero losses. Full adaptive LoCoMo then reached `0.6133` with five gains and zero losses against the deterministic adaptive checkpoint; LongMemEval reached `0.772` with three gains and zero losses.
+- The official BEAM 100K adapter smoke covered `188` messages, `63,411` observed whitespace tokens, `20` questions across all ten categories, and `53/53` resolved source references. It is scale/evidence instrumentation, not the official model-judged BEAM score.
+- The ActiveGraph 227-question acceptance run wrote `908` replayable events in eight batched commits, a roughly `1 MB` event database, and zero per-question receipt bundles.
 - Both matrices and comparisons verify locally. They use the provisional local retrieval-recall scorer and are not leaderboard submissions.
 - The historical LoCoMo rule-based token-F1/EM artifact remains `0.3752394032` F1 and `0.3721047331` EM over `1,986` questions with trace SHA `67a005bf...`; do not compare it numerically with the current accuracy matrices.
 
 Next comparison queue:
 
-- Use adaptive stable misses to select one bounded multi-hop/open-domain retrieval improvement without widening the one-loss LoCoMo regression boundary.
-- Add BEAM as the scale benchmark for 100K -> 10M token contexts. Treat it as a planned runner until dataset source, command, hashes, and receipt bundle are pinned.
-- Use the `97` all-mode LongMemEval misses and low LoCoMo multi-hop/open-domain scores to select the next retrieval-quality slice after routing.
+- Use the remaining adaptive stable misses to select one bounded multi-hop/open-domain retrieval improvement and keep the zero-regression gate.
+- Expand BEAM from the verified 100K adapter smoke into isolated 500K, 1M, and 10M runs before making any scale-quality claim.
+- Use the `114` adaptive LongMemEval misses and low LoCoMo multi-hop/open-domain scores to select the next retrieval-quality slice.
 
 ## 1. Convert Official Files
 
@@ -109,13 +111,36 @@ For compact ActiveGraph traces, smoke first:
 zmem-bench-locomo \
   --dataset data/locomo/locomo_official_zmem.json \
   --out .zerker/bench/activegraph-locomo-smoke \
-  --run-id activegraph-smoke-fts-multihop \
-  --retrieval-mode fts-multihop \
+  --run-id activegraph-smoke-adaptive \
+  --retrieval-mode fts-adaptive \
   --split default \
+  --event-batch-size 128 \
   --limit 5
 ```
 
-Use ActiveGraph for long storage-safe traces after the matrix identifies which modes are worth preserving. It writes compact `trace.jsonl` and `scored_receipt.json` instead of per-question receipt bundles.
+Use ActiveGraph for long storage-safe traces after the matrix identifies which modes are worth preserving. It writes compact `trace.jsonl` and `scored_receipt.json` instead of per-question receipt bundles. The real ActiveGraph 1.9 pack loader and the full 227-question batched acceptance path both pass.
+
+For BEAM scale evidence, point ZMem at a local official bucket or conversation directory:
+
+```bash
+RUN_ID="beam-100k-$(date -u +%Y%m%dT%H%M%SZ)"
+
+zmem bench run beam \
+  --dataset /path/to/BEAM/chats/100K \
+  --split 100K \
+  --out .zerker/bench/runs \
+  --run-id "$RUN_ID" \
+  --retrieval-mode fts-adaptive \
+  --context-budget-tokens 4096 \
+  --trace \
+  --compact-artifacts
+
+zmem bench verify \
+  ".zerker/bench/runs/$RUN_ID/benchmark-result.json" \
+  --summary-only
+```
+
+BEAM runs hash every source chat/probing file and report source-reference coverage. Keep `public_benchmark_claim: false`: this adapter measures local evidence recall and proof integrity, not BEAM's official model-judged answer score.
 
 ## 3. Inspect Evidence Cheaply
 

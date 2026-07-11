@@ -24,12 +24,20 @@ SCORED_RECEIPT_SCHEMA = "zerker.activegraph_bench_scored_receipt.v1"
 
 
 class ActiveGraphEventLog:
-    def __init__(self, path: Path, *, run_id: str):
+    def __init__(self, path: Path, *, run_id: str, batch_size: int = 128):
+        if batch_size < 1:
+            raise ValueError("ActiveGraph event batch size must be at least 1")
         self.path = path
         self.run_id = run_id
+        self.batch_size = batch_size
+        self.pending_events = 0
+        self.event_count = 0
+        self.commit_count = 0
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.conn = sqlite3.connect(self.path)
         self.conn.row_factory = sqlite3.Row
+        self.conn.execute("PRAGMA journal_mode=WAL")
+        self.conn.execute("PRAGMA synchronous=NORMAL")
         self.conn.execute(
             """
             CREATE TABLE IF NOT EXISTS events (
@@ -89,10 +97,21 @@ class ActiveGraphEventLog:
                 created_at,
             ),
         )
-        self.conn.commit()
+        self.pending_events += 1
+        self.event_count += 1
+        if self.pending_events >= self.batch_size:
+            self.flush()
         return {**event_without_hash, "event_hash": event_hash}
 
+    def flush(self) -> None:
+        if not self.pending_events:
+            return
+        self.conn.commit()
+        self.pending_events = 0
+        self.commit_count += 1
+
     def close(self) -> None:
+        self.flush()
         self.conn.close()
 
 
@@ -105,11 +124,16 @@ def run_locomo_activegraph_benchmark(
     split: str | None = None,
     treeship: bool = False,
     limit: int | None = None,
+    event_batch_size: int = 128,
 ) -> dict[str, Any]:
     run_dir = out / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
     store = MemoryStore(run_dir / "memory.sqlite")
-    event_log = ActiveGraphEventLog(run_dir / "activegraph.sqlite", run_id=run_id)
+    event_log = ActiveGraphEventLog(
+        run_dir / "activegraph.sqlite",
+        run_id=run_id,
+        batch_size=event_batch_size,
+    )
     trace_path = run_dir / "trace.jsonl"
     records = _load_local_dataset_records(dataset, "locomo")
     normalized = [_normalize_locomo_record(record, index) for index, record in enumerate(records)]
@@ -120,10 +144,22 @@ def run_locomo_activegraph_benchmark(
 
     line_hashes: list[str] = []
     lines: list[dict[str, Any]] = []
+    ingested_samples: set[str] = set()
+    history_memory_count = 0
     try:
         with trace_path.open("w", encoding="utf-8") as trace_file:
             for question in normalized:
-                question_event = question_started(event_log, store, question)
+                sample_id = str(question["sample_id"])
+                ingest_history = sample_id not in ingested_samples
+                question_event = question_started(
+                    event_log,
+                    store,
+                    question,
+                    ingest_history=ingest_history,
+                )
+                if ingest_history:
+                    ingested_samples.add(sample_id)
+                    history_memory_count += len(question["history_memories"])
                 retrieval_event = memory_retrieved(
                     event_log,
                     store,
@@ -141,6 +177,17 @@ def run_locomo_activegraph_benchmark(
         event_log.close()
 
     scored_receipt = score_trace(trace_path)
+    scored_receipt["activegraph_event_log"] = {
+        "event_count": event_log.event_count,
+        "batch_size": event_log.batch_size,
+        "commit_count": event_log.commit_count,
+        "journal_mode": "wal",
+        "synchronous": "normal",
+    }
+    (run_dir / "scored_receipt.json").write_text(
+        json.dumps(scored_receipt, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
     return {
         "ok": True,
         "schema": "zerker.activegraph_bench_run.v1",
@@ -151,12 +198,23 @@ def run_locomo_activegraph_benchmark(
         "trace_path": str(trace_path),
         "scored_receipt_path": str(run_dir / "scored_receipt.json"),
         "question_count": len(lines),
+        "conversation_count": len(ingested_samples),
+        "history_memory_count": history_memory_count,
+        "event_count": event_log.event_count,
+        "event_batch_size": event_log.batch_size,
+        "event_commit_count": event_log.commit_count,
         "line_hashes": line_hashes,
         "scored_receipt": scored_receipt,
     }
 
 
-def question_started(event_log: ActiveGraphEventLog, store: MemoryStore, question: dict[str, Any]) -> dict[str, Any]:
+def question_started(
+    event_log: ActiveGraphEventLog,
+    store: MemoryStore,
+    question: dict[str, Any],
+    *,
+    ingest_history: bool = True,
+) -> dict[str, Any]:
     event = event_log.append(
         "zmem.bench.question_started",
         "zmem_bench_question",
@@ -165,21 +223,23 @@ def question_started(event_log: ActiveGraphEventLog, store: MemoryStore, questio
             "question_id": question["question_id"],
             "category": question["category"],
             "query": question["query"],
+            "sample_id": question["sample_id"],
+            "history_ingested": ingest_history,
         },
     )
-    scope = f"bench:{question['question_id']}"
-    for index, memory in enumerate(question["history_memories"]):
-        store.remember(
-            memory["content"],
-            memory_type="episodic",
-            scope=scope,
-            source_kind="human",
-            actor_id="activegraph-bench",
-            labels=["benchmark", "locomo", question["category"]],
-            source_uri=f"activegraph://event/{event['id']}#history-{index}",
-            session_id=f"activegraph://run/{event_log.run_id}",
-            caused_by_event=event["id"],
-        )
+    if ingest_history:
+        for index, memory in enumerate(question["history_memories"]):
+            store.remember(
+                memory["content"],
+                memory_type="episodic",
+                scope=_question_scope(question),
+                source_kind="human",
+                actor_id="activegraph-bench",
+                labels=["benchmark", "locomo"],
+                source_uri=f"activegraph://event/{event['id']}#history-{index}",
+                session_id=f"activegraph://run/{event_log.run_id}",
+                caused_by_event=event["id"],
+            )
     return event
 
 
@@ -197,15 +257,28 @@ def memory_retrieved(
         question["query"],
         agent_id="activegraph-bench",
         risk="low",
-        scope=f"bench:{question['question_id']}",
+        scope=_question_scope(question),
         retrieval_config=resolve_benchmark_retrieval_config(_mode_for_store(retrieval_mode)),
     )
     latency_ms = round((time.perf_counter() - started) * 1000, 3)
+    top_memory_content = ""
+    if receipt.get("memories"):
+        top_memory_content = str(receipt["memories"][0].get("content", ""))
+    receipt_summary = {
+        "action_id": receipt["action_id"],
+        "task_hash": receipt["task_hash"],
+        "merkle_root": receipt["merkle_root"],
+        "memory_tree_root": receipt.get("memory_tree", {}).get("root"),
+        "retrieved_memory_ids": receipt.get("retrieved_memory_ids", []),
+        "injected_memory_ids": receipt.get("injected_memory_ids", []),
+        "retrieval_sha256": sha256_text(stable_json(receipt.get("retrieval", {}))),
+    }
     payload = {
         "question_id": question["question_id"],
         "retrieval_mode": retrieval_mode,
         "retrieval_latency_ms": latency_ms,
-        "receipt": receipt,
+        "receipt": receipt_summary,
+        "top_memory_content": top_memory_content,
         "treeship_requested": treeship,
     }
     return event_log.append(
@@ -219,11 +292,11 @@ def memory_retrieved(
 
 def answer_generated(event_log: ActiveGraphEventLog, retrieval_event: dict[str, Any], question: dict[str, Any]) -> dict[str, Any]:
     receipt = retrieval_event["payload"]["receipt"]
-    memories = receipt.get("memories", [])
-    if question["should_abstain"] or not memories:
+    top_memory_content = str(retrieval_event["payload"].get("top_memory_content", ""))
+    if question["should_abstain"] or not top_memory_content:
         answer = LOCAL_ABSTAIN_ANSWER
     else:
-        answer = str(memories[0].get("content", ""))
+        answer = top_memory_content
     f1 = _token_f1(answer, question["expected_answer"])
     exact_match = float(answer.strip().lower() == question["expected_answer"].strip().lower())
     correct = bool(exact_match == 1.0)
@@ -332,6 +405,10 @@ def _mode_for_store(mode: str) -> str:
     }.get(mode, mode)
 
 
+def _question_scope(question: dict[str, Any]) -> str:
+    return f"bench:activegraph:{question['sample_id']}"
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run compact ActiveGraph-backed LoCoMo benchmark traces")
     parser.add_argument("--dataset", required=True, type=Path)
@@ -341,6 +418,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--split")
     parser.add_argument("--treeship", action="store_true")
     parser.add_argument("--limit", type=int)
+    parser.add_argument("--event-batch-size", type=int, default=128)
     args = parser.parse_args(argv)
     result = run_locomo_activegraph_benchmark(
         args.dataset,
@@ -350,6 +428,7 @@ def main(argv: list[str] | None = None) -> int:
         split=args.split,
         treeship=args.treeship,
         limit=args.limit,
+        event_batch_size=args.event_batch_size,
     )
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0

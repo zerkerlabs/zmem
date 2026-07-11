@@ -758,6 +758,43 @@ def semantic_query_terms(value: str) -> list[str]:
     return _ordered_unique(terms)
 
 
+def _conservative_inflection_forms(term: str) -> set[str]:
+    term = term.lower()
+    forms = {term}
+    if len(term) < 4 or not term.isalpha():
+        return forms
+
+    if term.endswith("y") and len(term) > 4 and term[-2] not in "aeiou":
+        forms.update({term[:-1] + "ies", term[:-1] + "ied"})
+    elif term.endswith("e"):
+        forms.update({term + "s", term + "d", term[:-1] + "ing"})
+    else:
+        forms.update({term + "s", term + "ed", term + "ing"})
+        if term.endswith(("s", "x", "z", "ch", "sh")):
+            forms.add(term + "es")
+
+    if term.endswith("ies") and len(term) > 5:
+        forms.add(term[:-3] + "y")
+    if term.endswith("ied") and len(term) > 5:
+        forms.add(term[:-3] + "y")
+    if term.endswith("ing") and len(term) > 6:
+        forms.update({term[:-3], term[:-3] + "e"})
+    if term.endswith("ed") and len(term) > 5:
+        forms.update({term[:-2], term[:-1]})
+    if term.endswith("s") and not term.endswith("ss") and len(term) > 4:
+        forms.add(term[:-1])
+    return forms
+
+
+def _inflectional_term_overlap(query: list[str], candidate: list[str]) -> int:
+    candidate_set = set(candidate)
+    return sum(
+        1
+        for term in _ordered_unique(query)
+        if _conservative_inflection_forms(term).intersection(candidate_set)
+    )
+
+
 def fts_safe_query(value: str) -> str:
     terms = query_terms(value)
     return " ".join(f'"{term}"' for term in terms)
@@ -9641,6 +9678,12 @@ class MemoryStore:
             "matched_candidate_count": 0,
             "selected_candidate_ids": [],
             "selected_candidates": [],
+            "morphology": {
+                "strategy": "conservative_regular_inflection_v1",
+                "minimum_exact_overlap": 2,
+                "minimum_gain": 2,
+                "selected_candidate_ids": [],
+            },
             "confidence": {
                 "enabled": bool(confidence_profile.get("enabled")),
                 "profile": confidence_profile.get("profile"),
@@ -9692,13 +9735,28 @@ class MemoryStore:
             candidate_terms = semantic_query_terms(haystack)
             if required_terms and not set(required_terms).issubset(candidate_terms):
                 continue
-            overlap = len(set(semantic_terms).intersection(candidate_terms))
-            if not overlap:
+            exact_overlap = len(set(semantic_terms).intersection(candidate_terms))
+            if not exact_overlap:
                 continue
+            inflectional_overlap = _inflectional_term_overlap(semantic_terms, candidate_terms)
+            morphology_applied = exact_overlap >= 2 and inflectional_overlap - exact_overlap >= 2
+            overlap = inflectional_overlap if morphology_applied else exact_overlap
             similarity = cosine_similarity(query_vector, pseudo_embedding(haystack))
             if similarity <= 0.0:
                 continue
-            scored.append((row, similarity, overlap, authority_rank(memory.authority), float(memory.trust), memory.id))
+            scored.append(
+                (
+                    row,
+                    similarity,
+                    overlap,
+                    authority_rank(memory.authority),
+                    float(memory.trust),
+                    memory.id,
+                    exact_overlap,
+                    inflectional_overlap,
+                    morphology_applied,
+                )
+            )
         scored.sort(key=lambda item: (-item[2], -item[1], -item[3], -item[4], item[5]))
         metadata["matched_candidate_count"] = len(scored)
         selected = scored[:limit]
@@ -9752,8 +9810,21 @@ class MemoryStore:
         metadata["reason"] = activation_reason
         metadata["selected_candidate_ids"] = [row["id"] for row, *_ in selected]
         metadata["selected_candidates"] = [
-            {"memory_id": row["id"], "score": round(similarity, 6), "term_overlap": overlap}
-            for row, similarity, overlap, *_ in selected
+            {
+                "memory_id": row["id"],
+                "score": round(similarity, 6),
+                "term_overlap": overlap,
+                "exact_term_overlap": exact_overlap,
+                "inflectional_term_overlap": inflectional_overlap,
+                "morphology_gain": inflectional_overlap - exact_overlap,
+                "morphology_applied": morphology_applied,
+            }
+            for row, similarity, overlap, _, _, _, exact_overlap, inflectional_overlap, morphology_applied in selected
+        ]
+        metadata["morphology"]["selected_candidate_ids"] = [
+            row["id"]
+            for row, _, _, _, _, _, _, _, morphology_applied in selected
+            if morphology_applied
         ]
         if confidence_profile.get("enabled"):
             metadata["confidence"]["passed"] = True

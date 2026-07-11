@@ -677,7 +677,7 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
         BENCHMARK_RETRIEVAL_RUN_MODES,
     )
 
-    bench_run.add_argument("benchmark", choices=["synthetic", "longmemeval", "locomo"])
+    bench_run.add_argument("benchmark", choices=["synthetic", "longmemeval", "locomo", "beam"])
     bench_run.add_argument("--dataset", type=Path, help="Local dataset path for benchmark adapters that require one")
     bench_run.add_argument("--split", default="default", help="Dataset split for local dataset benchmark adapters")
     bench_run.add_argument("--out", type=Path, required=True)
@@ -1689,6 +1689,7 @@ def main(argv: list[str] | None = None) -> int:
                 render_benchmark_dashboard,
                 render_public_benchmark_page,
                 render_benchmark_report,
+                run_beam_benchmark,
                 run_benchmark_matrix,
                 run_longmemeval_benchmark,
                 run_locomo_benchmark,
@@ -1750,6 +1751,23 @@ def main(argv: list[str] | None = None) -> int:
                         answerer_model=args.answerer_model,
                         write_trace=args.trace,
                         compact_artifacts=args.compact_artifacts,
+                    )
+                elif args.benchmark == "beam":
+                    if args.dataset is None:
+                        raise ValueError("beam requires --dataset <official-chats-directory>")
+                    result = run_beam_benchmark(
+                        args.out,
+                        args.dataset,
+                        args.split,
+                        seed=args.seed,
+                        run_id=args.run_id,
+                        context_budget_tokens=args.context_budget_tokens,
+                        retrieval_mode=args.retrieval_mode,
+                        retrieval_provider_config_path=args.retrieval_provider_config,
+                        allow_network_providers=args.allow_network_providers,
+                        answerer=args.answerer,
+                        answerer_model=args.answerer_model,
+                        write_trace=args.trace,
                     )
                 else:
                     raise ValueError(f"unsupported benchmark: {args.benchmark}")

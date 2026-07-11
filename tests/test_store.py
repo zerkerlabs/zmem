@@ -4903,6 +4903,36 @@ class MemoryStoreTest(unittest.TestCase):
         self.assertEqual(multi_hop["suppression_reason"], "semantic-query-lacks-composition-signal")
         self.assertEqual(multi_hop["disabled_reason"], "semantic-query-lacks-composition-signal")
 
+    def test_semantic_rescue_uses_two_regular_inflections_without_broad_prefix_matching(self):
+        target = self.store.remember(
+            "Caroline passed the adoption agency interviews last Friday.",
+            memory_type="episodic",
+            scope="project",
+            source_kind="human",
+        )
+        for index in range(24):
+            self.store.remember(
+                f"Caroline reviewed adoption process note {index}.",
+                memory_type="episodic",
+                scope="project",
+                source_kind="human",
+            )
+
+        result = self.store.search_with_meta(
+            "When did Caroline pass the adoption interview?",
+            scope="project",
+        )
+        semantic_rescue = result["retrieval"]["query_lookup"]["semantic_rescue"]
+        selected = {item["memory_id"]: item for item in semantic_rescue["selected_candidates"]}
+
+        self.assertEqual(result["search_mode"], "semantic")
+        self.assertEqual(result["memories"][0].id, target.id)
+        self.assertIn(target.id, semantic_rescue["morphology"]["selected_candidate_ids"])
+        self.assertEqual(selected[target.id]["exact_term_overlap"], 2)
+        self.assertEqual(selected[target.id]["inflectional_term_overlap"], 4)
+        self.assertEqual(selected[target.id]["morphology_gain"], 2)
+        self.assertTrue(selected[target.id]["morphology_applied"])
+
     def test_compound_fts_identifier_query_auto_enables_multi_hop_and_introduces_missing_fact(self):
         overview = self.store.remember(
             "Project Atlas owner Morgan DeployWindow rollback policy notes.",
