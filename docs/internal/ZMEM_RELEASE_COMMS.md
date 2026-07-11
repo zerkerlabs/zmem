@@ -1,8 +1,10 @@
 # ZMem Release Comms
 
-## 2026-07-11 - v0.1.4 release candidate
+## 2026-07-11 - v0.1.4 release checkpoint
 
 Audience: internal Zerker product, engineering, and release coordination.
+
+Published from `0ea8316062af6123921e902dee2a3a6783cd4ba2` after GitHub Actions run `29165187978` passed every job. The release attaches the verified `0.1.4` wheel and source distribution.
 
 This release packages the nine post-v0.1.3 benchmark-operation commits with one bounded retrieval improvement, the first BEAM scale adapter, and a production-shaped ActiveGraph pack.
 

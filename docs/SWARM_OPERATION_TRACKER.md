@@ -27,7 +27,8 @@ Coordinator update `2026-07-11T19:03:37Z`:
 - Only after the gate passed, reran full adaptive LoCoMo (`0.6133`, five gains, zero losses) and LongMemEval (`0.772`, three gains, zero losses).
 - Added and verified the official-layout BEAM adapter. The untouched 100K smoke covered all ten categories and resolved `53/53` source references; this remains scale/evidence instrumentation, not an official answer score.
 - Finished the real ActiveGraph 1.9 pack loader and batched trace path. The 227-question acceptance produced 908 events in eight commits with zero receipt bundles.
-- Preparing `v0.1.4`; all recurring swarms stay paused until local release gates and remote CI pass.
+- Published `v0.1.4` at `0ea8316`; GitHub Actions run `29165187978` passed every job and the wheel/source distribution are attached to the release.
+- All recurring swarms remain paused. Resume only one explicitly selected L3/L6 slice after this clean checkpoint.
 
 Coordinator update `2026-07-10T23:30:55Z`:
 

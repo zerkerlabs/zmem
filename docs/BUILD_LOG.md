@@ -1,4 +1,4 @@
-## 2026-07-11 - v0.1.4 retrieval, BEAM, and ActiveGraph release candidate
+## 2026-07-11 - v0.1.4 retrieval, BEAM, and ActiveGraph release
 
 Shipped:
 
@@ -27,6 +27,8 @@ Verification:
 - Real ActiveGraph 1.9 discovery, idempotent loading, behavior resolution, event persistence, and four integration tests passed in an isolated environment.
 - `python -m build` produced `zerker_memory-0.1.4.tar.gz` and `zerker_memory-0.1.4-py3-none-any.whl`; the wheel reinstalled and reported `zmem 0.1.4`.
 - Site lint/build and docs typecheck/build passed; production dependency audits reported zero vulnerabilities.
+- Published `v0.1.4` from `0ea8316062af6123921e902dee2a3a6783cd4ba2`; GitHub Actions run `29165187978` passed every job.
+- Attached wheel `sha256:c0be1038f3f6fa54343c0f03d169ebd0bf35965c1f6aead01c60fbad4f8ca89e` and source distribution `sha256:6b6f04b5c90100f3abbfdda524545154e66f8798d5ee92285f380d15cc6af15d`.
 
 Claim boundary:
 

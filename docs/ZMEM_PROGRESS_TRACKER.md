@@ -23,20 +23,21 @@ Every push or meaningful automation drop should update this file alongside:
 | `v0.1.1` | Published | `e9c80c5` | Previous public alpha release. CI passed on Python 3.10/3.11/3.12 plus release-smoke. |
 | `v0.1.2` | Published | `v0.1.2` tag | Continuous swarm hardening release. CI passed on Python 3.10/3.11/3.12 plus release-smoke. |
 | `v0.1.3` | Published | `d029b99` / `v0.1.3` | Agent capability boundary, compact proof bundles, CLI summaries, and public site/docs hardening. |
-| `v0.1.4` | Release candidate | Pending final release commit | Deterministic retrieval, bounded morphology gains, BEAM scale adapter, and verified ActiveGraph pack/batching. |
+| `v0.1.4` | Published | `0ea8316` / `v0.1.4` | Deterministic retrieval, bounded morphology gains, BEAM scale adapter, and verified ActiveGraph pack/batching. |
 
 Current public release:
 
-- GitHub: `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.3`
+- GitHub: `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.4`
 - Site: `https://www.zmem.sh`
 - Raw installer: `https://raw.githubusercontent.com/zerkerlabs/zmem/main/install.sh`
 
-Current `v0.1.4` candidate verification:
+Current `v0.1.4` release checkpoint:
 
 - Local gates pass: `1,236` tests, eval `11/11`, strict release summary, full fresh-workspace smoke, site/docs builds, and production dependency audits.
 - The `0.1.4` wheel and source distribution build; the wheel reinstalls and reports `zmem 0.1.4`.
 - ActiveGraph 1.9 real-loader verification passes and is now a dedicated CI job.
-- Awaiting final commit, remote CI, tag, and GitHub release. Swarms remain paused.
+- Published from `0ea8316062af6123921e902dee2a3a6783cd4ba2`; GitHub Actions run `29165187978` passed every job.
+- GitHub release includes the wheel (`sha256:c0be1038...`) and source distribution (`sha256:6b6f04b5...`). Swarms remain paused.
 
 Current `v0.1.3` release checkpoint:
 
@@ -72,8 +73,8 @@ Percentages are practical launch-grade alpha estimates, not benchmark scores.
 | L4 Consolidation | Hierarchical summaries and job ledger | 35% | Deterministic fixture, job lifecycle, reversible summary payloads, append-only summary ledger | Source candidates from live store or expose persisted summaries through read-only CLI |
 | L5 Identity / Workspaces | Multi-agent source lineage and conflicts | 50% | Source reports, claim conflicts, resolution basis, exact-tie abstention summaries | Persist merge decisions or add repo/tool lineage descriptors |
 | L6 Benchmark Harness | LoCoMo/LongMemEval/BEAM evidence | 94% | Verified LoCoMo/LongMemEval evidence plus the official BEAM layout adapter and 100K scale smoke exist; compact artifacts verify | Expand BEAM to isolated 500K, 1M, and 10M runs and keep claim boundaries explicit |
-| Launch Oversight | Release pack, proof evidence, public release | 100% for v0.1.3 | Public verify `6/6`, assets `8/8`, return packet ready, `v0.1.3` published and deployed | Keep automation paused; repeat the gate only for the next release |
-| Website / Docs | Landing, proof page, docs, changelog | 100% for v0.1.3 | Agent-first copy, proof/docs routes, factual benchmark page, dedicated CI gates, and responsive QA | Keep factual surfaces aligned as retrieval evidence changes |
+| Launch Oversight | Release pack, proof evidence, public release | 100% for v0.1.4 | Public verify `6/6`, assets `8/8`, return packet ready, `v0.1.4` published | Keep automation paused; repeat the gate only for the next release |
+| Website / Docs | Landing, proof page, docs, changelog | 100% for v0.1.4 | Agent-first copy, current benchmark/BEAM/ActiveGraph facts, dedicated CI gates, and responsive QA | Keep factual surfaces aligned as retrieval evidence changes |
 | ActiveGraph Integration | Event substrate and compact traces | 90% | A real ActiveGraph 1.9 pack loads, persists events, and completes a 227-question batched trace with zero bundles | Wire the direct pre-call recall hook into a production host and run a larger selected-mode trace when useful |
 
 ## Lane Checklists
@@ -258,14 +259,15 @@ Built:
 - [x] GitHub release `v0.1.1` published.
 - [x] GitHub release `v0.1.2` published and deployed.
 - [x] GitHub release `v0.1.3` published and deployed.
+- [x] GitHub release `v0.1.4` published with wheel and source distribution.
 - [x] Site live at `zmem.sh`.
 - [x] CI green.
 
 Left:
 
 - [ ] Keep release docs/changelog synchronized after every push.
-- [x] Launch oversight paused after the clean `v0.1.3` release check.
-- [ ] Publish ongoing release notes for `v0.1.3+`.
+- [x] Launch oversight paused after the clean `v0.1.4` release check.
+- [x] Publish `v0.1.4` release notes with benchmark and integration claim boundaries.
 - [ ] Optional package registry publishing.
 
 ### Website / Docs
@@ -291,9 +293,11 @@ Built:
 Left:
 
 - [x] Update public docs to reflect `v0.1.3` release state.
+- [x] Update public docs to reflect `v0.1.4` retrieval, BEAM, and ActiveGraph state.
 - [ ] Add this progress tracker to public/internal navigation where appropriate.
 - [x] Add an internal release communications brief after each release/checkpoint.
 - [x] Keep changelog synced for the `v0.1.3` release push.
+- [x] Keep changelog synced for the `v0.1.4` release push.
 - [x] Run final mobile/desktop visual QA on the simplified copy.
 - [x] Improve the public product matrix around the ready-now product surface.
 

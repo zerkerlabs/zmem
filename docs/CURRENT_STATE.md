@@ -5,17 +5,18 @@ This is the short orchestration dashboard for Zerker Memory. Every autonomous bu
 ## Release Coordination
 `2026-07-11T19:03:37Z`
 
-- Preparing `v0.1.4` from the nine post-v0.1.3 benchmark-operation commits plus the current retrieval, BEAM, ActiveGraph, docs, and release-gate changes. `v0.1.3` remains the public release until the final suite and remote CI pass.
+- Published `v0.1.4` from `0ea8316062af6123921e902dee2a3a6783cd4ba2`, packaging the nine post-v0.1.3 benchmark-operation commits plus bounded retrieval, BEAM, ActiveGraph, docs, and release hardening.
 - Bounded regular-inflection rescue passed the required stable gate at `158/227` versus `156/227`, with two gains and zero regressions. The rule requires two exact anchors and two additional inflection matches.
 - Full adaptive LoCoMo improved from `1,213/1,986` to `1,218/1,986` (`0.6133`) with five gains and zero losses. Full LongMemEval improved from `383/500` to `386/500` (`0.772`) with three gains and zero losses.
 - Added `zmem bench run beam` for the official 100K, 500K, 1M, and 10M directory layout. The first untouched 100K smoke covered 188 messages, 63,411 observed whitespace tokens, 20 questions, all ten categories, and 53/53 resolved source references; its compact result verifies.
 - Replaced the ActiveGraph placeholder with a real ActiveGraph 1.9 pack and typed settings. Real discovery, idempotent runtime loading, canonical behavior resolution, `pack.loaded`, and event-to-ZMem persistence all pass.
 - The ActiveGraph 227-question batching acceptance wrote 908 events in eight commits, a roughly 1 MB causal database, a 196 KB trace, and zero per-question receipt bundles.
 - Claim boundaries remain explicit: local LoCoMo/LongMemEval values are provisional, BEAM is evidence-recall/scale instrumentation rather than an official model-judged score, and the installed ActiveGraph request behavior is an audit hook rather than a prompt interceptor.
-- Recurring ZMem automations remain paused through release verification. Next after release: one more zero-regression multi-hop/open-domain retrieval slice, isolated BEAM 500K/1M/10M runs, and production-host wiring for ActiveGraph's direct pre-call recall hook.
+- Recurring ZMem automations remain paused at the clean release checkpoint. Next: one more zero-regression multi-hop/open-domain retrieval slice, isolated BEAM 500K/1M/10M runs, and production-host wiring for ActiveGraph's direct pre-call recall hook.
 - Final local release gates pass: `1,236` tests, eval `11/11`, full fresh-workspace release smoke, site lint/build, docs typecheck/build, production dependency audits, real ActiveGraph 1.9 verification, and wheel/sdist build plus wheel reinstall.
 - Release smoke is now portable under uv-managed POSIX Python and omits generated `.treeship`, `node_modules`, `.next`, and `.turbo` state from its release copy.
-- Remaining release step: commit and push, wait for remote CI, then tag and publish `v0.1.4` without resuming the swarms.
+- GitHub Actions run `29165187978` passed ActiveGraph, docs, site, Python 3.10/3.11/3.12 unit+eval, and release-smoke. The GitHub release includes verified wheel and source-distribution assets.
+- Release is complete at `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.4`; recurring swarms remain paused for the next explicitly selected slice.
 
 ## Retrieval Baseline
 `2026-07-06T13:01:58Z`

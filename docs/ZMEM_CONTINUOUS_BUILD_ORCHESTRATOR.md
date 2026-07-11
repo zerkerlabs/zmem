@@ -14,13 +14,13 @@ Use this language precisely:
 
 ## Current Product Truth
 
-As of 2026-07-11, the product has a published `v0.1.3` alpha release,
-a verified `v0.1.4` release candidate, and a lane-by-lane progress board:
+As of 2026-07-11, the product has a published `v0.1.4` alpha release
+and a lane-by-lane progress board:
 
 - Progress tracker: [`ZMEM_PROGRESS_TRACKER.md`](ZMEM_PROGRESS_TRACKER.md)
-- Current public release: `v0.1.3`
-- Current release tag: `v0.1.3`
-- Current unpublished lane diff: the bounded morphology, BEAM, ActiveGraph, docs, and `v0.1.4` release package. Broad swarms and launch oversight are paused through release verification.
+- Current public release: `v0.1.4`
+- Current release tag: `v0.1.4`
+- Current unpublished lane diff: none after the publication record. Broad swarms and launch oversight remain paused.
 
 The product already has meaningful working surface:
 
@@ -109,9 +109,9 @@ Use this when the user is present and actively working with Codex. Do not wait h
 
 Current live-session stance:
 
-- Keep all recurring swarms paused through the `v0.1.4` local and remote release gates.
-- Do not start another retrieval slice until the current release diff is committed, pushed, tagged, and recorded.
-- After release, resume one bounded L3/L6 task at a time from the progress tracker rather than waiting for cron.
+- Keep recurring swarms paused at the clean `v0.1.4` checkpoint.
+- Resume one bounded L3/L6 task at a time from the progress tracker rather than waiting for cron.
+- Require the same zero-regression gate before another full benchmark rerun.
 
 ## Final Acceptance Gates
 
