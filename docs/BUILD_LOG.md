@@ -1,3 +1,29 @@
+## 2026-07-12 - Completion support, BEAM 500K, and ActiveGraph pre-call integrity
+
+Shipped locally:
+
+- Added a subject/object-anchored completion-support expansion that adds at most one candidate and records its decision under `zerker.support_expansion.v1`.
+- Added `enable_precall_recall(...)` for ActiveGraph LLM behaviors. The hook runs before prompt hashing and request emission.
+- Extended `scripts/verify_activegraph_pack.py` to prove real pre-call recall and exact equality between the event-recorded and provider-bound prompts.
+- Updated public benchmark, ActiveGraph, proof, changelog, product-status, and orchestration surfaces to the same factual checkpoint.
+- Tightened the public hero to `Agent memory you can trust.`, reduced the first viewport to one plain-language explanation, and aligned search/social metadata with the same agent-first promise.
+- Fixed local Vite previews by applying the production build's automatic JSX transform to the development server.
+
+Evidence:
+
+- Stable LoCoMo cohort: `159/227`, one gain and zero losses versus `158/227`; verified result hash `fbf270986bec46263413e17da9ec2009e70d5a87cf72fceb6dcaeba97124c29e`.
+- Full local adaptive LoCoMo: `1,219/1,986` (`0.6137965760`), one gain and zero losses versus the morphology checkpoint; verified result hash `2f29dd1656eefc2bd9bebd0e120158ac1743712e24626f9f017ea93a90d47246`.
+- Full local adaptive LongMemEval: unchanged at `386/500` (`0.772`); verified result hash `699fbf6424b447e5e47d95ad84bdd9759f3a9ec51fe4ccca618d270ec437a68a`.
+- Official-layout BEAM 500K conversation: 796 messages, 247,175 observed whitespace tokens, 20 questions, 83/83 source references, local deterministic evidence recall `0.30`, result hash `5ab8dca47c0c9cae1d831d2d8559d0cb610f5b7247ceb6f11674d40218624335`.
+- ActiveGraph 1.9 pack tests: six passed in the optional-dependency environment; base environment passes with the optional runtime test skipped.
+- Full suite: `1,241` tests passed; eval `11/11`; strict release smoke, site lint/build, and docs typecheck/build passed.
+- Desktop `1440x900` and mobile `390x844` browser checks passed with no horizontal overflow; the local preview rendered without new console errors after the JSX fix.
+- Built and reinstalled `zerker_memory-0.1.5-py3-none-any.whl` (`sha256:0d7f8bfcc308cfdf95ad61f264175a102d1d104a9d1fcc338ee85fb79dc087eb`) and built `zerker_memory-0.1.5.tar.gz` (`sha256:c96d8a7b3bd01d93e3bce2d19b139f42e372d2d9c744d73013d955870954090a`). The installed wheel reports `zmem 0.1.5` and passes eval `11/11`.
+
+Claim boundary:
+
+- LoCoMo and LongMemEval remain provisional local retrieval evidence. BEAM remains scale/source/evidence instrumentation and is not an official model-judged answer score.
+
 ## 2026-07-11 - v0.1.4 retrieval, BEAM, and ActiveGraph release
 
 Shipped:

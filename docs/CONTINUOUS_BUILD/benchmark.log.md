@@ -1,5 +1,13 @@
 # Benchmark Lane Log
 
+## 2026-07-12 - completion support and isolated BEAM 500K
+
+- Added one bounded completion-support bridge requiring a retrieved same-subject/object nucleus and an explicit completion synonym. It adds at most one support candidate and records the decision in the receipt.
+- Stable cohort: `159/227`, one gain and zero losses versus the v0.1.4 morphology checkpoint.
+- Full adaptive LoCoMo: `1,219/1,986` (`0.6138`), one gain and zero losses. Full adaptive LongMemEval remained `386/500` (`0.772`) with zero changed decisions.
+- Completed one official-layout BEAM 500K conversation: 796 messages, 247,175 observed whitespace tokens, 20 questions, and 83/83 source references. Local evidence recall was `0.30`; `public_benchmark_claim=false`.
+- Next safe benchmark: isolated BEAM 1M, or another stable-miss retrieval candidate only after the current candidate is packaged.
+
 ## 2026-07-11T19:03:37Z - zero-regression morphology, full reruns, and BEAM scale
 
 - Added conservative regular-inflection rescue behind a two-exact-anchor and two-additional-match gate.

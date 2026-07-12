@@ -4933,6 +4933,151 @@ class MemoryStoreTest(unittest.TestCase):
         self.assertEqual(selected[target.id]["morphology_gain"], 2)
         self.assertTrue(selected[target.id]["morphology_applied"])
 
+    def test_completion_support_expands_from_retrieved_nucleus_to_paraphrased_finish_event(self):
+        nucleus = self.store.remember(
+            "Jolene received a difficult robotics project from her engineering professor.",
+            memory_type="episodic",
+            scope="project",
+            source_kind="human",
+        )
+        target = self.store.remember(
+            "Jolene finally wrapped that engineering project up last month.",
+            memory_type="episodic",
+            scope="project",
+            source_kind="human",
+        )
+        for index in range(24):
+            self.store.remember(
+                f"Jolene reviewed robotics project planning note {index} and its deadlines.",
+                memory_type="episodic",
+                scope="project",
+                source_kind="human",
+            )
+
+        result = self.store.search_with_meta(
+            "When did Jolene finish her robotics project?",
+            scope="project",
+        )
+        support = result["retrieval"]["support_expansion"]
+        candidate = next(
+            item for item in result["retrieval"]["candidates"] if item["memory_id"] == target.id
+        )
+
+        self.assertIn(target.id, [memory.id for memory in result["memories"]])
+        self.assertTrue(support["applied"])
+        self.assertEqual(support["strategy"], "nucleus_completion_support_v1")
+        self.assertEqual(support["reason"], "nucleus-completion-paraphrase")
+        self.assertIn(nucleus.id, support["nucleus_candidate_ids"])
+        self.assertEqual(support["selected_candidate_ids"], [target.id])
+        self.assertEqual(support["selected_candidates"][0]["completion_terms"], ["wrapped"])
+        self.assertIn("engineering", support["selected_candidates"][0]["nucleus_bridge_terms"])
+        self.assertEqual(len(support["replaced_candidate_ids"]), 1)
+        self.assertTrue(candidate["support_expansion_candidate"])
+        self.assertEqual(candidate["support_expansion_kind"], "completion")
+
+    def test_completion_support_does_not_cross_unrelated_object_anchor(self):
+        self.store.remember(
+            "Jolene received a difficult robotics project from her engineering professor.",
+            memory_type="episodic",
+            scope="project",
+            source_kind="human",
+        )
+        unrelated = self.store.remember(
+            "Jolene wrapped her watercolor painting last month.",
+            memory_type="episodic",
+            scope="project",
+            source_kind="human",
+        )
+        for index in range(24):
+            self.store.remember(
+                f"Jolene reviewed robotics project planning note {index} and its deadlines.",
+                memory_type="episodic",
+                scope="project",
+                source_kind="human",
+            )
+
+        result = self.store.search_with_meta(
+            "When did Jolene finish her robotics project?",
+            scope="project",
+        )
+        support = result["retrieval"]["support_expansion"]
+
+        self.assertNotIn(unrelated.id, [memory.id for memory in result["memories"]])
+        self.assertFalse(support["applied"])
+        self.assertEqual(support["reason"], "no-completion-support-candidate")
+        self.assertEqual(support["selected_candidate_ids"], [])
+
+    def test_completion_support_does_not_cross_same_subject_unrelated_project(self):
+        self.store.remember(
+            "Jolene received a difficult robotics project from her engineering professor.",
+            memory_type="episodic",
+            scope="project",
+            source_kind="human",
+        )
+        unrelated = self.store.remember(
+            "Jolene finally wrapped her cooking project last month.",
+            memory_type="episodic",
+            scope="project",
+            source_kind="human",
+        )
+        for index in range(24):
+            self.store.remember(
+                f"Jolene reviewed robotics project planning note {index} and its deadlines.",
+                memory_type="episodic",
+                scope="project",
+                source_kind="human",
+            )
+
+        result = self.store.search_with_meta(
+            "When did Jolene finish her robotics project?",
+            scope="project",
+        )
+
+        self.assertNotIn(unrelated.id, [memory.id for memory in result["memories"]])
+        self.assertFalse(result["retrieval"]["support_expansion"]["applied"])
+        self.assertEqual(
+            result["retrieval"]["support_expansion"]["reason"],
+            "no-completion-support-candidate",
+        )
+
+    def test_completion_support_prefers_stronger_nucleus_bridge_over_retrieved_decoy(self):
+        nucleus = self.store.remember(
+            "Jolene's engineering professor assigned a huge robotics project that was tough but creative.",
+            memory_type="episodic",
+            scope="project",
+            source_kind="human",
+        )
+        decoy = self.store.remember(
+            "Jolene finished an electrical engineering project last week and it is done now.",
+            memory_type="episodic",
+            scope="project",
+            source_kind="human",
+        )
+        target = self.store.remember(
+            "Jolene finally wrapped that tough engineering project up last month.",
+            memory_type="episodic",
+            scope="project",
+            source_kind="human",
+        )
+
+        result = self.store._retrieval_rows(
+            "When did Jolene finish her robotics project?",
+            scope="project",
+            include_quarantined=False,
+            limit=2,
+        )
+        support = result["completion_support"]
+        memory_ids = [str(row["id"]) for row in result["rows"]]
+
+        self.assertIn(nucleus.id, support["nucleus_candidate_ids"])
+        self.assertIn(target.id, memory_ids)
+        self.assertNotEqual(memory_ids[0], decoy.id)
+        self.assertEqual(support["selected_candidate_ids"], [target.id])
+        self.assertEqual(
+            support["selected_candidates"][0]["nucleus_bridge_terms"],
+            ["engineering", "tough"],
+        )
+
     def test_compound_fts_identifier_query_auto_enables_multi_hop_and_introduces_missing_fact(self):
         overview = self.store.remember(
             "Project Atlas owner Morgan DeployWindow rollback policy notes.",

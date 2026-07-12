@@ -1,5 +1,21 @@
 # ZMem Release Comms
 
+## 2026-07-12 - v0.1.5 candidate checkpoint
+
+Audience: internal Zerker product, engineering, and release coordination.
+
+The candidate adds one deliberately narrow retrieval gain, the first BEAM 500K scale evidence, and a real ActiveGraph pre-call host boundary.
+
+Completion support activates only when retrieval already found the same named subject and object, then adds at most one explicit completion paraphrase. It improved the stable 227-question cohort from `158` to `159` and full LoCoMo from `1,218` to `1,219`, with zero losses in both comparisons. LongMemEval stayed at `386/500`. This is a small gain, but it is exactly the desired shape: measurable, receipt-visible, and regression-free.
+
+The isolated official-layout BEAM 500K conversation covered 796 messages, 247,175 observed whitespace tokens, 20 questions, and all 83 source references. Its `0.30` deterministic local evidence recall is diagnostic, not an official BEAM answer score.
+
+ActiveGraph hosts can now wrap an LLM behavior with `enable_precall_recall(...)`. ZMem enriches the prompt before ActiveGraph hashes and records it. A real ActiveGraph 1.9 runtime test proves the provider-bound and event-recorded prompt content match exactly. The installed `zmem.recall` behavior remains an audit hook for immutable request events.
+
+Next release gate: full Python/eval/release smoke, site/docs builds, package build/reinstall, and remote CI before tagging. Broad swarms stay paused until this candidate is cleanly packaged.
+
+Local release gates are now complete: `1,241` tests, eval `11/11`, strict release smoke, both web builds, ActiveGraph 1.9 verification, and clean wheel reinstall pass. Candidate artifacts are wheel `sha256:0d7f8bfcc308cfdf95ad61f264175a102d1d104a9d1fcc338ee85fb79dc087eb` and source distribution `sha256:c96d8a7b3bd01d93e3bce2d19b139f42e372d2d9c744d73013d955870954090a`. Remote CI, tag, and publication remain intentionally pending.
+
 ## 2026-07-11 - v0.1.4 release checkpoint
 
 Audience: internal Zerker product, engineering, and release coordination.
@@ -57,7 +73,7 @@ The run also fixed a real operator problem: LongMemEval now honors `--compact-ar
 - Agent proposals cannot spoof human/system provenance.
 - Local SQLite stores are private by default and configured for bounded concurrent-agent access through WAL and a busy timeout.
 - Daily `inject` and `why` output now has compact human-readable modes.
-- The website now leads with “Agents remember. You stay in control,” removes internal roadmap material from the homepage, and keeps proof claims tied to memory influence rather than semantic truth.
+- The website now leads with “Agent memory you can trust,” explains that promise through persistent local memory, review, revocation, and verification, and keeps proof claims tied to memory influence rather than semantic truth.
 - Benchmark docs now show the current local FTS and FTS-multihop results, their tradeoffs, and safe isolated compact-run commands.
 - Site and docs builds are now first-class CI checks.
 - Docs dependencies and the site's production Lodash chain are patched; runtime dependency audits are clean.

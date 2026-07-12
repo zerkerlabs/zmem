@@ -6,6 +6,10 @@ export default defineConfig({
   base: './',
   cacheDir: "/private/tmp/zmem-site-vite-cache",
   plugins: [],
+  esbuild: {
+    jsx: "automatic",
+    jsxImportSource: "react",
+  },
   server: {
     port: 3000,
   },

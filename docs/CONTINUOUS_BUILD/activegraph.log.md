@@ -1,5 +1,13 @@
 # ActiveGraph Integration Lane Log
 
+## 2026-07-12 - pre-call prompt integrity
+
+- Added `enable_precall_recall(...)`, an idempotent wrapper for ActiveGraph LLM behaviors that invokes real ZMem recall before the behavior returns its prompt.
+- The wrapper adds the recall receipt and scoped memories before ActiveGraph hashes the prompt, emits `llm.requested`, and calls the provider.
+- A real ActiveGraph 1.9 Runtime test verifies the provider receives the expected memory and that the recorded request message equals the provider-bound message exactly.
+- The installed `zmem.recall` behavior remains an immutable-event audit hook; current-call injection is explicit at the host behavior boundary.
+- Extended `scripts/verify_activegraph_pack.py --summary-only`; discovery, loading, persistence, pre-call context, and prompt equality all pass.
+
 ## 2026-07-11T19:03:37Z - real pack loader and batched acceptance
 
 - Replaced the placeholder entry point with a concrete ActiveGraph 1.9 `Pack` at `zerker_memory.pack:pack`, typed settings, and canonical `zmem.persist` / `zmem.recall` behaviors.

@@ -71,35 +71,28 @@ export default function HeroSection() {
             className="mb-6 text-eyebrow text-zlime"
             style={{ animation: 'fadeSlideUp 0.6s 0.3s ease-out forwards', opacity: 0 }}
           >
-            Local-first memory for AI agents
+            Open-source, local-first memory for AI agents
           </p>
 
-          <KineticHeadline text="Agents remember. You stay in control." delay={0.5} />
+          <KineticHeadline text="Agent memory you can trust." delay={0.5} />
 
           <p
             className="mx-auto mt-6 max-w-[640px] text-[17px] leading-relaxed text-[#D8D8D8] max-sm:hidden"
             style={{ animation: 'fadeSlideUp 0.6s 0.8s ease-out forwards', opacity: 0, textShadow: '0 4px 18px rgba(0,0,0,0.9)' }}
           >
-            ZMem carries project memory across runs, keeps unreviewed or stale facts out of
-            context, and records which memories shaped each action.
+            ZMem gives agents persistent project memory across runs. Review what they learn,
+            revoke what goes stale, and verify what shaped their work.
           </p>
 
           <p
             className="mx-auto mt-6 max-w-[320px] text-[17px] leading-relaxed text-[#D8D8D8] sm:hidden"
             style={{ animation: 'fadeSlideUp 0.6s 0.8s ease-out forwards', opacity: 0, textShadow: '0 4px 18px rgba(0,0,0,0.9)' }}
           >
-            Persistent agent memory with review, receipts, and local control.
-          </p>
-
-          <p
-            className="mx-auto mt-4 hidden max-w-[600px] text-[14px] leading-relaxed text-[#AFAFAF] sm:block"
-            style={{ animation: 'fadeSlideUp 0.6s 0.9s ease-out forwards', opacity: 0, textShadow: '0 4px 18px rgba(0,0,0,0.9)' }}
-          >
-            Store locally. Review changes. Revoke stale facts. Verify what shaped the work.
+            Persistent local memory you can review, revoke, and verify.
           </p>
 
           <div
-            className="mt-10 flex flex-wrap items-center justify-center gap-4"
+            className="mt-9 flex flex-wrap items-center justify-center gap-4"
             style={{ animation: 'fadeSlideUp 0.5s 1.0s ease-out forwards', opacity: 0 }}
           >
             <button
@@ -112,7 +105,7 @@ export default function HeroSection() {
               onClick={() => scrollTo('#memory-loop')}
               className="rounded-full border border-zline bg-transparent px-8 py-3.5 text-cta text-zink transition-all duration-150 hover:border-zlime hover:text-zlime"
             >
-              See the memory workflow
+              See how it works
             </button>
             <a
               href="https://github.com/zerkerlabs/zmem"

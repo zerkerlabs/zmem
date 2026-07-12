@@ -3,7 +3,17 @@
 This is the short orchestration dashboard for Zerker Memory. Every autonomous build run should update this file after it updates `docs/BUILD_LOG.md`.
 
 ## Release Coordination
-`2026-07-11T19:03:37Z`
+`2026-07-12`
+
+- Started the `v0.1.5` candidate from the clean published `v0.1.4` checkpoint.
+- Added one bounded completion-support rule: an already-retrieved same-subject/object nucleus may pull in at most one paraphrased completion fact. The receipt records the nucleus, selected support, and replacement details under `zerker.support_expansion.v1`.
+- The required stable gate improved from `158/227` to `159/227` with one gain and zero losses. Full adaptive LoCoMo improved from `1,218/1,986` to `1,219/1,986` (`0.6138`) with the same one gain and zero losses. LongMemEval remained `386/500` (`0.772`) with no changed decisions.
+- Completed the first isolated official-layout BEAM 500K conversation: 796 messages, 247,175 observed whitespace tokens, 20 questions, and 83/83 resolved source references. The verified `0.30` result remains local evidence recall, not an official BEAM score.
+- Added `enable_precall_recall(...)` for ActiveGraph LLM behaviors and verified through ActiveGraph 1.9 that scoped ZMem memory reaches the provider before the call while the recorded `llm.requested` prompt exactly matches the provider-bound prompt.
+- Reframed the public first viewport as `Agent memory you can trust.` with a concrete explanation of persistent local memory, review, revocation, and verification. Desktop and mobile browser checks pass, and the local Vite JSX mismatch that could produce a black preview is fixed.
+- Versioned the coherent candidate as `0.1.5`. Final local gates pass: `1,241` tests, eval `11/11`, strict release smoke, site lint/build, docs typecheck/build, ActiveGraph 1.9 verification, and clean wheel reinstall.
+- Built `zerker_memory-0.1.5-py3-none-any.whl` (`sha256:0d7f8bfcc308cfdf95ad61f264175a102d1d104a9d1fcc338ee85fb79dc087eb`) and `zerker_memory-0.1.5.tar.gz` (`sha256:c96d8a7b3bd01d93e3bce2d19b139f42e372d2d9c744d73013d955870954090a`). The candidate is not tagged or published yet.
+- Broad recurring swarms remain paused. Next release work is push and remote CI before tagging; next frontier work is another bounded LoCoMo miss or isolated BEAM 1M/10M evidence.
 
 - Published `v0.1.4` from `0ea8316062af6123921e902dee2a3a6783cd4ba2`, packaging the nine post-v0.1.3 benchmark-operation commits plus bounded retrieval, BEAM, ActiveGraph, docs, and release hardening.
 - Bounded regular-inflection rescue passed the required stable gate at `158/227` versus `156/227`, with two gains and zero regressions. The rule requires two exact anchors and two additional inflection matches.
@@ -12,7 +22,7 @@ This is the short orchestration dashboard for Zerker Memory. Every autonomous bu
 - Replaced the ActiveGraph placeholder with a real ActiveGraph 1.9 pack and typed settings. Real discovery, idempotent runtime loading, canonical behavior resolution, `pack.loaded`, and event-to-ZMem persistence all pass.
 - The ActiveGraph 227-question batching acceptance wrote 908 events in eight commits, a roughly 1 MB causal database, a 196 KB trace, and zero per-question receipt bundles.
 - Claim boundaries remain explicit: local LoCoMo/LongMemEval values are provisional, BEAM is evidence-recall/scale instrumentation rather than an official model-judged score, and the installed ActiveGraph request behavior is an audit hook rather than a prompt interceptor.
-- Recurring ZMem automations remain paused at the clean release checkpoint. Next: one more zero-regression multi-hop/open-domain retrieval slice, isolated BEAM 500K/1M/10M runs, and production-host wiring for ActiveGraph's direct pre-call recall hook.
+- At the `v0.1.4` publication checkpoint, recurring ZMem automations were paused before the next explicitly selected slice. The current `v0.1.5` candidate state is recorded above.
 - Final local release gates pass: `1,236` tests, eval `11/11`, full fresh-workspace release smoke, site lint/build, docs typecheck/build, production dependency audits, real ActiveGraph 1.9 verification, and wheel/sdist build plus wheel reinstall.
 - Release smoke is now portable under uv-managed POSIX Python and omits generated `.treeship`, `node_modules`, `.next`, and `.turbo` state from its release copy.
 - GitHub Actions run `29165187978` passed ActiveGraph, docs, site, Python 3.10/3.11/3.12 unit+eval, and release-smoke. The GitHub release includes verified wheel and source-distribution assets.

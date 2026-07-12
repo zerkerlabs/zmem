@@ -2,7 +2,7 @@ import Card from '@/components/Card';
 import CodeBlock from '@/components/CodeBlock';
 
 const packManifest = `name: zmem
-version: "0.1.4"
+version: "0.1.5"
 entry_point: zerker_memory.pack:pack
 behaviors:
   - zmem.persist
@@ -31,6 +31,22 @@ zmem-bench-locomo \\
 const envVars = `ZMEM_RETRIEVAL_MODE=fts
 ZMEM_TREESHIP_ENABLED=false`;
 
+const precallCode = `from pathlib import Path
+
+from zerker_memory.integrations.activegraph import enable_precall_recall
+
+enable_precall_recall(
+    answer_question,
+    db_path=Path(".zerker/memory.sqlite"),
+    retrieval_mode="fts",
+)
+
+runtime = Runtime(
+    graph,
+    behaviors=[answer_question],
+    llm_provider=provider,
+)`;
+
 const behaviorRows = [
   {
     name: 'zmem.persist',
@@ -38,7 +54,7 @@ const behaviorRows = [
   },
   {
     name: 'zmem.recall',
-    detail: 'Returns approved context through the direct pre-call hook. The installed behavior records recall after ActiveGraph emits its immutable request event.',
+    detail: 'The explicit pre-call wrapper adds approved memory before prompt hashing. The installed behavior records the immutable request as an audit hook.',
   },
   {
     name: 'compact bench runner',
@@ -46,7 +62,7 @@ const behaviorRows = [
   },
   {
     name: 'pack install check',
-    detail: 'A real ActiveGraph 1.9 loader test verifies discovery, idempotent loading, both behaviors, and event-to-memory persistence.',
+    detail: 'A real ActiveGraph 1.9 test verifies loading, persistence, pre-call memory, and exact recorded-versus-sent prompt equality.',
   },
 ];
 
@@ -80,6 +96,23 @@ export default function ActiveGraphPage() {
               Proof matrix
             </a>
           </div>
+        </div>
+      </section>
+
+      <section className="border-t border-zline py-20">
+        <div className="mx-auto grid max-w-[1120px] grid-cols-1 gap-8 px-6 lg:grid-cols-[0.85fr_1.15fr]">
+          <div>
+            <p className="text-eyebrow text-zlime">Before the model call</p>
+            <h2 className="mt-3 font-heading text-4xl font-semibold tracking-tight text-zink">
+              Recall memory before ActiveGraph records the prompt.
+            </h2>
+            <p className="mt-5 text-sm leading-relaxed text-zmuted">
+              Wrap a host LLM behavior once. ZMem adds scoped memory before ActiveGraph hashes the
+              prompt, emits its request event, and calls the provider. The verifier confirms the
+              recorded prompt is the same prompt the provider receives.
+            </p>
+          </div>
+          <CodeBlock code={precallCode} title="host pre-call recall" />
         </div>
       </section>
 

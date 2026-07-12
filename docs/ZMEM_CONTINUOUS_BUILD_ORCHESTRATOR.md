@@ -14,13 +14,13 @@ Use this language precisely:
 
 ## Current Product Truth
 
-As of 2026-07-11, the product has a published `v0.1.4` alpha release
-and a lane-by-lane progress board:
+As of 2026-07-12, the product has a published `v0.1.4` alpha release,
+a locally verified `v0.1.5` release candidate, and a lane-by-lane progress board:
 
 - Progress tracker: [`ZMEM_PROGRESS_TRACKER.md`](ZMEM_PROGRESS_TRACKER.md)
 - Current public release: `v0.1.4`
 - Current release tag: `v0.1.4`
-- Current unpublished lane diff: none after the publication record. Broad swarms and launch oversight remain paused.
+- Current unpublished lane diff: bounded completion support, BEAM 500K evidence, ActiveGraph pre-call prompt integrity, and synchronized release surfaces for `v0.1.5`. Broad swarms and launch oversight remain paused.
 
 The product already has meaningful working surface:
 
@@ -50,12 +50,12 @@ The frontier report does not change the product thesis. It changes the order of 
 
 Current frontier benchmark TODO, from the verified adaptive checkpoints:
 
-1. Treat adaptive LoCoMo `0.6133` and LongMemEval `0.772` as the current local provisional checkpoints, with their explicit non-leaderboard claim boundary.
+1. Treat adaptive LoCoMo `0.6138` and LongMemEval `0.772` as the current local provisional checkpoints, with their explicit non-leaderboard claim boundary.
 2. Keep unique run ids and isolated output directories for every run; never reuse a target while another process can touch it.
 3. Require every retrieval change to pass the deterministic 227-question zero-regression gate before any full rerun.
 4. Improve one remaining LoCoMo multi-hop/open-domain stable miss without giving back temporal or abstention behavior.
-5. Expand the verified BEAM 100K adapter smoke into isolated 500K, 1M, and 10M scale runs.
-6. Wire the ActiveGraph direct recall hook into a production host before describing current-call prompt injection as integrated.
+5. Expand the verified BEAM 100K and 500K evidence into isolated 1M and 10M scale runs.
+6. Add a runnable application-level ActiveGraph host example around the verified generic pre-call wrapper.
 7. Add real dense embeddings and graph traversal fusion only behind same-dataset comparisons and proof artifacts.
 
 Score projections, competitor comparisons, and "official benchmark" language stay internal until reproduced with pinned datasets, commands, hashes, and receipt bundles.
@@ -109,7 +109,7 @@ Use this when the user is present and actively working with Codex. Do not wait h
 
 Current live-session stance:
 
-- Keep recurring swarms paused at the clean `v0.1.4` checkpoint.
+- Keep recurring swarms paused through the locally verified `v0.1.5` release candidate.
 - Resume one bounded L3/L6 task at a time from the progress tracker rather than waiting for cron.
 - Require the same zero-regression gate before another full benchmark rerun.
 

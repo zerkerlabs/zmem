@@ -55,6 +55,7 @@ RERANKER_SCHEMA = "zerker.reranker.v1"
 MULTI_HOP_DECOMPOSITION_SCHEMA = "zerker.multi_hop_decomposition.v1"
 SEMANTIC_RESCUE_SCHEMA = "zerker.semantic_rescue.v1"
 HYBRID_RETRIEVAL_SCHEMA = "zerker.hybrid_retrieval.v1"
+SUPPORT_EXPANSION_SCHEMA = "zerker.support_expansion.v1"
 CONTEXT_TOKEN_APPROXIMATION = "chars_div_4_ceil"
 DEFAULT_ENVIRONMENT_HASH_INPUT = "zmem-local-environment-v1"
 RETRIEVAL_CANDIDATE_LIMIT = 20
@@ -77,6 +78,64 @@ MULTI_HOP_PER_SUBQUERY_LIMIT = 5
 MULTI_HOP_AUTO_MIN_SUBQUERIES = 2
 MULTI_HOP_SEMANTIC_AUTO_TERMS = {"average", "between", "current", "days", "most", "total"}
 MULTI_HOP_SEMANTIC_AUTO_PHRASES = ("number of", "what time", " plus ")
+COMPLETION_SUPPORT_QUERY_PATTERN = re.compile(
+    r"^when\s+did\s+(?P<subject>[A-Za-z][A-Za-z'-]*)\s+"
+    r"(?P<intent>finish(?:ed|ing)?|complet(?:e|ed|ing)|wrap(?:ped|ping)?)(?:\s+up)?\s+"
+    r"(?P<object>.+?)\??$",
+    re.IGNORECASE,
+)
+COMPLETION_SUPPORT_TERMS = {
+    "complete",
+    "completed",
+    "completing",
+    "done",
+    "finish",
+    "finished",
+    "finishing",
+    "wrap",
+    "wrapped",
+    "wrapping",
+}
+COMPLETION_SUPPORT_OBJECT_NOISE_TERMS = {
+    "about",
+    "after",
+    "before",
+    "her",
+    "his",
+    "its",
+    "that",
+    "the",
+    "their",
+    "this",
+    "with",
+}
+COMPLETION_SUPPORT_BRIDGE_NOISE_TERMS = {
+    "been",
+    "busy",
+    "but",
+    "did",
+    "fun",
+    "going",
+    "had",
+    "has",
+    "have",
+    "just",
+    "last",
+    "long",
+    "lot",
+    "lots",
+    "month",
+    "now",
+    "remember",
+    "really",
+    "stuff",
+    "talk",
+    "time",
+    "week",
+    "year",
+    "you",
+    "your",
+}
 AUTHORITY_RANKS = {"none": 0, "low": 1, "medium": 2, "high": 3, "policy": 4}
 TEMPORAL_HISTORY_TERMS = {
     "before",
@@ -2418,6 +2477,10 @@ def _ranking_payload(
             "observation_seq",
             "temporal_support_candidate",
             "temporal_support_kind",
+            "support_expansion_candidate",
+            "support_expansion_kind",
+            "support_expansion_rank",
+            "support_expansion_nucleus_ids",
         ):
             candidate[key] = metadata.get(key)
             features[key] = metadata.get(key)
@@ -5452,7 +5515,236 @@ def _append_relation_support_rows(
         support["reason"] = "subject_relation_mutation_anchor"
 
 
+def _completion_support_expansion(
+    conn: sqlite3.Connection,
+    *,
+    query: str,
+    rows: list[sqlite3.Row],
+    candidate_metadata: dict[str, dict[str, Any]],
+    status_sql: str,
+    scope_sql: str,
+    authority_order_sql: str,
+    scope: str | None,
+    limit: int,
+) -> tuple[list[sqlite3.Row], dict[str, Any]]:
+    metadata = {
+        "schema": SUPPORT_EXPANSION_SCHEMA,
+        "strategy": "nucleus_completion_support_v1",
+        "applied": False,
+        "reason": "query-not-completion-shaped",
+        "subject_term": None,
+        "object_terms": [],
+        "nucleus_bridge_terms": [],
+        "matched_query_terms": [],
+        "nucleus_candidate_ids": [],
+        "selected_candidate_ids": [],
+        "selected_candidates": [],
+        "replaced_candidate_ids": [],
+        "candidate_limit": 1,
+    }
+    match = COMPLETION_SUPPORT_QUERY_PATTERN.fullmatch(" ".join(query.strip().split()))
+    if match is None or limit <= 0 or not rows:
+        return rows, metadata
 
+    subject_term = str(match.group("subject")).lower()
+    object_terms = [
+        term
+        for term in query_terms(str(match.group("object")))
+        if term not in COMPLETION_SUPPORT_OBJECT_NOISE_TERMS
+        and term not in COMPLETION_SUPPORT_TERMS
+        and term != subject_term
+    ]
+    matched_query_terms = sorted(
+        set(query_terms(str(match.group("intent")))).intersection(COMPLETION_SUPPORT_TERMS)
+    )
+    metadata.update(
+        {
+            "reason": "no-object-anchor",
+            "subject_term": subject_term,
+            "object_terms": object_terms,
+            "matched_query_terms": matched_query_terms,
+        }
+    )
+    if not object_terms:
+        return rows, metadata
+
+    object_term_set = set(object_terms)
+
+    query_term_set = set(query_terms(query))
+
+    def support_profile(row: sqlite3.Row) -> tuple[set[str], list[str], list[str]]:
+        content_terms = set(query_terms(str(row["content"])))
+        if subject_term not in content_terms:
+            return set(), [], []
+        object_overlap = sorted(object_term_set.intersection(content_terms))
+        completion_overlap = sorted(COMPLETION_SUPPORT_TERMS.intersection(content_terms))
+        return content_terms, object_overlap, completion_overlap
+
+    def nucleus_bridge_profile(row: sqlite3.Row) -> set[str]:
+        content = re.sub(
+            r"^\s*\[[^\]]+\]\s*\([^)]*\)\s*[^:]+:\s*",
+            "",
+            str(row["content"]),
+        )
+        content_terms = query_terms(content)
+        object_indexes = [
+            index for index, term in enumerate(content_terms) if term in object_term_set
+        ]
+        local_terms: set[str] = set()
+        for index in object_indexes:
+            local_terms.update(content_terms[max(0, index - 8) : index + 9])
+        return (
+            local_terms
+            - query_term_set
+            - COMPLETION_SUPPORT_TERMS
+            - COMPLETION_SUPPORT_OBJECT_NOISE_TERMS
+            - COMPLETION_SUPPORT_BRIDGE_NOISE_TERMS
+            - MULTI_HOP_STOPWORDS
+            - {subject_term}
+        )
+
+    nucleus_candidate_ids = []
+    existing_support_candidates = []
+    nucleus_bridge_terms: set[str] = set()
+    for row in rows:
+        content_terms, object_overlap, completion_overlap = support_profile(row)
+        if not object_overlap:
+            continue
+        if completion_overlap:
+            existing_support_candidates.append(
+                {
+                    "row": row,
+                    "object_overlap_terms": object_overlap,
+                    "completion_terms": completion_overlap,
+                    "content_terms": content_terms,
+                    "already_retrieved": True,
+                }
+            )
+            continue
+        nucleus_candidate_ids.append(str(row["id"]))
+        nucleus_bridge_terms.update(nucleus_bridge_profile(row))
+    metadata["nucleus_candidate_ids"] = nucleus_candidate_ids
+    metadata["nucleus_bridge_terms"] = sorted(nucleus_bridge_terms)
+    if not nucleus_candidate_ids:
+        metadata["reason"] = "no-retrieved-nucleus"
+        return rows, metadata
+    if not nucleus_bridge_terms:
+        metadata["reason"] = "no-nucleus-bridge-term"
+        return rows, metadata
+
+    object_sql = " OR ".join(["lower(m.content) LIKE ?" for _ in object_terms])
+    completion_sql = " OR ".join(["lower(m.content) LIKE ?" for _ in sorted(COMPLETION_SUPPORT_TERMS)])
+    params: list[Any] = [f"%{subject_term}%"]
+    params.extend(f"%{term}%" for term in object_terms)
+    params.extend(f"%{term}%" for term in sorted(COMPLETION_SUPPORT_TERMS))
+    if scope:
+        params.append(scope)
+    support_rows = conn.execute(
+        f"""
+        SELECT m.*,
+               COALESCE((SELECT MAX(e.seq) FROM events e WHERE e.memory_id = m.id), 0) AS observation_seq
+        FROM memories m
+        WHERE lower(m.content) LIKE ?
+          AND ({object_sql})
+          AND ({completion_sql})
+          AND {status_sql}
+          {scope_sql}
+        ORDER BY {authority_order_sql} DESC, m.trust DESC, observation_seq DESC, m.id ASC
+        LIMIT {max(limit * 2, RETRIEVAL_CANDIDATE_LIMIT)}
+        """,
+        params,
+    ).fetchall()
+    existing_ids = {str(row["id"]) for row in rows}
+    candidates = []
+    for item in existing_support_candidates:
+        bridge_overlap = sorted(nucleus_bridge_terms.intersection(item.pop("content_terms")))
+        if not bridge_overlap:
+            continue
+        row = item["row"]
+        item["nucleus_bridge_terms"] = bridge_overlap
+        item["observation_seq"] = (
+            int(row["observation_seq"])
+            if "observation_seq" in row.keys()
+            else int(candidate_metadata.get(str(row["id"]), {}).get("observation_seq") or 0)
+        )
+        candidates.append(item)
+    for row in support_rows:
+        if str(row["id"]) in existing_ids:
+            continue
+        content_terms, object_overlap, completion_overlap = support_profile(row)
+        bridge_overlap = sorted(nucleus_bridge_terms.intersection(content_terms))
+        if not object_overlap or not completion_overlap or not bridge_overlap:
+            continue
+        observation_seq = int(row["observation_seq"]) if "observation_seq" in row.keys() else 0
+        candidates.append(
+            {
+                "row": row,
+                "object_overlap_terms": object_overlap,
+                "completion_terms": completion_overlap,
+                "nucleus_bridge_terms": bridge_overlap,
+                "observation_seq": observation_seq,
+                "already_retrieved": False,
+            }
+        )
+    if not candidates:
+        metadata["reason"] = "no-completion-support-candidate"
+        return rows, metadata
+
+    candidates.sort(
+        key=lambda item: (
+            -len(item["nucleus_bridge_terms"]),
+            -len(item["object_overlap_terms"]),
+            -authority_rank(str(item["row"]["authority"])),
+            -float(item["row"]["trust"]),
+            -int(item["observation_seq"]),
+            str(item["row"]["id"]),
+        )
+    )
+    selected = candidates[0]
+    selected_row = selected["row"]
+    selected_id = str(selected_row["id"])
+    selected_detail = {
+        "memory_id": selected_id,
+        "object_overlap_terms": selected["object_overlap_terms"],
+        "completion_terms": selected["completion_terms"],
+        "nucleus_bridge_terms": selected["nucleus_bridge_terms"],
+        "observation_seq": selected["observation_seq"],
+    }
+    if selected["already_retrieved"]:
+        metadata.update(
+            {
+                "reason": "completion-support-already-retrieved",
+                "selected_candidate_ids": [selected_id],
+                "selected_candidates": [selected_detail],
+            }
+        )
+        return rows, metadata
+    expanded_rows = [selected_row, *rows]
+    replaced_rows = expanded_rows[limit:]
+    rows = expanded_rows[:limit]
+    metadata.update(
+        {
+            "applied": True,
+            "reason": "nucleus-completion-paraphrase",
+            "selected_candidate_ids": [selected_id],
+            "selected_candidates": [selected_detail],
+            "replaced_candidate_ids": [str(row["id"]) for row in replaced_rows],
+        }
+    )
+    candidate_metadata[selected_id] = {
+        **candidate_metadata.get(selected_id, {}),
+        "pre_hybrid_rank": None,
+        "hybrid_candidate_source": "completion-support-expansion",
+        "structured_fact_candidate": _row_has_structured_fact(selected_row),
+        "semantic_backfill_score": None,
+        "semantic_backfill_term_overlap": len(selected["object_overlap_terms"]),
+        "observation_seq": selected["observation_seq"],
+        "support_expansion_candidate": True,
+        "support_expansion_kind": "completion",
+        "support_expansion_rank": 1,
+        "support_expansion_nucleus_ids": nucleus_candidate_ids,
+    }
+    return rows, metadata
 
 def _current_direct_deploy_target_hybrid_override(
     *,
@@ -10767,6 +11059,17 @@ class MemoryStore:
             include_quarantined=include_quarantined,
             limit=limit,
         )
+        rows, completion_support = _completion_support_expansion(
+            self.conn,
+            query=query,
+            rows=rows,
+            candidate_metadata=candidate_metadata,
+            status_sql=status_sql,
+            scope_sql=scope_sql,
+            authority_order_sql=authority_order_sql,
+            scope=scope,
+            limit=limit,
+        )
         for index, row in enumerate(rows, start=1):
             candidate_metadata.setdefault(
                 row["id"],
@@ -10792,6 +11095,7 @@ class MemoryStore:
             "history_support": history_support,
             "update_history_support": update_history_support,
             "update_current_support": update_current_support,
+            "completion_support": completion_support,
             "candidate_metadata": candidate_metadata,
             "query_lookup": {
                 "schema": QUERY_LOOKUP_SCHEMA,
@@ -11285,6 +11589,7 @@ class MemoryStore:
         ranking["history_support"] = parent["history_support"]
         ranking["update_history_support"] = parent["update_history_support"]
         ranking["update_current_support"] = parent["update_current_support"]
+        ranking["support_expansion"] = parent["completion_support"]
         ranking["semantic_rescue"] = parent["semantic_rescue"]
         ranking["hybrid"] = parent["hybrid"]
         _annotate_hybrid_semantic_ranking(ranking)

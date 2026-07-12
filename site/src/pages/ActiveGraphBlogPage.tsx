@@ -89,10 +89,9 @@ export default function ActiveGraphBlogPage() {
             </h2>
             <p className="mt-5 text-sm leading-relaxed text-zmuted">
               ActiveGraph 1.9 discovers and loads the ZMem pack, resolves both runtime behaviors,
-              and persists a real object event into ZMem. The direct recall hook returns context
-              before a host calls its model. ActiveGraph's installed request behavior cannot rewrite
-              the already-emitted current request, so it records that recall rather than pretending
-              to mutate it.
+              and persists a real object event into ZMem. The explicit pre-call wrapper adds memory
+              before ActiveGraph hashes and records the prompt. The installed request behavior remains
+              an audit hook for the immutable request instead of pretending to rewrite it afterward.
             </p>
             <p className="mt-4 text-sm leading-relaxed text-zmuted">
               The compact runner also completed a 227-question acceptance pass: 908 events, eight

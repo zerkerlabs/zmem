@@ -21,6 +21,14 @@ Primary mission brief:
 - Lane progress and release tracker: `docs/ZMEM_PROGRESS_TRACKER.md`
 - Lane logs: `docs/CONTINUOUS_BUILD/`
 
+Coordinator update `2026-07-12`:
+
+- Broad recurring swarms remain paused; this coordinator completed one bounded L3 candidate and its required evidence instead of restarting overlapping lanes.
+- Completion support improved the stable cohort from `158/227` to `159/227` and full LoCoMo from `1,218` to `1,219`, with zero losses in both comparisons. LongMemEval stayed `386/500`.
+- The isolated BEAM 500K conversation run completed with 247,175 observed whitespace tokens and 83/83 resolved source references. It remains a local evidence-recall diagnostic.
+- ActiveGraph now has a verified generic pre-call host wrapper. ActiveGraph's recorded request and the provider-bound enriched prompt match exactly in the real 1.9 runtime test.
+- Next coordinator gate: finish the full verification set and package the coherent candidate before choosing either another stable miss or BEAM 1M.
+
 Coordinator update `2026-07-11T19:03:37Z`:
 
 - Completed the bounded morphology slice under the stable zero-regression gate: `158/227` versus `156/227`, with two gains and no losses.

@@ -1,6 +1,6 @@
 # ZMem Progress Tracker
 
-Last updated: 2026-07-11
+Last updated: 2026-07-12
 
 This is the shared progress board for ZMem release and frontier work. It turns the
 continuous-build lanes into a checkpointable product plan: what is built, what is
@@ -24,6 +24,7 @@ Every push or meaningful automation drop should update this file alongside:
 | `v0.1.2` | Published | `v0.1.2` tag | Continuous swarm hardening release. CI passed on Python 3.10/3.11/3.12 plus release-smoke. |
 | `v0.1.3` | Published | `d029b99` / `v0.1.3` | Agent capability boundary, compact proof bundles, CLI summaries, and public site/docs hardening. |
 | `v0.1.4` | Published | `0ea8316` / `v0.1.4` | Deterministic retrieval, bounded morphology gains, BEAM scale adapter, and verified ActiveGraph pack/batching. |
+| `v0.1.5` | Release candidate | local release commit | Bounded completion support, BEAM 500K evidence, and verified ActiveGraph pre-call prompt integrity. |
 
 Current public release:
 
@@ -38,6 +39,14 @@ Current `v0.1.4` release checkpoint:
 - ActiveGraph 1.9 real-loader verification passes and is now a dedicated CI job.
 - Published from `0ea8316062af6123921e902dee2a3a6783cd4ba2`; GitHub Actions run `29165187978` passed every job.
 - GitHub release includes the wheel (`sha256:c0be1038...`) and source distribution (`sha256:6b6f04b5...`). Swarms remain paused.
+
+Current `v0.1.5` candidate checkpoint:
+
+- Full Python suite passes: `1,241` tests; eval passes `11/11`.
+- Stable/full retrieval evidence passes the zero-regression gate at `159/227` and `1,219/1,986`; LongMemEval remains `386/500`.
+- ActiveGraph 1.9 pre-call prompt integrity, site lint/build, docs typecheck/build, and strict release smoke pass.
+- Wheel `sha256:0d7f8bfc...` and source distribution `sha256:c96d8a7b...` build; clean wheel reinstall reports `zmem 0.1.5` and passes eval.
+- Not published or tagged yet. Broad swarms remain paused through release review.
 
 Current `v0.1.3` release checkpoint:
 
@@ -69,13 +78,13 @@ Percentages are practical launch-grade alpha estimates, not benchmark scores.
 | L0 Trust Ledger | Receipts, Merkle lineage, restore/export proof | 80% | Mutation/lifecycle/restore receipts and compact v2 event witnesses exist; default MCP agents cannot claim trusted write/review authority | Add compact read-only mutation-chain summary and direct snapshot-restore receipt summary |
 | L1 Temporal KG | Current/history/superseded temporal memory | 55% | `query_at`, supersession, omitted-memory envelopes, runtime temporal context | Add contradiction/abstention runtime fixture and decide when true bi-temporal graph schema is needed |
 | L2 Lifecycle Compaction | Sessions, checkpoints, snapshots, retention | 45% | Checkpoint/snapshot store contracts plus read-only CLI summaries | Add write-facing `zmem session checkpoint` or retention policy without widening scope |
-| L3 Retrieval Baseline | FTS/BM25, semantic backfill, RRF, packing | 82% | Deterministic adaptive routing plus conservative morphology passes a zero-regression cohort and improves full LoCoMo/LongMemEval | Improve the remaining multi-hop/open-domain misses while preserving the zero-regression gate |
+| L3 Retrieval Baseline | FTS/BM25, semantic backfill, RRF, packing | 84% | Adaptive routing, conservative morphology, and one bounded completion-support bridge all pass the zero-regression cohort | Improve the remaining multi-hop/open-domain misses while preserving the zero-regression gate |
 | L4 Consolidation | Hierarchical summaries and job ledger | 35% | Deterministic fixture, job lifecycle, reversible summary payloads, append-only summary ledger | Source candidates from live store or expose persisted summaries through read-only CLI |
 | L5 Identity / Workspaces | Multi-agent source lineage and conflicts | 50% | Source reports, claim conflicts, resolution basis, exact-tie abstention summaries | Persist merge decisions or add repo/tool lineage descriptors |
-| L6 Benchmark Harness | LoCoMo/LongMemEval/BEAM evidence | 94% | Verified LoCoMo/LongMemEval evidence plus the official BEAM layout adapter and 100K scale smoke exist; compact artifacts verify | Expand BEAM to isolated 500K, 1M, and 10M runs and keep claim boundaries explicit |
+| L6 Benchmark Harness | LoCoMo/LongMemEval/BEAM evidence | 96% | Verified LoCoMo/LongMemEval evidence plus official-layout BEAM 100K and 500K runs exist; compact artifacts verify | Expand BEAM to isolated 1M and 10M runs and keep claim boundaries explicit |
 | Launch Oversight | Release pack, proof evidence, public release | 100% for v0.1.4 | Public verify `6/6`, assets `8/8`, return packet ready, `v0.1.4` published | Keep automation paused; repeat the gate only for the next release |
 | Website / Docs | Landing, proof page, docs, changelog | 100% for v0.1.4 | Agent-first copy, current benchmark/BEAM/ActiveGraph facts, dedicated CI gates, and responsive QA | Keep factual surfaces aligned as retrieval evidence changes |
-| ActiveGraph Integration | Event substrate and compact traces | 90% | A real ActiveGraph 1.9 pack loads, persists events, and completes a 227-question batched trace with zero bundles | Wire the direct pre-call recall hook into a production host and run a larger selected-mode trace when useful |
+| ActiveGraph Integration | Event substrate and compact traces | 96% | A real ActiveGraph 1.9 pack loads, persists events, batches traces, and has a verified pre-call host wrapper with recorded/sent prompt equality | Add a runnable host example and run a larger selected-mode trace when useful |
 
 ## Lane Checklists
 
@@ -162,6 +171,9 @@ Built:
 - [x] Stable 227-question gate improved from `156` to `158` with zero regressions.
 - [x] Full adaptive LoCoMo improved from `0.6108` to `0.6133` with five gains and zero losses.
 - [x] Full adaptive LongMemEval improved from `0.766` to `0.772` with three gains and zero losses.
+- [x] Bounded completion-support expansion requires a retrieved subject/object nucleus and adds at most one same-subject completion fact.
+- [x] Stable gate improved from `158/227` to `159/227`; full LoCoMo improved from `1,218` to `1,219`; both comparisons have zero losses.
+- [x] Full LongMemEval remained `386/500` with zero changed decisions after completion support.
 
 Left:
 
@@ -242,9 +254,10 @@ Left:
 - [x] Full adaptive LongMemEval evidence: `0.766`, `13` gains and zero losses versus FTS.
 - [x] BEAM official-layout scale adapter across 100K, 500K, 1M, and 10M buckets.
 - [x] Official BEAM 100K adapter smoke with all ten categories and `53/53` resolved source references.
+- [x] Isolated official-layout BEAM 500K conversation: `247,175` observed whitespace tokens and `83/83` resolved source references.
 - [x] ActiveGraph batching/performance for the full stable 227-question trace.
 - [x] Public benchmark page/report polish after real deltas.
-- [ ] Isolated BEAM 500K, 1M, and 10M scale runs.
+- [ ] Isolated BEAM 1M and 10M scale runs.
 
 ### Launch Oversight
 
@@ -320,10 +333,12 @@ Built:
 - [x] Batched WAL-backed event log with shared conversation ingestion.
 - [x] Full 227-question acceptance trace: `908` events, eight commits, zero receipt bundles.
 - [x] Public docs and use-case post describe the verified integration and prompt boundary.
+- [x] `enable_precall_recall(...)` enriches a host LLM behavior before ActiveGraph hashes and records the prompt.
+- [x] Real ActiveGraph runtime test verifies the recorded `llm.requested` prompt equals the provider-bound prompt.
 
 Left:
 
-- [ ] Wire the direct `recall()` pre-call hook into a production ActiveGraph host flow.
+- [ ] Add a runnable application-level ActiveGraph host example around the verified generic pre-call wrapper.
 - [ ] Run a larger official selected-mode trace when the retrieval matrix justifies preserving it.
 - [ ] Decide whether an aggregate Treeship artifact belongs on completed trace runs.
 
@@ -349,6 +364,6 @@ Every release tag should include:
 ## Current Highest-Leverage Next Move
 
 1. Keep benchmark runs in isolated output directories and on supported Python 3.10+ runtimes.
-2. Treat the verified deterministic adaptive route plus bounded morphology as the normal regression-safe path: the latest checkpoints are LoCoMo `0.6133` and LongMemEval `0.772`.
+2. Treat the verified deterministic adaptive route plus bounded morphology/completion support as the normal regression-safe path: the latest checkpoints are LoCoMo `0.6138` and LongMemEval `0.772`.
 3. Build the next L3 slice from stable misses in multi-hop and open-domain, keeping the zero-regression acceptance gate.
-4. Expand the verified BEAM 100K adapter smoke into isolated 500K, 1M, and 10M scale runs before making scale-quality claims.
+4. Expand the verified BEAM 100K and 500K evidence into isolated 1M and 10M scale runs before making scale-quality claims.

@@ -1,3 +1,3 @@
 """Trusted local-first memory control for AI agents."""
 
-__version__ = "0.1.4"
+__version__ = "0.1.5"

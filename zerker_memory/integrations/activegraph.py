@@ -3,8 +3,9 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
+from types import MethodType
 from typing import Any, Mapping
 
 from zerker_memory.bench import resolve_benchmark_retrieval_config
@@ -165,6 +166,107 @@ def handle_event(event: Any, *, store: MemoryStore | None = None, db_path: Path 
     if event_type == "llm.requested":
         return recall(event, store=store, db_path=db_path)
     return None
+
+
+def enable_precall_recall(
+    behavior: Any,
+    *,
+    db_path: Path | None = None,
+    retrieval_mode: str | None = None,
+    treeship_enabled: bool | None = None,
+    scope: str | None = None,
+) -> Any:
+    """Enrich an ActiveGraph LLM behavior before its prompt is hashed."""
+
+    if bool(getattr(behavior, "_zmem_precall_recall_enabled", False)):
+        return behavior
+    original_build_prompt = getattr(behavior, "build_prompt", None)
+    if not callable(original_build_prompt):
+        raise TypeError("enable_precall_recall requires an ActiveGraph LLMBehavior")
+
+    def build_prompt(
+        _behavior: Any,
+        event: Any,
+        graph: Any,
+        *,
+        frame: Any = None,
+        structured_output_mode: str = "prompt",
+    ) -> Any:
+        prompt = original_build_prompt(
+            event,
+            graph,
+            frame=frame,
+            structured_output_mode=structured_output_mode,
+        )
+        run_id = str(getattr(graph, "run_id", None) or "default")
+        payload: dict[str, Any] = {
+            "query": _precall_query(event, prompt),
+            "agent_id": str(getattr(behavior, "name", None) or "activegraph"),
+            "session_id": run_id,
+            "run_id": run_id,
+        }
+        if scope is not None:
+            payload["scope"] = scope
+        result = recall(
+            {
+                "id": f"{_event_id(event, _event_payload(event))}:zmem-precall",
+                "type": "llm.requested",
+                "session_id": run_id,
+                "run_id": run_id,
+                "payload": payload,
+            },
+            db_path=db_path,
+            retrieval_mode=retrieval_mode,
+            treeship_enabled=treeship_enabled,
+        )
+        memory_prefix = str((result.payload or {}).get("prepend_context") or "")
+        if not memory_prefix:
+            return prompt
+        receipt_line = f"ZMem recall receipt: {result.receipt_id}\n" if result.receipt_id else ""
+        enriched_context = receipt_line + memory_prefix
+        messages = list(getattr(prompt, "messages", []))
+        for index, message in enumerate(messages):
+            if str(getattr(message, "role", "")) != "user":
+                continue
+            messages[index] = replace(
+                message,
+                content=enriched_context + str(getattr(message, "content", "")),
+            )
+            break
+        else:
+            from activegraph.llm import LLMMessage
+
+            messages.append(LLMMessage(role="user", content=enriched_context))
+        prompt.messages = messages
+        prompt.sections = {
+            **dict(getattr(prompt, "sections", {}) or {}),
+            "zmem_memory": memory_prefix.rstrip(),
+            "zmem_receipt_id": str(result.receipt_id or ""),
+        }
+        return prompt
+
+    behavior.build_prompt = MethodType(build_prompt, behavior)
+    behavior._zmem_precall_recall_enabled = True
+    return behavior
+
+
+def _precall_query(event: Any, prompt: Any) -> str:
+    payload = _event_payload(event)
+    candidates: list[Mapping[str, Any]] = [payload]
+    object_payload = payload.get("object")
+    if isinstance(object_payload, Mapping):
+        data = object_payload.get("data")
+        if isinstance(data, Mapping):
+            candidates.insert(0, data)
+    for candidate in candidates:
+        for key in ("prompt", "query", "task", "content", "text"):
+            value = candidate.get(key)
+            if value not in (None, ""):
+                return str(value)
+    for message in reversed(list(getattr(prompt, "messages", []))):
+        if str(getattr(message, "role", "")) == "user":
+            return str(getattr(message, "content", ""))
+    return ""
 
 
 def _retrieval_config(mode: str) -> dict[str, Any]:

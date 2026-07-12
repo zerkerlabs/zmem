@@ -17,7 +17,9 @@ Current verified local evidence:
 - LoCoMo four-mode matrix: `1,986` questions, multihop accuracy `0.6067`, other modes `0.5967`, matrix hash `9f8b77ca...`, comparison hash `18cdca15...`.
 - LongMemEval four-mode matrix: `500` questions, multihop accuracy `0.780`, other modes `0.740`, matrix hash `e5dd8b06...`, comparison hash `a69090df...`.
 - The bounded v0.1.4 morphology follow-up passed the stable cohort at `158/227` versus `156/227`, with two gains and zero losses. Full adaptive LoCoMo then reached `0.6133` with five gains and zero losses against the deterministic adaptive checkpoint; LongMemEval reached `0.772` with three gains and zero losses.
+- The bounded completion-support follow-up reached `159/227` and full adaptive LoCoMo `1,219/1,986` (`0.6138`) with one additional gain and zero losses. LongMemEval remained `386/500`.
 - The official BEAM 100K adapter smoke covered `188` messages, `63,411` observed whitespace tokens, `20` questions across all ten categories, and `53/53` resolved source references. It is scale/evidence instrumentation, not the official model-judged BEAM score.
+- The isolated official-layout BEAM 500K conversation covered `796` messages, `247,175` observed whitespace tokens, `20` questions, and `83/83` resolved source references. Its `0.30` local evidence recall remains diagnostic rather than an official score.
 - The ActiveGraph 227-question acceptance run wrote `908` replayable events in eight batched commits, a roughly `1 MB` event database, and zero per-question receipt bundles.
 - Both matrices and comparisons verify locally. They use the provisional local retrieval-recall scorer and are not leaderboard submissions.
 - The historical LoCoMo rule-based token-F1/EM artifact remains `0.3752394032` F1 and `0.3721047331` EM over `1,986` questions with trace SHA `67a005bf...`; do not compare it numerically with the current accuracy matrices.
@@ -25,7 +27,7 @@ Current verified local evidence:
 Next comparison queue:
 
 - Use the remaining adaptive stable misses to select one bounded multi-hop/open-domain retrieval improvement and keep the zero-regression gate.
-- Expand BEAM from the verified 100K adapter smoke into isolated 500K, 1M, and 10M runs before making any scale-quality claim.
+- Expand BEAM from the verified 100K and 500K evidence into isolated 1M and 10M runs before making any scale-quality claim.
 - Use the `114` adaptive LongMemEval misses and low LoCoMo multi-hop/open-domain scores to select the next retrieval-quality slice.
 
 ## 1. Convert Official Files

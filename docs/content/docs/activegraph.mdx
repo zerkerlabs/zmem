@@ -22,7 +22,7 @@ ActiveGraph pack verify: PASS
 Failed checks: none
 ```
 
-The verifier uses ActiveGraph's real discovery and runtime APIs. It checks the `zerker_memory.pack:pack` entry point, idempotent loading, `pack.loaded`, both canonical behaviors, and an actual `object.created` event persisted into ZMem.
+The verifier uses ActiveGraph's real discovery and runtime APIs. It checks the `zerker_memory.pack:pack` entry point, idempotent loading, `pack.loaded`, both canonical behaviors, an actual `object.created` event persisted into ZMem, and a model call whose ZMem-enriched prompt exactly matches the recorded `llm.requested` prompt.
 
 ## Runtime Behaviors
 
@@ -43,7 +43,23 @@ The behavior writes to the real ZMem store under `ag:{run_id}` by default and re
 
 The source adapter's `recall()` function returns a `prepend_context` payload for hosts that invoke it before a model call. Retrieval is selected with `fts`, `semantic`, or `hybrid`.
 
-The installed ActiveGraph 1.9 behavior observes the immutable `llm.requested` event and records the corresponding local read receipt. ActiveGraph emits that event immediately before calling its provider, so this behavior is an audit hook, not a pre-provider prompt interceptor. Use the source adapter at the host boundary when current-call prompt injection is required.
+For ActiveGraph LLM behaviors, wrap the behavior once before constructing the runtime:
+
+```python
+from pathlib import Path
+
+from zerker_memory.integrations.activegraph import enable_precall_recall
+
+enable_precall_recall(
+    answer_question,
+    db_path=Path(".zerker/memory.sqlite"),
+    retrieval_mode="fts",
+)
+```
+
+`enable_precall_recall(...)` enriches the prompt before ActiveGraph hashes it, emits `llm.requested`, and calls the provider. The verifier confirms that the provider-bound message and the event-recorded message are identical.
+
+The installed ActiveGraph 1.9 `zmem.recall` behavior still observes the immutable `llm.requested` event and records the corresponding local read receipt. It is an audit hook, not a second prompt mutation path.
 
 ## Typed Pack
 
@@ -51,7 +67,7 @@ The loader entry point resolves to a concrete ActiveGraph `Pack` object:
 
 ```yaml
 name: zmem
-version: "0.1.4"
+version: "0.1.5"
 entry_point: zerker_memory.pack:pack
 behaviors:
   - zmem.persist

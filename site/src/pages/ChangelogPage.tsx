@@ -2,6 +2,22 @@ import Card from '@/components/Card';
 
 const updates = [
   {
+    title: 'A clearer agent-memory promise',
+    detail: 'The homepage now leads with “Agent memory you can trust” and immediately explains the persistent local memory, review, revocation, and verification controls behind that promise.',
+  },
+  {
+    title: 'Bounded completion support',
+    detail: 'One narrow subject-and-object anchored completion bridge gained one LoCoMo answer with zero regressions on both the stable cohort and the full 1,986-question run.',
+  },
+  {
+    title: 'ActiveGraph pre-call recall verified',
+    detail: 'A host LLM behavior can now add scoped ZMem memory before ActiveGraph hashes and records the prompt. Runtime verification proves the recorded and provider-bound prompts match.',
+  },
+  {
+    title: 'BEAM 500K scale evidence',
+    detail: 'The first isolated 500K conversation run covered 796 messages, 247,175 observed tokens, 20 questions, and 83 of 83 source references. It remains a local evidence diagnostic, not an official answer score.',
+  },
+  {
     title: 'v0.1.4 retrieval and scale release',
     detail: 'Bounded regular-inflection matching, a BEAM scale runner, and a real ActiveGraph pack and batched trace path now ship together.',
   },
@@ -88,10 +104,10 @@ export default function ChangelogPage() {
             Adaptive routing leads the local LoCoMo comparison.
           </h2>
           <p className="mt-5 text-sm leading-relaxed text-zmuted">
-            In ZMem's verified local provisional run, adaptive routing answered 1,218 of 1,986
-            questions correctly, or 0.6133 accuracy. The bounded morphology change added five
-            answers with no regressions against the deterministic adaptive checkpoint. LongMemEval
-            improved from 0.766 to 0.772 with three gains and no losses.
+            In ZMem's latest verified local provisional run, adaptive routing answered 1,219 of
+            1,986 questions correctly, or 0.6138 accuracy. The completion-support change added one
+            answer with no regressions against the morphology checkpoint. LongMemEval held at 0.772
+            with no changed decisions.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
             <a

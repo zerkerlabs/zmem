@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from zerker_memory.bench.activegraph_runner import run_locomo_activegraph_benchmark, score_trace
-from zerker_memory.integrations.activegraph import handle_event
+from zerker_memory.integrations.activegraph import enable_precall_recall, handle_event
 from zerker_memory.store import MemoryStore
 
 
@@ -96,6 +96,97 @@ class ActiveGraphPackTest(unittest.TestCase):
             db_path=Path("owned.sqlite"),
         )
         owned.conn.close.assert_called_once_with()
+
+    def test_precall_host_hook_injects_memory_into_recorded_activegraph_prompt(self):
+        try:
+            from activegraph import Graph, Runtime, clear_registry, llm_behavior, register
+            from activegraph.llm import LLMResponse
+        except ModuleNotFoundError:
+            self.skipTest("activegraph optional dependency is not installed")
+
+        from decimal import Decimal
+
+        class CaptureProvider:
+            default_model = "zmem-capture-model"
+
+            def __init__(self):
+                self.calls = []
+
+            def recognizes_model(self, _name):
+                return True
+
+            def supports_native_structured_output(self, _model):
+                return False
+
+            def count_tokens(self, *, system, messages, model):
+                return len(system) + sum(len(message.content) for message in messages)
+
+            def estimate_cost(self, *, input_tokens, output_tokens, model):
+                return Decimal("0")
+
+            def complete(self, **kwargs):
+                self.calls.append(kwargs)
+                return LLMResponse(
+                    raw_text="ok",
+                    parsed=None,
+                    input_tokens=1,
+                    output_tokens=1,
+                    cost_usd=Decimal("0"),
+                    latency_seconds=0.0,
+                    model=kwargs["model"],
+                    finish_reason="end_turn",
+                )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "memory.sqlite"
+            store = MemoryStore(db_path)
+            store.remember(
+                "The release target is Production.",
+                memory_type="semantic",
+                scope="ag:host-run",
+                source_kind="human",
+            )
+            store.conn.close()
+
+            previous_registry = clear_registry()
+            try:
+                @llm_behavior(
+                    name="answer_release_question",
+                    on=["object.created"],
+                    model="zmem-capture-model",
+                )
+                def answer_release_question(event, graph, ctx, llm_output):
+                    return None
+
+                self.assertIs(
+                    enable_precall_recall(answer_release_question, db_path=db_path),
+                    answer_release_question,
+                )
+                self.assertIs(
+                    enable_precall_recall(answer_release_question, db_path=db_path),
+                    answer_release_question,
+                )
+                provider = CaptureProvider()
+                graph = Graph(run_id="host-run")
+                runtime = Runtime(
+                    graph,
+                    behaviors=[answer_release_question],
+                    llm_provider=provider,
+                )
+                graph.add_object("question", {"query": "What is the release target?"})
+                runtime.run_until_idle()
+            finally:
+                clear_registry()
+                for registered_behavior in previous_registry:
+                    register(registered_behavior)
+
+        self.assertEqual(len(provider.calls), 1)
+        sent_content = provider.calls[0]["messages"][0].content
+        self.assertIn("ZMem recall receipt: act_", sent_content)
+        self.assertIn("The release target is Production.", sent_content)
+        requested = next(event for event in graph.events if event.type == "llm.requested")
+        recorded_content = requested.payload["prompt"]["messages"][0]["content"]
+        self.assertEqual(recorded_content, sent_content)
 
     def test_locomo_activegraph_runner_writes_compact_trace_without_bundles(self):
         with tempfile.TemporaryDirectory() as tmp:

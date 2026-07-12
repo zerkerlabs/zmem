@@ -39,12 +39,12 @@ const proofSteps = [
 ];
 
 const benchmarkRows = [
-  { item: 'LoCoMo adaptive route', note: '1,986 questions, 0.6133 local accuracy. Bounded morphology added five correct answers with zero regressions against the deterministic adaptive checkpoint.' },
+  { item: 'LoCoMo adaptive route', note: '1,986 questions, 0.6138 local accuracy. A bounded completion-support bridge added one correct answer with zero regressions after the morphology checkpoint.' },
   { item: 'Always-on multi-hop', note: '0.6067 local LoCoMo accuracy. It gains 98 and loses 78 versus FTS, so it remains an explicit specialist mode.' },
   { item: 'LongMemEval', note: 'Adaptive scores 0.772. Bounded morphology added three correct answers with zero regressions; always-on multi-hop remains an explicit specialist mode.' },
   { item: 'Pseudo rerank', note: 'Matches FTS on every scored LoCoMo and LongMemEval category in the current deterministic local path.' },
   { item: 'ActiveGraph compact trace', note: 'A 227-question acceptance run wrote 908 events in eight batched commits, with trace.jsonl, one scored receipt, and zero per-question bundles.' },
-  { item: 'BEAM scale smoke', note: 'Official 100K layout, 20 questions across ten categories, 53 of 53 source references resolved, and a compact verified evidence bundle. This is not an official quality score.' },
+  { item: 'BEAM scale evidence', note: 'Official-layout 100K and 500K runs verify locally. The 500K conversation covered 247,175 observed tokens and resolved 83 of 83 source references. This is not an official answer score.' },
   { item: 'Metrics', note: 'Accuracy, stable wins/misses, latency, tokens, abstention, and proof verification.' },
   { item: 'Public claims', note: 'Official rankings wait for primary-source methods and reproducible benchmark submissions.' },
 ];

@@ -2,6 +2,45 @@
 
 All notable Zerker Memory alpha changes are summarized here.
 
+## 0.1.5 - 2026-07-12
+
+### Retrieval Quality
+
+- Added a bounded completion-support expansion for questions such as "When did Jolene finish her robotics project?" It can bridge an already-retrieved subject/object nucleus to one paraphrased completion fact, while requiring the same subject and object anchors and adding at most one candidate.
+- Passed the stable `227`-question gate at `159/227`, one gain and zero losses against the `v0.1.4` morphology checkpoint.
+- Improved full local adaptive LoCoMo from `1,218/1,986` to `1,219/1,986` (`0.6138`), again with one gain and zero losses. Full LongMemEval remained `386/500` (`0.772`) with zero changes.
+- Kept the expansion receipt-visible through `zerker.support_expansion.v1`, including the nucleus, selected support candidate, and any replaced candidate ids.
+
+### BEAM Scale Evidence
+
+- Completed the first isolated official-layout BEAM `500K` conversation run: 796 messages, 247,175 observed whitespace tokens, 20 questions, and 83/83 source references resolved.
+- The compact proof artifact verifies locally and reports `0.30` deterministic evidence recall. `public_benchmark_claim` remains `false`: this is a scale and evidence-retrieval diagnostic, not BEAM's official model-judged answer score.
+
+### ActiveGraph
+
+- Added `enable_precall_recall(...)` for ActiveGraph LLM behaviors. It injects scoped ZMem context before ActiveGraph hashes the prompt and emits `llm.requested`, so the recorded prompt and provider-bound prompt remain identical.
+- Extended the installed-pack verifier to exercise the real ActiveGraph 1.9 runtime, a capture provider, pre-call recall, and recorded-prompt equality in addition to discovery, idempotent loading, and event persistence.
+- Kept the installed `zmem.recall` behavior as an immutable-event audit hook. Hosts opt into current-call context with the explicit pre-call wrapper; ZMem does not claim that an after-emission hook rewrites a request.
+
+### Website
+
+- Reframed the homepage around the plain-language promise `Agent memory you can trust.` The supporting copy now explains persistent local memory through concrete review, revocation, and verification controls rather than asking visitors to decode authority-gate terminology.
+- Fixed the local Vite development path to use the same automatic JSX transform as the production build, preventing a black preview caused by a missing classic `React` binding.
+
+### Claim Boundaries
+
+- LoCoMo and LongMemEval values remain verified local provisional retrieval evidence, not official rankings.
+- BEAM `500K` records source coverage, latency, scale, and local evidence recall; it is not an official model-judged BEAM submission.
+
+### Verification
+
+- `python3.11 -m unittest discover -s tests -q` (`1,241` tests; one optional ActiveGraph test skipped in the base environment and passed separately with ActiveGraph installed)
+- `python3.11 -m zerker_memory eval` (`11/11`)
+- ActiveGraph 1.9 pack tests and `scripts/verify_activegraph_pack.py --summary-only`
+- Site lint/build and docs typecheck/build
+- `python3.11 scripts/release_smoke.py --summary-only` with strict publish ready
+- `0.1.5` wheel and source distribution build; clean wheel reinstall reports `zmem 0.1.5` and passes eval `11/11`
+
 ## 0.1.4 - 2026-07-11
 
 ### Benchmark Operations

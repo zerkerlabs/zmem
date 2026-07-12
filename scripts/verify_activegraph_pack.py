@@ -5,13 +5,93 @@ import argparse
 import importlib.metadata
 import json
 import tempfile
+from decimal import Decimal
 from pathlib import Path
 
-from activegraph import Graph, Runtime
+from activegraph import Graph, Runtime, clear_registry, llm_behavior, register
+from activegraph.llm import LLMResponse
 from activegraph.packs import Pack, discover, load_by_name
 
+from zerker_memory.integrations.activegraph import enable_precall_recall
 from zerker_memory.pack import ZMemSettings
 from zerker_memory.store import MemoryStore
+
+
+class _CaptureProvider:
+    default_model = "zmem-capture-model"
+
+    def __init__(self) -> None:
+        self.calls: list[dict[str, object]] = []
+
+    def recognizes_model(self, _name: str) -> bool:
+        return True
+
+    def supports_native_structured_output(self, _model: str) -> bool:
+        return False
+
+    def count_tokens(self, *, system: str, messages: list[object], model: str) -> int:
+        return len(system) + sum(len(str(getattr(message, "content", ""))) for message in messages)
+
+    def estimate_cost(self, *, input_tokens: int, output_tokens: int, model: str) -> Decimal:
+        return Decimal("0")
+
+    def complete(self, **kwargs: object) -> LLMResponse:
+        self.calls.append(kwargs)
+        return LLMResponse(
+            raw_text="ok",
+            parsed=None,
+            input_tokens=1,
+            output_tokens=1,
+            cost_usd=Decimal("0"),
+            latency_seconds=0.0,
+            model=str(kwargs["model"]),
+            finish_reason="end_turn",
+        )
+
+
+def _verify_precall_recall(db_path: Path) -> tuple[bool, bool]:
+    store = MemoryStore(db_path)
+    store.remember(
+        "The release target is Production.",
+        memory_type="semantic",
+        scope="ag:zmem_precall_verify",
+        source_kind="human",
+    )
+    store.conn.close()
+
+    previous_registry = clear_registry()
+    try:
+        @llm_behavior(
+            name="zmem_precall_verify",
+            on=["object.created"],
+            model="zmem-capture-model",
+        )
+        def answer_question(event: object, graph: object, ctx: object, llm_output: object) -> None:
+            return None
+
+        enable_precall_recall(answer_question, db_path=db_path)
+        provider = _CaptureProvider()
+        graph = Graph(run_id="zmem_precall_verify")
+        runtime = Runtime(graph, behaviors=[answer_question], llm_provider=provider)
+        graph.add_object("question", {"query": "What is the release target?"})
+        runtime.run_until_idle()
+    finally:
+        clear_registry()
+        for registered_behavior in previous_registry:
+            register(registered_behavior)
+
+    sent_content = str(provider.calls[0]["messages"][0].content) if len(provider.calls) == 1 else ""
+    requested = next((event for event in graph.events if event.type == "llm.requested"), None)
+    recorded_content = (
+        str(requested.payload["prompt"]["messages"][0]["content"])
+        if requested is not None
+        else ""
+    )
+    has_memory = (
+        "ZMem recall receipt: act_" in sent_content
+        and "The release target is Production." in sent_content
+    )
+    return has_memory, bool(sent_content) and recorded_content == sent_content
 
 
 def main() -> int:
@@ -32,6 +112,7 @@ def main() -> int:
         store = MemoryStore(db_path)
         memories = store.list_memories(scope="ag:zmem_pack_verify")
         store.conn.close()
+        precall_context, precall_prompt_recorded = _verify_precall_recall(db_path)
 
     checks = {
         "discovered": "zmem" in discovered,
@@ -44,6 +125,8 @@ def main() -> int:
         "persist_runtime_smoke": any(
             memory.content == "ZMem ActiveGraph pack verification fact." for memory in memories
         ),
+        "precall_context": precall_context,
+        "precall_prompt_recorded": precall_prompt_recorded,
     }
     result = {
         "ok": all(checks.values()),
