@@ -14,7 +14,7 @@ ActiveGraph hosts can now wrap an LLM behavior with `enable_precall_recall(...)`
 
 Next release gate: full Python/eval/release smoke, site/docs builds, package build/reinstall, and remote CI before tagging. Broad swarms stay paused until this candidate is cleanly packaged.
 
-Local release gates are now complete: `1,241` tests, eval `11/11`, strict release smoke, both web builds, ActiveGraph 1.9 verification, and clean wheel reinstall pass. Candidate artifacts are wheel `sha256:0d7f8bfcc308cfdf95ad61f264175a102d1d104a9d1fcc338ee85fb79dc087eb` and source distribution `sha256:c96d8a7b3bd01d93e3bce2d19b139f42e372d2d9c744d73013d955870954090a`. Remote CI, tag, and publication remain intentionally pending.
+Local release gates are now complete: `1,241` tests, eval `11/11`, strict release smoke, both web builds, ActiveGraph 1.9 verification, and clean wheel reinstall pass. Final candidate artifacts are wheel `sha256:fb97ea0b91e210f1342d368490b000987ae3d31493c10c81d50ca2d555bbc930` and source distribution `sha256:2a3ff46a4e0d1e977aeb753c23b17f5933b93e69d71a4eda8f2232ecb59b8a04`. Remote CI run `29216209022` passed; tag and publication remain pending.
 
 ## 2026-07-11 - v0.1.4 release checkpoint
 

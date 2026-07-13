@@ -18,7 +18,7 @@ Evidence:
 - ActiveGraph 1.9 pack tests: six passed in the optional-dependency environment; base environment passes with the optional runtime test skipped.
 - Full suite: `1,241` tests passed; eval `11/11`; strict release smoke, site lint/build, and docs typecheck/build passed.
 - Desktop `1440x900` and mobile `390x844` browser checks passed with no horizontal overflow; the local preview rendered without new console errors after the JSX fix.
-- Built and reinstalled `zerker_memory-0.1.5-py3-none-any.whl` (`sha256:0d7f8bfcc308cfdf95ad61f264175a102d1d104a9d1fcc338ee85fb79dc087eb`) and built `zerker_memory-0.1.5.tar.gz` (`sha256:c96d8a7b3bd01d93e3bce2d19b139f42e372d2d9c744d73013d955870954090a`). The installed wheel reports `zmem 0.1.5` and passes eval `11/11`.
+- Built and reinstalled `zerker_memory-0.1.5-py3-none-any.whl` (`sha256:fb97ea0b91e210f1342d368490b000987ae3d31493c10c81d50ca2d555bbc930`) and built `zerker_memory-0.1.5.tar.gz` (`sha256:2a3ff46a4e0d1e977aeb753c23b17f5933b93e69d71a4eda8f2232ecb59b8a04`). The installed wheel reports `zmem 0.1.5` and passes eval `11/11`.
 
 Claim boundary:
 
