@@ -1,6 +1,6 @@
 # ZMem Release Comms
 
-## 2026-07-12 - v0.1.5 candidate checkpoint
+## 2026-07-12 - v0.1.5 release checkpoint
 
 Audience: internal Zerker product, engineering, and release coordination.
 
@@ -12,9 +12,9 @@ The isolated official-layout BEAM 500K conversation covered 796 messages, 247,17
 
 ActiveGraph hosts can now wrap an LLM behavior with `enable_precall_recall(...)`. ZMem enriches the prompt before ActiveGraph hashes and records it. A real ActiveGraph 1.9 runtime test proves the provider-bound and event-recorded prompt content match exactly. The installed `zmem.recall` behavior remains an audit hook for immutable request events.
 
-Next release gate: full Python/eval/release smoke, site/docs builds, package build/reinstall, and remote CI before tagging. Broad swarms stay paused until this candidate is cleanly packaged.
+Published `v0.1.5` from `d4f6d9a3bd6a09a09fa579203510406edea11f6a` after GitHub Actions run `29216453125` passed the full Python matrix, ActiveGraph, site, docs, and release smoke. Final artifacts are wheel `sha256:fb97ea0b91e210f1342d368490b000987ae3d31493c10c81d50ca2d555bbc930` and source distribution `sha256:2a3ff46a4e0d1e977aeb753c23b17f5933b93e69d71a4eda8f2232ecb59b8a04`.
 
-Local release gates are now complete: `1,241` tests, eval `11/11`, strict release smoke, both web builds, ActiveGraph 1.9 verification, and clean wheel reinstall pass. Final candidate artifacts are wheel `sha256:fb97ea0b91e210f1342d368490b000987ae3d31493c10c81d50ca2d555bbc930` and source distribution `sha256:2a3ff46a4e0d1e977aeb753c23b17f5933b93e69d71a4eda8f2232ecb59b8a04`. Remote CI run `29216209022` passed; tag and publication remain pending.
+The tested Vercel deployment `dpl_3eCbYfb2MejVCAs9U6ZvWuUWG9SK` is live at `zmem.sh`. Desktop and mobile production checks pass with no horizontal overflow, and a fresh production tab reports no console warnings or errors.
 
 ## 2026-07-11 - v0.1.4 release checkpoint
 

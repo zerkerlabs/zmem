@@ -4,6 +4,8 @@
 
 Zerker Memory is a functional open-source, local-first alpha with a public site, tagged releases, and a verified local proof path.
 
+Current public release: `v0.1.5`.
+
 It is ready for:
 
 - local developer dogfooding,

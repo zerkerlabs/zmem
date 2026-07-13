@@ -19,6 +19,8 @@ Evidence:
 - Full suite: `1,241` tests passed; eval `11/11`; strict release smoke, site lint/build, and docs typecheck/build passed.
 - Desktop `1440x900` and mobile `390x844` browser checks passed with no horizontal overflow; the local preview rendered without new console errors after the JSX fix.
 - Built and reinstalled `zerker_memory-0.1.5-py3-none-any.whl` (`sha256:fb97ea0b91e210f1342d368490b000987ae3d31493c10c81d50ca2d555bbc930`) and built `zerker_memory-0.1.5.tar.gz` (`sha256:2a3ff46a4e0d1e977aeb753c23b17f5933b93e69d71a4eda8f2232ecb59b8a04`). The installed wheel reports `zmem 0.1.5` and passes eval `11/11`.
+- Published `v0.1.5` from `d4f6d9a3bd6a09a09fa579203510406edea11f6a` after GitHub Actions run `29216453125` passed every job, and attached the final wheel and source distribution.
+- Promoted Vercel deployment `dpl_3eCbYfb2MejVCAs9U6ZvWuUWG9SK` to `zmem.sh`; live desktop/mobile checks pass and a fresh canary tab reports no console warnings or errors.
 
 Claim boundary:
 

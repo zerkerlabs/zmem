@@ -14,13 +14,12 @@ Use this language precisely:
 
 ## Current Product Truth
 
-As of 2026-07-12, the product has a published `v0.1.4` alpha release,
-a locally verified `v0.1.5` release candidate, and a lane-by-lane progress board:
+As of 2026-07-12, the product has a published `v0.1.5` alpha release and a lane-by-lane progress board:
 
 - Progress tracker: [`ZMEM_PROGRESS_TRACKER.md`](ZMEM_PROGRESS_TRACKER.md)
-- Current public release: `v0.1.4`
-- Current release tag: `v0.1.4`
-- Current unpublished lane diff: bounded completion support, BEAM 500K evidence, ActiveGraph pre-call prompt integrity, and synchronized release surfaces for `v0.1.5`. Broad swarms and launch oversight remain paused.
+- Current public release: `v0.1.5`
+- Current release tag: `v0.1.5`
+- Current unpublished lane diff: none. Broad swarms and launch oversight remain paused while one bounded L3 slice is coordinated manually.
 
 The product already has meaningful working surface:
 
@@ -109,8 +108,8 @@ Use this when the user is present and actively working with Codex. Do not wait h
 
 Current live-session stance:
 
-- Keep recurring swarms paused through the locally verified `v0.1.5` release candidate.
-- Resume one bounded L3/L6 task at a time from the progress tracker rather than waiting for cron.
+- Keep recurring swarms paused after the published `v0.1.5` checkpoint.
+- Resume one bounded L3/L6 task at a time from the progress tracker rather than waiting for cron; the current target is same-conversation neighbor expansion for a reproduced LoCoMo miss.
 - Require the same zero-regression gate before another full benchmark rerun.
 
 ## Final Acceptance Gates
