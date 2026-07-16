@@ -81,7 +81,7 @@ See [docs/ADOPTION_STRATEGY.md](docs/ADOPTION_STRATEGY.md).
 
 ## Future-Proof Wedge
 
-ZMem is designed to stay useful as agents evolve from plain LLM loops into neuro-symbolic gateways, multi-agent systems, and eventually quantum-assisted runtimes.
+ZMem is designed to stay useful as agents evolve from plain LLM loops into neuro-symbolic gateways and multi-agent systems.
 
 The durable claim is not "better vector memory." It is:
 

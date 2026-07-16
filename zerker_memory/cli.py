@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from . import __version__
+from .paths import expand_user_path
 from .providers import (
     SUPPORTED_PROVIDERS,
     default_provider_config_path,
@@ -135,9 +136,9 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
         installed_version = __version__
     package_version = __version__ if installed_version != __version__ else installed_version
     parser.add_argument("--version", action="version", version=f"%(prog)s {package_version}")
-    parser.add_argument("--db", type=Path, default=default_db_path(), help="SQLite database path")
-    parser.add_argument("--policy", type=Path, default=default_policy_path(), help="Policy config JSON path")
-    parser.add_argument("--providers", type=Path, default=default_provider_config_path(), help="Provider config JSON path")
+    parser.add_argument("--db", type=expand_user_path, default=default_db_path(), help="SQLite database path")
+    parser.add_argument("--policy", type=expand_user_path, default=default_policy_path(), help="Policy config JSON path")
+    parser.add_argument("--providers", type=expand_user_path, default=default_provider_config_path(), help="Provider config JSON path")
     sub = parser.add_subparsers(dest="command", required=True)
 
     init = sub.add_parser("init", help="Initialize Zerker Memory in this project")
@@ -156,13 +157,13 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
     poison_demo = sub.add_parser("poison-demo", help="Run a memory-poisoning incident reconstruction demo")
     poison_demo.add_argument("--scope", default="project")
     poison_demo.add_argument("--agent", default="codex")
-    poison_demo.add_argument("--out-dir", type=Path, default=Path(".zerker/poison-demo"))
+    poison_demo.add_argument("--out-dir", type=expand_user_path, default=Path(".zerker/poison-demo"))
 
     mcp_config = sub.add_parser("mcp-config", help="Print an MCP client config for Zerker Memory")
     mcp_config.add_argument("--name", default="zerker-memory")
     mcp_config.add_argument("--command", dest="mcp_command", default="zmem")
     mcp_config.add_argument("--include-policy", action="store_true")
-    mcp_config.add_argument("--out", type=Path)
+    mcp_config.add_argument("--out", type=expand_user_path)
 
     agent = sub.add_parser("agent", help="Generate agent configs and run day-1 agent smoke")
     agent_sub = agent.add_subparsers(dest="agent_command", required=True)
@@ -172,14 +173,14 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
     agent_config.add_argument("--command", dest="mcp_command", default="zmem")
     agent_config.add_argument("--include-policy", action="store_true", default=True)
     agent_config.add_argument("--no-policy", action="store_false", dest="include_policy")
-    agent_config.add_argument("--out", type=Path)
+    agent_config.add_argument("--out", type=expand_user_path)
     agent_install = agent_sub.add_parser("install", help="Install an agent preset into a local agent config file")
     agent_install.add_argument("preset", choices=agent_presets())
     agent_install.add_argument("--name", default="zerker-memory")
     agent_install.add_argument("--command", dest="mcp_command", default="zmem")
     agent_install.add_argument("--include-policy", action="store_true", default=True)
     agent_install.add_argument("--no-policy", action="store_false", dest="include_policy")
-    agent_install.add_argument("--config-path", type=Path)
+    agent_install.add_argument("--config-path", type=expand_user_path)
     agent_install.add_argument("--force", action="store_true")
     agent_install.add_argument(
         "--summary",
@@ -193,7 +194,7 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
     )
     agent_guide = agent_sub.add_parser("guide", help="Print a human-readable install and verification guide for an agent preset")
     agent_guide.add_argument("preset", choices=agent_presets())
-    agent_guide.add_argument("--config-path", type=Path)
+    agent_guide.add_argument("--config-path", type=expand_user_path)
     agent_checklist = agent_sub.add_parser(
         "checklist",
         help="Generate a one-command manual-agent import checklist artifact",
@@ -203,8 +204,8 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
     agent_checklist.add_argument("--command", dest="mcp_command", default="zmem")
     agent_checklist.add_argument("--include-policy", action="store_true", default=True)
     agent_checklist.add_argument("--no-policy", action="store_false", dest="include_policy")
-    agent_checklist.add_argument("--config-path", type=Path)
-    agent_checklist.add_argument("--out", type=Path)
+    agent_checklist.add_argument("--config-path", type=expand_user_path)
+    agent_checklist.add_argument("--out", type=expand_user_path)
     agent_checklist.add_argument("--force", action="store_true")
     agent_pack = agent_sub.add_parser(
         "pack",
@@ -214,7 +215,7 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
     agent_pack.add_argument("--command", dest="mcp_command", default="zmem")
     agent_pack.add_argument("--include-policy", action="store_true", default=True)
     agent_pack.add_argument("--no-policy", action="store_false", dest="include_policy")
-    agent_pack.add_argument("--out", type=Path)
+    agent_pack.add_argument("--out", type=expand_user_path)
     agent_pack.add_argument("--force", action="store_true")
     agent_pack.add_argument(
         "--summary",
@@ -232,9 +233,9 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
     agent_snippet.add_argument("--command", dest="mcp_command", default="zmem")
     agent_snippet.add_argument("--include-policy", action="store_true", default=True)
     agent_snippet.add_argument("--no-policy", action="store_false", dest="include_policy")
-    agent_snippet.add_argument("--out", type=Path)
+    agent_snippet.add_argument("--out", type=expand_user_path)
     agent_prompt = agent_sub.add_parser("prompt", help="Print the Zerker Memory agent instruction prompt")
-    agent_prompt.add_argument("--out", type=Path)
+    agent_prompt.add_argument("--out", type=expand_user_path)
     agent_smoke = agent_sub.add_parser("smoke", help="Run a local day-1 agent memory smoke test")
     agent_smoke.add_argument("--agent", default="codex")
     agent_smoke.add_argument("--scope", default="project")
@@ -246,7 +247,7 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
     policy = sub.add_parser("policy", help="Policy configuration tools")
     policy_sub = policy.add_subparsers(dest="policy_command", required=True)
     policy_init = policy_sub.add_parser("init", help="Create a starter policy config")
-    policy_init.add_argument("--out", type=Path)
+    policy_init.add_argument("--out", type=expand_user_path)
     policy_init.add_argument("--force", action="store_true")
 
     doctor = sub.add_parser("doctor", help="Check local readiness for Zerker Memory and MCP")
@@ -282,10 +283,10 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
     workspace_sub = workspace.add_subparsers(dest="workspace_command", required=True)
     workspace_register = workspace_sub.add_parser("register", help="Register a project-local memory workspace")
     workspace_register.add_argument("--name", help="Human-readable workspace name")
-    workspace_register.add_argument("--root", type=Path, default=Path.cwd(), help="Project root to register")
-    workspace_register.add_argument("--db-path", type=Path, help="Memory DB path for this workspace")
-    workspace_register.add_argument("--policy-path", type=Path, help="Policy JSON path for this workspace")
-    workspace_register.add_argument("--prompt-path", type=Path, help="Agent prompt path for this workspace")
+    workspace_register.add_argument("--root", type=expand_user_path, default=Path.cwd(), help="Project root to register")
+    workspace_register.add_argument("--db-path", type=expand_user_path, help="Memory DB path for this workspace")
+    workspace_register.add_argument("--policy-path", type=expand_user_path, help="Policy JSON path for this workspace")
+    workspace_register.add_argument("--prompt-path", type=expand_user_path, help="Agent prompt path for this workspace")
     workspace_register.add_argument("--no-current", action="store_true", help="Register without making this the active workspace")
     workspace_sub.add_parser("list", help="List registered Zerker Memory workspaces")
     workspace_sub.add_parser("current", help="Show the active Zerker Memory workspace")
@@ -536,7 +537,7 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
     provider = sub.add_parser("provider", help="Search and import external memory providers through Zerker governance")
     provider_sub = provider.add_subparsers(dest="provider_command", required=True)
     provider_init = provider_sub.add_parser("init", help="Create a starter provider config")
-    provider_init.add_argument("--out", type=Path)
+    provider_init.add_argument("--out", type=expand_user_path)
     provider_init.add_argument("--force", action="store_true")
     provider_doctor_parser = provider_sub.add_parser("doctor", help="Check provider configuration")
     provider_doctor_parser.add_argument("--live", action="store_true", help="Run a live provider search check")
@@ -581,7 +582,7 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
     retrieval_providers = sub.add_parser("retrieval-providers", help="Check embedding and reranker provider readiness")
     retrieval_providers_sub = retrieval_providers.add_subparsers(dest="retrieval_providers_command", required=True)
     retrieval_providers_doctor = retrieval_providers_sub.add_parser("doctor", help="Report retrieval provider readiness without live calls")
-    retrieval_providers_doctor.add_argument("--config", type=Path, help="Retrieval provider config JSON path")
+    retrieval_providers_doctor.add_argument("--config", type=expand_user_path, help="Retrieval provider config JSON path")
     retrieval_providers_doctor.add_argument(
         "--summary",
         action="store_true",
@@ -606,7 +607,7 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
     run.add_argument("--task", required=True)
     run.add_argument("--risk", choices=["low", "medium", "high"], default="medium")
     run.add_argument("--scope")
-    run.add_argument("--context-path", type=Path)
+    run.add_argument("--context-path", type=expand_user_path)
     run.add_argument("run_command", nargs=argparse.REMAINDER, help="Command to run after --")
 
     why = sub.add_parser("why", help="Explain which memories were used for an action")
@@ -626,8 +627,8 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
     export = sub.add_parser("export", help="Export a receipt")
     export.add_argument("action_id")
     export.add_argument("--format", choices=["json", "treeship"], default="json")
-    export.add_argument("--out", type=Path)
-    export.add_argument("--out-dir", type=Path)
+    export.add_argument("--out", type=expand_user_path)
+    export.add_argument("--out-dir", type=expand_user_path)
 
     treeship = sub.add_parser("treeship", help="Check Treeship CLI readiness or publish a verified proof statement")
     treeship_sub = treeship.add_subparsers(dest="treeship_command", required=True)
@@ -642,30 +643,30 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
         action="store_true",
         help="Print only a compact human-readable Treeship publish summary",
     )
-    treeship_publish.add_argument("--out", type=Path)
-    treeship_publish.add_argument("--out-dir", type=Path)
+    treeship_publish.add_argument("--out", type=expand_user_path)
+    treeship_publish.add_argument("--out-dir", type=expand_user_path)
 
     bundle = sub.add_parser("bundle", help="Export or verify a verifiable receipt bundle")
     bundle.add_argument("bundle_target", help="Action ID to export, or 'verify'")
-    bundle.add_argument("bundle_path", nargs="?", type=Path)
+    bundle.add_argument("bundle_path", nargs="?", type=expand_user_path)
     bundle.add_argument(
         "--summary-only",
         action="store_true",
         help="Print only a compact human-readable bundle verification summary",
     )
-    bundle.add_argument("--out", type=Path)
-    bundle.add_argument("--out-dir", type=Path)
+    bundle.add_argument("--out", type=expand_user_path)
+    bundle.add_argument("--out-dir", type=expand_user_path)
 
     snapshot = sub.add_parser("snapshot", help="Export or verify the full local memory state as a hashed artifact")
     snapshot.add_argument("snapshot_action", nargs="?", choices=["verify"], help="Use 'verify' to check a snapshot file")
-    snapshot.add_argument("snapshot_path", nargs="?", type=Path)
+    snapshot.add_argument("snapshot_path", nargs="?", type=expand_user_path)
     snapshot.add_argument(
         "--summary-only",
         action="store_true",
         help="Print only a compact human-readable snapshot verification summary",
     )
-    snapshot.add_argument("--out", type=Path)
-    snapshot.add_argument("--out-dir", type=Path)
+    snapshot.add_argument("--out", type=expand_user_path)
+    snapshot.add_argument("--out-dir", type=expand_user_path)
 
     bench = sub.add_parser("bench", help="Run local proof-bearing memory benchmarks")
     bench_sub = bench.add_subparsers(dest="bench_command", required=True)
@@ -678,9 +679,9 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
     )
 
     bench_run.add_argument("benchmark", choices=["synthetic", "longmemeval", "locomo", "beam"])
-    bench_run.add_argument("--dataset", type=Path, help="Local dataset path for benchmark adapters that require one")
+    bench_run.add_argument("--dataset", type=expand_user_path, help="Local dataset path for benchmark adapters that require one")
     bench_run.add_argument("--split", default="default", help="Dataset split for local dataset benchmark adapters")
-    bench_run.add_argument("--out", type=Path, required=True)
+    bench_run.add_argument("--out", type=expand_user_path, required=True)
     bench_run.add_argument("--seed", type=int, default=0)
     bench_run.add_argument("--run-id")
     bench_run.add_argument(
@@ -699,7 +700,7 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
     )
     bench_run.add_argument(
         "--retrieval-provider-config",
-        type=Path,
+        type=expand_user_path,
         help="Optional local provider config to record, redacted, in benchmark artifacts.",
     )
     bench_run.add_argument(
@@ -709,9 +710,9 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
     )
     bench_matrix = bench_sub.add_parser("matrix", help="Run all local retrieval modes for one benchmark")
     bench_matrix.add_argument("benchmark", choices=["synthetic", "longmemeval", "locomo"])
-    bench_matrix.add_argument("--dataset", type=Path, help="Local dataset path for benchmark adapters that require one")
+    bench_matrix.add_argument("--dataset", type=expand_user_path, help="Local dataset path for benchmark adapters that require one")
     bench_matrix.add_argument("--split", default="default", help="Dataset split for local dataset benchmark adapters")
-    bench_matrix.add_argument("--out", type=Path, required=True)
+    bench_matrix.add_argument("--out", type=expand_user_path, required=True)
     bench_matrix.add_argument("--seed", type=int, default=0)
     bench_matrix.add_argument("--run-id")
     bench_matrix.add_argument(
@@ -738,7 +739,7 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
     )
     bench_matrix.add_argument(
         "--retrieval-provider-config",
-        type=Path,
+        type=expand_user_path,
         help="Optional local provider config to record, redacted, in benchmark artifacts.",
     )
     bench_matrix.add_argument(
@@ -747,7 +748,7 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
         help="Print only the compact human-readable benchmark matrix summary",
     )
     bench_report = bench_sub.add_parser("report", help="Render a benchmark, comparison, or matrix report")
-    bench_report.add_argument("run_dir", type=Path, help="Run directory, comparison JSON path, or matrix target")
+    bench_report.add_argument("run_dir", type=expand_user_path, help="Run directory, comparison JSON path, or matrix target")
     bench_report.add_argument(
         "--summary-only",
         action="store_true",
@@ -759,33 +760,33 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
     )
     bench_dashboard.add_argument(
         "matrix",
-        type=Path,
+        type=expand_user_path,
         help="Benchmark matrix directory, benchmark-matrix.json path, or benchmark-comparison.json path",
     )
-    bench_dashboard.add_argument("--out", type=Path, help="Output HTML path")
+    bench_dashboard.add_argument("--out", type=expand_user_path, help="Output HTML path")
     bench_dashboard.add_argument(
         "--summary-only",
         action="store_true",
         help="Print only the compact human-readable benchmark dashboard summary",
     )
     bench_public_page = bench_sub.add_parser("public-page", help="Render a public-facing benchmark evidence HTML page")
-    bench_public_page.add_argument("matrix", type=Path, help="Benchmark matrix directory or benchmark-matrix.json path")
-    bench_public_page.add_argument("--out", type=Path, help="Output HTML path")
+    bench_public_page.add_argument("matrix", type=expand_user_path, help="Benchmark matrix directory or benchmark-matrix.json path")
+    bench_public_page.add_argument("--out", type=expand_user_path, help="Output HTML path")
     bench_public_page.add_argument(
         "--summary-only",
         action="store_true",
         help="Print only the compact human-readable public benchmark page summary",
     )
     bench_verify = bench_sub.add_parser("verify", help="Verify a benchmark result, comparison, or matrix artifact")
-    bench_verify.add_argument("result_json", type=Path)
+    bench_verify.add_argument("result_json", type=expand_user_path)
     bench_verify.add_argument(
         "--summary-only",
         action="store_true",
         help="Print only the compact human-readable benchmark verification summary",
     )
     bench_compare = bench_sub.add_parser("compare", help="Compare benchmark result JSON files")
-    bench_compare.add_argument("result_jsons", nargs="+", type=Path)
-    bench_compare.add_argument("--out", type=Path, help="Optional output path or directory for benchmark-comparison.json")
+    bench_compare.add_argument("result_jsons", nargs="+", type=expand_user_path)
+    bench_compare.add_argument("--out", type=expand_user_path, help="Optional output path or directory for benchmark-comparison.json")
     bench_compare.add_argument(
         "--summary-only",
         action="store_true",
@@ -795,10 +796,10 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
         "compare-matrices",
         help="Compare benchmark matrix artifacts by retrieval mode",
     )
-    bench_compare_matrices.add_argument("matrix_jsons", nargs="+", type=Path)
+    bench_compare_matrices.add_argument("matrix_jsons", nargs="+", type=expand_user_path)
     bench_compare_matrices.add_argument(
         "--out",
-        type=Path,
+        type=expand_user_path,
         help="Optional output path or directory for benchmark-matrix-comparison.json",
     )
     bench_compare_matrices.add_argument(
@@ -808,8 +809,8 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
     )
 
     restore = sub.add_parser("restore", help="Restore a snapshot or handoff package into an empty local memory store")
-    restore.add_argument("snapshot_path", nargs="?", type=Path)
-    restore.add_argument("--handoff-dir", type=Path, help="Restore from a Zerker handoff package directory")
+    restore.add_argument("snapshot_path", nargs="?", type=expand_user_path)
+    restore.add_argument("--handoff-dir", type=expand_user_path, help="Restore from a Zerker handoff package directory")
     restore.add_argument(
         "--summary-only",
         action="store_true",
@@ -821,11 +822,11 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
     ui.add_argument("--port", type=int, default=8765)
 
     launch_proof = sub.add_parser("launch-proof", help="Generate launch-ready proof artifacts in one command")
-    launch_proof.add_argument("--out-dir", type=Path)
+    launch_proof.add_argument("--out-dir", type=expand_user_path)
     launch_proof.add_argument("--agent", default="codex")
     launch_proof.add_argument("--scope", default="project")
     launch_proof.add_argument("--task", default="deploy service to production")
-    launch_proof.add_argument("--bt-trace", type=Path, default=Path("examples") / "bt_trace.jsonl")
+    launch_proof.add_argument("--bt-trace", type=expand_user_path, default=Path("examples") / "bt_trace.jsonl")
     launch_proof.add_argument(
         "--summary-only",
         action="store_true",
@@ -839,7 +840,7 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
     release_pack.add_argument("--agent", default="codex")
     release_pack.add_argument("--scope", default="project")
     release_pack.add_argument("--task", default="deploy service to production")
-    release_pack.add_argument("--bt-trace", type=Path, default=Path("examples") / "bt_trace.jsonl")
+    release_pack.add_argument("--bt-trace", type=expand_user_path, default=Path("examples") / "bt_trace.jsonl")
     release_pack.add_argument("--action-id")
     release_pack.add_argument("--allow-placeholders", action="store_true")
     release_pack.add_argument(
@@ -855,7 +856,7 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
     verify_return_packet.add_argument(
         "archive_path",
         nargs="?",
-        type=Path,
+        type=expand_user_path,
         default=default_launch_proof_dir() / RETURN_PACKET_ARCHIVE_FILENAME,
         help="Path to the returned public-verify packet archive",
     )
@@ -872,7 +873,7 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
     verify_operator_packet.add_argument(
         "archive_path",
         nargs="?",
-        type=Path,
+        type=expand_user_path,
         default=default_launch_proof_dir() / OPERATOR_PACKET_ARCHIVE_FILENAME,
         help="Path to the outbound public-verify operator packet archive",
     )
@@ -903,7 +904,7 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
     )
 
     handoff = sub.add_parser("handoff", help="Package a shared-memory handoff with verified proof artifacts")
-    handoff.add_argument("--out-dir", type=Path)
+    handoff.add_argument("--out-dir", type=expand_user_path)
     handoff.add_argument("--action-id", help="Use this action receipt for the handoff bundle; defaults to the latest action")
     handoff.add_argument(
         "--summary-only",
@@ -914,7 +915,7 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
     bt = sub.add_parser("bt", help="Behavior-tree recovery memory tools")
     bt_sub = bt.add_subparsers(dest="bt_command", required=True)
     bt_ingest = bt_sub.add_parser("ingest", help="Ingest BT event JSONL")
-    bt_ingest.add_argument("path", type=Path)
+    bt_ingest.add_argument("path", type=expand_user_path)
     bt_explain = bt_sub.add_parser("explain", help="Explain a BT trace")
     bt_explain.add_argument("trace_id")
     bt_explain.add_argument("--question")
@@ -922,8 +923,8 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
     bt_traces.add_argument("--limit", type=int, default=50)
     bt_export = bt_sub.add_parser("export", help="Export a BT trace as BehaviorTree.CPP/Groot2 artifacts")
     bt_export.add_argument("trace_id")
-    bt_export.add_argument("--out", type=Path, help="Write the XML artifact to this path")
-    bt_export.add_argument("--out-dir", type=Path, help="Directory for default BT export artifacts")
+    bt_export.add_argument("--out", type=expand_user_path, help="Write the XML artifact to this path")
+    bt_export.add_argument("--out-dir", type=expand_user_path, help="Directory for default BT export artifacts")
 
     mcp = sub.add_parser("mcp", help="Run the MCP server over stdio")
     mcp.add_argument(

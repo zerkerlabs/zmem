@@ -1,3 +1,26 @@
+## 2026-07-16 - v0.1.6 integrity and operator hardening candidate
+
+Built locally:
+
+- Serialized direct event-chain appends with SQLite's cross-process writer lock while preserving callers that already own a transaction.
+- Expanded user paths consistently across CLI, MCP, store, policy, snapshot, restore, and Treeship configuration entry points.
+- Replaced permissive MCP boolean coercion with strict boolean validation, including a regression for the string `"false"`.
+- Corrected stale public commands and preview URLs, removed speculative runtime copy, synchronized the ActiveGraph pack version, and refreshed the site lockfile to a clean dependency audit.
+- Preserved the existing `binary-sha256-v1` Merkle contract. Domain separation alone does not solve duplicate-last-leaf ambiguity, so a shape-bound `v2` plus legacy verification remains a separate compatibility project.
+
+Evidence:
+
+- Deterministic two-connection contention coverage proves both concurrent append attempts survive and every stored `prev_event_hash` links to the preceding event.
+- Focused store, MCP, and onboarding suites pass `587` tests; the full Python suite passes `1,250` tests with two expected optional skips; eval passes `11/11`.
+- ActiveGraph `1.10` pack verification and all seven integration tests pass in the optional-dependency environment.
+- Site lint/build, docs typecheck/build, and both site dependency audits pass with zero findings.
+- Strict fresh-workspace release smoke passes with packaged install mode; the stable LoCoMo, full LoCoMo, LongMemEval, BEAM 1M, and BEAM 10M artifacts all verify.
+- The clean wheel reinstall reports `zmem 0.1.6` and passes eval `11/11`. Wheel: `sha256:260633e0cd48fe68431f3574cb968b0d71cf642fa9853c22ea3e02d6efe5c8cb`; source distribution: `sha256:579cb7beeaf255721bf65a519f473f4261f3c68aa7a5bc3986840f44afd14a6e`.
+
+Release boundary:
+
+- This candidate packages the already-landed transcript-neighbor retrieval, runnable ActiveGraph host, and BEAM event-index scale work with bounded hardening. It does not introduce Merkle `v2`, database encryption, official model-judged benchmark scoring, or a real dense retrieval model.
+
 ## 2026-07-16 - BEAM 1M/10M and SQLite retrieval scale
 
 Built locally:

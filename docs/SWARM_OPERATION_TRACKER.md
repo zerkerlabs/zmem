@@ -21,6 +21,13 @@ Primary mission brief:
 - Lane progress and release tracker: `docs/ZMEM_PROGRESS_TRACKER.md`
 - Lane logs: `docs/CONTINUOUS_BUILD/`
 
+Coordinator update `2026-07-16` (`v0.1.6` hardening and next-lane decision):
+
+- Broad recurring swarms remain paused. The coordinator is packaging the three clean post-`v0.1.5` feature commits with serialized event appends, consistent user-path expansion, strict MCP booleans, and public dependency/copy cleanup.
+- Full local Python verification passes `1,250` tests with two expected optional skips; eval passes `11/11`; ActiveGraph `1.10`, strict fresh-workspace smoke, all five benchmark artifacts, site/docs, and a clean `0.1.6` wheel reinstall pass. Remote CI, tag, release assets, and production canary remain before publication is complete.
+- The external review's confirmed release blockers are fixed. Compatibility-sensitive Merkle root replacement is explicitly deferred to a versioned L0 design; the current proof format is not silently reinterpreted.
+- After release, do not restart the prior lexical micro-rule loop. Start one isolated dense-candidate/fusion lane, keep the existing policy and receipt boundary, and use a separate read-only reviewer for adversarial verification.
+
 Coordinator update `2026-07-16` (BEAM 1M/10M and SQLite scale gate):
 
 - Broad recurring swarms remain paused. Official BEAM data was acquired into ignored local benchmark storage and every run used a unique isolated output directory.

@@ -19,7 +19,7 @@ const proofSteps = [
   {
     title: 'A memory is written with provenance',
     detail: 'Each useful memory can carry source metadata, actor context, timestamps, and content hashes.',
-    command: 'zmem remember --source <uri> "fact"',
+    command: 'zmem remember --source-uri <uri> "fact"',
   },
   {
     title: 'An agent receives scoped context',

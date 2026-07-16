@@ -1,6 +1,8 @@
 import json
 import stat
 import tempfile
+import threading
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -50,6 +52,16 @@ class MemoryStoreTest(unittest.TestCase):
         self.assertGreaterEqual(self.store.conn.execute("PRAGMA busy_timeout").fetchone()[0], 5000)
         self.assertEqual(self.store.conn.execute("PRAGMA synchronous").fetchone()[0], 1)
 
+    def test_store_expands_user_database_paths(self):
+        with mock.patch.dict("os.environ", {"HOME": self.tmp.name}):
+            store = MemoryStore(Path("~/nested/memory.sqlite"))
+            try:
+                store.init()
+                self.assertEqual(store.db_path, Path(self.tmp.name) / "nested" / "memory.sqlite")
+                self.assertTrue(store.db_path.exists())
+            finally:
+                store.conn.close()
+
     def test_store_indexes_event_observation_lookups(self):
         self.store.conn.execute("DROP INDEX events_memory_id_seq_idx")
         self.store.init()
@@ -87,6 +99,72 @@ class MemoryStoreTest(unittest.TestCase):
 
         self.assertEqual(self.store.get(first_memory.id).content, "First agent memory")
         self.assertEqual(self.store.get(second_memory.id).content, "Second agent memory")
+
+    def test_event_appends_serialize_chain_head_across_connections(self):
+        self.store.remember(
+            "Seed event chain",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        self.store.conn.execute(
+            "CREATE TRIGGER pause_event_insert BEFORE INSERT ON events BEGIN SELECT test_pause(); END"
+        )
+        self.store.conn.commit()
+
+        first_ready = threading.Event()
+        second_ready = threading.Event()
+        first_start = threading.Event()
+        second_start = threading.Event()
+        first_entered_insert = threading.Event()
+        release_first = threading.Event()
+        errors: list[Exception] = []
+
+        def append(worker: str, ready: threading.Event, start: threading.Event) -> None:
+            store = MemoryStore(self.store.db_path)
+            store.init()
+
+            def pause_insert() -> int:
+                if worker == "first":
+                    first_entered_insert.set()
+                    if not release_first.wait(timeout=2):
+                        raise RuntimeError("timed out waiting to release first event insert")
+                return 0
+
+            store.conn.create_function("test_pause", 0, pause_insert)
+            ready.set()
+            start.wait(timeout=2)
+            try:
+                store._append_event("CONCURRENT_TEST", actor_id=worker, payload={"worker": worker})
+                store.conn.commit()
+            except Exception as exc:
+                errors.append(exc)
+            finally:
+                store.conn.close()
+
+        first = threading.Thread(target=append, args=("first", first_ready, first_start))
+        second = threading.Thread(target=append, args=("second", second_ready, second_start))
+        first.start()
+        second.start()
+        self.assertTrue(first_ready.wait(timeout=2))
+        self.assertTrue(second_ready.wait(timeout=2))
+        first_start.set()
+        self.assertTrue(first_entered_insert.wait(timeout=2))
+        second_start.set()
+        time.sleep(0.1)
+        release_first.set()
+        first.join(timeout=3)
+        second.join(timeout=3)
+
+        self.assertFalse(first.is_alive())
+        self.assertFalse(second.is_alive())
+        self.assertEqual(errors, [])
+        rows = self.store.conn.execute(
+            "SELECT event_hash, prev_event_hash FROM events ORDER BY seq"
+        ).fetchall()
+        self.assertEqual(len(rows), 3)
+        for previous, current in zip(rows, rows[1:]):
+            self.assertEqual(current["prev_event_hash"], previous["event_hash"])
 
     def test_policy_memory_can_be_promoted_and_injected(self):
         memory = self.store.remember(

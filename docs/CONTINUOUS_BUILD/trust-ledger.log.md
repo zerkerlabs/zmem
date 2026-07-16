@@ -1,5 +1,14 @@
 # Trust Ledger Lane Log
 
+## 2026-07-16 - L0 review hardening and versioned-root boundary - Codex
+
+- Scope: fixed the confirmed event-chain concurrency, user-path, and MCP boolean issues without changing receipt schemas, artifact types, signing logic, or the published Merkle contract.
+- Behavior changed: direct event appends acquire SQLite's writer lock before reading and advancing the chain head; user paths expand consistently; MCP boolean fields require actual JSON booleans.
+- Tests: deterministic two-connection append contention, store path expansion, CLI path parsing, and MCP string-boolean refusal pass; the full Python suite passes `1,250` tests with two expected optional skips and eval passes `11/11`.
+- Proof boundary: `binary-sha256-v1` remains unchanged for compatibility. A correct successor needs leaf/node domain separation plus explicit leaf-count or tree-shape binding and legacy-v1 verification; it will be designed and reviewed as a separate versioned migration.
+- Review boundary: operator-profile capabilities are not exposed to the default agent profile, and direct store methods are in-process primitives. Future findings must be classified against those boundaries before severity is assigned.
+- Next safe slice: specify Merkle `v2` with fixtures and migration tests in an isolated branch after `v0.1.6`, while an independent reviewer re-tests the clean release tag read-only.
+
 ## 2026-07-06T12:57:26Z - L0 trust-ledger - Codex
 
 - Scope: locked one bounded portable bundle/export regression for already-shipped duplicate `supporting_memories[*].id` refusal behavior, without changing store semantics, receipt schemas, snapshot payloads, CLI wording, or Treeship dependency boundaries.
