@@ -4,7 +4,7 @@
 
 Audience: internal Zerker product, engineering, security review, and release coordination.
 
-The coherent candidate combines the three post-`v0.1.5` feature commits with four bounded release hardening fixes: serialized event-chain appends, consistent `~` expansion, strict MCP boolean parsing, and corrected public dependency/copy surfaces. Local Python, ActiveGraph, strict release smoke, all five benchmark verifiers, package reinstall, site, docs, and dependency checks are green. Candidate artifacts are wheel `sha256:260633e0...` and source distribution `sha256:579cb7be...`; remote CI, publication, and production canary are the remaining gates.
+The coherent candidate combines the three post-`v0.1.5` feature commits with four bounded release hardening fixes: serialized event-chain appends, consistent `~` expansion, strict MCP boolean parsing, and corrected public dependency/copy surfaces. Local Python, ActiveGraph, strict release smoke, all five benchmark verifiers, package reinstall, site, docs, and dependency checks are green. Final merged-source artifacts are wheel `sha256:f587f652...` and source distribution `sha256:7a77df87...`; final-commit CI, publication, and production canary are the remaining gates.
 
 The external review was useful but mixed real defects with incorrect trust-boundary assumptions. Search, provider calls, snapshot/restore, and lifecycle mutation tools are operator-profile capabilities, not default agent-profile tools. Direct `MemoryStore` methods are in-process library primitives; the current interface boundary is the MCP profile, not multi-user authentication.
 

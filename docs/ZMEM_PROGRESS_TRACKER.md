@@ -58,7 +58,7 @@ Current `v0.1.6` candidate checkpoint:
 - Expands user paths consistently and rejects non-boolean MCP quarantine flags; the default agent capability profile remains unchanged.
 - Full local verification passes: `1,250` Python tests, eval `11/11`, ActiveGraph 1.10 verification plus `7/7` integration tests, site/docs builds, and zero known npm vulnerabilities.
 - Strict fresh-workspace release smoke and all five benchmark artifact verifiers pass. A clean wheel reinstall reports `zmem 0.1.6` and passes eval `11/11`.
-- Candidate artifacts: wheel `sha256:260633e0cd48fe68431f3574cb968b0d71cf642fa9853c22ea3e02d6efe5c8cb`; source distribution `sha256:579cb7beeaf255721bf65a519f473f4261f3c68aa7a5bc3986840f44afd14a6e`.
+- Final merged-source artifacts: wheel `sha256:f587f65227d790374512548dc253d45ae3fa414fd7cc6e31a2841f5a7791e98c`; source distribution `sha256:7a77df87c8f699bf7d4ffe95a791ace87a6e71a202db4e5787d4584aaf751062`.
 - The existing `binary-sha256-v1` format is unchanged for compatibility. A count-bound, domain-separated Merkle successor is tracked as a separate migration.
 
 Current unreleased L3 candidate:
