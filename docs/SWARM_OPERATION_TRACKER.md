@@ -21,6 +21,13 @@ Primary mission brief:
 - Lane progress and release tracker: `docs/ZMEM_PROGRESS_TRACKER.md`
 - Lane logs: `docs/CONTINUOUS_BUILD/`
 
+Coordinator update `2026-07-16`:
+
+- Broad recurring swarms remain paused. The coordinator completed the isolated transcript-neighbor L3 candidate without overlapping any lane.
+- Narrowing was evidence-driven: bidirectional adjacency changed nine contexts, earlier same-timestamp adjacency changed six, and requiring the exact event head left exactly one intended context change.
+- Stable evidence improved from `159/227` to `160/227`; full LoCoMo improved from `1,219/1,986` to `1,220/1,986`; both have one gain and zero losses. LongMemEval stayed exactly unchanged at `386/500`.
+- All three benchmark results verify. The next operation is to land this branch cleanly, then choose BEAM 1M or the runnable ActiveGraph host example rather than restarting every swarm.
+
 Coordinator update `2026-07-12`:
 
 - Broad recurring swarms remain paused; this coordinator completed one bounded L3 candidate and its required evidence instead of restarting overlapping lanes.

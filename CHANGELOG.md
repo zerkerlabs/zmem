@@ -2,6 +2,20 @@
 
 All notable Zerker Memory alpha changes are summarized here.
 
+## Unreleased
+
+### Retrieval Quality
+
+- Added a bounded transcript-neighbor support path for onset questions such as "When did John get an ankle injury?" It can recover one earlier same-speaker turn only when the retrieved nucleus and support share the exact event head, transcript session, and timestamp, and are at most two turns apart.
+- Kept the decision receipt-visible through `zerker.support_expansion.v1`, including the event head, nucleus, selected support, direction, timestamp constraint, and any replaced candidate id.
+- Improved the deterministic `227`-question gate from `159/227` to `160/227`. Exactly one answer and one retrieval context changed; there were no losses and only `17` additional query tokens.
+- Improved full local adaptive LoCoMo from `1,219/1,986` to `1,220/1,986` (`0.6143`) with the same single multi-hop gain, zero losses, and one changed retrieval context. Full LongMemEval remained exactly unchanged at `386/500` (`0.772`).
+
+### Claim Boundaries
+
+- LoCoMo and LongMemEval values remain verified local provisional retrieval evidence, not official leaderboard rankings.
+- The transcript-neighbor rule is deliberately limited to structured transcript memories and qualified onset questions; it is not a general graph traversal or unrestricted adjacency expansion.
+
 ## 0.1.5 - 2026-07-12
 
 ### Retrieval Quality

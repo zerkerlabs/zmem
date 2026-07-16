@@ -4933,6 +4933,141 @@ class MemoryStoreTest(unittest.TestCase):
         self.assertEqual(selected[target.id]["morphology_gain"], 2)
         self.assertTrue(selected[target.id]["morphology_applied"])
 
+    def test_transcript_neighbor_support_adds_same_speaker_topic_onset_turn(self):
+        target = self.store.remember(
+            "[D18:2] (3:59 pm on 16 November, 2023) John: Hey Tim! That's awesome! "
+            "Yeah, it was really cool. Oh man, it's been a tough week for me with this injury. "
+            "But I'm staying positive. How about you? How's your week been?",
+            memory_type="episodic",
+            scope="project",
+            source_kind="human",
+        )
+        self.store.remember(
+            "[D18:3] (3:59 pm on 16 November, 2023) Tim: Ouch, bummer about the injury.",
+            memory_type="episodic",
+            scope="project",
+            source_kind="human",
+        )
+        nucleus = self.store.remember(
+            "[D18:4] (3:59 pm on 16 November, 2023) John: Injury's been rough, "
+            "but I'm staying positive. How's the exam prep coming?",
+            memory_type="episodic",
+            scope="project",
+            source_kind="human",
+        )
+
+        result = self.store._retrieval_rows(
+            "When did John get an ankle injury in 2023?",
+            scope="project",
+            include_quarantined=False,
+            limit=1,
+        )
+        support = result["completion_support"]
+        candidate = result["candidate_metadata"][target.id]
+
+        self.assertEqual([str(row["id"]) for row in result["rows"]], [target.id])
+        self.assertTrue(support["applied"])
+        self.assertEqual(support["strategy"], "transcript_neighbor_support_v1")
+        self.assertEqual(support["reason"], "same-session-speaker-topic-earlier-neighbor")
+        self.assertEqual(support["nucleus_candidate_ids"], [nucleus.id])
+        self.assertEqual(support["selected_candidate_ids"], [target.id])
+        self.assertEqual(support["selected_candidates"][0]["transcript_session_id"], "D18")
+        self.assertEqual(support["selected_candidates"][0]["transcript_turn"], 2)
+        self.assertEqual(support["selected_candidates"][0]["nucleus_turn"], 4)
+        self.assertEqual(support["selected_candidates"][0]["turn_distance"], 2)
+        self.assertEqual(support["selected_candidates"][0]["direction"], "earlier")
+        self.assertTrue(support["selected_candidates"][0]["same_timestamp"])
+        self.assertEqual(support["event_head_term"], "injury")
+        self.assertEqual(support["selected_candidates"][0]["shared_event_terms"], ["injury"])
+        self.assertEqual(candidate["support_expansion_kind"], "transcript-neighbor")
+        self.assertEqual(candidate["support_expansion_nucleus_ids"], [nucleus.id])
+
+    def test_transcript_neighbor_support_does_not_cross_session_speaker_or_turn_window(self):
+        self.store.remember(
+            "[D17:3] (1:00 pm on 10 November, 2023) John: This injury has been difficult.",
+            memory_type="episodic",
+            scope="project",
+            source_kind="human",
+            trust=0.1,
+        )
+        self.store.remember(
+            "[D18:2] (3:59 pm on 16 November, 2023) Tim: John said the injury is rough.",
+            memory_type="episodic",
+            scope="project",
+            source_kind="human",
+            trust=0.1,
+        )
+        self.store.remember(
+            "[D18:1] (3:59 pm on 16 November, 2023) John: The injury changed my week.",
+            memory_type="episodic",
+            scope="project",
+            source_kind="human",
+            trust=0.1,
+        )
+        self.store.remember(
+            "[D18:4] (3:59 pm on 16 November, 2023) John: Injury's been rough, "
+            "but I'm staying positive.",
+            memory_type="episodic",
+            scope="project",
+            source_kind="human",
+        )
+        self.store.remember(
+            "[D18:5] (3:59 pm on 16 November, 2023) John: The injury still feels rough.",
+            memory_type="episodic",
+            scope="project",
+            source_kind="human",
+            trust=0.1,
+        )
+        self.store.remember(
+            "[D18:2] (4:01 pm on 16 November, 2023) John: The injury changed my week.",
+            memory_type="episodic",
+            scope="project",
+            source_kind="human",
+            trust=0.1,
+        )
+
+        result = self.store._retrieval_rows(
+            "When did John get an ankle injury in 2023?",
+            scope="project",
+            include_quarantined=False,
+            limit=1,
+        )
+        support = result["completion_support"]
+
+        self.assertFalse(support["applied"])
+        self.assertEqual(support["reason"], "no-transcript-neighbor-candidate")
+        self.assertEqual(support["selected_candidate_ids"], [])
+
+    def test_transcript_neighbor_support_requires_event_head_not_only_qualifier(self):
+        self.store.remember(
+            "[D29:2] (8:06 pm on 9 August, 2023) John: Veterans and their families "
+            "joined our neighborhood fundraiser.",
+            memory_type="episodic",
+            scope="project",
+            source_kind="human",
+            trust=0.1,
+        )
+        self.store.remember(
+            "[D29:4] (8:06 pm on 9 August, 2023) John: The veterans appreciated "
+            "the support and funds we raised.",
+            memory_type="episodic",
+            scope="project",
+            source_kind="human",
+        )
+
+        result = self.store._retrieval_rows(
+            "When did John have a party with veterans?",
+            scope="project",
+            include_quarantined=False,
+            limit=1,
+        )
+        support = result["completion_support"]
+
+        self.assertFalse(support["applied"])
+        self.assertEqual(support["event_head_term"], "party")
+        self.assertEqual(support["reason"], "no-retrieved-transcript-nucleus")
+        self.assertEqual(support["selected_candidate_ids"], [])
+
     def test_completion_support_expands_from_retrieved_nucleus_to_paraphrased_finish_event(self):
         nucleus = self.store.remember(
             "Jolene received a difficult robotics project from her engineering professor.",

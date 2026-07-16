@@ -2,6 +2,10 @@ import Card from '@/components/Card';
 
 const updates = [
   {
+    title: 'Bounded transcript-neighbor support',
+    detail: 'An exact-event-head, same-speaker, earlier-turn bridge recovered one multi-hop LoCoMo answer. It changed one retrieval context across 1,986 questions and introduced zero regressions.',
+  },
+  {
     title: 'A clearer agent-memory promise',
     detail: 'The homepage now leads with “Agent memory you can trust” and immediately explains the persistent local memory, review, revocation, and verification controls behind that promise.',
   },
@@ -104,10 +108,10 @@ export default function ChangelogPage() {
             Adaptive routing leads the local LoCoMo comparison.
           </h2>
           <p className="mt-5 text-sm leading-relaxed text-zmuted">
-            In ZMem's latest verified local provisional run, adaptive routing answered 1,219 of
-            1,986 questions correctly, or 0.6138 accuracy. The completion-support change added one
-            answer with no regressions against the morphology checkpoint. LongMemEval held at 0.772
-            with no changed decisions.
+            In ZMem's latest verified local provisional run, adaptive routing answered 1,220 of
+            1,986 questions correctly, or 0.6143 accuracy. Bounded transcript-neighbor support added
+            one answer with no regressions against the completion-support checkpoint. LongMemEval
+            held at 0.772 with no retrieval changes.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
             <a

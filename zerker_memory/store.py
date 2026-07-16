@@ -84,6 +84,33 @@ COMPLETION_SUPPORT_QUERY_PATTERN = re.compile(
     r"(?P<object>.+?)\??$",
     re.IGNORECASE,
 )
+WHEN_DID_ONSET_SUPPORT_QUERY_PATTERN = re.compile(
+    r"^when\s+did\s+(?P<subject>[A-Za-z][A-Za-z'-]*)\s+"
+    r"(?:get|got|have|had|suffer|suffered|experience|experienced)\s+"
+    r"(?P<event>.+?)\??$",
+    re.IGNORECASE,
+)
+TRANSCRIPT_MEMORY_PREFIX_PATTERN = re.compile(
+    r"^\s*\[(?P<session>[^:\]\s]+):(?P<turn>\d+)\]\s*"
+    r"\((?P<timestamp>[^)]+)\)\s*(?P<speaker>[^:]+):",
+)
+TRANSCRIPT_NEIGHBOR_SUPPORT_MAX_TURN_DISTANCE = 2
+TRANSCRIPT_NEIGHBOR_SUPPORT_MAX_NUCLEI = 4
+TRANSCRIPT_NEIGHBOR_SUPPORT_NOISE_TERMS = {
+    "about",
+    "around",
+    "did",
+    "get",
+    "got",
+    "had",
+    "has",
+    "have",
+    "into",
+    "last",
+    "this",
+    "when",
+    "year",
+}
 COMPLETION_SUPPORT_TERMS = {
     "complete",
     "completed",
@@ -5515,10 +5542,285 @@ def _append_relation_support_rows(
         support["reason"] = "subject_relation_mutation_anchor"
 
 
+def _transcript_memory_locator(content: str) -> dict[str, Any] | None:
+    match = TRANSCRIPT_MEMORY_PREFIX_PATTERN.match(content)
+    if match is None:
+        return None
+    return {
+        "session_id": str(match.group("session")),
+        "turn": int(match.group("turn")),
+        "timestamp": " ".join(str(match.group("timestamp")).split()),
+        "speaker": " ".join(str(match.group("speaker")).lower().split()),
+    }
+
+
+def _transcript_neighbor_support_expansion(
+    conn: sqlite3.Connection,
+    *,
+    query: str,
+    search_mode: str,
+    rows: list[sqlite3.Row],
+    candidate_metadata: dict[str, dict[str, Any]],
+    status_sql: str,
+    scope_sql: str,
+    authority_order_sql: str,
+    scope: str | None,
+    limit: int,
+) -> tuple[list[sqlite3.Row], dict[str, Any]]:
+    metadata = {
+        "schema": SUPPORT_EXPANSION_SCHEMA,
+        "strategy": "transcript_neighbor_support_v1",
+        "applied": False,
+        "reason": "query-not-when-did-onset-shaped",
+        "subject_term": None,
+        "event_terms": [],
+        "event_head_term": None,
+        "nucleus_candidate_ids": [],
+        "selected_candidate_ids": [],
+        "selected_candidates": [],
+        "replaced_candidate_ids": [],
+        "candidate_limit": 1,
+        "max_turn_distance": TRANSCRIPT_NEIGHBOR_SUPPORT_MAX_TURN_DISTANCE,
+        "max_nuclei": TRANSCRIPT_NEIGHBOR_SUPPORT_MAX_NUCLEI,
+        "direction": "earlier",
+        "same_timestamp_required": True,
+        "search_mode": search_mode,
+    }
+    match = WHEN_DID_ONSET_SUPPORT_QUERY_PATTERN.fullmatch(" ".join(query.strip().split()))
+    if match is None or limit <= 0 or not rows:
+        return rows, metadata
+    if search_mode not in {"fallback", "semantic"}:
+        metadata["reason"] = "search-mode-not-eligible"
+        return rows, metadata
+
+    subject_term = str(match.group("subject")).lower()
+    event_text = str(match.group("event"))
+    event_terms = _ordered_unique(
+        [
+            term
+            for term in query_terms(event_text)
+            if term != subject_term
+            and term not in TRANSCRIPT_NEIGHBOR_SUPPORT_NOISE_TERMS
+            and term not in MULTI_HOP_STOPWORDS
+            and not term.isdigit()
+        ]
+    )
+    event_head_text = re.split(
+        r"\b(?:after|before|during|for|from|in|on|with)\b",
+        event_text,
+        maxsplit=1,
+        flags=re.IGNORECASE,
+    )[0]
+    event_head_terms = [
+        term
+        for term in query_terms(event_head_text)
+        if term != subject_term
+        and term not in TRANSCRIPT_NEIGHBOR_SUPPORT_NOISE_TERMS
+        and term not in MULTI_HOP_STOPWORDS
+        and not term.isdigit()
+    ]
+    event_head_term = event_head_terms[-1] if event_head_terms else None
+    metadata.update(
+        {
+            "reason": "no-event-anchor",
+            "subject_term": subject_term,
+            "event_terms": event_terms,
+            "event_head_term": event_head_term,
+        }
+    )
+    if not event_terms:
+        return rows, metadata
+    if len(event_terms) < 2:
+        metadata["reason"] = "insufficient-event-anchors"
+        return rows, metadata
+    if event_head_term is None:
+        metadata["reason"] = "no-event-head-anchor"
+        return rows, metadata
+
+    nucleus_profiles = []
+    for row in rows:
+        locator = _transcript_memory_locator(str(row["content"]))
+        if locator is None or locator["speaker"] != subject_term:
+            continue
+        content_terms = set(query_terms(str(row["content"])))
+        if event_head_term not in content_terms:
+            continue
+        matched_event_terms = sorted(set(event_terms).intersection(content_terms))
+        if not matched_event_terms:
+            continue
+        observation_seq = int(row["observation_seq"]) if "observation_seq" in row.keys() else 0
+        if observation_seq <= 0:
+            continue
+        nucleus_profiles.append(
+            {
+                "memory_id": str(row["id"]),
+                "locator": locator,
+                "event_terms": matched_event_terms,
+                "observation_seq": observation_seq,
+            }
+        )
+    nucleus_profiles = nucleus_profiles[:TRANSCRIPT_NEIGHBOR_SUPPORT_MAX_NUCLEI]
+    metadata["nucleus_candidate_ids"] = [item["memory_id"] for item in nucleus_profiles]
+    if not nucleus_profiles:
+        metadata["reason"] = "no-retrieved-transcript-nucleus"
+        return rows, metadata
+
+    candidate_event_seqs = sorted(
+        {
+            int(nucleus["observation_seq"]) + offset
+            for nucleus in nucleus_profiles
+            for offset in range(
+                -TRANSCRIPT_NEIGHBOR_SUPPORT_MAX_TURN_DISTANCE,
+                TRANSCRIPT_NEIGHBOR_SUPPORT_MAX_TURN_DISTANCE + 1,
+            )
+            if offset != 0 and int(nucleus["observation_seq"]) + offset > 0
+        }
+    )
+    if not candidate_event_seqs:
+        metadata["reason"] = "no-transcript-neighbor-event-window"
+        return rows, metadata
+    event_seq_sql = ",".join(["?" for _ in candidate_event_seqs])
+    params: list[Any] = list(candidate_event_seqs)
+    if scope:
+        params.append(scope)
+    support_rows = conn.execute(
+        f"""
+        SELECT m.*,
+               e.seq AS observation_seq
+        FROM events e
+        JOIN memories m ON m.id = e.memory_id
+        WHERE e.seq IN ({event_seq_sql})
+          AND e.event_type IN ('OBSERVED', 'PROPOSED')
+          AND {status_sql}
+          {scope_sql}
+        ORDER BY {authority_order_sql} DESC, m.trust DESC, observation_seq DESC, m.id ASC
+        """,
+        params,
+    ).fetchall()
+    existing_ids = {str(row["id"]) for row in rows}
+    candidates = []
+    for row in support_rows:
+        memory_id = str(row["id"])
+        if memory_id in existing_ids:
+            continue
+        locator = _transcript_memory_locator(str(row["content"]))
+        if locator is None or locator["speaker"] != subject_term:
+            continue
+        content_terms = set(query_terms(str(row["content"])))
+        if event_head_term not in content_terms:
+            continue
+        relations = []
+        for nucleus in nucleus_profiles:
+            nucleus_locator = nucleus["locator"]
+            if locator["session_id"] != nucleus_locator["session_id"]:
+                continue
+            if locator["timestamp"] != nucleus_locator["timestamp"]:
+                continue
+            candidate_turn = int(locator["turn"])
+            nucleus_turn = int(nucleus_locator["turn"])
+            if candidate_turn >= nucleus_turn:
+                continue
+            turn_distance = nucleus_turn - candidate_turn
+            if turn_distance > TRANSCRIPT_NEIGHBOR_SUPPORT_MAX_TURN_DISTANCE:
+                continue
+            shared_event_terms = sorted(set(nucleus["event_terms"]).intersection(content_terms))
+            if not shared_event_terms:
+                continue
+            relations.append(
+                {
+                    "nucleus_memory_id": nucleus["memory_id"],
+                    "nucleus_turn": nucleus_turn,
+                    "turn_distance": turn_distance,
+                    "direction": "earlier",
+                    "same_timestamp": True,
+                    "shared_event_terms": shared_event_terms,
+                }
+            )
+        if not relations:
+            continue
+        relations.sort(
+            key=lambda item: (
+                int(item["turn_distance"]),
+                -len(item["shared_event_terms"]),
+                int(item["nucleus_turn"]),
+                str(item["nucleus_memory_id"]),
+            )
+        )
+        relation = relations[0]
+        observation_seq = int(row["observation_seq"]) if "observation_seq" in row.keys() else 0
+        candidates.append(
+            {
+                "row": row,
+                "locator": locator,
+                "observation_seq": observation_seq,
+                **relation,
+            }
+        )
+    if not candidates:
+        metadata["reason"] = "no-transcript-neighbor-candidate"
+        return rows, metadata
+
+    candidates.sort(
+        key=lambda item: (
+            int(item["turn_distance"]),
+            -len(item["shared_event_terms"]),
+            -authority_rank(str(item["row"]["authority"])),
+            -float(item["row"]["trust"]),
+            int(item["locator"]["turn"]),
+            str(item["row"]["id"]),
+        )
+    )
+    selected = candidates[0]
+    selected_row = selected["row"]
+    selected_id = str(selected_row["id"])
+    selected_detail = {
+        "memory_id": selected_id,
+        "transcript_session_id": selected["locator"]["session_id"],
+        "transcript_turn": int(selected["locator"]["turn"]),
+        "speaker": selected["locator"]["speaker"],
+        "nucleus_memory_id": selected["nucleus_memory_id"],
+        "nucleus_turn": int(selected["nucleus_turn"]),
+        "turn_distance": int(selected["turn_distance"]),
+        "direction": selected["direction"],
+        "same_timestamp": bool(selected["same_timestamp"]),
+        "event_head_term": event_head_term,
+        "shared_event_terms": selected["shared_event_terms"],
+        "observation_seq": int(selected["observation_seq"]),
+    }
+    expanded_rows = [selected_row, *rows]
+    replaced_rows = expanded_rows[limit:]
+    rows = expanded_rows[:limit]
+    metadata.update(
+        {
+            "applied": True,
+            "reason": "same-session-speaker-topic-earlier-neighbor",
+            "selected_candidate_ids": [selected_id],
+            "selected_candidates": [selected_detail],
+            "replaced_candidate_ids": [str(row["id"]) for row in replaced_rows],
+        }
+    )
+    candidate_metadata[selected_id] = {
+        **candidate_metadata.get(selected_id, {}),
+        "pre_hybrid_rank": None,
+        "hybrid_candidate_source": "transcript-neighbor-support-expansion",
+        "structured_fact_candidate": _row_has_structured_fact(selected_row),
+        "semantic_backfill_score": None,
+        "semantic_backfill_term_overlap": len(selected["shared_event_terms"]),
+        "observation_seq": int(selected["observation_seq"]),
+        "support_expansion_candidate": True,
+        "support_expansion_kind": "transcript-neighbor",
+        "support_expansion_rank": 1,
+        "support_expansion_nucleus_ids": metadata["nucleus_candidate_ids"],
+        "support_expansion_event_head_term": event_head_term,
+    }
+    return rows, metadata
+
+
 def _completion_support_expansion(
     conn: sqlite3.Connection,
     *,
     query: str,
+    search_mode: str,
     rows: list[sqlite3.Row],
     candidate_metadata: dict[str, dict[str, Any]],
     status_sql: str,
@@ -5542,7 +5844,21 @@ def _completion_support_expansion(
         "replaced_candidate_ids": [],
         "candidate_limit": 1,
     }
-    match = COMPLETION_SUPPORT_QUERY_PATTERN.fullmatch(" ".join(query.strip().split()))
+    normalized_query = " ".join(query.strip().split())
+    match = COMPLETION_SUPPORT_QUERY_PATTERN.fullmatch(normalized_query)
+    if match is None and WHEN_DID_ONSET_SUPPORT_QUERY_PATTERN.fullmatch(normalized_query) is not None:
+        return _transcript_neighbor_support_expansion(
+            conn,
+            query=query,
+            search_mode=search_mode,
+            rows=rows,
+            candidate_metadata=candidate_metadata,
+            status_sql=status_sql,
+            scope_sql=scope_sql,
+            authority_order_sql=authority_order_sql,
+            scope=scope,
+            limit=limit,
+        )
     if match is None or limit <= 0 or not rows:
         return rows, metadata
 
@@ -11062,6 +11378,7 @@ class MemoryStore:
         rows, completion_support = _completion_support_expansion(
             self.conn,
             query=query,
+            search_mode=search_mode,
             rows=rows,
             candidate_metadata=candidate_metadata,
             status_sql=status_sql,
