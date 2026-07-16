@@ -2,7 +2,15 @@ name: test
 
 on:
   push:
+    branches: [main]
+    tags: ["v*"]
   pull_request:
+
+# Superseded runs on a PR branch are cancelled, but main and release tags always
+# run to completion so every landed commit and every release is smoke-tested.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/') }}
 
 jobs:
   unit-and-eval:
