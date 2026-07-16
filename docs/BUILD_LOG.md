@@ -14,6 +14,7 @@ Evidence:
 - PR `#6` merged at `9f3996f` after Python 3.10/3.11/3.12, ActiveGraph, site, docs, and release-smoke CI passed.
 - The full local suite passes `1,260` tests with two expected optional skips; eval passes `11/11`.
 - Strict release smoke reports public proof `6/6`, launch assets `8/8`, and the return packet ready.
+- The clean merged-source wheel reinstall reports `zmem 0.1.7` and passes eval `11/11`. Wheel: `sha256:d8a3fdba9c5e60c5d00cc8918c8c9e5d87b40cee764ea9756f8e5f9b8053d89b`; source distribution: `sha256:8a7102958be108098f9576d61d80730566d6c1bd1515ec1f21278ffea0fa13c4`.
 
 Release boundary:
 

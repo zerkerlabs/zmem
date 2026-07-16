@@ -28,6 +28,8 @@ All notable Zerker Memory alpha changes are summarized here.
 - `python3 -m zerker_memory eval` (`11/11`)
 - Strict release smoke with public proof `6/6`, launch assets `8/8`, and the return packet ready
 - Python 3.10, 3.11, and 3.12 plus ActiveGraph, site, docs, and release-smoke CI
+- Clean wheel reinstall reports `zmem 0.1.7` and passes eval `11/11`
+- Wheel `sha256:d8a3fdba9c5e60c5d00cc8918c8c9e5d87b40cee764ea9756f8e5f9b8053d89b`; source distribution `sha256:8a7102958be108098f9576d61d80730566d6c1bd1515ec1f21278ffea0fa13c4`
 
 ## 0.1.6 - 2026-07-16
 

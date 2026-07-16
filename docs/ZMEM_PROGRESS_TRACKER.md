@@ -72,6 +72,7 @@ Current `v0.1.7` release candidate:
 - LLM benchmark answers remain pending until judged, and hosted LongMemEval judge output cannot support a public claim without explicit review.
 - Merkle `v1` is unchanged. Merkle `v2`, installer integrity, provider credential-host binding, and true dense retrieval remain separate reviewed work.
 - Local candidate gates pass `1,260` tests with two expected optional skips, eval `11/11`, and strict release smoke with all public proof and launch-asset requirements ready.
+- The clean merged-source wheel reinstall reports `zmem 0.1.7` and passes eval `11/11`. Final candidate artifacts are wheel `sha256:d8a3fdba9c5e60c5d00cc8918c8c9e5d87b40cee764ea9756f8e5f9b8053d89b` and source distribution `sha256:8a7102958be108098f9576d61d80730566d6c1bd1515ec1f21278ffea0fa13c4`.
 
 Included `v0.1.6` L3 checkpoint:
 
