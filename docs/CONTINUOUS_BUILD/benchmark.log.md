@@ -1,5 +1,16 @@
 # Benchmark Lane Log
 
+## 2026-07-16 - official BEAM 1M/10M scale and SQLite observation index
+
+- Official-layout 1M conversation 9 completed with 1,802 messages, 490,991 observed whitespace tokens, 20 questions, `107/107` source references, `0.15` local evidence recall, and a verified 756 KB compact artifact.
+- Official-layout 10M conversation 1 completed with 19,895 messages, 6,209,948 observed whitespace tokens, 20 questions, `201/201` source references, `0.10` local evidence recall, and a verified 656 KB compact artifact.
+- Root cause: semantic rescue ordered candidates with a correlated `MAX(events.seq)` lookup, but `events.memory_id` had no index. At roughly 20,000 memories/events, the lookup approached quadratic scan behavior.
+- Implementation: added the migration-safe composite index `events(memory_id, seq)` with a focused test that drops the index, reruns `MemoryStore.init()`, and verifies both columns.
+- Controlled result: the same official 10M `fts-adaptive` event-ordering question improved from `112,976.22 ms` to `8,344.316 ms` (`13.54x`) with the same outcome, 20 retrieved memories, and 6 injected memories.
+- Regression gates: the stable LoCoMo cohort stayed `160/227`; full LoCoMo stayed `1,220/1,986`; LongMemEval stayed `386/500`. All 2,713 question records match on answer, retrieval/injection sets, abstention outcome, and support state; all three new results verify.
+- Claim boundary: BEAM remains one-conversation local evidence-recall and scale instrumentation with `public_benchmark_claim: false`, not an official model-judged score. The low 10M recall is an explicit retrieval-quality gap.
+- Next safe benchmark: broaden BEAM conversation coverage or add official model-judged scoring only after this index slice lands; otherwise return to one bounded LoCoMo multi-hop/open-domain miss under the same zero-regression gate.
+
 ## 2026-07-16 - transcript-neighbor zero-regression evidence
 
 - Stable cohort: `160/227` versus `159/227`, one multi-hop gain, zero losses, one changed retrieval context, and `+17` query tokens. Result hash `ec83cfdf...`; verification `ok`.

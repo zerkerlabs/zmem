@@ -17,10 +17,25 @@ All notable Zerker Memory alpha changes are summarized here.
 - Made the example fail unless the source event pointer is preserved, a recall receipt reaches the provider, and ActiveGraph's recorded `llm.requested` prompt exactly matches the provider-bound prompt.
 - Added the host example to the ActiveGraph CI job and its optional-dependency test suite.
 
+### BEAM Scale And Retrieval Performance
+
+- Completed isolated official-layout BEAM `1M` and `10M` conversation runs with compact, locally verified proof artifacts. The runs covered 1,802 and 19,895 messages, 490,991 and 6,209,948 observed whitespace tokens, and resolved `107/107` and `201/201` source references.
+- Added an index on `events(memory_id, seq)` for the observation-order lookup used by semantic rescue. On the same official 10M event-ordering question in `fts-adaptive` mode, retrieval fell from `112,976 ms` to `8,344 ms` (`13.54x`) while preserving the same outcome and the same 20 retrieved / 6 injected memories.
+- Re-ran the deterministic 227-question gate, full LoCoMo, and full LongMemEval after the index migration. All 2,713 question records preserved their answers, retrieval/injection sets, abstention outcomes, and support states; LoCoMo remains `1,220/1,986` and LongMemEval remains `386/500`.
+- Kept the scale claim narrow: the BEAM artifacts report local evidence recall of `0.15` at 1M and `0.10` at 10M with `public_benchmark_claim: false`. They prove bounded execution, source coverage, and proof integrity, not an official model-judged BEAM score or solved long-context retrieval quality.
+
 ### Claim Boundaries
 
 - LoCoMo and LongMemEval values remain verified local provisional retrieval evidence, not official leaderboard rankings.
 - The transcript-neighbor rule is deliberately limited to structured transcript memories and qualified onset questions; it is not a general graph traversal or unrestricted adjacency expansion.
+- BEAM 1M/10M results are one-conversation scale diagnostics with local evidence-recall scoring, not official submissions or broad scale-quality claims.
+
+### Verification
+
+- `python3.11 -m unittest discover -s tests -q` (`1,246` tests; two optional ActiveGraph checks skipped in the base environment and passed separately with ActiveGraph installed)
+- `python3.11 -m zerker_memory eval` (`11/11`)
+- ActiveGraph 1.10 pack verification and `tests.test_activegraph_pack` (`7/7`)
+- Site lint/build, docs typecheck/build, strict release smoke, and all five benchmark artifact verifiers
 
 ## 0.1.5 - 2026-07-12
 

@@ -53,7 +53,7 @@ Current frontier benchmark TODO, from the verified adaptive checkpoints:
 2. Keep unique run ids and isolated output directories for every run; never reuse a target while another process can touch it.
 3. Require every retrieval change to pass the deterministic 227-question zero-regression gate before any full rerun.
 4. Treat the landed transcript-neighbor checkpoint as the current L3 baseline, then reproduce one remaining LoCoMo multi-hop/open-domain stable miss without giving back temporal or abstention behavior.
-5. Expand the verified BEAM 100K and 500K evidence into isolated 1M and 10M scale runs.
+5. Keep the verified BEAM 100K, 500K, 1M, and 10M runs reproducible; broaden conversation coverage and add official model-judged scoring before making scale-quality claims.
 6. Keep the runnable ActiveGraph two-run host green across the supported `activegraph>=1.9,<2` range; larger traces and aggregate Treeship proof remain optional follow-ups.
 7. Add real dense embeddings and graph traversal fusion only behind same-dataset comparisons and proof artifacts.
 

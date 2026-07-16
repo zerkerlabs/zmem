@@ -1,5 +1,17 @@
 # ZMem Release Comms
 
+## 2026-07-16 - BEAM 1M/10M scale checkpoint
+
+Audience: internal Zerker product, engineering, and release coordination.
+
+ZMem now completes locally verified official-layout BEAM conversation runs at both 1M and 10M buckets. The sampled 10M conversation contains 19,895 messages and 6,209,948 observed whitespace tokens; all 201 source references resolve, and the compact proof artifact stays under 1 MB.
+
+The first 10M run found a real SQLite bottleneck rather than a benchmark-harness illusion. Semantic rescue ordered candidates through a correlated event-sequence lookup without an index. Adding `events(memory_id, seq)` improved the same `fts-adaptive` event-ordering query from `112,976 ms` to `8,344 ms`, a `13.54x` speedup, with the same result and the same retrieved/injected memories.
+
+The migration is behavior-neutral across the deterministic 227-question gate, all 1,986 LoCoMo questions, and all 500 LongMemEval questions. LoCoMo stays `0.6143`; LongMemEval stays `0.772`.
+
+The honest product conclusion is two-part: sampled-scale execution and compact proof now work, but retrieval quality at scale does not. Local BEAM evidence recall is `0.15` at 1M and `0.10` at 10M. Public copy must keep `public_benchmark_claim: false` and must not present this as an official model-judged BEAM result.
+
 ## 2026-07-16 - runnable ActiveGraph host candidate
 
 Audience: internal Zerker product, engineering, and release coordination.

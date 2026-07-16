@@ -7,9 +7,11 @@ This is the short orchestration dashboard for Zerker Memory. Every autonomous bu
 
 - The clean public checkpoint remains `v0.1.5` at `d4f6d9a3bd6a09a09fa579203510406edea11f6a`; all recurring swarms remain paused.
 - Bounded transcript-neighbor retrieval landed on `main` through PR `#1` at `6ffc4a1` after both GitHub workflow runs passed. The stable gate is `160/227`, full adaptive LoCoMo is `1,220/1,986` (`0.6143`), and LongMemEval remains `386/500` (`0.772`).
-- The next isolated candidate adds `examples/activegraph_host.py`: one run loads the real pack and persists causal memory, and a distinct resume run recalls it before the provider call through a shared ZMem scope.
-- Local ActiveGraph 1.10 verification passes: installed-pack discovery, the two-run host, all seven integration tests, causal event linkage, recall receipt attachment, provider/recorded prompt equality, and the memory-derived answer.
-- No BEAM 1M corpus is present locally, so BEAM scale remains queued rather than simulated. Do not restart broad swarms while the ActiveGraph branch is uncommitted.
+- The runnable ActiveGraph host landed through PR `#2` at `fbca687`. Local ActiveGraph 1.10 verification passes: installed-pack discovery, the two-run host, all seven integration tests, causal event linkage, recall receipt attachment, provider/recorded prompt equality, and the memory-derived answer.
+- Official-layout BEAM 1M and 10M conversations now complete and verify from ignored local data. The 10M run covered 19,895 messages, 6,209,948 observed whitespace tokens, and `201/201` source references in a compact proof artifact.
+- The 10M run exposed a missing `events(memory_id, seq)` index in semantic-rescue ordering. The additive index improves the same `fts-adaptive` question from `112,976 ms` to `8,344 ms` (`13.54x`) with identical retrieval behavior.
+- Post-index regression gates are exact: stable LoCoMo stays `160/227`, full LoCoMo stays `1,220/1,986`, and LongMemEval stays `386/500`, with zero behavioral differences across all 2,713 records. BEAM evidence recall remains low at `0.15` for 1M and `0.10` for 10M, so scale quality remains a product gap.
+- Do not restart broad swarms while the SQLite scale slice is being landed.
 
 - Started the `v0.1.5` candidate from the clean published `v0.1.4` checkpoint.
 - Published `v0.1.5` from `d4f6d9a3bd6a09a09fa579203510406edea11f6a`; GitHub Actions run `29216453125` passed and the release attaches the verified wheel and source distribution.

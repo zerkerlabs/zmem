@@ -21,6 +21,9 @@ Current verified local evidence:
 - The bounded transcript-neighbor follow-up reached `160/227` and full adaptive LoCoMo `1,220/1,986` (`0.6143`) with one additional multi-hop gain, zero losses, and exactly one changed retrieval context. LongMemEval remained retrieval-identical at `386/500`.
 - The official BEAM 100K adapter smoke covered `188` messages, `63,411` observed whitespace tokens, `20` questions across all ten categories, and `53/53` resolved source references. It is scale/evidence instrumentation, not the official model-judged BEAM score.
 - The isolated official-layout BEAM 500K conversation covered `796` messages, `247,175` observed whitespace tokens, `20` questions, and `83/83` resolved source references. Its `0.30` local evidence recall remains diagnostic rather than an official score.
+- The isolated 1M conversation covered `1,802` messages, `490,991` observed whitespace tokens, `20` questions, and `107/107` resolved references. Its verified compact artifact reports `0.15` local evidence recall.
+- The isolated 10M conversation covered `19,895` messages, `6,209,948` observed whitespace tokens, `20` questions, and `201/201` resolved references. Its verified compact artifact reports `0.10` local evidence recall and remains under `1 MB`.
+- Adding `events(memory_id, seq)` removed a correlated observation-order scan at 10M scale. The same `fts-adaptive` event-ordering question fell from `112,976 ms` to `8,344 ms` (`13.54x`) without changing its outcome or retrieved/injected memories. Full LoCoMo and LongMemEval stayed behavior-identical after the migration.
 - The ActiveGraph 227-question acceptance run wrote `908` replayable events in eight batched commits, a roughly `1 MB` event database, and zero per-question receipt bundles.
 - Both matrices and comparisons verify locally. They use the provisional local retrieval-recall scorer and are not leaderboard submissions.
 - The historical LoCoMo rule-based token-F1/EM artifact remains `0.3752394032` F1 and `0.3721047331` EM over `1,986` questions with trace SHA `67a005bf...`; do not compare it numerically with the current accuracy matrices.
@@ -28,7 +31,7 @@ Current verified local evidence:
 Next comparison queue:
 
 - Use the landed transcript-neighbor checkpoint as the baseline, then select another bounded multi-hop/open-domain retrieval improvement from the remaining adaptive stable misses under the same zero-regression gate.
-- Expand BEAM from the verified 100K and 500K evidence into isolated 1M and 10M runs before making any scale-quality claim.
+- Broaden BEAM across more conversations and add an official model-judged scoring path before making any scale-quality claim.
 - Use the `114` adaptive LongMemEval misses and low LoCoMo multi-hop/open-domain scores to select the next retrieval-quality slice.
 
 ## 1. Convert Official Files
@@ -143,7 +146,7 @@ zmem bench verify \
   --summary-only
 ```
 
-BEAM runs hash every source chat/probing file and report source-reference coverage. Keep `public_benchmark_claim: false`: this adapter measures local evidence recall and proof integrity, not BEAM's official model-judged answer score.
+BEAM runs hash every source chat/probing file and report source-reference coverage. The verified 1M and 10M runs show that ingestion, retrieval, and compact proof generation complete at those scales, but their local evidence recall is only `0.15` and `0.10`. Keep `public_benchmark_claim: false`: this adapter measures local evidence recall and proof integrity, not BEAM's official model-judged answer score.
 
 ## 3. Inspect Evidence Cheaply
 

@@ -2,6 +2,10 @@ import Card from '@/components/Card';
 
 const updates = [
   {
+    title: 'BEAM 10M scale gate',
+    detail: 'A sampled official-layout 10M conversation now completes with 6.2M observed tokens, complete source-reference coverage, and a verified compact proof. A SQLite observation index made the same pathological query 13.54x faster without changing its retrieval result.',
+  },
+  {
     title: 'Bounded transcript-neighbor support',
     detail: 'An exact-event-head, same-speaker, earlier-turn bridge recovered one multi-hop LoCoMo answer. It changed one retrieval context across 1,986 questions and introduced zero regressions.',
   },
