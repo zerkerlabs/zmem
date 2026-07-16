@@ -1,3 +1,24 @@
+## 2026-07-16 - v0.1.7 runtime and claim-integrity candidate
+
+Built locally:
+
+- Made implicit `zmem run` context private and ephemeral while preserving explicit user-owned context paths.
+- Bounded MCP request framing, JSON nesting, provider result limits, and unexpected error disclosure.
+- Confined operator snapshot and restore paths to an explicit local I/O root and removed caller-supplied provider URLs and keys from MCP tools.
+- Rejected non-finite governance values and kept local/private provider endpoints valid through trusted provider configuration.
+- Kept LLM-generated benchmark answers pending until an external judge scores them and kept hosted LongMemEval judge output non-public by default.
+- Preserved `binary-sha256-v1`; the demonstrated duplicate-last leaf-count ambiguity remains a versioned Merkle `v2` migration problem.
+
+Evidence:
+
+- PR `#6` merged at `9f3996f` after Python 3.10/3.11/3.12, ActiveGraph, site, docs, and release-smoke CI passed.
+- The full local suite passes `1,260` tests with two expected optional skips; eval passes `11/11`.
+- Strict release smoke reports public proof `6/6`, launch assets `8/8`, and the return packet ready.
+
+Release boundary:
+
+- This release does not change retrieval ranking, receipt hashes, Merkle roots, snapshot formats, or default agent capabilities. Merkle `v2`, installer integrity, provider credential-host binding, and true dense retrieval remain separate reviewed work.
+
 ## 2026-07-16 - v0.1.6 integrity and operator hardening release
 
 Built locally:
