@@ -39,11 +39,56 @@ class RunnerTest(unittest.TestCase):
 
         self.assertEqual(receipt["exit_code"], 0)
         self.assertEqual(receipt["schema"], "zerker.run.v1")
+        self.assertTrue(receipt["context_retained"])
         self.assertTrue(context_path.exists())
         context = json.loads(context_path.read_text())
         self.assertEqual(context["schema"], "zerker.memory_context.v1")
         self.assertEqual(len(context["memories"]), 1)
         self.assertEqual(context["memories"][0]["type"], "policy")
+
+    def test_default_run_context_is_private_and_removed_after_command(self):
+        mode_path = self.tmp_path / "context-mode.txt"
+        command = [
+            "python3",
+            "-c",
+            (
+                "import os, pathlib, stat; "
+                "path = pathlib.Path(os.environ['ZERKER_MEMORY_CONTEXT']); "
+                f"pathlib.Path({str(mode_path)!r}).write_text(str(stat.S_IMODE(path.stat().st_mode))); "
+                "assert stat.S_IMODE(path.stat().st_mode) == 0o600"
+            ),
+        ]
+
+        receipt = run_with_memory(
+            self.store,
+            command,
+            task="inspect private governed context",
+            agent_id="codex",
+            risk="low",
+        )
+
+        self.assertEqual(receipt["exit_code"], 0)
+        self.assertEqual(int(mode_path.read_text(encoding="utf-8")), 0o600)
+        self.assertFalse(receipt["context_retained"])
+        self.assertFalse(Path(receipt["context_path"]).exists())
+
+    def test_default_run_context_is_removed_when_command_cannot_start(self):
+        original_mkstemp = tempfile.mkstemp
+
+        def private_mkstemp(*args, **kwargs):
+            return original_mkstemp(*args, dir=self.tmp_path, **kwargs)
+
+        with mock.patch("zerker_memory.runner.tempfile.mkstemp", side_effect=private_mkstemp):
+            with self.assertRaises(FileNotFoundError):
+                run_with_memory(
+                    self.store,
+                    [str(self.tmp_path / "missing-command")],
+                    task="fail before command start",
+                    agent_id="codex",
+                    risk="low",
+                )
+
+        self.assertEqual(list(self.tmp_path.glob("zerker-memory-*.json")), [])
 
     def test_build_context_separates_instructional_and_recall_memory_and_surfaces_budget_receipts(self):
         policy = self.store.remember(

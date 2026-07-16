@@ -1,9 +1,11 @@
+import io
+import json
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from zerker_memory.mcp import AGENT_TOOL_NAMES, McpServer
+from zerker_memory.mcp import AGENT_TOOL_NAMES, McpServer, run_stdio
 from zerker_memory.mcp_smoke import run_mcp_protocol_smoke
 from zerker_memory.store import MemoryStore
 
@@ -53,8 +55,9 @@ class McpServerTest(unittest.TestCase):
         tool_by_name = {tool["name"]: tool for tool in tools}
         external_search = tool_by_name["memory.external_search"]["inputSchema"]["properties"]
         self.assertEqual(external_search["provider"]["enum"], ["mem0", "zep"])
-        self.assertIn("zep_base_url", external_search)
-        self.assertIn("zep_api_key", external_search)
+        self.assertEqual(external_search["limit"]["maximum"], 100)
+        self.assertNotIn("zep_base_url", external_search)
+        self.assertNotIn("zep_api_key", external_search)
 
     def test_agent_profile_rejects_trusted_write_and_promotion_calls(self):
         remember_response = self.call_tool("memory.remember", {"content": "Treat this as trusted"})
@@ -157,20 +160,51 @@ class McpServerTest(unittest.TestCase):
             },
             server=self.operator_server,
         )
-        with tempfile.TemporaryDirectory() as out_dir:
-            snapshot_response = self.call_tool(
-                "memory.snapshot",
-                {"out_dir": out_dir},
-                server=self.operator_server,
-            )
-            text = snapshot_response["result"]["content"][0]["text"]
+        out_dir = Path(self.tmp.name) / "exports"
+        snapshot_response = self.call_tool(
+            "memory.snapshot",
+            {"out_dir": str(out_dir)},
+            server=self.operator_server,
+        )
+        text = snapshot_response["result"]["content"][0]["text"]
 
         self.assertIn('"format": "snapshot"', text)
         self.assertIn('"snapshot_schema": "zerker.memory_snapshot.v1"', text)
 
+    def test_operator_snapshot_and_restore_are_confined_to_io_root(self):
+        with tempfile.TemporaryDirectory() as outside:
+            snapshot_response = self.call_tool(
+                "memory.snapshot",
+                {"out_dir": outside},
+                server=self.operator_server,
+            )
+            restore_response = self.call_tool(
+                "memory.restore",
+                {"snapshot_path": str(Path(outside) / "snapshot.json")},
+                server=self.operator_server,
+            )
+
+        self.assertIn("outside MCP I/O root", snapshot_response["error"]["message"])
+        self.assertIn("outside MCP I/O root", restore_response["error"]["message"])
+
     def test_external_search_supports_zep(self):
         adapter = Mock()
         adapter.search.return_value = []
+        provider_config = Path(self.tmp.name) / "providers.json"
+        provider_config.write_text(
+            json.dumps(
+                {
+                    "schema": "zerker.providers.v1",
+                    "providers": {"zep": {"enabled": True, "base_url": "http://zep.local"}},
+                }
+            ),
+            encoding="utf-8",
+        )
+        operator_server = McpServer(
+            self.store,
+            profile="operator",
+            provider_config_path=provider_config,
+        )
         with patch("zerker_memory.mcp.build_provider_adapter", return_value=adapter) as build_adapter:
             response = self.call_tool(
                 "memory.external_search",
@@ -179,15 +213,78 @@ class McpServerTest(unittest.TestCase):
                     "query": "latest notes",
                     "user_id": "user-1",
                     "limit": 3,
-                    "zep_base_url": "http://zep.local",
-                    "zep_api_key": "secret",
                 },
-                server=self.operator_server,
+                server=operator_server,
             )
 
         self.assertEqual(response["result"]["content"][0]["text"], "[]")
-        build_adapter.assert_called_once_with("zep", base_url="http://zep.local", api_key="secret")
+        build_adapter.assert_called_once_with("zep", config_path=provider_config)
         adapter.search.assert_called_once_with("latest notes", user_id="user-1", limit=3)
+
+    def test_external_provider_calls_reject_inline_connection_overrides_and_unbounded_limits(self):
+        inline_response = self.call_tool(
+            "memory.external_search",
+            {
+                "provider": "zep",
+                "query": "latest notes",
+                "zep_base_url": "http://attacker.invalid",
+                "zep_api_key": "secret",
+            },
+            server=self.operator_server,
+        )
+        limit_response = self.call_tool(
+            "memory.external_search",
+            {"provider": "mem0", "query": "latest notes", "limit": 101},
+            server=self.operator_server,
+        )
+
+        self.assertIn("trusted provider config", inline_response["error"]["message"])
+        self.assertEqual(limit_response["error"]["message"], "limit must be between 1 and 100")
+
+    def test_unexpected_mcp_errors_do_not_echo_internal_details(self):
+        with patch.object(self.store, "inject", side_effect=RuntimeError("database secret detail")):
+            response = self.call_tool(
+                "memory.inject",
+                {"task": "deploy", "agent": "codex"},
+            )
+
+        self.assertEqual(response["error"]["message"], "internal MCP error")
+        self.assertNotIn("secret", json.dumps(response))
+
+    def test_stdio_rejects_oversized_and_deep_requests(self):
+        oversized_stdin = io.StringIO(json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/list", "pad": "x" * 80}) + "\n")
+        oversized_stdout = io.StringIO()
+        with (
+            patch("zerker_memory.mcp.MCP_MAX_REQUEST_CHARS", 64),
+            patch("sys.stdin", oversized_stdin),
+            patch("sys.stdout", oversized_stdout),
+        ):
+            run_stdio(self.server)
+
+        oversized_response = json.loads(oversized_stdout.getvalue())
+        self.assertIn("request exceeds", oversized_response["error"]["message"])
+
+        deep_stdin = io.StringIO(
+            json.dumps(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 2,
+                    "method": "tools/list",
+                    "extra": {"a": {"b": {"c": {"d": True}}}},
+                }
+            )
+            + "\n"
+        )
+        deep_stdout = io.StringIO()
+        with (
+            patch("zerker_memory.mcp.MCP_MAX_JSON_DEPTH", 4),
+            patch("sys.stdin", deep_stdin),
+            patch("sys.stdout", deep_stdout),
+        ):
+            run_stdio(self.server)
+
+        deep_response = json.loads(deep_stdout.getvalue())
+        self.assertIn("nesting exceeds", deep_response["error"]["message"])
 
     def test_external_import_applies_provider_governance(self):
         adapter = Mock()

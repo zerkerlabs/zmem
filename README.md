@@ -437,7 +437,7 @@ memory.snapshot
 memory.restore
 ```
 
-`memory.external_search` and `memory.external_import` accept `provider="mem0"` or `provider="zep"` plus matching `*_base_url` and `*_api_key` overrides.
+`memory.external_search` and `memory.external_import` accept `provider="mem0"` or `provider="zep"`. Connections and credentials come from the trusted `--providers` config; MCP call arguments cannot replace them. Operator snapshot and restore paths stay under the memory database directory by default. Set `--io-root <directory>` on the operator server when a separate local handoff directory is required.
 
 See [AGENT_INTEGRATION.md](AGENT_INTEGRATION.md) for the recommended agent loop and system prompt snippet.
 See [docs/DAY1_AGENT_SETUP.md](docs/DAY1_AGENT_SETUP.md) for Codex, Claude Code, OpenClaw, Hermes, shell-agent, and persistent-chat setup patterns.

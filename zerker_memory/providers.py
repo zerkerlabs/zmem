@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 from pathlib import Path
 from typing import Any
@@ -327,4 +328,7 @@ def _string_or_none(value: Any) -> str | None:
 def _float_or_none(value: Any) -> float | None:
     if value is None:
         return None
-    return float(value)
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise ValueError("provider governance value must be a finite number")
+    return parsed

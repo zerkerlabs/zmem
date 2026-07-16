@@ -99,10 +99,23 @@ def run_with_memory(
     if not command:
         raise ValueError("run command cannot be empty")
     receipt = store.inject(task, agent_id=agent_id, risk=risk, scope=scope)
-    context_path = context_path or default_context_path(receipt["action_id"])
-    context_path.parent.mkdir(parents=True, exist_ok=True)
     context = build_context(receipt)
-    context_path.write_text(json.dumps(context, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    context_retained = context_path is not None
+    if context_path is None:
+        file_descriptor, raw_context_path = tempfile.mkstemp(
+            prefix=f"zerker-memory-{receipt['action_id']}-",
+            suffix=".json",
+        )
+        context_path = Path(raw_context_path)
+        try:
+            _write_private_context(file_descriptor, context)
+        except Exception:
+            context_path.unlink(missing_ok=True)
+            raise
+    else:
+        context_path.parent.mkdir(parents=True, exist_ok=True)
+        file_descriptor = os.open(context_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        _write_private_context(file_descriptor, context)
 
     env = os.environ.copy()
     env["ZERKER_ACTION_ID"] = receipt["action_id"]
@@ -111,8 +124,12 @@ def run_with_memory(
     env["ZERKER_MEMORY_MERKLE_ROOT"] = receipt["merkle_root"]
 
     started_at = now_iso()
-    result = subprocess.run(command, env=env)
-    completed_at = now_iso()
+    try:
+        result = subprocess.run(command, env=env)
+        completed_at = now_iso()
+    finally:
+        if not context_retained:
+            context_path.unlink(missing_ok=True)
     run_receipt = {
         "schema": RUN_SCHEMA,
         "action_id": receipt["action_id"],
@@ -122,6 +139,7 @@ def run_with_memory(
         "command_hash": sha256_text("\u0000".join(command)),
         "exit_code": result.returncode,
         "context_path": str(context_path),
+        "context_retained": context_retained,
         "memory_receipt": receipt,
         "started_at": started_at,
         "completed_at": completed_at,
@@ -135,14 +153,21 @@ def run_with_memory(
             "command_hash": run_receipt["command_hash"],
             "exit_code": result.returncode,
             "context_path": str(context_path),
+            "context_retained": context_retained,
         },
     )
     store.conn.commit()
     return run_receipt
 
 
-def default_context_path(action_id: str) -> Path:
-    return Path(tempfile.gettempdir()) / f"zerker-memory-{action_id}.json"
+def _write_private_context(file_descriptor: int, context: dict[str, Any]) -> None:
+    try:
+        os.fchmod(file_descriptor, 0o600)
+    except Exception:
+        os.close(file_descriptor)
+        raise
+    with os.fdopen(file_descriptor, "w", encoding="utf-8") as handle:
+        handle.write(json.dumps(context, indent=2, sort_keys=True) + "\n")
 
 
 def build_context(receipt: dict[str, Any]) -> dict[str, Any]:

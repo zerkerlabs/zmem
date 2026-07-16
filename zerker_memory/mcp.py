@@ -9,7 +9,12 @@ from typing import Any, Callable
 
 from . import __version__
 from .paths import expand_user_path
-from .providers import SUPPORTED_PROVIDERS, build_provider_adapter, provider_import_settings
+from .providers import (
+    SUPPORTED_PROVIDERS,
+    build_provider_adapter,
+    default_provider_config_path,
+    provider_import_settings,
+)
 from .store import MemoryStore, default_db_path, default_policy_path
 
 
@@ -17,6 +22,9 @@ JSON = dict[str, Any]
 
 
 MCP_PROFILES = ("agent", "operator")
+MCP_MAX_REQUEST_CHARS = 16 * 1024 * 1024
+MCP_MAX_JSON_DEPTH = 32
+MCP_MAX_RESULT_LIMIT = 100
 AGENT_TOOL_NAMES = frozenset(
     {
         "memory.propose",
@@ -194,11 +202,7 @@ TOOL_SCHEMAS: list[JSON] = [
                 "provider": {"type": "string", "enum": list(SUPPORTED_PROVIDERS), "default": "mem0"},
                 "query": {"type": "string"},
                 "user_id": {"type": "string"},
-                "limit": {"type": "integer", "default": 10},
-                "mem0_base_url": {"type": "string"},
-                "mem0_api_key": {"type": "string"},
-                "zep_base_url": {"type": "string"},
-                "zep_api_key": {"type": "string"},
+                "limit": {"type": "integer", "minimum": 1, "maximum": MCP_MAX_RESULT_LIMIT, "default": 10},
             },
             "required": ["query"],
         },
@@ -214,11 +218,7 @@ TOOL_SCHEMAS: list[JSON] = [
                 "scope": {"type": "string", "default": "global"},
                 "type": {"type": "string", "enum": ["episodic", "semantic", "procedural", "policy"], "default": "semantic"},
                 "user_id": {"type": "string"},
-                "limit": {"type": "integer", "default": 10},
-                "mem0_base_url": {"type": "string"},
-                "mem0_api_key": {"type": "string"},
-                "zep_base_url": {"type": "string"},
-                "zep_api_key": {"type": "string"},
+                "limit": {"type": "integer", "minimum": 1, "maximum": MCP_MAX_RESULT_LIMIT, "default": 10},
             },
             "required": ["query"],
         },
@@ -247,11 +247,20 @@ TOOL_SCHEMAS: list[JSON] = [
 
 
 class McpServer:
-    def __init__(self, store: MemoryStore, *, profile: str = "agent"):
+    def __init__(
+        self,
+        store: MemoryStore,
+        *,
+        profile: str = "agent",
+        io_root: Path | None = None,
+        provider_config_path: Path | None = None,
+    ):
         if profile not in MCP_PROFILES:
             raise ValueError(f"unknown MCP profile: {profile}")
         self.store = store
         self.profile = profile
+        self.io_root = (io_root or store.db_path.parent).expanduser().resolve()
+        self.provider_config_path = provider_config_path or default_provider_config_path()
         self.allowed_tools = (
             AGENT_TOOL_NAMES if profile == "agent" else frozenset(tool["name"] for tool in TOOL_SCHEMAS)
         )
@@ -283,8 +292,10 @@ class McpServer:
                 args = params.get("arguments") or {}
                 return self._result(request_id, self._tool_result(self.call_tool(name, args)))
             return self._error(request_id, -32601, f"method not found: {method}")
-        except Exception as exc:  # MCP should keep running after tool errors.
+        except (KeyError, ValueError, PermissionError, FileNotFoundError) as exc:
             return self._error(request_id, -32000, str(exc))
+        except Exception:  # MCP should keep running without exposing internal details.
+            return self._error(request_id, -32000, "internal MCP error")
 
     def call_tool(self, name: str, args: JSON) -> Any:
         handlers: dict[str, Callable[[JSON], Any]] = {
@@ -400,18 +411,18 @@ class McpServer:
         return {"ok": self.store.verify(action_id), "action_id": action_id}
 
     def _external_search(self, args: JSON) -> list[JSON]:
-        adapter = build_adapter(args)
+        adapter = build_adapter(args, config_path=self.provider_config_path)
         return [
             candidate.to_dict()
             for candidate in adapter.search(
                 required_str(args, "query"),
                 user_id=args.get("user_id"),
-                limit=int(args.get("limit", 10)),
+                limit=bounded_int(args, "limit", default=10, minimum=1, maximum=MCP_MAX_RESULT_LIMIT),
             )
         ]
 
     def _external_import(self, args: JSON) -> list[JSON]:
-        adapter = build_adapter(args)
+        adapter = build_adapter(args, config_path=self.provider_config_path)
         provider = args.get("provider", "mem0")
         governance = provider_import_settings(
             provider,
@@ -431,20 +442,33 @@ class McpServer:
             for candidate in adapter.search(
                 required_str(args, "query"),
                 user_id=args.get("user_id"),
-                limit=int(args.get("limit", 10)),
+                limit=bounded_int(args, "limit", default=10, minimum=1, maximum=MCP_MAX_RESULT_LIMIT),
             )
         ]
 
     def _snapshot(self, args: JSON) -> JSON:
         from .exporter import export_snapshot
 
-        out = expand_user_path(args["out"]) if args.get("out") else None
-        out_dir = expand_user_path(args["out_dir"]) if args.get("out_dir") else None
+        out = self._confined_path(required_str(args, "out"), label="out") if args.get("out") else None
+        out_dir = self._confined_path(required_str(args, "out_dir"), label="out_dir") if args.get("out_dir") else None
+        if out is None and out_dir is None:
+            out_dir = self.io_root / "exports"
         return export_snapshot(self.store.snapshot(), out=out, out_dir=out_dir)
 
     def _restore(self, args: JSON) -> JSON:
-        snapshot_path = expand_user_path(required_str(args, "snapshot_path"))
+        snapshot_path = self._confined_path(required_str(args, "snapshot_path"), label="snapshot_path")
         return self.store.restore_snapshot(json.loads(snapshot_path.read_text(encoding="utf-8")))
+
+    def _confined_path(self, value: str, *, label: str) -> Path:
+        candidate = expand_user_path(value)
+        if not candidate.is_absolute():
+            candidate = self.io_root / candidate
+        candidate = candidate.resolve(strict=False)
+        try:
+            candidate.relative_to(self.io_root)
+        except ValueError as exc:
+            raise PermissionError(f"{label} is outside MCP I/O root: {self.io_root}") from exc
+        return candidate
 
     @staticmethod
     def _tool_result(value: Any) -> JSON:
@@ -480,28 +504,83 @@ def optional_bool(args: JSON, key: str, *, default: bool = False) -> bool:
     return value
 
 
-def build_adapter(args: JSON):
+def bounded_int(args: JSON, key: str, *, default: int, minimum: int, maximum: int) -> int:
+    value = args.get(key, default)
+    if isinstance(value, bool) or not isinstance(value, int) or not minimum <= value <= maximum:
+        raise ValueError(f"{key} must be between {minimum} and {maximum}")
+    return value
+
+
+def build_adapter(args: JSON, *, config_path: Path):
     provider = args.get("provider", "mem0")
-    base_url = args.get(f"{provider}_base_url")
-    api_key = args.get(f"{provider}_api_key")
-    return build_provider_adapter(provider, base_url=base_url, api_key=api_key)
+    inline_keys = {
+        f"{candidate}_{suffix}"
+        for candidate in SUPPORTED_PROVIDERS
+        for suffix in ("base_url", "api_key")
+    }
+    if any(key in args for key in inline_keys):
+        raise ValueError("provider connections must come from trusted provider config, not MCP call arguments")
+    return build_provider_adapter(provider, config_path=config_path)
 
 
 def run_stdio(server: McpServer) -> None:
-    for line in sys.stdin:
+    while True:
+        line = sys.stdin.readline(MCP_MAX_REQUEST_CHARS + 1)
+        if not line:
+            break
+        if len(line) > MCP_MAX_REQUEST_CHARS:
+            while line and not line.endswith("\n"):
+                line = sys.stdin.readline(MCP_MAX_REQUEST_CHARS + 1)
+            _write_stdio_response(McpServer._error(None, -32700, "request exceeds MCP line-size limit"))
+            continue
         line = line.strip()
         if not line:
             continue
-        response = server.handle(json.loads(line))
+        try:
+            request = json.loads(line)
+            if not isinstance(request, dict):
+                raise ValueError("MCP request must be a JSON object")
+            validate_json_depth(request, maximum=MCP_MAX_JSON_DEPTH)
+        except (json.JSONDecodeError, ValueError) as exc:
+            _write_stdio_response(McpServer._error(None, -32700, str(exc)))
+            continue
+        response = server.handle(request)
         if response is not None:
-            sys.stdout.write(json.dumps(response, separators=(",", ":")) + "\n")
-            sys.stdout.flush()
+            _write_stdio_response(response)
+
+
+def validate_json_depth(value: Any, *, maximum: int) -> None:
+    stack: list[tuple[Any, int]] = [(value, 1)]
+    while stack:
+        item, depth = stack.pop()
+        if depth > maximum:
+            raise ValueError(f"JSON nesting exceeds MCP depth limit of {maximum}")
+        if isinstance(item, dict):
+            stack.extend((child, depth + 1) for child in item.values())
+        elif isinstance(item, list):
+            stack.extend((child, depth + 1) for child in item)
+
+
+def _write_stdio_response(response: JSON) -> None:
+    sys.stdout.write(json.dumps(response, separators=(",", ":")) + "\n")
+    sys.stdout.flush()
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run the Zerker Memory MCP server over stdio")
     parser.add_argument("--db", type=expand_user_path, default=default_db_path(), help="SQLite database path")
     parser.add_argument("--policy", type=expand_user_path, default=default_policy_path(), help="Policy config JSON path")
+    parser.add_argument(
+        "--providers",
+        type=expand_user_path,
+        default=default_provider_config_path(),
+        help="Trusted provider config JSON path",
+    )
+    parser.add_argument(
+        "--io-root",
+        type=expand_user_path,
+        help="Root directory allowed for operator snapshot and restore paths (default: database directory)",
+    )
     parser.add_argument(
         "--profile",
         choices=MCP_PROFILES,
@@ -513,7 +592,14 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    run_stdio(McpServer(MemoryStore(args.db, policy_path=args.policy), profile=args.profile))
+    run_stdio(
+        McpServer(
+            MemoryStore(args.db, policy_path=args.policy),
+            profile=args.profile,
+            io_root=args.io_root,
+            provider_config_path=args.providers,
+        )
+    )
     return 0
 
 
