@@ -8893,6 +8893,9 @@ class MemoryStore:
               created_at TEXT NOT NULL
             );
 
+            CREATE INDEX IF NOT EXISTS events_memory_id_seq_idx
+              ON events(memory_id, seq);
+
             CREATE TABLE IF NOT EXISTS receipts (
               action_id TEXT PRIMARY KEY,
               receipt_schema TEXT NOT NULL DEFAULT 'zerker.memory_action.v1',

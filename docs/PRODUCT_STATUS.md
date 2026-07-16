@@ -30,7 +30,7 @@ Product signal note: the current wedge is validated by builder demand for local,
 
 1. Retrieval quality beyond the current adaptive route: broader multi-hop and open-domain support after the bounded completion and transcript-neighbor gains.
 2. Real dense embeddings plus graph traversal fusion; current pseudo modes are measured local baselines, not vector retrieval.
-3. Isolated BEAM 1M and 10M scale runs plus any official model-judged submission path.
+3. An official model-judged BEAM submission path plus broader multi-conversation 1M and 10M coverage; the first isolated runs are complete.
 4. Hosted or team review console: shared queue, roles, approvals, retention controls, and audit export beyond the current local console.
 5. Hardened integrations beyond local MCP and ActiveGraph for Mem0, Zep/Graphiti, Letta, LangMem, Cognee, and other agent frameworks.
 6. Memory quality layer: usage reinforcement, decay, live consolidation, compression thresholds, and curation policy templates.
@@ -43,7 +43,7 @@ Product signal note: the current wedge is validated by builder demand for local,
 - CLI.
 - Deterministic adaptive retrieval with receipt-visible routing, packing, semantic rescue, conservative regular-inflection evidence, bounded completion support, and exact-event-head transcript-neighbor support.
 - Verified local LoCoMo and LongMemEval matrices with explicit provisional claim boundaries.
-- BEAM official-layout adapter across 100K, 500K, 1M, and 10M buckets, with verified 100K and 500K scale evidence.
+- BEAM official-layout adapter with verified isolated evidence at 100K, 500K, 1M, and 10M. The 10M conversation covers 19,895 messages, 6,209,948 observed whitespace tokens, and `201/201` source references in a compact proof artifact.
 - Real ActiveGraph 1.9+ pack discovery/loading, event persistence, a runnable no-key two-run host, a pre-call wrapper with recorded/sent prompt equality, and a batched compact trace runner.
 - `install.sh` one-command bootstrap for clone and curl-style setup.
 - `install.sh` now runs both day-1 smoke commands against the selected bootstrap target, defaulting to OpenClaw for the safe manual-pack path.
@@ -185,8 +185,8 @@ Agent memory can be local-first, governed before injection, explainable after ac
 
 1. Additional multi-hop/open-domain retrieval improvements under the zero-regression gate.
 2. Dense vector and temporal graph fusion.
-3. BEAM 1M and 10M evidence plus official scoring paths.
-4. ActiveGraph runnable host example and broader application integration.
+3. Official BEAM model-judged scoring plus broader multi-conversation scale coverage.
+4. Broader ActiveGraph application integration beyond the runnable two-run host.
 5. Expand live provider smoke into hosted CI coverage and add a Graphiti adapter.
 6. Policy config expansion: per-agent, per-scope, and per-action rules.
 7. Snapshot merge/import conflict rules.

@@ -56,6 +56,13 @@ Current unreleased L3 candidate:
 - Full adaptive LoCoMo reaches `1,220/1,986` (`0.6143`) versus `1,219/1,986`; LongMemEval remains exactly unchanged at `386/500` (`0.772`).
 - Verified result hashes: stable `ec83cfdf...`, full LoCoMo `308a492a...`, LongMemEval `e81b886c...`.
 
+Current unreleased scale and integration checkpoint:
+
+- The runnable ActiveGraph host is landed on `main` through PR `#2` at `fbca687`; it verifies a distinct write run and resume run with causal lineage, recall receipt attachment, and recorded/provider prompt equality.
+- Isolated official-layout BEAM 1M and 10M runs now complete and verify. The 10M conversation contains 19,895 messages, 6,209,948 observed whitespace tokens, and `201/201` resolved references.
+- An additive `events(memory_id, seq)` index removed the 10M observation-order scan. The same `fts-adaptive` question improved from `112,976 ms` to `8,344 ms` (`13.54x`) without changing its result or retrieved/injected memories.
+- Stable, full LoCoMo, and full LongMemEval post-index runs preserve all answers and retrieval behavior. BEAM local evidence recall remains `0.15` at 1M and `0.10` at 10M, so scale execution is complete while scale-quality work remains open.
+
 Current `v0.1.3` release checkpoint:
 
 - Core checkpoint: `ebb387d Harden agent memory boundaries and compact proofs`.
@@ -89,7 +96,7 @@ Percentages are practical launch-grade alpha estimates, not benchmark scores.
 | L3 Retrieval Baseline | FTS/BM25, semantic backfill, RRF, packing | 86% | Adaptive routing plus bounded morphology, completion, and transcript-neighbor support pass the zero-regression cohort | Improve the remaining multi-hop/open-domain misses while preserving the zero-regression gate |
 | L4 Consolidation | Hierarchical summaries and job ledger | 35% | Deterministic fixture, job lifecycle, reversible summary payloads, append-only summary ledger | Source candidates from live store or expose persisted summaries through read-only CLI |
 | L5 Identity / Workspaces | Multi-agent source lineage and conflicts | 50% | Source reports, claim conflicts, resolution basis, exact-tie abstention summaries | Persist merge decisions or add repo/tool lineage descriptors |
-| L6 Benchmark Harness | LoCoMo/LongMemEval/BEAM evidence | 96% | Verified LoCoMo/LongMemEval evidence plus official-layout BEAM 100K and 500K runs exist; compact artifacts verify | Expand BEAM to isolated 1M and 10M runs and keep claim boundaries explicit |
+| L6 Benchmark Harness | LoCoMo/LongMemEval/BEAM evidence | 100% for local harness and sampled scale | Verified LoCoMo/LongMemEval evidence plus official-layout BEAM 100K, 500K, 1M, and 10M runs exist; compact artifacts verify | Add broader multi-conversation evidence and an official model-judged scoring path without weakening claim boundaries |
 | Launch Oversight | Release pack, proof evidence, public release | 100% for v0.1.5 | Public verify `6/6`, assets `8/8`, return packet ready, `v0.1.5` published | Keep automation paused; repeat the gate only for the next release |
 | Website / Docs | Landing, proof page, docs, changelog | 100% for v0.1.5 | `Agent memory you can trust`, current benchmark/BEAM/ActiveGraph facts, dedicated CI gates, and responsive QA | Keep factual surfaces aligned as retrieval evidence changes |
 | ActiveGraph Integration | Event substrate and compact traces | 100% | The real pack loads, persists events, batches traces, and ships a runnable two-run host with recorded/sent prompt equality | Keep larger selected-mode traces and aggregate Treeship artifacts as optional follow-ups |
@@ -268,7 +275,7 @@ Left:
 - [x] Isolated official-layout BEAM 500K conversation: `247,175` observed whitespace tokens and `83/83` resolved source references.
 - [x] ActiveGraph batching/performance for the full stable 227-question trace.
 - [x] Public benchmark page/report polish after real deltas.
-- [ ] Isolated BEAM 1M and 10M scale runs.
+- [x] Isolated BEAM 1M and 10M scale runs: `490,991` and `6,209,948` observed whitespace tokens, complete source-reference coverage, compact verified artifacts, and explicit non-official claim boundaries.
 
 ### Launch Oversight
 
@@ -377,4 +384,4 @@ Every release tag should include:
 1. Keep benchmark runs in isolated output directories and on supported Python 3.10+ runtimes.
 2. Treat the verified deterministic adaptive route plus bounded morphology, completion, and transcript-neighbor support as the regression-safe path: the latest checkpoints are LoCoMo `0.6143` and LongMemEval `0.772`.
 3. Treat the landed transcript-neighbor checkpoint as the current L3 baseline; the full LoCoMo delta is one gain, zero losses, and one changed retrieval context.
-4. Acquire and run isolated BEAM 1M/10M corpora before making scale-quality claims; the runnable ActiveGraph host fallback is complete.
+4. Treat BEAM sampled-scale execution as complete but quality as open: broaden conversation coverage and add official model-judged scoring while keeping the current `public_benchmark_claim: false` boundary.

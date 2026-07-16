@@ -154,6 +154,12 @@ The first untouched official 100K smoke covered 188 messages, 63,411 observed wh
 
 The first isolated official-layout 500K conversation run covered 796 messages, 247,175 observed whitespace tokens, 20 probing questions, and 83/83 resolved source references. It measured `0.30` deterministic local evidence recall with p50/p95 retrieval latency of `265.2 ms` / `821.4 ms`. Both BEAM runs are local scale/evidence instrumentation with `public_benchmark_claim: false`, not official model-judged BEAM scores.
 
+The isolated 1M conversation covered 1,802 messages, 490,991 observed whitespace tokens, 20 probing questions, and 107/107 resolved references. Its verified compact proof directory is about 756 KB and reports `0.15` local evidence recall.
+
+The isolated 10M conversation covered 19,895 messages, 6,209,948 observed whitespace tokens, 20 probing questions, and 201/201 resolved references. Its verified compact proof directory is about 656 KB and reports `0.10` local evidence recall. An additive `events(memory_id, seq)` index removed a correlated observation-order scan: the same `fts-adaptive` event-ordering question fell from `112,976 ms` to `8,344 ms` (`13.54x`) with the same outcome and the same retrieved/injected memories.
+
+These runs prove bounded local execution, complete source-reference resolution, and compact verifiable artifacts at the sampled scales. They also expose the remaining product gap: evidence recall is weak at 10M. They are not official model-judged BEAM scores or evidence that long-context retrieval quality is solved.
+
 ## Synthetic Matrix
 
 ```bash
@@ -231,7 +237,7 @@ Next benchmark priorities:
 
 - Stable-miss analysis: use the `768` adaptive LoCoMo misses and `114` adaptive LongMemEval misses to select one bounded retrieval-quality slice.
 - LoCoMo multi-hop and open-domain: improve the still-low categories without giving back temporal accuracy.
-- BEAM: expand the verified 100K and 500K adapter runs into isolated 1M and 10M runs before making scale-quality claims.
+- BEAM: broaden the verified 1M and 10M evidence across more conversations and add an official model-judged scoring path before making scale-quality claims.
 
 ## Public Claim Rules
 

@@ -21,10 +21,17 @@ Primary mission brief:
 - Lane progress and release tracker: `docs/ZMEM_PROGRESS_TRACKER.md`
 - Lane logs: `docs/CONTINUOUS_BUILD/`
 
+Coordinator update `2026-07-16` (BEAM 1M/10M and SQLite scale gate):
+
+- Broad recurring swarms remain paused. Official BEAM data was acquired into ignored local benchmark storage and every run used a unique isolated output directory.
+- Completed and verified one 1M conversation with 1,802 messages, 490,991 observed whitespace tokens, and `107/107` references, plus one 10M conversation with 19,895 messages, 6,209,948 observed whitespace tokens, and `201/201` references.
+- The first 10M attempt exposed a correlated event-sequence lookup without an index. Adding `events(memory_id, seq)` improved the same `fts-adaptive` event-ordering question from `112,976 ms` to `8,344 ms` (`13.54x`) with identical retrieval behavior.
+- The deterministic 227-question gate, full LoCoMo, and full LongMemEval preserved every behavioral field after the migration. Local BEAM evidence recall remains low at `0.15` and `0.10`, so this closes sampled-scale execution, not scale-quality work.
+
 Coordinator update `2026-07-16` (ActiveGraph host):
 
 - Landed the transcript-neighbor L3 slice through PR `#1` at `6ffc4a1`; both push and pull-request workflows passed every Python, ActiveGraph, docs, site, and release-smoke job.
-- The BEAM 1M corpus is not present locally, so the coordinator selected the runnable ActiveGraph host instead of fabricating scale evidence.
+- At that checkpoint the BEAM 1M corpus was not present locally, so the coordinator selected the runnable ActiveGraph host instead of fabricating scale evidence. The later scale update above supersedes that availability note.
 - Added and locally verified a two-run host with an installed pack write, distinct resume run, shared ZMem scope, causal pointer, recall receipt, exact recorded/provider prompt equality, and a memory-derived answer.
 - Broad recurring swarms remain paused; this candidate stays isolated to the example, integration test/CI, and factual public/control-room documentation.
 

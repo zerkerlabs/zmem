@@ -50,6 +50,22 @@ class MemoryStoreTest(unittest.TestCase):
         self.assertGreaterEqual(self.store.conn.execute("PRAGMA busy_timeout").fetchone()[0], 5000)
         self.assertEqual(self.store.conn.execute("PRAGMA synchronous").fetchone()[0], 1)
 
+    def test_store_indexes_event_observation_lookups(self):
+        self.store.conn.execute("DROP INDEX events_memory_id_seq_idx")
+        self.store.init()
+        indexes = {
+            row[1]: row
+            for row in self.store.conn.execute("PRAGMA index_list(events)").fetchall()
+        }
+        self.assertIn("events_memory_id_seq_idx", indexes)
+        columns = [
+            row[2]
+            for row in self.store.conn.execute(
+                "PRAGMA index_info(events_memory_id_seq_idx)"
+            ).fetchall()
+        ]
+        self.assertEqual(columns, ["memory_id", "seq"])
+
     def test_two_store_connections_can_write_to_the_same_database(self):
         second = MemoryStore(self.store.db_path)
         second.init()

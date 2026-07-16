@@ -1,3 +1,23 @@
+## 2026-07-16 - BEAM 1M/10M and SQLite retrieval scale
+
+Built locally:
+
+- Added a migration-safe `events(memory_id, seq)` index for the observation-order query used by semantic rescue, plus a focused existing-store migration test.
+- Completed isolated official-layout BEAM 1M and 10M conversation runs with compact artifacts and complete source-reference resolution.
+- Synchronized benchmark docs, public proof/changelog surfaces, product status, and orchestration trackers with the measured scale result and its explicit quality limitation.
+
+Evidence:
+
+- BEAM 1M: 1,802 messages, 490,991 observed whitespace tokens, 20 questions, `107/107` references, `0.15` local evidence recall, result hash `1aad1a6d...`, proof verification `ok`.
+- BEAM 10M: 19,895 messages, 6,209,948 observed whitespace tokens, 20 questions, `201/201` references, `0.10` local evidence recall, result hash `ad1767aa...`, proof verification `ok`.
+- Same-mode 10M performance: `112,976.22 ms` before the index versus `8,344.316 ms` after (`13.54x`) on the same event-ordering question, with identical outcome and retrieval/injection sets.
+- Stable/full regression gates: `160/227`, `1,220/1,986`, and `386/500`, with zero behavioral differences and verified result hashes `284a0738...`, `0ed11ce0...`, and `b6621ba4...`.
+- Full verification: `1,246` Python tests pass with two expected optional skips; eval passes `11/11`; ActiveGraph 1.10 passes `7/7` plus pack verification; site lint/build, docs typecheck/build, strict release smoke, and `git diff --check` pass.
+
+Claim boundary:
+
+- BEAM results are local evidence-recall scale diagnostics with `public_benchmark_claim: false`. They prove bounded execution and compact proof at the sampled scales, not an official answer score or high retrieval quality at 10M.
+
 ## 2026-07-16 - Runnable ActiveGraph two-run host
 
 Built locally:
