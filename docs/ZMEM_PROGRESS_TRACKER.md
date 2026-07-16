@@ -26,11 +26,11 @@ Every push or meaningful automation drop should update this file alongside:
 | `v0.1.4` | Published | `0ea8316` / `v0.1.4` | Deterministic retrieval, bounded morphology gains, BEAM scale adapter, and verified ActiveGraph pack/batching. |
 | `v0.1.5` | Published | `d4f6d9a` / `v0.1.5` | Bounded completion support, BEAM 500K evidence, verified ActiveGraph pre-call prompt integrity, and the simplified public hero. |
 | `v0.1.6` | Published | `34b4e8a` / `v0.1.6` | Transcript-neighbor retrieval, runnable ActiveGraph host, BEAM 10M scale/index evidence, and concurrent event-chain hardening. |
-| `v0.1.7` | Candidate | PR `#6` / release branch | Private ephemeral run context, bounded MCP/operator/provider boundaries, finite governance values, and honest pending-judge benchmark state. |
+| `v0.1.7` | Published | `5b1cf0f` / `v0.1.7` | Private ephemeral run context, bounded MCP/operator/provider boundaries, finite governance values, and honest pending-judge benchmark state. |
 
 Current public release:
 
-- GitHub: `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.6`
+- GitHub: `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.7`
 - Site: `https://www.zmem.sh`
 - Raw installer: `https://raw.githubusercontent.com/zerkerlabs/zmem/main/install.sh`
 
@@ -64,15 +64,17 @@ Current `v0.1.6` release checkpoint:
 - Published from `34b4e8aa2b41a454e2e8969576511ffd56a66027`; final-commit CI run `29524503194` and tag CI run `29524866769` passed every Python, ActiveGraph, site, docs, and release-smoke job.
 - The release attaches both distributions with matching GitHub digests. Production deployments `dpl_9WBakHxq6DtPXF5cXVzQ1FuQjj9e` and `dpl_Dp1maM9BzkJ8RAydjn3agp8P6dBr` are live at `zmem.sh` and `docs.zmem.sh`; desktop/mobile and clean-console checks pass.
 
-Current `v0.1.7` release candidate:
+Current `v0.1.7` release checkpoint:
 
 - PR `#6` merged at `9f3996f` after every Python, ActiveGraph, site, docs, and release-smoke check passed.
 - Implicit run context is private and ephemeral; explicit context paths remain user-owned and retained.
 - MCP now bounds framing, nesting, result limits, file I/O roots, provider connection inputs, and unexpected error detail without widening the default agent profile.
 - LLM benchmark answers remain pending until judged, and hosted LongMemEval judge output cannot support a public claim without explicit review.
 - Merkle `v1` is unchanged. Merkle `v2`, installer integrity, provider credential-host binding, and true dense retrieval remain separate reviewed work.
-- Local candidate gates pass `1,260` tests with two expected optional skips, eval `11/11`, and strict release smoke with all public proof and launch-asset requirements ready.
-- The clean merged-source wheel reinstall reports `zmem 0.1.7` and passes eval `11/11`. Final candidate artifacts are wheel `sha256:d8a3fdba9c5e60c5d00cc8918c8c9e5d87b40cee764ea9756f8e5f9b8053d89b` and source distribution `sha256:8a7102958be108098f9576d61d80730566d6c1bd1515ec1f21278ffea0fa13c4`.
+- Local release gates pass `1,260` tests with two expected optional skips, eval `11/11`, and strict release smoke with all public proof and launch-asset requirements ready.
+- Published from `5b1cf0f05689143a3905fb2337807f4c60a191ea`; final-commit CI run `29534932237` and tag CI run `29535282896` passed every Python, ActiveGraph, site, docs, and release-smoke job.
+- The clean public wheel reinstall reports `zmem 0.1.7` and passes eval `11/11`. GitHub assets match wheel `sha256:d8a3fdba9c5e60c5d00cc8918c8c9e5d87b40cee764ea9756f8e5f9b8053d89b` and source distribution `sha256:8a7102958be108098f9576d61d80730566d6c1bd1515ec1f21278ffea0fa13c4`.
+- Production deployments `dpl_9Xb2upPsawLoDhaco6r5CSJppvxW` and `dpl_ckk7y9HhAg4fg2n1z67uBLJJQ8e8` are live at `zmem.sh` and `docs.zmem.sh`; responsive browser, console, network, raw-installer, agent-smoke, and MCP-smoke canaries pass.
 
 Included `v0.1.6` L3 checkpoint:
 
@@ -121,8 +123,8 @@ Percentages are practical launch-grade alpha estimates, not benchmark scores.
 | L4 Consolidation | Hierarchical summaries and job ledger | 35% | Deterministic fixture, job lifecycle, reversible summary payloads, append-only summary ledger | Source candidates from live store or expose persisted summaries through read-only CLI |
 | L5 Identity / Workspaces | Multi-agent source lineage and conflicts | 50% | Source reports, claim conflicts, resolution basis, exact-tie abstention summaries | Persist merge decisions or add repo/tool lineage descriptors |
 | L6 Benchmark Harness | LoCoMo/LongMemEval/BEAM evidence | 100% for local harness and sampled scale | Verified LoCoMo/LongMemEval evidence plus official-layout BEAM 100K, 500K, 1M, and 10M runs exist; compact artifacts verify | Add broader evidence and an official model-judged path; do not report unjudged LLM answers as incorrect |
-| Launch Oversight | Release pack, proof evidence, public release | 95% for v0.1.7 | Public verify `6/6`, assets `8/8`, return packet ready; tag, assets, and canary remain | Keep automation paused; complete the bounded release sequence |
-| Website / Docs | Landing, proof page, docs, changelog | 95% for v0.1.7 | Release copy and ActiveGraph pack version are synchronized; production promotion remains | Deploy only the tested release commit and rerun responsive canaries |
+| Launch Oversight | Release pack, proof evidence, public release | 100% for v0.1.7 | Public verify `6/6`, assets `8/8`, return packet ready, release assets published, and production canaries pass | Keep automation paused until the next bounded release candidate exists |
+| Website / Docs | Landing, proof page, docs, changelog | 100% for v0.1.7 | Release copy and ActiveGraph pack version are synchronized and live on the production domains | Keep release facts synchronized with the next shipped product change |
 | ActiveGraph Integration | Event substrate and compact traces | 100% | The real pack loads, persists events, batches traces, and ships a runnable two-run host with recorded/sent prompt equality | Keep larger selected-mode traces and aggregate Treeship artifacts as optional follow-ups |
 
 ## Lane Checklists

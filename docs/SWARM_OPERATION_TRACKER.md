@@ -21,12 +21,13 @@ Primary mission brief:
 - Lane progress and release tracker: `docs/ZMEM_PROGRESS_TRACKER.md`
 - Lane logs: `docs/CONTINUOUS_BUILD/`
 
-Coordinator update `2026-07-16` (`v0.1.7` release candidate):
+Coordinator update `2026-07-16` (`v0.1.7` published):
 
 - Broad recurring swarms remain paused. PR `#6` landed the bounded post-`v0.1.6` runtime, MCP, provider-boundary, and benchmark-claim hardening at `9f3996f` after every remote check passed.
-- The candidate is versioned as `0.1.7`. Local verification passes `1,260` tests with two expected optional skips, eval `11/11`, and strict release smoke with public proof `6/6`, assets `8/8`, and the return packet ready.
+- `v0.1.7` is published from `5b1cf0f05689143a3905fb2337807f4c60a191ea`. Local verification passes `1,260` tests with two expected optional skips, eval `11/11`, and strict release smoke with public proof `6/6`, assets `8/8`, and the return packet ready; final-commit CI run `29534932237` and tag CI run `29535282896` are green.
 - No retrieval behavior, receipt hash, Merkle root, snapshot format, or default agent capability changed. Merkle `v2`, installer integrity, provider credential-host binding, and true dense retrieval remain isolated follow-up work.
-- The coordinator is finishing the exact-release package build/reinstall, release-commit CI, tag and GitHub assets, then production site/docs canaries before reopening any build lane.
+- GitHub assets match the recorded wheel/source hashes. Site deployment `dpl_9Xb2upPsawLoDhaco6r5CSJppvxW` and docs deployment `dpl_ckk7y9HhAg4fg2n1z67uBLJJQ8e8` are live; public package, installer, responsive browser, console, network, agent-smoke, and MCP-smoke canaries pass.
+- The publication checkpoint is clean. Keep broad swarms paused and reopen only the isolated true-dense candidate/fusion lane selected by the coordinator.
 
 Coordinator update `2026-07-16` (`v0.1.6` published and next-lane decision):
 

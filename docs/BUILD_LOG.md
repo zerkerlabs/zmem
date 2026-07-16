@@ -1,4 +1,4 @@
-## 2026-07-16 - v0.1.7 runtime and claim-integrity candidate
+## 2026-07-16 - v0.1.7 runtime and claim-integrity release
 
 Built locally:
 
@@ -19,6 +19,13 @@ Evidence:
 Release boundary:
 
 - This release does not change retrieval ranking, receipt hashes, Merkle roots, snapshot formats, or default agent capabilities. Merkle `v2`, installer integrity, provider credential-host binding, and true dense retrieval remain separate reviewed work.
+
+Publication:
+
+- Published `v0.1.7` from `5b1cf0f05689143a3905fb2337807f4c60a191ea` at `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.7`.
+- Final-commit CI run `29534932237` and tag CI run `29535282896` passed every Python 3.10/3.11/3.12, ActiveGraph, site, docs, and release-smoke job.
+- GitHub records the attached wheel and source distribution with the same SHA-256 digests as the final merged-source build. A clean public wheel download reports `zmem 0.1.7` and passes eval `11/11`.
+- Promoted site deployment `dpl_9Xb2upPsawLoDhaco6r5CSJppvxW` and docs deployment `dpl_ckk7y9HhAg4fg2n1z67uBLJJQ8e8`. Public HTTP, deep-link, desktop/tablet/mobile, console, network, raw-installer, agent-smoke, and MCP-smoke canaries pass.
 
 ## 2026-07-16 - v0.1.6 integrity and operator hardening release
 

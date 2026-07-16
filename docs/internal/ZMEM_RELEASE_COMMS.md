@@ -1,6 +1,6 @@
 # ZMem Release Comms
 
-## 2026-07-16 - v0.1.7 runtime and claim-integrity candidate
+## 2026-07-16 - v0.1.7 runtime and claim-integrity publication
 
 Audience: internal Zerker product, engineering, security review, and release coordination.
 
@@ -8,7 +8,7 @@ Audience: internal Zerker product, engineering, security review, and release coo
 
 The release intentionally preserves `binary-sha256-v1`. The real compatibility weakness is duplicate-last leaf-count ambiguity, not a demonstrated variable-boundary collision between fixed-width receipt hashes. Merkle `v2` requires per-receipt algorithm dispatch, legacy fixtures, mixed-algorithm verification, and no historical rewrite. Installer integrity and provider credential-host binding are also deferred as separate security slices.
 
-PR `#6` merged at `9f3996f` with every remote check green, and the versioned release commit merged at `5831d85`. The clean merged-source wheel reports `zmem 0.1.7`, passes eval `11/11`, and hashes to `sha256:d8a3fdba...`; the source distribution hashes to `sha256:8a710295...`. Final-commit CI, tag, GitHub assets, and production site/docs canaries remain before publication is complete.
+PR `#6` merged at `9f3996f` with every remote check green, and the versioned release commit merged at `5831d85`. `v0.1.7` is published from `5b1cf0f05689143a3905fb2337807f4c60a191ea`; final-commit CI run `29534932237` and tag CI run `29535282896` passed every job. GitHub assets match wheel `sha256:d8a3fdba...` and source distribution `sha256:8a710295...`. Production deployments `dpl_9Xb2upPsawLoDhaco6r5CSJppvxW` and `dpl_ckk7y9HhAg4fg2n1z67uBLJJQ8e8` are live at `zmem.sh` and `docs.zmem.sh`, and public package, raw-installer, responsive browser, console, network, agent-smoke, and MCP-smoke canaries pass.
 
 ## 2026-07-16 - v0.1.6 publication and independent review boundary
 

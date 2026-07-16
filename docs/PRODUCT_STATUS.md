@@ -4,9 +4,9 @@
 
 Zerker Memory is a functional open-source, local-first alpha with a public site, tagged releases, and a verified local proof path.
 
-Current published release: `v0.1.6` at `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.6`.
+Current published release: `v0.1.7` at `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.7`.
 
-Current release candidate: `v0.1.7`, packaging bounded runtime, MCP, provider-boundary, and benchmark-claim hardening.
+The release packages bounded runtime, MCP, provider-boundary, and benchmark-claim hardening while preserving retrieval, receipt, Merkle, snapshot, and default agent-capability compatibility.
 
 It is ready for:
 
