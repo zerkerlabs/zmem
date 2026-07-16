@@ -112,6 +112,24 @@ from zerker_memory.store import MemoryStore
 
 
 class CliOnboardingTest(unittest.TestCase):
+    def test_cli_expands_user_paths(self):
+        with tempfile.TemporaryDirectory() as home, patch.dict(os.environ, {"HOME": home}):
+            args = build_parser().parse_args(
+                [
+                    "--db",
+                    "~/memory.sqlite",
+                    "snapshot",
+                    "verify",
+                    "~/snapshot.json",
+                    "--out",
+                    "~/verified.json",
+                ]
+            )
+
+        self.assertEqual(args.db, Path(home) / "memory.sqlite")
+        self.assertEqual(args.snapshot_path, Path(home) / "snapshot.json")
+        self.assertEqual(args.out, Path(home) / "verified.json")
+
     def test_inject_and_why_accept_compact_summary_flags(self):
         inject = build_parser().parse_args(["inject", "continue release", "--agent", "codex", "--summary-only"])
         why = build_parser().parse_args(["why", "act_123", "--summary"])

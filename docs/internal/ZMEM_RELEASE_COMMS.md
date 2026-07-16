@@ -1,5 +1,17 @@
 # ZMem Release Comms
 
+## 2026-07-16 - v0.1.6 candidate and independent review boundary
+
+Audience: internal Zerker product, engineering, security review, and release coordination.
+
+The coherent candidate combines the three post-`v0.1.5` feature commits with four bounded release hardening fixes: serialized event-chain appends, consistent `~` expansion, strict MCP boolean parsing, and corrected public dependency/copy surfaces. Local Python, ActiveGraph, strict release smoke, all five benchmark verifiers, package reinstall, site, docs, and dependency checks are green. Candidate artifacts are wheel `sha256:260633e0...` and source distribution `sha256:579cb7be...`; remote CI, publication, and production canary are the remaining gates.
+
+The external review was useful but mixed real defects with incorrect trust-boundary assumptions. Search, provider calls, snapshot/restore, and lifecycle mutation tools are operator-profile capabilities, not default agent-profile tools. Direct `MemoryStore` methods are in-process library primitives; the current interface boundary is the MCP profile, not multi-user authentication.
+
+One cryptographic issue is real and intentionally deferred: the current duplicate-last Merkle tree cannot distinguish `[a,b,c]` from `[a,b,c,c]`. A safe fix is not an unversioned hash tweak. The follow-up must define a versioned root with leaf/node domain separation and explicit leaf-count or shape binding, continue verifying legacy `binary-sha256-v1` receipts, and document migration before implementation.
+
+After `v0.1.6`, give the reviewer a clean tag and a read-only adversarial brief. Ask it to reproduce the fixed concurrency/path/boolean cases, reassess every remaining finding against agent/operator/in-process boundaries, and pressure-test the Merkle `v2` design. Do not let that review edit the same worktree while the dense retrieval lane is active.
+
 ## 2026-07-16 - BEAM 1M/10M scale checkpoint
 
 Audience: internal Zerker product, engineering, and release coordination.

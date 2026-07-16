@@ -2,7 +2,7 @@
 
 All notable Zerker Memory alpha changes are summarized here.
 
-## Unreleased
+## 0.1.6 - 2026-07-16
 
 ### Retrieval Quality
 
@@ -24,18 +24,30 @@ All notable Zerker Memory alpha changes are summarized here.
 - Re-ran the deterministic 227-question gate, full LoCoMo, and full LongMemEval after the index migration. All 2,713 question records preserved their answers, retrieval/injection sets, abstention outcomes, and support states; LoCoMo remains `1,220/1,986` and LongMemEval remains `386/500`.
 - Kept the scale claim narrow: the BEAM artifacts report local evidence recall of `0.15` at 1M and `0.10` at 10M with `public_benchmark_claim: false`. They prove bounded execution, source coverage, and proof integrity, not an official model-judged BEAM score or solved long-context retrieval quality.
 
+### Integrity And Operator UX
+
+- Serialized event-chain head reads and appends with SQLite's cross-process writer lock. A deterministic two-connection regression test now proves concurrent appends both survive and retain one linear `prev_event_hash` chain.
+- Expanded `~` consistently for store, CLI, MCP, policy, provider, snapshot, benchmark, workspace, and export paths instead of creating a literal `~` directory.
+- Made MCP reject non-boolean `include_quarantined` values instead of treating strings such as `"false"` as true. The capability remains operator-only; the default agent profile still cannot call `memory.search`.
+- Corrected the public proof-page provenance example to use `--source-uri`, replaced stale fixed local-preview ports with the commands that print current URLs, and removed speculative runtime language from the README.
+- Updated the site dependency lock without a framework migration. Both the production and full npm audits now report zero known vulnerabilities.
+
 ### Claim Boundaries
 
 - LoCoMo and LongMemEval values remain verified local provisional retrieval evidence, not official leaderboard rankings.
 - The transcript-neighbor rule is deliberately limited to structured transcript memories and qualified onset questions; it is not a general graph traversal or unrestricted adjacency expansion.
 - BEAM 1M/10M results are one-conversation scale diagnostics with local evidence-recall scoring, not official submissions or broad scale-quality claims.
+- This release preserves `binary-sha256-v1` so existing receipts remain verifiable. A versioned Merkle successor with domain separation and explicit leaf-count binding is a separate compatibility-sensitive migration, not a silent root change.
 
 ### Verification
 
-- `python3.11 -m unittest discover -s tests -q` (`1,246` tests; two optional ActiveGraph checks skipped in the base environment and passed separately with ActiveGraph installed)
+- `python3.11 -m unittest discover -s tests -q` (`1,250` tests; two optional ActiveGraph checks skipped in the base environment and passed separately with ActiveGraph installed)
 - `python3.11 -m zerker_memory eval` (`11/11`)
 - ActiveGraph 1.10 pack verification and `tests.test_activegraph_pack` (`7/7`)
-- Site lint/build, docs typecheck/build, strict release smoke, and all five benchmark artifact verifiers
+- Site lint/build and docs typecheck/build, with zero known npm vulnerabilities
+- Strict release smoke and all five benchmark artifact verifiers
+- Clean wheel reinstall reports `zmem 0.1.6` and passes eval `11/11`
+- Wheel `sha256:260633e0cd48fe68431f3574cb968b0d71cf642fa9853c22ea3e02d6efe5c8cb`; source distribution `sha256:579cb7beeaf255721bf65a519f473f4261f3c68aa7a5bc3986840f44afd14a6e`
 
 ## 0.1.5 - 2026-07-12
 

@@ -2,6 +2,14 @@ import Card from '@/components/Card';
 
 const updates = [
   {
+    title: 'v0.1.6 retrieval, scale, and integrity release',
+    detail: 'Transcript-neighbor recall, a runnable ActiveGraph host, BEAM 10M execution, a 13.54x indexed scale fix, serialized event-chain appends, safer path handling, and a clean web dependency audit now ship together.',
+  },
+  {
+    title: 'Concurrent proof-chain hardening',
+    detail: 'Independent SQLite writers now serialize the event-chain head before appending, and a forced-contention regression proves the resulting history remains one linear hash chain.',
+  },
+  {
     title: 'BEAM 10M scale gate',
     detail: 'A sampled official-layout 10M conversation now completes with 6.2M observed tokens, complete source-reference coverage, and a verified compact proof. A SQLite observation index made the same pathological query 13.54x faster without changing its retrieval result.',
   },

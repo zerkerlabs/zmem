@@ -106,6 +106,26 @@ class McpServerTest(unittest.TestCase):
         why_response = self.call_tool("memory.why", {"action_id": action_id})
         self.assertIn("policy_checks", why_response["result"]["content"][0]["text"])
 
+    def test_operator_search_rejects_non_boolean_quarantine_flag(self):
+        self.call_tool(
+            "memory.propose",
+            {"content": "Quarantined operator-only memory"},
+        )
+
+        response = self.call_tool(
+            "memory.search",
+            {"query": "operator-only", "include_quarantined": "false"},
+            server=self.operator_server,
+        )
+
+        self.assertEqual(response["error"]["message"], "include_quarantined must be a boolean")
+        safe_response = self.call_tool(
+            "memory.search",
+            {"query": "operator-only", "include_quarantined": False},
+            server=self.operator_server,
+        )
+        self.assertEqual(safe_response["result"]["content"][0]["text"], "[]")
+
     def test_queue_and_reject_through_mcp_tools(self):
         self.call_tool(
             "memory.propose",

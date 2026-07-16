@@ -32,12 +32,12 @@ zmem eval
 zmem ui
 ```
 
-Local preview URLs in this workspace:
+Local preview commands:
 
-- Landing: `http://127.0.0.1:8775/`
-- Console: `http://127.0.0.1:8776/`
-- Repo/docs: `http://127.0.0.1:8777/`
-- Launch proof report: `http://127.0.0.1:8777/.zerker/launch-proof/`
+- Landing: run `npm run dev --prefix site` and open the URL Vite prints.
+- Console: run `zmem ui` and open the URL it prints.
+- Docs: run `npm run dev --prefix docs` and open the URL Next.js prints.
+- Launch proof report: run `zmem release-pack --summary-only`, then open `.zerker/launch-proof/index.html`.
 
 ## Features
 
@@ -169,11 +169,7 @@ Try it:
 zmem --db .zerker/memory.sqlite ui
 ```
 
-In this preview:
-
-```text
-http://127.0.0.1:8776/
-```
+Open the local URL printed by `zmem ui`.
 
 ### Launch Proof And Release Pack
 
@@ -194,11 +190,7 @@ zmem verify-launch-assets --summary-only
 zmem verify-return-packet .zerker/launch-proof/public-verify-return-packet.tar.gz --summary-only
 ```
 
-Preview:
-
-```text
-http://127.0.0.1:8777/.zerker/launch-proof/
-```
+Open `.zerker/launch-proof/index.html` after generating the pack.
 
 ### Behavior-Tree Recovery Memory
 

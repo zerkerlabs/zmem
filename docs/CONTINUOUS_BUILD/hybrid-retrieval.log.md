@@ -1,5 +1,13 @@
 # Hybrid Retrieval Lane Log
 
+## 2026-07-16 - freeze lexical micro-rules; select real dense candidates
+
+- Decision: the verified adaptive path remains the current release baseline at LoCoMo `0.6143` and LongMemEval `0.772`, but the recent effort-to-gain curve no longer justifies another hand-written one-question lexical rescue rule.
+- Next architecture: add a real local dense candidate source independent of the FTS candidate set, then fuse lexical and dense ranks behind the existing policy, context-budget, and receipt boundary.
+- Proof requirements: receipts must record the embedding model identity and digest, configuration, source-specific candidate ranks, fusion method, and final packed set without duplicating raw memory content.
+- Gate: preserve the 227-question cohort as a regression detector while allowing candidate-set changes that are the point of the architecture. Compare full LoCoMo, LongMemEval, BEAM evidence recall, latency, tokens, and abstention only after the focused gate is understood.
+- Isolation: this becomes one explicit post-`v0.1.6` lane. Do not run it concurrently against the same files as the Merkle `v2` design or restart the old broad retrieval swarm.
+
 ## 2026-07-16 - event-head transcript neighbors recover one onset answer without context churn
 
 - Scope: added one bounded L3 support-expansion path for structured transcript onset questions after reproducing `conv-43#48`, `When did John get an ankle injury in 2023?`.

@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from . import __version__
+from .paths import expand_user_path
 from .providers import SUPPORTED_PROVIDERS, build_provider_adapter, provider_import_settings
 from .store import MemoryStore, default_db_path, default_policy_path
 
@@ -356,7 +357,7 @@ class McpServer:
             for memory in self.store.search(
                 required_str(args, "query"),
                 scope=args.get("scope"),
-                include_quarantined=bool(args.get("include_quarantined", False)),
+                include_quarantined=optional_bool(args, "include_quarantined"),
             )
         ]
 
@@ -437,12 +438,12 @@ class McpServer:
     def _snapshot(self, args: JSON) -> JSON:
         from .exporter import export_snapshot
 
-        out = Path(args["out"]) if args.get("out") else None
-        out_dir = Path(args["out_dir"]) if args.get("out_dir") else None
+        out = expand_user_path(args["out"]) if args.get("out") else None
+        out_dir = expand_user_path(args["out_dir"]) if args.get("out_dir") else None
         return export_snapshot(self.store.snapshot(), out=out, out_dir=out_dir)
 
     def _restore(self, args: JSON) -> JSON:
-        snapshot_path = Path(required_str(args, "snapshot_path"))
+        snapshot_path = expand_user_path(required_str(args, "snapshot_path"))
         return self.store.restore_snapshot(json.loads(snapshot_path.read_text(encoding="utf-8")))
 
     @staticmethod
@@ -472,6 +473,13 @@ def required_str(args: JSON, key: str) -> str:
     return value
 
 
+def optional_bool(args: JSON, key: str, *, default: bool = False) -> bool:
+    value = args.get(key, default)
+    if not isinstance(value, bool):
+        raise ValueError(f"{key} must be a boolean")
+    return value
+
+
 def build_adapter(args: JSON):
     provider = args.get("provider", "mem0")
     base_url = args.get(f"{provider}_base_url")
@@ -492,8 +500,8 @@ def run_stdio(server: McpServer) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run the Zerker Memory MCP server over stdio")
-    parser.add_argument("--db", type=Path, default=default_db_path(), help="SQLite database path")
-    parser.add_argument("--policy", type=Path, default=default_policy_path(), help="Policy config JSON path")
+    parser.add_argument("--db", type=expand_user_path, default=default_db_path(), help="SQLite database path")
+    parser.add_argument("--policy", type=expand_user_path, default=default_policy_path(), help="Policy config JSON path")
     parser.add_argument(
         "--profile",
         choices=MCP_PROFILES,

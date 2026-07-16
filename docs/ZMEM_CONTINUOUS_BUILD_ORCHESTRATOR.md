@@ -14,12 +14,12 @@ Use this language precisely:
 
 ## Current Product Truth
 
-As of 2026-07-12, the product has a published `v0.1.5` alpha release and a lane-by-lane progress board:
+As of 2026-07-16, the product has a tested `v0.1.6` release candidate and a lane-by-lane progress board:
 
 - Progress tracker: [`ZMEM_PROGRESS_TRACKER.md`](ZMEM_PROGRESS_TRACKER.md)
-- Current public release: `v0.1.5`
-- Current release tag: `v0.1.5`
-- Current unpublished lane diff: none. Broad swarms and launch oversight remain paused while one bounded L3 slice is coordinated manually.
+- Current public release: `v0.1.5` until remote `v0.1.6` CI and publication complete.
+- Current release candidate: `v0.1.6`
+- Current unpublished lane diff: the isolated release-hardening branch only. Broad swarms and launch oversight remain paused through publication.
 
 The product already has meaningful working surface:
 
@@ -51,11 +51,11 @@ Current frontier benchmark TODO, from the verified adaptive checkpoints:
 
 1. Treat adaptive LoCoMo `0.6143` and LongMemEval `0.772` as the current local provisional checkpoints, with their explicit non-leaderboard claim boundary.
 2. Keep unique run ids and isolated output directories for every run; never reuse a target while another process can touch it.
-3. Require every retrieval change to pass the deterministic 227-question zero-regression gate before any full rerun.
-4. Treat the landed transcript-neighbor checkpoint as the current L3 baseline, then reproduce one remaining LoCoMo multi-hop/open-domain stable miss without giving back temporal or abstention behavior.
+3. Keep the deterministic 227-question cohort as a safety gate, but do not require every answer to remain identical when evaluating a new retrieval architecture. Protect governance, temporal consistency, abstention, provenance, and exact-identifier behavior while requiring a meaningful full-dataset gain.
+4. Freeze new one-question lexical rules unless they fix a broad correctness class. Build true dense candidates independently of FTS, then fuse lexical and dense ranks before governance and packing.
 5. Keep the verified BEAM 100K, 500K, 1M, and 10M runs reproducible; broaden conversation coverage and add official model-judged scoring before making scale-quality claims.
 6. Keep the runnable ActiveGraph two-run host green across the supported `activegraph>=1.9,<2` range; larger traces and aggregate Treeship proof remain optional follow-ups.
-7. Add real dense embeddings and graph traversal fusion only behind same-dataset comparisons and proof artifacts.
+7. Record embedding model id/digest, content hash, index configuration, candidate ranks, and fusion output in the same proof artifacts used by the current retrieval modes.
 
 Score projections, competitor comparisons, and "official benchmark" language stay internal until reproduced with pinned datasets, commands, hashes, and receipt bundles.
 
@@ -68,6 +68,7 @@ Score projections, competitor comparisons, and "official benchmark" language sta
 - Avoid editing generated `.zerker/launch-proof/` artifacts unless the task is explicitly release-pack or proof-pack work.
 - Preserve user and automation changes. Do not reset, checkout, or delete unrelated work.
 - No broad rewrites of `zerker_memory/store.py` or `zerker_memory/cli.py` without a focused failing test first.
+- Do not add another bespoke lexical rule for a single benchmark question when an independent dense candidate source addresses the same failure class.
 - New memory behavior needs tests. Docs-only slices must say they are docs-only.
 - Every claim about benchmark quality must be backed by a reproducible command and an artifact hash or receipt path.
 - If the working tree contains uncommitted changes outside the lane, do not edit those files. Record the overlap and choose a smaller slice or stop with a status-only update.
@@ -108,9 +109,9 @@ Use this when the user is present and actively working with Codex. Do not wait h
 
 Current live-session stance:
 
-- Keep recurring swarms paused after the published `v0.1.5` checkpoint.
-- Resume one bounded L3/L6 task at a time from the progress tracker rather than waiting for cron; transcript-neighbor retrieval is landed and the isolated ActiveGraph host candidate is the current branch.
-- Require the same zero-regression gate before another full benchmark rerun.
+- Keep recurring swarms paused through `v0.1.6` publication.
+- After publication, resume one bounded dense-retrieval implementation lane and one separate proof-format design lane. Do not let them edit the same files concurrently.
+- Use the stable cohort as a safety gate and LoCoMo/LongMemEval as the quality gate for the hybrid retrieval change.
 
 ## Final Acceptance Gates
 

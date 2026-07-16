@@ -25,6 +25,7 @@ Every push or meaningful automation drop should update this file alongside:
 | `v0.1.3` | Published | `d029b99` / `v0.1.3` | Agent capability boundary, compact proof bundles, CLI summaries, and public site/docs hardening. |
 | `v0.1.4` | Published | `0ea8316` / `v0.1.4` | Deterministic retrieval, bounded morphology gains, BEAM scale adapter, and verified ActiveGraph pack/batching. |
 | `v0.1.5` | Published | `d4f6d9a` / `v0.1.5` | Bounded completion support, BEAM 500K evidence, verified ActiveGraph pre-call prompt integrity, and the simplified public hero. |
+| `v0.1.6` | Release candidate | pending release commit | Transcript-neighbor retrieval, runnable ActiveGraph host, BEAM 10M scale/index evidence, and concurrent event-chain hardening. |
 
 Current public release:
 
@@ -49,6 +50,16 @@ Current `v0.1.5` release checkpoint:
 - Published from `d4f6d9a3bd6a09a09fa579203510406edea11f6a`; GitHub Actions run `29216453125` passed every job and the release attaches both verified distributions.
 - The tested Vercel deployment `dpl_3eCbYfb2MejVCAs9U6ZvWuUWG9SK` is live at `zmem.sh`; production desktop/mobile and clean-console checks pass.
 - Broad swarms remain paused after publication.
+
+Current `v0.1.6` candidate checkpoint:
+
+- Packages the three post-`v0.1.5` commits already landed on `main`: bounded transcript-neighbor retrieval, the runnable two-run ActiveGraph host, and the BEAM 1M/10M scale plus SQLite event-index work.
+- Serializes event-chain head advancement with SQLite's cross-process writer lock and proves the chain remains linear under forced two-connection contention.
+- Expands user paths consistently and rejects non-boolean MCP quarantine flags; the default agent capability profile remains unchanged.
+- Full local verification passes: `1,250` Python tests, eval `11/11`, ActiveGraph 1.10 verification plus `7/7` integration tests, site/docs builds, and zero known npm vulnerabilities.
+- Strict fresh-workspace release smoke and all five benchmark artifact verifiers pass. A clean wheel reinstall reports `zmem 0.1.6` and passes eval `11/11`.
+- Candidate artifacts: wheel `sha256:260633e0cd48fe68431f3574cb968b0d71cf642fa9853c22ea3e02d6efe5c8cb`; source distribution `sha256:579cb7beeaf255721bf65a519f473f4261f3c68aa7a5bc3986840f44afd14a6e`.
+- The existing `binary-sha256-v1` format is unchanged for compatibility. A count-bound, domain-separated Merkle successor is tracked as a separate migration.
 
 Current unreleased L3 candidate:
 
@@ -90,13 +101,13 @@ Percentages are practical launch-grade alpha estimates, not benchmark scores.
 
 | Lane | Focus | Alpha completion | Shipped state | Next acceptance target |
 | --- | --- | ---: | --- | --- |
-| L0 Trust Ledger | Receipts, Merkle lineage, restore/export proof | 80% | Mutation/lifecycle/restore receipts and compact v2 event witnesses exist; default MCP agents cannot claim trusted write/review authority | Add compact read-only mutation-chain summary and direct snapshot-restore receipt summary |
+| L0 Trust Ledger | Receipts, Merkle lineage, restore/export proof | 82% | Mutation/lifecycle/restore receipts, compact v2 event witnesses, and serialized cross-process event appends exist; default MCP agents cannot claim trusted write/review authority | Design a domain-separated, count-bound Merkle successor with backward-compatible v1 verification |
 | L1 Temporal KG | Current/history/superseded temporal memory | 55% | `query_at`, supersession, omitted-memory envelopes, runtime temporal context | Add contradiction/abstention runtime fixture and decide when true bi-temporal graph schema is needed |
 | L2 Lifecycle Compaction | Sessions, checkpoints, snapshots, retention | 45% | Checkpoint/snapshot store contracts plus read-only CLI summaries | Add write-facing `zmem session checkpoint` or retention policy without widening scope |
-| L3 Retrieval Baseline | FTS/BM25, semantic backfill, RRF, packing | 86% | Adaptive routing plus bounded morphology, completion, and transcript-neighbor support pass the zero-regression cohort | Improve the remaining multi-hop/open-domain misses while preserving the zero-regression gate |
+| L3 Retrieval Baseline | FTS/BM25, semantic backfill, RRF, packing | 86% | Adaptive lexical routing plus bounded morphology, completion, and transcript-neighbor support are measured; the effort-to-gain curve has flattened | Add true dense candidates independently of FTS, fuse ranks, and require meaningful full-dataset gains with safety guardrails |
 | L4 Consolidation | Hierarchical summaries and job ledger | 35% | Deterministic fixture, job lifecycle, reversible summary payloads, append-only summary ledger | Source candidates from live store or expose persisted summaries through read-only CLI |
 | L5 Identity / Workspaces | Multi-agent source lineage and conflicts | 50% | Source reports, claim conflicts, resolution basis, exact-tie abstention summaries | Persist merge decisions or add repo/tool lineage descriptors |
-| L6 Benchmark Harness | LoCoMo/LongMemEval/BEAM evidence | 100% for local harness and sampled scale | Verified LoCoMo/LongMemEval evidence plus official-layout BEAM 100K, 500K, 1M, and 10M runs exist; compact artifacts verify | Add broader multi-conversation evidence and an official model-judged scoring path without weakening claim boundaries |
+| L6 Benchmark Harness | LoCoMo/LongMemEval/BEAM evidence | 100% for local harness and sampled scale | Verified LoCoMo/LongMemEval evidence plus official-layout BEAM 100K, 500K, 1M, and 10M runs exist; compact artifacts verify | Add broader evidence and an official model-judged path; do not report unjudged LLM answers as incorrect |
 | Launch Oversight | Release pack, proof evidence, public release | 100% for v0.1.5 | Public verify `6/6`, assets `8/8`, return packet ready, `v0.1.5` published | Keep automation paused; repeat the gate only for the next release |
 | Website / Docs | Landing, proof page, docs, changelog | 100% for v0.1.5 | `Agent memory you can trust`, current benchmark/BEAM/ActiveGraph facts, dedicated CI gates, and responsive QA | Keep factual surfaces aligned as retrieval evidence changes |
 | ActiveGraph Integration | Event substrate and compact traces | 100% | The real pack loads, persists events, batches traces, and ships a runnable two-run host with recorded/sent prompt equality | Keep larger selected-mode traces and aggregate Treeship artifacts as optional follow-ups |
@@ -381,7 +392,8 @@ Every release tag should include:
 
 ## Current Highest-Leverage Next Move
 
-1. Keep benchmark runs in isolated output directories and on supported Python 3.10+ runtimes.
-2. Treat the verified deterministic adaptive route plus bounded morphology, completion, and transcript-neighbor support as the regression-safe path: the latest checkpoints are LoCoMo `0.6143` and LongMemEval `0.772`.
-3. Treat the landed transcript-neighbor checkpoint as the current L3 baseline; the full LoCoMo delta is one gain, zero losses, and one changed retrieval context.
-4. Treat BEAM sampled-scale execution as complete but quality as open: broaden conversation coverage and add official model-judged scoring while keeping the current `public_benchmark_claim: false` boundary.
+1. Publish the coherent `v0.1.6` candidate: transcript-neighbor retrieval, the runnable ActiveGraph host, BEAM scale indexing, serialized event-chain appends, user-path expansion, strict MCP booleans, and synchronized public surfaces.
+2. Freeze new one-question lexical rescue rules. Keep the `160/227` stable cohort as a regression gate, but do not require architectural retrieval changes to reproduce byte-identical candidate sets.
+3. Build a real local dense candidate source that is independent of FTS, then fuse dense and lexical candidates behind the existing policy, packing, and receipt boundary. Record the model, model digest, configuration, candidate-source ranks, and fusion result.
+4. Design Merkle `v2` as a separate compatibility project with leaf/node domain separation, explicit leaf-count or tree-shape binding, legacy `binary-sha256-v1` verification, and a migration story. Do not silently reinterpret existing roots.
+5. Keep BEAM quality and model-judged benchmark scoring open, with `public_benchmark_claim: false` until the scoring contract is implemented and independently reproducible.

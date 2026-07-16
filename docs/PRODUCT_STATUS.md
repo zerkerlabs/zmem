@@ -4,7 +4,7 @@
 
 Zerker Memory is a functional open-source, local-first alpha with a public site, tagged releases, and a verified local proof path.
 
-Current public release: `v0.1.5`.
+Current release candidate: `v0.1.6`. Current published release: `v0.1.5` until the candidate tag and artifacts pass remote CI.
 
 It is ready for:
 
@@ -28,15 +28,16 @@ Product signal note: the current wedge is validated by builder demand for local,
 
 ## Not Built Yet, In Priority Order
 
-1. Retrieval quality beyond the current adaptive route: broader multi-hop and open-domain support after the bounded completion and transcript-neighbor gains.
-2. Real dense embeddings plus graph traversal fusion; current pseudo modes are measured local baselines, not vector retrieval.
+1. True local dense candidate generation plus FTS fusion; the current provider embedding path reranks lexical candidates and is not yet independent semantic recall.
+2. A versioned Merkle successor with domain separation, explicit leaf-count binding, legacy `binary-sha256-v1` verification, and a tested migration path.
 3. An official model-judged BEAM submission path plus broader multi-conversation 1M and 10M coverage; the first isolated runs are complete.
-4. Hosted or team review console: shared queue, roles, approvals, retention controls, and audit export beyond the current local console.
-5. Hardened integrations beyond local MCP and ActiveGraph for Mem0, Zep/Graphiti, Letta, LangMem, Cognee, and other agent frameworks.
-6. Memory quality layer: usage reinforcement, decay, live consolidation, compression thresholds, and curation policy templates.
-7. Shared memory and swarm coordination: team-scoped stores, conflict policy, permissions, collective receipts, and multi-agent handoff workflows.
-8. Enterprise hardening: tenant isolation, customer-managed keys, policy packs, SSO, audit retention, and VPC/on-prem guides.
-9. Package-registry publishing and a hosted recovery-memory control plane.
+4. Retrieval quality beyond the current adaptive route, using broad hybrid improvements instead of more one-question lexical rules.
+5. Hosted or team review console: shared queue, roles, approvals, retention controls, and audit export beyond the current local console.
+6. Hardened integrations beyond local MCP and ActiveGraph for Mem0, Zep/Graphiti, Letta, LangMem, Cognee, and other agent frameworks.
+7. Memory quality layer: usage reinforcement, decay, live consolidation, compression thresholds, and curation policy templates.
+8. Shared memory and swarm coordination: team-scoped stores, conflict policy, permissions, collective receipts, and multi-agent handoff workflows.
+9. Enterprise hardening: tenant isolation, customer-managed keys, policy packs, SSO, audit retention, and VPC/on-prem guides.
+10. Package-registry publishing and a hosted recovery-memory control plane.
 
 ## Functional Today
 
@@ -88,6 +89,7 @@ Product signal note: the current wedge is validated by builder demand for local,
 - JSON policy configuration for trust, authority, and deny labels.
 - Lineage and revocation propagation.
 - Merkle event log.
+- Cross-process event appends acquire SQLite's writer lock before reading and advancing the chain head.
 - Action receipts and `why`.
 - Compact v2 receipt bundles with supporting-event Merkle witnesses and backward-compatible v1 verification.
 - Bundle verification now enforces proof metadata consistency before Treeship export.

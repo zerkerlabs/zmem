@@ -5,6 +5,15 @@ This is the short orchestration dashboard for Zerker Memory. Every autonomous bu
 ## Release Coordination
 `2026-07-16`
 
+- `v0.1.6` is the current local candidate. It packages the three post-`v0.1.5` feature commits plus bounded integrity/operator hardening; `v0.1.5` remains the latest public release until remote CI, tag, artifacts, and live-site verification complete.
+- Event-chain appends now acquire SQLite's cross-process writer lock before reading and advancing the chain head when no transaction is already active. A deterministic two-connection contention test proves both writes survive and remain linked in sequence.
+- CLI, MCP, store, policy, and Treeship configuration paths now expand `~`; MCP boolean inputs reject strings such as `"false"` instead of treating them as truthy.
+- Public code samples now use the real `--source-uri` interface, stale fixed preview ports are removed, speculative runtime copy is gone, and site/docs dependency audits are clean.
+- The existing `binary-sha256-v1` Merkle contract is intentionally unchanged in this release. A domain-separated, shape-bound `v2` requires explicit versioning plus legacy verification and is tracked as a separate L0 project.
+- Full local Python verification passes `1,250` tests with two expected optional skips; eval passes `11/11`; ActiveGraph `1.10` pack verification and all seven integration tests pass; strict fresh-workspace release smoke and all five benchmark artifact verifiers pass.
+- The clean `0.1.6` wheel reinstall reports `zmem 0.1.6` and passes eval `11/11`. Candidate artifacts are wheel `sha256:260633e0cd48fe68431f3574cb968b0d71cf642fa9853c22ea3e02d6efe5c8cb` and source distribution `sha256:579cb7beeaf255721bf65a519f473f4261f3c68aa7a5bc3986840f44afd14a6e`.
+- Remote CI, publication, and production canary remain the release gates.
+- After publication, do not resume broad recurring swarms. The next implementation lane is true local dense candidate generation and lexical/dense fusion; an independent reviewer should re-test `v0.1.6` and separately pressure-test the Merkle `v2` migration design.
 - The clean public checkpoint remains `v0.1.5` at `d4f6d9a3bd6a09a09fa579203510406edea11f6a`; all recurring swarms remain paused.
 - Bounded transcript-neighbor retrieval landed on `main` through PR `#1` at `6ffc4a1` after both GitHub workflow runs passed. The stable gate is `160/227`, full adaptive LoCoMo is `1,220/1,986` (`0.6143`), and LongMemEval remains `386/500` (`0.772`).
 - The runnable ActiveGraph host landed through PR `#2` at `fbca687`. Local ActiveGraph 1.10 verification passes: installed-pack discovery, the two-run host, all seven integration tests, causal event linkage, recall receipt attachment, provider/recorded prompt equality, and the memory-derived answer.

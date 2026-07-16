@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
 
+from .paths import expand_user_path
 from .policy import POLICY_ENGINE, authority_at_least, decide_memory, load_policy_config, max_authority
 from .retrieval_providers import (
     embed_texts,
@@ -8834,10 +8835,11 @@ class MemoryStore:
         treeship_config_path: Path | None = None,
         treeship_strict: bool | None = None,
     ):
-        self.db_path = db_path or default_db_path()
-        self.policy_path = policy_path
+        self.db_path = expand_user_path(db_path or default_db_path())
+        self.policy_path = expand_user_path(policy_path) if policy_path is not None else None
         self.treeship_auto_sign = _env_flag("ZMEM_TREESHIP_AUTO_SIGN") if treeship_auto_sign is None else treeship_auto_sign
-        self.treeship_config_path = treeship_config_path or _env_path("ZMEM_TREESHIP_CONFIG")
+        resolved_treeship_config = treeship_config_path or _env_path("ZMEM_TREESHIP_CONFIG")
+        self.treeship_config_path = expand_user_path(resolved_treeship_config) if resolved_treeship_config is not None else None
         self.treeship_strict = _env_flag("ZMEM_TREESHIP_STRICT") if treeship_strict is None else treeship_strict
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         if self.db_path.parent.name == ".zerker":
@@ -15610,6 +15612,9 @@ class MemoryStore:
         action_id: str | None = None,
         created_at: str | None = None,
     ) -> dict[str, Any]:
+        # Read and advance the chain head while holding SQLite's cross-process writer lock.
+        if not self.conn.in_transaction:
+            self.conn.execute("BEGIN IMMEDIATE")
         prev_row = self.conn.execute("SELECT event_hash, merkle_root FROM events ORDER BY seq DESC LIMIT 1").fetchone()
         prev_hash = prev_row["event_hash"] if prev_row else sha256_text("genesis")
         prior_merkle_root = prev_row["merkle_root"] if prev_row else merkle_root([])
