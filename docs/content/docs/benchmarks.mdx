@@ -15,13 +15,15 @@ ZMem has a verified four-mode baseline over the same `1,986` questions, SHA-pinn
 | `fts-multihop` | `0.6067` | `425.8` | `0.6219` | `0.0780` | `0.6168` | `0.1667` | `1.0000` |
 | `pseudo-embedding` | `0.5967` | `536.0` | `0.6005` | `0.0709` | `0.6293` | `0.1250` | `1.0000` |
 | `pseudo-embedding-rerank` | `0.5967` | `536.0` | `0.6005` | `0.0709` | `0.6293` | `0.1250` | `1.0000` |
-| `fts-adaptive` | `0.6138` | `533.3` | `0.6290` | `0.0745` | `0.6417` | `0.1771` | `1.0000` |
+| `fts-adaptive` | `0.6143` | `533.3` | `0.6290` | `0.0780` | `0.6417` | `0.1771` | `1.0000` |
 
 Always-on `fts-multihop` improved overall accuracy by `0.0101` and reduced mean query tokens by `20.6%` relative to `fts`, but it gained `98` questions and lost `78`, including a net four-question temporal regression. The first conservative adaptive checkpoint gained `29` and lost `1` against FTS.
 
 The v0.1.4 morphology follow-up adds only regular inflection matches behind a two-exact-anchor and two-match-gain gate. It passed the stable 227-question cohort at `158/227` versus `156/227`, then improved full adaptive LoCoMo from `1,213` to `1,218` correct with five gains and zero losses. Three gains are single-hop and two are temporal. Mean query tokens moved from about `532.8` to `533.3`.
 
 The next completion-support checkpoint bridges one already-retrieved subject/object nucleus to at most one paraphrased completion fact. It moved the stable cohort from `158/227` to `159/227` and full adaptive LoCoMo from `1,218` to `1,219` correct, with one gain and zero losses in each comparison. LongMemEval remained `386/500`. The rule and selected support are recorded in the retrieval receipt under `zerker.support_expansion.v1`.
+
+The transcript-neighbor checkpoint adds one narrower bridge for structured onset questions. It requires an exact event head in both memories, the same speaker, transcript session, and timestamp, and an earlier turn no more than two positions away. It moved the stable cohort from `159/227` to `160/227` and full adaptive LoCoMo from `1,219` to `1,220` correct. Exactly one answer and one retrieval context changed, there were zero losses, and LongMemEval remained retrieval-identical at `386/500`. This is bounded transcript support, not unrestricted adjacency or general graph traversal.
 
 Pseudo-embedding and pseudo-rerank match plain FTS on every scored category and add no measured quality on this deterministic local path. The baseline matrix/comparison hashes are `9f8b77ca...` and `18cdca15...`; the adaptive follow-up hashes are `7e8825aa...` and `3bcd5d22...`. Both use conversation-bounded ephemeral stores and leave zero SQLite artifacts.
 

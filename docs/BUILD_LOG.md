@@ -1,3 +1,24 @@
+## 2026-07-16 - Bounded transcript-neighbor support
+
+Built locally:
+
+- Added one receipt-visible transcript-neighbor support rule for qualified `When did <subject> get/have/suffer <event>?` onset questions.
+- The rule requires a retrieved same-speaker transcript nucleus, the exact event head in both memories, the same transcript session and timestamp, an earlier support turn within distance two, and adds at most one candidate.
+- Rejected broader versions during the gate: bidirectional adjacency changed nine contexts, and direction-only adjacency still changed six. The final event-head version changes only the intended ankle-injury question.
+
+Evidence:
+
+- Stable LoCoMo cohort: `160/227` versus `159/227`, one multi-hop gain, zero losses, one changed answer, one changed retrieval context, and `+17` total query tokens. Result hash `ec83cfdfef06d2ba5184d762333139276b1358393f59439e6b8edc248f6c7725`; aggregate root `051f11cbb33270de779057c3a3c7ed38fc8dea9f9c7e21fdaaa73692dc264279`.
+- Full local adaptive LoCoMo: `1,220/1,986` (`0.6143001007`) versus `1,219/1,986`, with the same one gain, zero losses, one changed retrieval context, and `+17` total query tokens. Result hash `308a492af9f2cc9333b9a5112716eed2ec9993d03bd640da3c1c7b03b8f2ee5d`; aggregate root `5cf6a6605ec01c1aba38b87fc5aa7b777927407ad5b1308856f548c763cda727`.
+- Full local adaptive LongMemEval: unchanged at `386/500` (`0.772`) with zero changed answers, retrieval ids, or tokens. Result hash `e81b886c0cbb99300f08632afd26d773de849320538ab454f193fe5ca2e1bd9d`; aggregate root `cea5a1abacd767e1dbe1dee6cac944759cbb9ea18cc5df17a7fd605e2e538553`.
+- Focused transcript-neighbor tests, `tests.test_store` (`351` tests), `tests.test_runner` (`172` tests), `tests.test_policy` (`7` tests), the full suite (`1,244` tests, one skip), eval (`11/11`), and all three benchmark artifact verifiers pass.
+- Public surfaces pass `site` lint/build plus `docs` typecheck/build after the benchmark and changelog facts were synchronized.
+- Release smoke and `zmem status --summary-only` pass with workspace, proof, strict publish, operator packet, public verification, launch assets, and return packet all ready.
+
+Claim boundary:
+
+- These values are provisional local retrieval evidence. The rule covers structured transcript onset support only and does not claim general conversational graph reasoning.
+
 ## 2026-07-12 - Completion support, BEAM 500K, and ActiveGraph pre-call integrity
 
 Shipped locally:

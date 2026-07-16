@@ -1,5 +1,14 @@
 # Benchmark Lane Log
 
+## 2026-07-16 - transcript-neighbor zero-regression evidence
+
+- Stable cohort: `160/227` versus `159/227`, one multi-hop gain, zero losses, one changed retrieval context, and `+17` query tokens. Result hash `ec83cfdf...`; verification `ok`.
+- Full adaptive LoCoMo: `1,220/1,986` (`0.6143`) versus `1,219/1,986`, with the same one gain, zero losses, and one changed retrieval context. Result hash `308a492a...`; verification `ok`.
+- Full adaptive LongMemEval: unchanged at `386/500` (`0.772`), with zero changed answers, retrieval ids, or tokens. Result hash `e81b886c...`; verification `ok`.
+- All runs used pinned local datasets, seed `42`, `fts-adaptive`, compact artifacts, unique run ids, and isolated output directories.
+- Claim boundary: local provisional retrieval-recall evidence only, not official leaderboard scoring.
+- Next safe benchmark: isolated BEAM 1M, followed by 10M only if storage and runtime remain bounded.
+
 ## 2026-07-12 - completion support and isolated BEAM 500K
 
 - Added one bounded completion-support bridge requiring a retrieved same-subject/object nucleus and an explicit completion synonym. It adds at most one support candidate and records the decision in the receipt.

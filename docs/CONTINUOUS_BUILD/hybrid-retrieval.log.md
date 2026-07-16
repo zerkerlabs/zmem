@@ -1,5 +1,15 @@
 # Hybrid Retrieval Lane Log
 
+## 2026-07-16 - event-head transcript neighbors recover one onset answer without context churn
+
+- Scope: added one bounded L3 support-expansion path for structured transcript onset questions after reproducing `conv-43#48`, `When did John get an ankle injury in 2023?`.
+- Behavior: the rule requires a retrieved same-speaker nucleus, the exact event head in both memories, the same transcript session and timestamp, an earlier support turn within distance two, eligible fallback/semantic search, at least two event anchors, and a one-candidate cap. The receipt records every gate under `zerker.support_expansion.v1`.
+- Rejected variants: the first bidirectional neighbor rule changed nine stable retrieval contexts. Requiring earlier same-timestamp support reduced that to six. Requiring the exact event head removed the remaining five qualifier-only decoys, leaving one intended context change.
+- Evidence: stable gate `160/227` versus `159/227`, one gain and zero losses; full LoCoMo `1,220/1,986` versus `1,219/1,986`, one gain and zero losses; LongMemEval `386/500` with zero changed decisions or retrieval ids. Result hashes: stable `ec83cfdf...`, LoCoMo `308a492a...`, LongMemEval `e81b886c...`.
+- Tests: three focused transcript-neighbor tests pass; `tests.test_store` (`351`), `tests.test_runner` (`172`), `tests.test_policy` (`7`), the full suite (`1,244`, one skip), eval (`11/11`), all three benchmark verifiers, site lint/build, and docs typecheck/build pass.
+- Boundary: this is structured transcript support, not unrestricted adjacency or graph expansion. It changes no SQLite schema or public search return shape.
+- Next safe slice: land this isolated branch, then move L6 to BEAM 1M or add the runnable ActiveGraph host example before selecting another retrieval miss.
+
 ## 2026-07-06T13:01:58Z - target-history pair-fit budgets now lock the no-decoy packing boundary
 
 - Scope: shipped one bounded L3 local-first regression-lock slice that closes the queued `target_history_support_preferred_v1` overflow question without widening retrieval or packing behavior.

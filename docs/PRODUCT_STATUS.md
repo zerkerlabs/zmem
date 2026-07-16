@@ -28,7 +28,7 @@ Product signal note: the current wedge is validated by builder demand for local,
 
 ## Not Built Yet, In Priority Order
 
-1. Retrieval quality beyond the current adaptive route: stronger multi-hop and open-domain support expansion under the zero-regression gate.
+1. Retrieval quality beyond the current adaptive route: broader multi-hop and open-domain support after the bounded completion and transcript-neighbor gains.
 2. Real dense embeddings plus graph traversal fusion; current pseudo modes are measured local baselines, not vector retrieval.
 3. Isolated BEAM 1M and 10M scale runs plus any official model-judged submission path.
 4. A runnable application-level ActiveGraph host example around the verified pre-call wrapper.
@@ -42,7 +42,7 @@ Product signal note: the current wedge is validated by builder demand for local,
 ## Functional Today
 
 - CLI.
-- Deterministic adaptive retrieval with receipt-visible routing, packing, semantic rescue, conservative regular-inflection evidence, and bounded completion support.
+- Deterministic adaptive retrieval with receipt-visible routing, packing, semantic rescue, conservative regular-inflection evidence, bounded completion support, and exact-event-head transcript-neighbor support.
 - Verified local LoCoMo and LongMemEval matrices with explicit provisional claim boundaries.
 - BEAM official-layout adapter across 100K, 500K, 1M, and 10M buckets, with verified 100K and 500K scale evidence.
 - Real ActiveGraph 1.9 pack discovery/loading, event persistence, a pre-call wrapper with recorded/sent prompt equality, and a batched compact trace runner.
@@ -184,7 +184,7 @@ Agent memory can be local-first, governed before injection, explainable after ac
 
 ## Next Production Gaps
 
-1. Multi-hop/open-domain retrieval improvements under the zero-regression gate.
+1. Additional multi-hop/open-domain retrieval improvements under the zero-regression gate.
 2. Dense vector and temporal graph fusion.
 3. BEAM 1M and 10M evidence plus official scoring paths.
 4. ActiveGraph runnable host example and broader application integration.

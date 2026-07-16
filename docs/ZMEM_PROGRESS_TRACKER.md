@@ -1,6 +1,6 @@
 # ZMem Progress Tracker
 
-Last updated: 2026-07-12
+Last updated: 2026-07-16
 
 This is the shared progress board for ZMem release and frontier work. It turns the
 continuous-build lanes into a checkpointable product plan: what is built, what is
@@ -24,15 +24,15 @@ Every push or meaningful automation drop should update this file alongside:
 | `v0.1.2` | Published | `v0.1.2` tag | Continuous swarm hardening release. CI passed on Python 3.10/3.11/3.12 plus release-smoke. |
 | `v0.1.3` | Published | `d029b99` / `v0.1.3` | Agent capability boundary, compact proof bundles, CLI summaries, and public site/docs hardening. |
 | `v0.1.4` | Published | `0ea8316` / `v0.1.4` | Deterministic retrieval, bounded morphology gains, BEAM scale adapter, and verified ActiveGraph pack/batching. |
-| `v0.1.5` | Release candidate | local release commit | Bounded completion support, BEAM 500K evidence, and verified ActiveGraph pre-call prompt integrity. |
+| `v0.1.5` | Published | `d4f6d9a` / `v0.1.5` | Bounded completion support, BEAM 500K evidence, verified ActiveGraph pre-call prompt integrity, and the simplified public hero. |
 
 Current public release:
 
-- GitHub: `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.4`
+- GitHub: `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.5`
 - Site: `https://www.zmem.sh`
 - Raw installer: `https://raw.githubusercontent.com/zerkerlabs/zmem/main/install.sh`
 
-Current `v0.1.4` release checkpoint:
+Previous `v0.1.4` release checkpoint:
 
 - Local gates pass: `1,236` tests, eval `11/11`, strict release summary, full fresh-workspace smoke, site/docs builds, and production dependency audits.
 - The `0.1.4` wheel and source distribution build; the wheel reinstalls and reports `zmem 0.1.4`.
@@ -40,13 +40,21 @@ Current `v0.1.4` release checkpoint:
 - Published from `0ea8316062af6123921e902dee2a3a6783cd4ba2`; GitHub Actions run `29165187978` passed every job.
 - GitHub release includes the wheel (`sha256:c0be1038...`) and source distribution (`sha256:6b6f04b5...`). Swarms remain paused.
 
-Current `v0.1.5` candidate checkpoint:
+Current `v0.1.5` release checkpoint:
 
 - Full Python suite passes: `1,241` tests; eval passes `11/11`.
 - Stable/full retrieval evidence passes the zero-regression gate at `159/227` and `1,219/1,986`; LongMemEval remains `386/500`.
 - ActiveGraph 1.9 pre-call prompt integrity, site lint/build, docs typecheck/build, and strict release smoke pass.
-- Wheel `sha256:0d7f8bfc...` and source distribution `sha256:c96d8a7b...` build; clean wheel reinstall reports `zmem 0.1.5` and passes eval.
-- Not published or tagged yet. Broad swarms remain paused through release review.
+- Wheel `sha256:fb97ea0...` and source distribution `sha256:2a3ff46a...` build; clean wheel reinstall reports `zmem 0.1.5` and passes eval.
+- Published from `d4f6d9a3bd6a09a09fa579203510406edea11f6a`; GitHub Actions run `29216453125` passed every job and the release attaches both verified distributions.
+- The tested Vercel deployment `dpl_3eCbYfb2MejVCAs9U6ZvWuUWG9SK` is live at `zmem.sh`; production desktop/mobile and clean-console checks pass.
+- Broad swarms remain paused after publication.
+
+Current unreleased L3 candidate:
+
+- Bounded transcript-neighbor onset support passes the stable gate at `160/227` versus `159/227`, with one gain, zero losses, one changed retrieval context, and `+17` query tokens.
+- Full adaptive LoCoMo reaches `1,220/1,986` (`0.6143`) versus `1,219/1,986`; LongMemEval remains exactly unchanged at `386/500` (`0.772`).
+- Verified result hashes: stable `ec83cfdf...`, full LoCoMo `308a492a...`, LongMemEval `e81b886c...`.
 
 Current `v0.1.3` release checkpoint:
 
@@ -78,12 +86,12 @@ Percentages are practical launch-grade alpha estimates, not benchmark scores.
 | L0 Trust Ledger | Receipts, Merkle lineage, restore/export proof | 80% | Mutation/lifecycle/restore receipts and compact v2 event witnesses exist; default MCP agents cannot claim trusted write/review authority | Add compact read-only mutation-chain summary and direct snapshot-restore receipt summary |
 | L1 Temporal KG | Current/history/superseded temporal memory | 55% | `query_at`, supersession, omitted-memory envelopes, runtime temporal context | Add contradiction/abstention runtime fixture and decide when true bi-temporal graph schema is needed |
 | L2 Lifecycle Compaction | Sessions, checkpoints, snapshots, retention | 45% | Checkpoint/snapshot store contracts plus read-only CLI summaries | Add write-facing `zmem session checkpoint` or retention policy without widening scope |
-| L3 Retrieval Baseline | FTS/BM25, semantic backfill, RRF, packing | 84% | Adaptive routing, conservative morphology, and one bounded completion-support bridge all pass the zero-regression cohort | Improve the remaining multi-hop/open-domain misses while preserving the zero-regression gate |
+| L3 Retrieval Baseline | FTS/BM25, semantic backfill, RRF, packing | 86% | Adaptive routing plus bounded morphology, completion, and transcript-neighbor support pass the zero-regression cohort | Improve the remaining multi-hop/open-domain misses while preserving the zero-regression gate |
 | L4 Consolidation | Hierarchical summaries and job ledger | 35% | Deterministic fixture, job lifecycle, reversible summary payloads, append-only summary ledger | Source candidates from live store or expose persisted summaries through read-only CLI |
 | L5 Identity / Workspaces | Multi-agent source lineage and conflicts | 50% | Source reports, claim conflicts, resolution basis, exact-tie abstention summaries | Persist merge decisions or add repo/tool lineage descriptors |
 | L6 Benchmark Harness | LoCoMo/LongMemEval/BEAM evidence | 96% | Verified LoCoMo/LongMemEval evidence plus official-layout BEAM 100K and 500K runs exist; compact artifacts verify | Expand BEAM to isolated 1M and 10M runs and keep claim boundaries explicit |
-| Launch Oversight | Release pack, proof evidence, public release | 100% for v0.1.4 | Public verify `6/6`, assets `8/8`, return packet ready, `v0.1.4` published | Keep automation paused; repeat the gate only for the next release |
-| Website / Docs | Landing, proof page, docs, changelog | 100% for v0.1.4 | Agent-first copy, current benchmark/BEAM/ActiveGraph facts, dedicated CI gates, and responsive QA | Keep factual surfaces aligned as retrieval evidence changes |
+| Launch Oversight | Release pack, proof evidence, public release | 100% for v0.1.5 | Public verify `6/6`, assets `8/8`, return packet ready, `v0.1.5` published | Keep automation paused; repeat the gate only for the next release |
+| Website / Docs | Landing, proof page, docs, changelog | 100% for v0.1.5 | `Agent memory you can trust`, current benchmark/BEAM/ActiveGraph facts, dedicated CI gates, and responsive QA | Keep factual surfaces aligned as retrieval evidence changes |
 | ActiveGraph Integration | Event substrate and compact traces | 96% | A real ActiveGraph 1.9 pack loads, persists events, batches traces, and has a verified pre-call host wrapper with recorded/sent prompt equality | Add a runnable host example and run a larger selected-mode trace when useful |
 
 ## Lane Checklists
@@ -174,6 +182,8 @@ Built:
 - [x] Bounded completion-support expansion requires a retrieved subject/object nucleus and adds at most one same-subject completion fact.
 - [x] Stable gate improved from `158/227` to `159/227`; full LoCoMo improved from `1,218` to `1,219`; both comparisons have zero losses.
 - [x] Full LongMemEval remained `386/500` with zero changed decisions after completion support.
+- [x] Bounded transcript-neighbor onset support requires an exact event head, same speaker/session/timestamp, and an earlier turn within distance two.
+- [x] Transcript-neighbor evidence improves the stable gate to `160/227` and full LoCoMo to `1,220/1,986`, with one context change and zero losses; LongMemEval remains exactly unchanged.
 
 Left:
 
@@ -182,7 +192,8 @@ Left:
 - [ ] Real dense embeddings / sqlite-vec path.
 - [ ] Graph traversal fusion.
 - [ ] Abstention confidence threshold.
-- [ ] Context expansion around nucleus memories.
+- [x] Bounded context expansion around completion and structured transcript nuclei.
+- [ ] General context expansion beyond the current completion/onset contracts.
 - [ ] Query decomposition beyond the current local heuristic.
 
 ### L4 Consolidation
@@ -364,6 +375,6 @@ Every release tag should include:
 ## Current Highest-Leverage Next Move
 
 1. Keep benchmark runs in isolated output directories and on supported Python 3.10+ runtimes.
-2. Treat the verified deterministic adaptive route plus bounded morphology/completion support as the normal regression-safe path: the latest checkpoints are LoCoMo `0.6138` and LongMemEval `0.772`.
-3. Build the next L3 slice from stable misses in multi-hop and open-domain, keeping the zero-regression acceptance gate.
-4. Expand the verified BEAM 100K and 500K evidence into isolated 1M and 10M scale runs before making scale-quality claims.
+2. Treat the verified deterministic adaptive route plus bounded morphology, completion, and transcript-neighbor support as the regression-safe path: the latest checkpoints are LoCoMo `0.6143` and LongMemEval `0.772`.
+3. Land the current transcript-neighbor candidate, whose full LoCoMo delta is one gain, zero losses, and one changed retrieval context.
+4. Expand the verified BEAM 100K and 500K evidence into isolated 1M and 10M scale runs before making scale-quality claims, or add the runnable ActiveGraph host example if the larger BEAM corpus is not locally available.

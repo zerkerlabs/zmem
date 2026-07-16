@@ -3,7 +3,13 @@
 This is the short orchestration dashboard for Zerker Memory. Every autonomous build run should update this file after it updates `docs/BUILD_LOG.md`.
 
 ## Release Coordination
-`2026-07-12`
+`2026-07-16`
+
+- The clean public checkpoint remains `v0.1.5` at `d4f6d9a3bd6a09a09fa579203510406edea11f6a`; all recurring swarms remain paused.
+- The current isolated L3 candidate adds bounded transcript-neighbor support for qualified onset questions. It requires the same speaker, session, timestamp, exact event head, and an earlier turn within distance two; it adds at most one candidate and records the complete decision under `zerker.support_expansion.v1`.
+- The deterministic stable gate improved from `159/227` to `160/227` with one multi-hop gain, zero losses, exactly one changed retrieval context, and `+17` query tokens.
+- Full adaptive LoCoMo improved from `1,219/1,986` to `1,220/1,986` (`0.6143`) with the same single gain and no other context changes. Full LongMemEval stayed exactly unchanged at `386/500` (`0.772`). All three result artifacts verify locally.
+- Next coordinator choice after landing this candidate is isolated BEAM 1M evidence or the runnable ActiveGraph host example. Do not restart broad swarms while the current branch is uncommitted.
 
 - Started the `v0.1.5` candidate from the clean published `v0.1.4` checkpoint.
 - Published `v0.1.5` from `d4f6d9a3bd6a09a09fa579203510406edea11f6a`; GitHub Actions run `29216453125` passed and the release attaches the verified wheel and source distribution.
@@ -15,7 +21,7 @@ This is the short orchestration dashboard for Zerker Memory. Every autonomous bu
 - Versioned the coherent candidate as `0.1.5`. Final local gates pass: `1,241` tests, eval `11/11`, strict release smoke, site lint/build, docs typecheck/build, ActiveGraph 1.9 verification, and clean wheel reinstall.
 - Built `zerker_memory-0.1.5-py3-none-any.whl` (`sha256:fb97ea0b91e210f1342d368490b000987ae3d31493c10c81d50ca2d555bbc930`) and `zerker_memory-0.1.5.tar.gz` (`sha256:2a3ff46a4e0d1e977aeb753c23b17f5933b93e69d71a4eda8f2232ecb59b8a04`) from the final tagged source.
 - Promoted tested Vercel deployment `dpl_3eCbYfb2MejVCAs9U6ZvWuUWG9SK` to `zmem.sh`; desktop/mobile production checks pass and a fresh canary tab has no console warnings or errors.
-- Broad recurring swarms remain paused. The next active frontier slice is bounded same-conversation neighbor expansion for one reproduced LoCoMo multi-hop miss, under the same `159/227` zero-regression gate.
+- Broad recurring swarms remain paused. The bounded transcript-neighbor candidate above supersedes the previous same-conversation-neighbor target and is awaiting landing; the next selected slice is BEAM 1M evidence or a runnable ActiveGraph host example.
 
 - Published `v0.1.4` from `0ea8316062af6123921e902dee2a3a6783cd4ba2`, packaging the nine post-v0.1.3 benchmark-operation commits plus bounded retrieval, BEAM, ActiveGraph, docs, and release hardening.
 - Bounded regular-inflection rescue passed the required stable gate at `158/227` versus `156/227`, with two gains and zero regressions. The rule requires two exact anchors and two additional inflection matches.

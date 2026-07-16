@@ -39,7 +39,7 @@ const proofSteps = [
 ];
 
 const benchmarkRows = [
-  { item: 'LoCoMo adaptive route', note: '1,986 questions, 0.6138 local accuracy. A bounded completion-support bridge added one correct answer with zero regressions after the morphology checkpoint.' },
+  { item: 'LoCoMo adaptive route', note: '1,986 questions, 0.6143 local accuracy. Bounded completion and transcript-neighbor support each added one correct answer with zero regressions after the morphology checkpoint.' },
   { item: 'Always-on multi-hop', note: '0.6067 local LoCoMo accuracy. It gains 98 and loses 78 versus FTS, so it remains an explicit specialist mode.' },
   { item: 'LongMemEval', note: 'Adaptive scores 0.772. Bounded morphology added three correct answers with zero regressions; always-on multi-hop remains an explicit specialist mode.' },
   { item: 'Pseudo rerank', note: 'Matches FTS on every scored LoCoMo and LongMemEval category in the current deterministic local path.' },

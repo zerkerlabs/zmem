@@ -1,5 +1,17 @@
 # ZMem Release Comms
 
+## 2026-07-16 - transcript-neighbor retrieval candidate
+
+Audience: internal Zerker product, engineering, and release coordination.
+
+The next L3 candidate recovers one structured conversational onset answer without widening unrelated retrieval. For `When did John get an ankle injury in 2023?`, an already-retrieved same-speaker nucleus can pull in one earlier turn only when both memories share the exact event head, transcript session, and timestamp and are at most two turns apart.
+
+The narrowing process matters. Bidirectional adjacency changed nine stable contexts. Earlier same-timestamp adjacency changed six. Requiring the event head removed the five qualifier-only decoys, leaving exactly one changed retrieval context.
+
+The stable cohort moves from `159/227` to `160/227`; full adaptive LoCoMo moves from `1,219/1,986` to `1,220/1,986` (`0.6143`). Both comparisons have one multi-hop gain and zero losses. LongMemEval stays exactly unchanged at `386/500`, including answers, retrieval ids, and tokens. All three artifacts verify locally.
+
+Claim boundary: this is provisional local retrieval evidence and bounded structured-transcript support. It is not official leaderboard scoring, unrestricted conversation adjacency, or general graph traversal.
+
 ## 2026-07-12 - v0.1.5 release checkpoint
 
 Audience: internal Zerker product, engineering, and release coordination.
