@@ -25,7 +25,7 @@ Coordinator update `2026-07-16` (`v0.1.6` published and next-lane decision):
 
 - Broad recurring swarms remain paused. `v0.1.6` is published from `34b4e8aa2b41a454e2e8969576511ffd56a66027` with the three clean post-`v0.1.5` feature commits, serialized event appends, consistent user-path expansion, strict MCP booleans, and public dependency/copy cleanup.
 - Full local Python verification passes `1,250` tests with two expected optional skips; eval passes `11/11`; ActiveGraph `1.10`, strict fresh-workspace smoke, all five benchmark artifacts, site/docs, and a clean `0.1.6` wheel reinstall pass. Final-commit CI run `29524503194` and tag CI run `29524866769` are green; release assets match the recorded hashes.
-- Production deployments `dpl_9WBakHxq6DtPXF5cXVzQ1FuQjj9e` and `dpl_FWZYRG1NhwjKQCdp2MtUp6nwYMfc` are live at `zmem.sh` and `docs.zmem.sh`; desktop/mobile, console, and network canaries pass.
+- Production deployments `dpl_9WBakHxq6DtPXF5cXVzQ1FuQjj9e` and `dpl_Dp1maM9BzkJ8RAydjn3agp8P6dBr` are live at `zmem.sh` and `docs.zmem.sh`; desktop/mobile, console, and network canaries pass.
 - The external review's confirmed release blockers are fixed. Compatibility-sensitive Merkle root replacement is explicitly deferred to a versioned L0 design; the current proof format is not silently reinterpreted.
 - After release, do not restart the prior lexical micro-rule loop. Start one isolated dense-candidate/fusion lane, keep the existing policy and receipt boundary, and use a separate read-only reviewer for adversarial verification.
 

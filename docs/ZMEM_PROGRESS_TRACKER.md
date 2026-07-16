@@ -61,7 +61,7 @@ Current `v0.1.6` release checkpoint:
 - Final merged-source artifacts: wheel `sha256:f587f65227d790374512548dc253d45ae3fa414fd7cc6e31a2841f5a7791e98c`; source distribution `sha256:7a77df87c8f699bf7d4ffe95a791ace87a6e71a202db4e5787d4584aaf751062`.
 - The existing `binary-sha256-v1` format is unchanged for compatibility. A count-bound, domain-separated Merkle successor is tracked as a separate migration.
 - Published from `34b4e8aa2b41a454e2e8969576511ffd56a66027`; final-commit CI run `29524503194` and tag CI run `29524866769` passed every Python, ActiveGraph, site, docs, and release-smoke job.
-- The release attaches both distributions with matching GitHub digests. Production deployments `dpl_9WBakHxq6DtPXF5cXVzQ1FuQjj9e` and `dpl_FWZYRG1NhwjKQCdp2MtUp6nwYMfc` are live at `zmem.sh` and `docs.zmem.sh`; desktop/mobile and clean-console checks pass.
+- The release attaches both distributions with matching GitHub digests. Production deployments `dpl_9WBakHxq6DtPXF5cXVzQ1FuQjj9e` and `dpl_Dp1maM9BzkJ8RAydjn3agp8P6dBr` are live at `zmem.sh` and `docs.zmem.sh`; desktop/mobile and clean-console checks pass.
 
 Included `v0.1.6` L3 checkpoint:
 

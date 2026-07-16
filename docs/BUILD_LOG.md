@@ -26,7 +26,7 @@ Publication:
 - Published `v0.1.6` from `34b4e8aa2b41a454e2e8969576511ffd56a66027` at `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.6`.
 - Final-commit CI run `29524503194` and tag CI run `29524866769` passed every Python 3.10/3.11/3.12, ActiveGraph, site, docs, and release-smoke job.
 - The attached wheel and source distribution reproduce the recorded SHA-256 digests exactly.
-- Promoted site deployment `dpl_9WBakHxq6DtPXF5cXVzQ1FuQjj9e` and docs deployment `dpl_FWZYRG1NhwjKQCdp2MtUp6nwYMfc`; production desktop/mobile, text, console, and network checks pass.
+- Promoted site deployment `dpl_9WBakHxq6DtPXF5cXVzQ1FuQjj9e` and docs deployment `dpl_Dp1maM9BzkJ8RAydjn3agp8P6dBr`; production desktop/mobile, text, console, and network checks pass.
 
 ## 2026-07-16 - BEAM 1M/10M and SQLite retrieval scale
 
