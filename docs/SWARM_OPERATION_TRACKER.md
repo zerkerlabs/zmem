@@ -21,6 +21,13 @@ Primary mission brief:
 - Lane progress and release tracker: `docs/ZMEM_PROGRESS_TRACKER.md`
 - Lane logs: `docs/CONTINUOUS_BUILD/`
 
+Coordinator update `2026-07-16` (`v0.1.7` release candidate):
+
+- Broad recurring swarms remain paused. PR `#6` landed the bounded post-`v0.1.6` runtime, MCP, provider-boundary, and benchmark-claim hardening at `9f3996f` after every remote check passed.
+- The candidate is versioned as `0.1.7`. Local verification passes `1,260` tests with two expected optional skips, eval `11/11`, and strict release smoke with public proof `6/6`, assets `8/8`, and the return packet ready.
+- No retrieval behavior, receipt hash, Merkle root, snapshot format, or default agent capability changed. Merkle `v2`, installer integrity, provider credential-host binding, and true dense retrieval remain isolated follow-up work.
+- The coordinator is finishing the exact-release package build/reinstall, release-commit CI, tag and GitHub assets, then production site/docs canaries before reopening any build lane.
+
 Coordinator update `2026-07-16` (`v0.1.6` published and next-lane decision):
 
 - Broad recurring swarms remain paused. `v0.1.6` is published from `34b4e8aa2b41a454e2e8969576511ffd56a66027` with the three clean post-`v0.1.5` feature commits, serialized event appends, consistent user-path expansion, strict MCP booleans, and public dependency/copy cleanup.

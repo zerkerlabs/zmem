@@ -2,7 +2,7 @@
 
 All notable Zerker Memory alpha changes are summarized here.
 
-## Unreleased
+## 0.1.7 - 2026-07-16
 
 ### Runtime And MCP Hardening
 
@@ -21,6 +21,13 @@ All notable Zerker Memory alpha changes are summarized here.
 
 - Kept `binary-sha256-v1` unchanged. Its concrete compatibility weakness is duplicate-last leaf-count ambiguity; the fixed-width receipt hashes do not demonstrate the variable-boundary concatenation collision claimed in the external review.
 - Deferred Merkle v2 until legacy fixtures, per-receipt algorithm dispatch, mixed v1/v2 bundle verification, and no-rewrite migration rules are specified and tested together.
+
+### Verification
+
+- `python3 -m unittest discover -s tests -q` (`1,260` tests; two expected optional skips)
+- `python3 -m zerker_memory eval` (`11/11`)
+- Strict release smoke with public proof `6/6`, launch assets `8/8`, and the return packet ready
+- Python 3.10, 3.11, and 3.12 plus ActiveGraph, site, docs, and release-smoke CI
 
 ## 0.1.6 - 2026-07-16
 

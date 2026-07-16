@@ -1,5 +1,15 @@
 # ZMem Release Comms
 
+## 2026-07-16 - v0.1.7 runtime and claim-integrity candidate
+
+Audience: internal Zerker product, engineering, security review, and release coordination.
+
+`v0.1.7` packages the independently reproduced post-`v0.1.6` findings that could be fixed without changing ZMem's compatibility contract. Implicit run context is private and ephemeral; MCP inputs, outputs, errors, file paths, and provider connections are bounded at the operator boundary; provider governance values must be finite; and unjudged benchmark answers remain pending instead of being counted as failures.
+
+The release intentionally preserves `binary-sha256-v1`. The real compatibility weakness is duplicate-last leaf-count ambiguity, not a demonstrated variable-boundary collision between fixed-width receipt hashes. Merkle `v2` requires per-receipt algorithm dispatch, legacy fixtures, mixed-algorithm verification, and no historical rewrite. Installer integrity and provider credential-host binding are also deferred as separate security slices.
+
+PR `#6` merged at `9f3996f` with every remote check green. The exact `0.1.7` package build/reinstall, release-commit CI, tag, GitHub assets, and production site/docs canaries remain before publication is complete.
+
 ## 2026-07-16 - v0.1.6 publication and independent review boundary
 
 Audience: internal Zerker product, engineering, security review, and release coordination.
