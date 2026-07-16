@@ -933,6 +933,11 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
         default=os.environ.get("ZMEM_MCP_PROFILE", "agent"),
         help="Capability profile (default: agent)",
     )
+    mcp.add_argument(
+        "--io-root",
+        type=expand_user_path,
+        help="Root directory allowed for operator snapshot and restore paths (default: database directory)",
+    )
     mcp.set_defaults(command="mcp")
 
     return parser
@@ -1971,7 +1976,14 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "mcp":
             from .mcp import McpServer, run_stdio
 
-            run_stdio(McpServer(store, profile=args.profile))
+            run_stdio(
+                McpServer(
+                    store,
+                    profile=args.profile,
+                    io_root=args.io_root,
+                    provider_config_path=args.providers,
+                )
+            )
             return 0
     except (KeyError, ValueError) as exc:
         print_json({"ok": False, "error": str(exc)})

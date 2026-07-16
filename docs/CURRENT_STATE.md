@@ -5,6 +5,11 @@ This is the short orchestration dashboard for Zerker Memory. Every autonomous bu
 ## Release Coordination
 `2026-07-16`
 
+- Independent adversarial re-testing confirmed the `v0.1.6` path expansion, strict MCP boolean parsing, and concurrent linear event-chain fixes.
+- A bounded post-release hardening candidate is active on `codex/v0.1.7-hardening`: private ephemeral run context, MCP framing/limit/error controls, operator I/O-root confinement, config-only MCP provider connections, finite governance values, and honest pending-judge benchmark state.
+- Candidate verification passes the full `1,260`-test suite with two expected optional skips, eval `11/11`, and strict release smoke with public proof `6/6`, launch assets `8/8`, and the return packet ready. Versioning, package build/reinstall, CI, and deployment remain required before release.
+- The review and disposition are tracked in [`docs/internal/V0_1_7_HARDENING_REVIEW.md`](internal/V0_1_7_HARDENING_REVIEW.md). Supply-chain pinning and provider credential-host binding are the next security slices after this candidate lands.
+- `binary-sha256-v1` remains frozen for compatibility. The demonstrated issue is duplicate-last leaf-count ambiguity; Merkle v2 requires a reviewed versioned migration with v1 fixtures and mixed-algorithm verification.
 - `v0.1.6` is published from `34b4e8aa2b41a454e2e8969576511ffd56a66027` at `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.6`. It packages the three post-`v0.1.5` feature commits plus bounded integrity/operator hardening.
 - Event-chain appends now acquire SQLite's cross-process writer lock before reading and advancing the chain head when no transaction is already active. A deterministic two-connection contention test proves both writes survive and remain linked in sequence.
 - CLI, MCP, store, policy, and Treeship configuration paths now expand `~`; MCP boolean inputs reject strings such as `"false"` instead of treating them as truthy.

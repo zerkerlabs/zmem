@@ -198,6 +198,16 @@ class AdapterTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "provider mem0 import blocked for type: policy"):
                 provider_import_settings("mem0", config_path=path, memory_type="policy", scope="project")
 
+    def test_provider_import_settings_reject_non_finite_trust(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "providers.json"
+            config = provider_config_template()
+            config["providers"]["mem0"]["governance"]["import_trust"] = "nan"
+            path.write_text(json.dumps(config), encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "finite number"):
+                provider_import_settings("mem0", config_path=path, memory_type="semantic", scope="project")
+
     def test_provider_live_smoke_uses_live_overrides(self):
         observed: dict[str, object] = {}
 

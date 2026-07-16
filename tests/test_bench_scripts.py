@@ -93,6 +93,16 @@ class BenchScriptsTest(unittest.TestCase):
             self.assertTrue(judge_longmemeval.label_is_correct("yes"))
             self.assertFalse(judge_longmemeval.label_is_correct("incorrect"))
 
+    def test_longmemeval_judge_output_remains_non_public_until_review(self):
+        scored = judge_longmemeval.build_scored_receipt(
+            {"schema": "zerker.benchmark_receipt.v1"},
+            {"overall_accuracy": 0.75, "question_count": 4},
+        )
+
+        self.assertFalse(scored["public_benchmark_claim"])
+        self.assertEqual(scored["claim_status"], "review_required")
+        self.assertIn("not an automatic public leaderboard claim", scored["claim_boundary"])
+
     def test_llm_answerer_requires_explicit_openai_key(self):
         with patch.dict("os.environ", {}, clear=True):
             with self.assertRaisesRegex(RuntimeError, "OPENAI_API_KEY"):
