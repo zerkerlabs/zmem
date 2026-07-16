@@ -1,5 +1,15 @@
 # ZMem Release Comms
 
+## 2026-07-16 - runnable ActiveGraph host candidate
+
+Audience: internal Zerker product, engineering, and release coordination.
+
+ActiveGraph integration now has a runnable product path rather than only a verifier and code snippet. `examples/activegraph_host.py` uses no API key: the first run loads the installed pack and persists an event-backed memory, while a distinct resume run recalls the shared ZMem scope before a deterministic provider call.
+
+The command fails unless the original ActiveGraph event id survives into the memory receipt, the provider receives the memory plus a ZMem recall receipt, ActiveGraph records exactly that same prompt, and the answer comes from the recalled fact. ActiveGraph `1.10.0`, the installed-pack verifier, the command, and all seven integration tests pass locally.
+
+This completes the runnable-host acceptance item. Larger selected-mode traces and aggregate Treeship artifacts remain optional follow-ups; they are not blockers for the standalone integration.
+
 ## 2026-07-16 - transcript-neighbor retrieval candidate
 
 Audience: internal Zerker product, engineering, and release coordination.

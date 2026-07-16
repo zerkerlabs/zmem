@@ -25,6 +25,7 @@ Short version:
 - Agent setup for Codex, Claude Code, Cursor, OpenClaw, Hermes, and generic MCP clients.
 - Launch proof and release-pack artifacts for local demo proof, clean-shell public verify, screenshots/GIFs, and return-packet handoff.
 - Behavior-tree recovery memory: trace ingest, fallback explanation, and BehaviorTree.CPP/Groot2 proof export.
+- ActiveGraph pack, cross-run memory, pre-call recall, compact traces, and a runnable no-key two-run host example.
 - Provider governance scaffold for Mem0 and Zep, with external imports quarantined by default.
 
 See [CHANGELOG.md](CHANGELOG.md) for the shipped build history.

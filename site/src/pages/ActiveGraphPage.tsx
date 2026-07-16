@@ -15,7 +15,8 @@ benchmark_stages:
 
 const installCommands = `python -m pip install -e '.[activegraph]'
 activegraph pack list
-python scripts/verify_activegraph_pack.py --summary-only`;
+python scripts/verify_activegraph_pack.py --summary-only
+python examples/activegraph_host.py --summary-only`;
 
 const benchmarkCommands = `RUN_ID="activegraph-$(date -u +%Y%m%dT%H%M%SZ)"
 
@@ -62,7 +63,7 @@ const behaviorRows = [
   },
   {
     name: 'pack install check',
-    detail: 'A real ActiveGraph 1.9 test verifies loading, persistence, pre-call memory, and exact recorded-versus-sent prompt equality.',
+    detail: 'A runnable two-run host verifies loading, persistence, pre-call memory, and exact recorded-versus-sent prompt equality without an API key.',
   },
 ];
 

@@ -1,3 +1,18 @@
+## 2026-07-16 - Runnable ActiveGraph two-run host
+
+Built locally:
+
+- Added `examples/activegraph_host.py`, a no-key application host that loads the installed ZMem pack, persists an ActiveGraph `object.created` event, and recalls that memory from a distinct resume run through one explicit `ag:{session_id}` scope.
+- The command verifies the write's `caused_by_event` pointer, pre-call recall receipt, provider-bound memory context, exact equality with ActiveGraph's recorded `llm.requested` prompt, and the deterministic memory-derived answer.
+- Added direct ActiveGraph CI execution plus an integration test that runs the public command and reopens the resulting ZMem store.
+- Updated README, docs, site, changelog, product status, and the progress tracker; the completed runnable-host acceptance item moves the ActiveGraph integration lane from `96%` to `100%`, with larger traces and aggregate Treeship artifacts retained as optional follow-ups.
+
+Evidence:
+
+- `/private/tmp/zmem-activegraph-host-venv/bin/python examples/activegraph_host.py --db /private/tmp/zmem-activegraph-host-demo.sqlite --summary-only` passes on ActiveGraph `1.10.0` with distinct write/resume run ids, a persisted memory id, recall receipt id, exact recorded/provider prompt equality, and no failed checks.
+- `scripts/verify_activegraph_pack.py --summary-only` passes on ActiveGraph `1.10.0`; `tests.test_activegraph_pack` passes `7/7`, including two consecutive executions against the same session database with distinct newly written memory ids.
+- The base suite passes `1,245` tests with the two optional ActiveGraph checks skipped outside the extra environment.
+
 ## 2026-07-16 - Bounded transcript-neighbor support
 
 Built locally:

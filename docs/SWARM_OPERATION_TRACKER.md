@@ -21,7 +21,14 @@ Primary mission brief:
 - Lane progress and release tracker: `docs/ZMEM_PROGRESS_TRACKER.md`
 - Lane logs: `docs/CONTINUOUS_BUILD/`
 
-Coordinator update `2026-07-16`:
+Coordinator update `2026-07-16` (ActiveGraph host):
+
+- Landed the transcript-neighbor L3 slice through PR `#1` at `6ffc4a1`; both push and pull-request workflows passed every Python, ActiveGraph, docs, site, and release-smoke job.
+- The BEAM 1M corpus is not present locally, so the coordinator selected the runnable ActiveGraph host instead of fabricating scale evidence.
+- Added and locally verified a two-run host with an installed pack write, distinct resume run, shared ZMem scope, causal pointer, recall receipt, exact recorded/provider prompt equality, and a memory-derived answer.
+- Broad recurring swarms remain paused; this candidate stays isolated to the example, integration test/CI, and factual public/control-room documentation.
+
+Coordinator update `2026-07-16` (transcript-neighbor retrieval):
 
 - Broad recurring swarms remain paused. The coordinator completed the isolated transcript-neighbor L3 candidate without overlapping any lane.
 - Narrowing was evidence-driven: bidirectional adjacency changed nine contexts, earlier same-timestamp adjacency changed six, and requiring the exact event head left exactly one intended context change.

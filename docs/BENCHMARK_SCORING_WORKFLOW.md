@@ -27,7 +27,7 @@ Current verified local evidence:
 
 Next comparison queue:
 
-- Land the verified transcript-neighbor candidate, then use the remaining adaptive stable misses to select another bounded multi-hop/open-domain retrieval improvement under the same zero-regression gate.
+- Use the landed transcript-neighbor checkpoint as the baseline, then select another bounded multi-hop/open-domain retrieval improvement from the remaining adaptive stable misses under the same zero-regression gate.
 - Expand BEAM from the verified 100K and 500K evidence into isolated 1M and 10M runs before making any scale-quality claim.
 - Use the `114` adaptive LongMemEval misses and low LoCoMo multi-hop/open-domain scores to select the next retrieval-quality slice.
 
