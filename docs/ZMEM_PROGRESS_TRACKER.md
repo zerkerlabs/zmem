@@ -92,7 +92,7 @@ Percentages are practical launch-grade alpha estimates, not benchmark scores.
 | L6 Benchmark Harness | LoCoMo/LongMemEval/BEAM evidence | 96% | Verified LoCoMo/LongMemEval evidence plus official-layout BEAM 100K and 500K runs exist; compact artifacts verify | Expand BEAM to isolated 1M and 10M runs and keep claim boundaries explicit |
 | Launch Oversight | Release pack, proof evidence, public release | 100% for v0.1.5 | Public verify `6/6`, assets `8/8`, return packet ready, `v0.1.5` published | Keep automation paused; repeat the gate only for the next release |
 | Website / Docs | Landing, proof page, docs, changelog | 100% for v0.1.5 | `Agent memory you can trust`, current benchmark/BEAM/ActiveGraph facts, dedicated CI gates, and responsive QA | Keep factual surfaces aligned as retrieval evidence changes |
-| ActiveGraph Integration | Event substrate and compact traces | 96% | A real ActiveGraph 1.9 pack loads, persists events, batches traces, and has a verified pre-call host wrapper with recorded/sent prompt equality | Add a runnable host example and run a larger selected-mode trace when useful |
+| ActiveGraph Integration | Event substrate and compact traces | 100% | The real pack loads, persists events, batches traces, and ships a runnable two-run host with recorded/sent prompt equality | Keep larger selected-mode traces and aggregate Treeship artifacts as optional follow-ups |
 
 ## Lane Checklists
 
@@ -346,10 +346,10 @@ Built:
 - [x] Public docs and use-case post describe the verified integration and prompt boundary.
 - [x] `enable_precall_recall(...)` enriches a host LLM behavior before ActiveGraph hashes and records the prompt.
 - [x] Real ActiveGraph runtime test verifies the recorded `llm.requested` prompt equals the provider-bound prompt.
+- [x] Runnable no-key two-run host persists memory through the pack, recalls it in a distinct resume run, and verifies causal lineage, receipt attachment, prompt equality, and the memory-derived answer.
 
-Left:
+Optional follow-ups:
 
-- [ ] Add a runnable application-level ActiveGraph host example around the verified generic pre-call wrapper.
 - [ ] Run a larger official selected-mode trace when the retrieval matrix justifies preserving it.
 - [ ] Decide whether an aggregate Treeship artifact belongs on completed trace runs.
 
@@ -376,5 +376,5 @@ Every release tag should include:
 
 1. Keep benchmark runs in isolated output directories and on supported Python 3.10+ runtimes.
 2. Treat the verified deterministic adaptive route plus bounded morphology, completion, and transcript-neighbor support as the regression-safe path: the latest checkpoints are LoCoMo `0.6143` and LongMemEval `0.772`.
-3. Land the current transcript-neighbor candidate, whose full LoCoMo delta is one gain, zero losses, and one changed retrieval context.
-4. Expand the verified BEAM 100K and 500K evidence into isolated 1M and 10M scale runs before making scale-quality claims, or add the runnable ActiveGraph host example if the larger BEAM corpus is not locally available.
+3. Treat the landed transcript-neighbor checkpoint as the current L3 baseline; the full LoCoMo delta is one gain, zero losses, and one changed retrieval context.
+4. Acquire and run isolated BEAM 1M/10M corpora before making scale-quality claims; the runnable ActiveGraph host fallback is complete.

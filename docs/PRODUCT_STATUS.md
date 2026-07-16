@@ -14,7 +14,7 @@ It is ready for:
 - early enterprise architecture conversations,
 - GitHub open-source use as an alpha,
 - receipt-backed local LoCoMo, LongMemEval, and BEAM development evidence,
-- ActiveGraph 1.9 pack experiments and compact causal traces.
+- ActiveGraph 1.9+ pack experiments, a runnable two-run host, and compact causal traces.
 
 It is not yet:
 
@@ -31,13 +31,12 @@ Product signal note: the current wedge is validated by builder demand for local,
 1. Retrieval quality beyond the current adaptive route: broader multi-hop and open-domain support after the bounded completion and transcript-neighbor gains.
 2. Real dense embeddings plus graph traversal fusion; current pseudo modes are measured local baselines, not vector retrieval.
 3. Isolated BEAM 1M and 10M scale runs plus any official model-judged submission path.
-4. A runnable application-level ActiveGraph host example around the verified pre-call wrapper.
-5. Hosted or team review console: shared queue, roles, approvals, retention controls, and audit export beyond the current local console.
-6. Hardened integrations beyond local MCP and ActiveGraph for Mem0, Zep/Graphiti, Letta, LangMem, Cognee, and other agent frameworks.
-7. Memory quality layer: usage reinforcement, decay, live consolidation, compression thresholds, and curation policy templates.
-8. Shared memory and swarm coordination: team-scoped stores, conflict policy, permissions, collective receipts, and multi-agent handoff workflows.
-9. Enterprise hardening: tenant isolation, customer-managed keys, policy packs, SSO, audit retention, and VPC/on-prem guides.
-10. Package-registry publishing and a hosted recovery-memory control plane.
+4. Hosted or team review console: shared queue, roles, approvals, retention controls, and audit export beyond the current local console.
+5. Hardened integrations beyond local MCP and ActiveGraph for Mem0, Zep/Graphiti, Letta, LangMem, Cognee, and other agent frameworks.
+6. Memory quality layer: usage reinforcement, decay, live consolidation, compression thresholds, and curation policy templates.
+7. Shared memory and swarm coordination: team-scoped stores, conflict policy, permissions, collective receipts, and multi-agent handoff workflows.
+8. Enterprise hardening: tenant isolation, customer-managed keys, policy packs, SSO, audit retention, and VPC/on-prem guides.
+9. Package-registry publishing and a hosted recovery-memory control plane.
 
 ## Functional Today
 
@@ -45,7 +44,7 @@ Product signal note: the current wedge is validated by builder demand for local,
 - Deterministic adaptive retrieval with receipt-visible routing, packing, semantic rescue, conservative regular-inflection evidence, bounded completion support, and exact-event-head transcript-neighbor support.
 - Verified local LoCoMo and LongMemEval matrices with explicit provisional claim boundaries.
 - BEAM official-layout adapter across 100K, 500K, 1M, and 10M buckets, with verified 100K and 500K scale evidence.
-- Real ActiveGraph 1.9 pack discovery/loading, event persistence, a pre-call wrapper with recorded/sent prompt equality, and a batched compact trace runner.
+- Real ActiveGraph 1.9+ pack discovery/loading, event persistence, a runnable no-key two-run host, a pre-call wrapper with recorded/sent prompt equality, and a batched compact trace runner.
 - `install.sh` one-command bootstrap for clone and curl-style setup.
 - `install.sh` now runs both day-1 smoke commands against the selected bootstrap target, defaulting to OpenClaw for the safe manual-pack path.
 - MCP server.

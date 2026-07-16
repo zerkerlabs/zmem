@@ -11,6 +11,12 @@ All notable Zerker Memory alpha changes are summarized here.
 - Improved the deterministic `227`-question gate from `159/227` to `160/227`. Exactly one answer and one retrieval context changed; there were no losses and only `17` additional query tokens.
 - Improved full local adaptive LoCoMo from `1,219/1,986` to `1,220/1,986` (`0.6143`) with the same single multi-hop gain, zero losses, and one changed retrieval context. Full LongMemEval remained exactly unchanged at `386/500` (`0.772`).
 
+### ActiveGraph
+
+- Added `examples/activegraph_host.py`, a no-key two-run host that loads the installed pack, persists an event-backed memory, recalls it in a distinct resume run, and answers through a deterministic demo provider.
+- Made the example fail unless the source event pointer is preserved, a recall receipt reaches the provider, and ActiveGraph's recorded `llm.requested` prompt exactly matches the provider-bound prompt.
+- Added the host example to the ActiveGraph CI job and its optional-dependency test suite.
+
 ### Claim Boundaries
 
 - LoCoMo and LongMemEval values remain verified local provisional retrieval evidence, not official leaderboard rankings.

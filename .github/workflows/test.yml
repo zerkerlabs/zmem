@@ -41,6 +41,7 @@ jobs:
       - run: python -m pip install -e '.[activegraph]'
       - run: activegraph pack list
       - run: python scripts/verify_activegraph_pack.py --summary-only
+      - run: python examples/activegraph_host.py --db /tmp/zmem-activegraph-host.sqlite --summary-only
       - run: python -m unittest tests.test_activegraph_pack
 
   site:

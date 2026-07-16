@@ -1,5 +1,7 @@
 import json
 import sqlite3
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -187,6 +189,47 @@ class ActiveGraphPackTest(unittest.TestCase):
         requested = next(event for event in graph.events if event.type == "llm.requested")
         recorded_content = requested.payload["prompt"]["messages"][0]["content"]
         self.assertEqual(recorded_content, sent_content)
+
+    def test_runnable_host_example_persists_then_recalls_across_runs(self):
+        try:
+            import activegraph  # noqa: F401
+        except ModuleNotFoundError:
+            self.skipTest("activegraph optional dependency is not installed")
+
+        repo_root = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "memory.sqlite"
+            results = []
+            for _ in range(2):
+                completed = subprocess.run(
+                    [
+                        sys.executable,
+                        str(repo_root / "examples" / "activegraph_host.py"),
+                        "--db",
+                        str(db_path),
+                    ],
+                    cwd=repo_root,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+
+                self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+                result = json.loads(completed.stdout)
+                self.assertTrue(result["ok"])
+                self.assertNotEqual(result["write_run_id"], result["read_run_id"])
+                self.assertTrue(result["checks"]["causal_pointer_preserved"])
+                self.assertTrue(result["checks"]["memory_recalled_before_call"])
+                self.assertTrue(result["checks"]["recorded_prompt_matches_provider"])
+                self.assertEqual(result["answer"], "The release target is Production.")
+                results.append(result)
+
+            self.assertNotEqual(results[0]["persisted_memory_id"], results[1]["persisted_memory_id"])
+
+            store = MemoryStore(db_path)
+            memories = store.list_memories(scope=results[-1]["scope"])
+            store.conn.close()
+            self.assertTrue(any(memory.id == results[-1]["persisted_memory_id"] for memory in memories))
 
     def test_locomo_activegraph_runner_writes_compact_trace_without_bundles(self):
         with tempfile.TemporaryDirectory() as tmp:

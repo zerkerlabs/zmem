@@ -52,9 +52,9 @@ Current frontier benchmark TODO, from the verified adaptive checkpoints:
 1. Treat adaptive LoCoMo `0.6143` and LongMemEval `0.772` as the current local provisional checkpoints, with their explicit non-leaderboard claim boundary.
 2. Keep unique run ids and isolated output directories for every run; never reuse a target while another process can touch it.
 3. Require every retrieval change to pass the deterministic 227-question zero-regression gate before any full rerun.
-4. Land the bounded transcript-neighbor candidate, then reproduce one remaining LoCoMo multi-hop/open-domain stable miss without giving back temporal or abstention behavior.
+4. Treat the landed transcript-neighbor checkpoint as the current L3 baseline, then reproduce one remaining LoCoMo multi-hop/open-domain stable miss without giving back temporal or abstention behavior.
 5. Expand the verified BEAM 100K and 500K evidence into isolated 1M and 10M scale runs.
-6. Add a runnable application-level ActiveGraph host example around the verified generic pre-call wrapper.
+6. Keep the runnable ActiveGraph two-run host green across the supported `activegraph>=1.9,<2` range; larger traces and aggregate Treeship proof remain optional follow-ups.
 7. Add real dense embeddings and graph traversal fusion only behind same-dataset comparisons and proof artifacts.
 
 Score projections, competitor comparisons, and "official benchmark" language stay internal until reproduced with pinned datasets, commands, hashes, and receipt bundles.
@@ -109,7 +109,7 @@ Use this when the user is present and actively working with Codex. Do not wait h
 Current live-session stance:
 
 - Keep recurring swarms paused after the published `v0.1.5` checkpoint.
-- Resume one bounded L3/L6 task at a time from the progress tracker rather than waiting for cron; the current transcript-neighbor candidate has passed its stable and full benchmark gates and is awaiting landing.
+- Resume one bounded L3/L6 task at a time from the progress tracker rather than waiting for cron; transcript-neighbor retrieval is landed and the isolated ActiveGraph host candidate is the current branch.
 - Require the same zero-regression gate before another full benchmark rerun.
 
 ## Final Acceptance Gates

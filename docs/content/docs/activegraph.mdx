@@ -13,6 +13,7 @@ ActiveGraph discovers packs through Python entry points. Install the optional in
 python -m pip install -e '.[activegraph]'
 activegraph pack list
 python scripts/verify_activegraph_pack.py --summary-only
+python examples/activegraph_host.py --summary-only
 ```
 
 Expected result:
@@ -60,6 +61,26 @@ enable_precall_recall(
 `enable_precall_recall(...)` enriches the prompt before ActiveGraph hashes it, emits `llm.requested`, and calls the provider. The verifier confirms that the provider-bound message and the event-recorded message are identical.
 
 The installed ActiveGraph 1.9 `zmem.recall` behavior still observes the immutable `llm.requested` event and records the corresponding local read receipt. It is an audit hook, not a second prompt mutation path.
+
+## Run The Two-Run Host
+
+The runnable host uses no API key or hosted model. Its first ActiveGraph run loads the installed pack and persists an object event into ZMem. A distinct resume run recalls that memory before its model call through a deterministic local provider.
+
+```bash
+python examples/activegraph_host.py --summary-only
+```
+
+Expected result:
+
+```text
+ActiveGraph host example: PASS
+Runs: zmem-activegraph-host -> zmem-activegraph-host-resume
+Recorded prompt matches provider: yes
+Answer: The release target is Production.
+Failed checks: none
+```
+
+Use `--db`, `--session`, or `--retrieval-mode` to isolate the local store, choose the shared session scope, or compare `fts`, `semantic`, and `hybrid` recall. The command exits nonzero if persistence, causal lineage, recall, receipt attachment, prompt equality, or the memory-derived answer fails.
 
 ## Typed Pack
 
