@@ -134,6 +134,12 @@ def _context_budget_command_arg(context_budget_tokens: int | None) -> str:
     return f" --context-budget-tokens {context_budget_tokens}"
 
 
+def _answerer_command_args(answerer: str, answerer_model: str) -> str:
+    if answerer != "llm":
+        return ""
+    return f" --answerer llm --answerer-model {answerer_model}"
+
+
 def _validate_provider_benchmark_gate(
     retrieval_mode: str,
     retrieval_provider_config_path: Path | None,
@@ -437,7 +443,7 @@ def run_longmemeval_benchmark(
         "adapter_version": LONGMEMEVAL_ADAPTER_VERSION,
         "seed": seed,
         "model": answerer_model if answerer == "llm" else "local-deterministic-answerer",
-        "judge": "none" if answerer == "llm" else "provisional-exact-match-local",
+        "judge": "pending-external-judge" if answerer == "llm" else "provisional-exact-match-local",
         "retrieval_mode": retrieval_mode,
         "retrieval_config_schema": BENCHMARK_RETRIEVAL_CONFIG_SCHEMA,
         "retrieval_config_hash": retrieval_config_hash,
@@ -452,7 +458,7 @@ def run_longmemeval_benchmark(
             "judge": sha256_text("longmemeval provisional exact-match local judge"),
         },
         "scoring": {
-            "mode": "provisional-local",
+            "mode": "pending-external-judge" if answerer == "llm" else "provisional-local",
             "category_labels": "provisional-local",
             "public_benchmark_claim": False,
             "hosted_judge": False,
@@ -464,6 +470,7 @@ def run_longmemeval_benchmark(
             f"{_context_budget_command_arg(context_budget_tokens)}"
             f"{_provider_config_command_arg(retrieval_provider_config_path)}"
             f"{_allow_network_command_arg(allow_network_providers)}"
+            f"{_answerer_command_args(answerer, answerer_model)}"
             f"{' --compact-artifacts' if compact_artifacts else ''}"
         ),
         "created_at": _now_iso(),
@@ -532,7 +539,7 @@ def run_longmemeval_benchmark(
         snapshot_paths["after"] = after_snapshot_path
 
     summary = _summarize_questions(question_records)
-    summary["scoring"] = "provisional-local"
+    summary["scoring"] = "pending-external-judge" if answerer == "llm" else "provisional-local"
     summary["category_labels"] = "provisional-local"
     report_path = run_dir / "report.md"
     report_text = _render_report_text(manifest, summary, question_records)
@@ -698,7 +705,7 @@ def run_locomo_benchmark(
         "adapter_version": LOCOMO_ADAPTER_VERSION,
         "seed": seed,
         "model": answerer_model if answerer == "llm" else "local-deterministic-answerer",
-        "judge": "none" if answerer == "llm" else "provisional-exact-match-local",
+        "judge": "pending-external-judge" if answerer == "llm" else "provisional-exact-match-local",
         "retrieval_mode": retrieval_mode,
         "retrieval_config_schema": BENCHMARK_RETRIEVAL_CONFIG_SCHEMA,
         "retrieval_config_hash": retrieval_config_hash,
@@ -713,7 +720,7 @@ def run_locomo_benchmark(
             "judge": sha256_text("locomo provisional exact-match local judge"),
         },
         "scoring": {
-            "mode": "provisional-local",
+            "mode": "pending-external-judge" if answerer == "llm" else "provisional-local",
             "category_labels": "provisional-local",
             "public_benchmark_claim": False,
             "hosted_judge": False,
@@ -725,6 +732,7 @@ def run_locomo_benchmark(
             f"{_context_budget_command_arg(context_budget_tokens)}"
             f"{_provider_config_command_arg(retrieval_provider_config_path)}"
             f"{_allow_network_command_arg(allow_network_providers)}"
+            f"{_answerer_command_args(answerer, answerer_model)}"
             f"{' --compact-artifacts' if compact_artifacts else ''}"
         ),
         "created_at": _now_iso(),
@@ -794,7 +802,7 @@ def run_locomo_benchmark(
         snapshot_paths["after"] = after_snapshot_path
 
     summary = _summarize_questions(question_records)
-    summary["scoring"] = "provisional-local"
+    summary["scoring"] = "pending-external-judge" if answerer == "llm" else "provisional-local"
     summary["category_labels"] = "provisional-local"
     report_path = run_dir / "report.md"
     report_text = _render_report_text(manifest, summary, question_records)
@@ -4694,7 +4702,7 @@ def _supporting_evidence_status(
 
 def _classify_benchmark_outcome(
     *,
-    correct: bool,
+    correct: bool | None,
     should_abstain: bool,
     final_answer: Any,
     support_status: dict[str, Any],
@@ -4705,6 +4713,8 @@ def _classify_benchmark_outcome(
     final_answer_text = " ".join(str(final_answer or "").split())
     abstained = final_answer_text == LOCAL_ABSTAIN_ANSWER
 
+    if correct is None:
+        return "pending_judge"
     if correct:
         if should_abstain:
             return "correct_abstention"
@@ -4940,7 +4950,7 @@ def _run_longmemeval_question(
         answer_started = time.perf_counter()
         answer = _generate_llm_hypothesis(question["query"], [memory["content"] for memory in receipt["memories"]], answerer_model)
         answer_latency_ms = round((time.perf_counter() - answer_started) * 1000, 3)
-        correct = False
+        correct = None
     elif question["should_abstain"]:
         answer = LOCAL_ABSTAIN_ANSWER
         correct = answer == question["expected_answer"]
@@ -5004,8 +5014,9 @@ def _run_longmemeval_question(
         "final_answer": answer,
         "reference": question["expected_answer"],
         "judge": {
-            "name": "provisional-exact-match-local",
-            "score": 1.0 if correct else 0.0,
+            "name": "pending-external-judge" if correct is None else "provisional-exact-match-local",
+            "status": "pending" if correct is None else "scored",
+            "score": None if correct is None else (1.0 if correct else 0.0),
             "correct": correct,
             "provisional": True,
             "hosted_judge": False,
@@ -5023,7 +5034,7 @@ def _run_longmemeval_question(
             "budget_dropped_count": len(budget_dropped),
             "recall_at_k": recall_at_k,
             "precision_at_k": precision_at_k,
-            "abstention_correct": bool(question["should_abstain"] and correct),
+            "abstention_correct": None if correct is None else bool(question["should_abstain"] and correct),
             "temporal_correctness": "provisional-local" if question["category"] == "temporal_reasoning" else "not_applicable",
             "knowledge_update_correctness": "provisional-local" if question["category"] == "knowledge_update" else "not_applicable",
             "context_budget_tokens": packing.get("max_tokens"),
@@ -5051,7 +5062,7 @@ def _run_longmemeval_question(
         "category_label_status": "provisional-local",
         "should_abstain": question["should_abstain"],
         "correct": correct,
-        "score": 1.0 if correct else 0.0,
+        "score": None if correct is None else (1.0 if correct else 0.0),
         "final_answer": answer,
         "retrieval_query": question["query"],
         "action_id": receipt["action_id"],
@@ -5318,7 +5329,7 @@ def _run_locomo_question(
         answer_started = time.perf_counter()
         answer = _generate_llm_hypothesis(question["query"], [memory["content"] for memory in receipt["memories"]], answerer_model)
         answer_latency_ms = round((time.perf_counter() - answer_started) * 1000, 3)
-        correct = False
+        correct = None
     elif question["should_abstain"]:
         answer = LOCAL_ABSTAIN_ANSWER
         correct = answer == question["expected_answer"]
@@ -5386,8 +5397,9 @@ def _run_locomo_question(
         "final_answer": answer,
         "reference": question["expected_answer"],
         "judge": {
-            "name": judge_name,
-            "score": 1.0 if correct else 0.0,
+            "name": "pending-external-judge" if correct is None else judge_name,
+            "status": "pending" if correct is None else "scored",
+            "score": None if correct is None else (1.0 if correct else 0.0),
             "correct": correct,
             "provisional": True,
             "hosted_judge": False,
@@ -5407,7 +5419,7 @@ def _run_locomo_question(
             "recall_at_k": recall_at_k,
             "precision_at_k": precision_at_k,
             "token_f1": token_f1,
-            "abstention_correct": bool(question["should_abstain"] and correct),
+            "abstention_correct": None if correct is None else bool(question["should_abstain"] and correct),
             "temporal_correctness": "provisional-local" if question["category"] == "temporal_reasoning" else "not_applicable",
             "multi_hop_correctness": "provisional-local" if question["category"] == "multi_hop" else "not_applicable",
             "context_budget_tokens": packing.get("max_tokens"),
@@ -5436,7 +5448,7 @@ def _run_locomo_question(
         **metadata_fields,
         "should_abstain": question["should_abstain"],
         "correct": correct,
-        "score": 1.0 if correct else 0.0,
+        "score": None if correct is None else (1.0 if correct else 0.0),
         "final_answer": answer,
         "reference": question["expected_answer"],
         "retrieval_query": question["query"],
@@ -5540,11 +5552,15 @@ def _summarize_questions(records: list[dict[str, Any]]) -> dict[str, Any]:
             return metrics.get(name, default)
         return default
 
-    def is_correct(record: dict[str, Any]) -> bool:
+    def judgment(record: dict[str, Any]) -> bool | None:
         if "correct" in record:
-            return bool(record["correct"])
+            value = record["correct"]
+            return None if value is None else bool(value)
         judge = record.get("judge", {})
-        return bool(judge.get("correct")) if isinstance(judge, dict) else False
+        if not isinstance(judge, dict):
+            return None
+        value = judge.get("correct")
+        return None if value is None else bool(value)
 
     count = len(records)
     latencies = sorted(float(metric(record, "retrieval_latency_ms", 0.0) or 0.0) for record in records)
@@ -5558,15 +5574,18 @@ def _summarize_questions(records: list[dict[str, Any]]) -> dict[str, Any]:
     outcome_reason_counts: dict[str, int] = {}
     failure_reason_counts: dict[str, int] = {}
     for record in records:
+        record_judgment = judgment(record)
         outcome_reason = str(record.get("outcome_reason", "unknown"))
         outcome_reason_counts[outcome_reason] = outcome_reason_counts.get(outcome_reason, 0) + 1
-        if not is_correct(record):
+        if record_judgment is False:
             failure_reason_counts[outcome_reason] = failure_reason_counts.get(outcome_reason, 0) + 1
         category = record["category"]
         category_summary = category_summaries.setdefault(
             category,
             {
                 "question_count": 0,
+                "judged": 0,
+                "pending": 0,
                 "passed": 0,
                 "failed": 0,
                 "accuracy": 0.0,
@@ -5589,13 +5608,17 @@ def _summarize_questions(records: list[dict[str, Any]]) -> dict[str, Any]:
         category_summary["outcome_reason_counts"][outcome_reason] = (
             category_summary["outcome_reason_counts"].get(outcome_reason, 0) + 1
         )
-        if is_correct(record):
+        if record_judgment is True:
+            category_summary["judged"] += 1
             category_summary["passed"] += 1
-        else:
+        elif record_judgment is False:
+            category_summary["judged"] += 1
             category_summary["failed"] += 1
             category_summary["failure_reason_counts"][outcome_reason] = (
                 category_summary["failure_reason_counts"].get(outcome_reason, 0) + 1
             )
+        else:
+            category_summary["pending"] += 1
         category_summary["retrieved_memory_count"] += int(metric(record, "retrieved_count", 0) or 0)
         category_summary["injected_memory_count"] += int(metric(record, "injected_count", 0) or 0)
         category_summary["withheld_memory_count"] += int(metric(record, "withheld_count", 0) or 0)
@@ -5603,15 +5626,27 @@ def _summarize_questions(records: list[dict[str, Any]]) -> dict[str, Any]:
         category_summary["total_tokens"] += int(metric(record, "total_tokens", 0) or 0)
         category_summary["_latencies"].append(float(metric(record, "retrieval_latency_ms", 0.0) or 0.0))
     for category_summary in category_summaries.values():
-        category_summary["accuracy"] = category_summary["passed"] / category_summary["question_count"]
+        category_summary["accuracy"] = (
+            category_summary["passed"] / category_summary["judged"]
+            if category_summary["judged"]
+            else None
+        )
+        if category_summary["pending"]:
+            category_summary["scoring"] = "pending-external-judge"
         category_latencies = sorted(category_summary.pop("_latencies", []))
         category_summary["p50_retrieval_latency_ms"] = _percentile(category_latencies, 50)
         category_summary["p95_retrieval_latency_ms"] = _percentile(category_latencies, 95)
         category_summary["p99_retrieval_latency_ms"] = _percentile(category_latencies, 99)
+    passed = sum(1 for record in records if judgment(record) is True)
+    failed = sum(1 for record in records if judgment(record) is False)
+    judged = passed + failed
+    pending = count - judged
     return {
-        "accuracy": sum(1 for record in records if is_correct(record)) / count if count else 0.0,
-        "passed": sum(1 for record in records if is_correct(record)),
-        "failed": sum(1 for record in records if not is_correct(record)),
+        "accuracy": passed / judged if judged else None,
+        "judged": judged,
+        "pending": pending,
+        "passed": passed,
+        "failed": failed,
         "question_count": count,
         "category_summaries": category_summaries,
         "retrieved_memory_count": sum(int(metric(record, "retrieved_count", 0) or 0) for record in records),
@@ -5695,19 +5730,28 @@ def _format_support_status(status: Any) -> str:
 
 
 def _render_report_text(manifest: dict[str, Any], summary: dict[str, Any], records: list[dict[str, Any]]) -> str:
-    def record_correct(record: dict[str, Any]) -> bool:
+    def record_judgment(record: dict[str, Any]) -> bool | None:
         if "correct" in record:
-            return bool(record["correct"])
+            value = record["correct"]
+            return None if value is None else bool(value)
         judge = record.get("judge", {})
-        return bool(judge.get("correct")) if isinstance(judge, dict) else False
+        if not isinstance(judge, dict):
+            return None
+        value = judge.get("correct")
+        return None if value is None else bool(value)
 
-    def record_score(record: dict[str, Any]) -> float:
+    def record_score(record: dict[str, Any]) -> float | None:
         if "score" in record:
-            return float(record["score"])
+            value = record["score"]
+            return None if value is None else float(value)
         judge = record.get("judge", {})
         if isinstance(judge, dict):
-            return float(judge.get("score", 0.0) or 0.0)
-        return 0.0
+            value = judge.get("score")
+            return None if value is None else float(value)
+        return None
+
+    def accuracy_text(value: Any) -> str:
+        return "pending" if value is None else f"{float(value):.3f}"
 
     benchmark_name = str(manifest.get("benchmark", "benchmark"))
     provider_config = manifest.get("retrieval_provider_config")
@@ -5721,7 +5765,11 @@ def _render_report_text(manifest: dict[str, Any], summary: dict[str, Any], recor
         f"- Seed: `{manifest['seed']}`",
         f"- Retrieval mode: `{manifest.get('retrieval_mode', 'fts')}`",
         f"- Retrieval config hash: `{manifest.get('retrieval_config_hash', 'n/a')}`",
-        f"- Accuracy: `{summary['accuracy']:.3f}` ({summary['passed']}/{summary['question_count']})",
+        (
+            f"- Accuracy: `{accuracy_text(summary.get('accuracy'))}` "
+            f"({summary['passed']}/{summary.get('judged', summary['question_count'])} judged; "
+            f"{summary.get('pending', 0)} pending)"
+        ),
         f"- Retrieved memories: `{summary['retrieved_memory_count']}`",
         f"- Injected memories: `{summary['injected_memory_count']}`",
         f"- Withheld memories: `{summary['withheld_memory_count']}`",
@@ -5742,10 +5790,11 @@ def _render_report_text(manifest: dict[str, Any], summary: dict[str, Any], recor
                 "",
             ]
         )
-    if manifest.get("scoring", {}).get("mode") == "provisional-local":
+    scoring_mode = manifest.get("scoring", {}).get("mode")
+    if scoring_mode:
         lines.extend(
             [
-                "- Scoring: `provisional-local`",
+                f"- Scoring: `{scoring_mode}`",
                 "- Category labels: `provisional-local`",
                 "- Public benchmark claim: `false`",
                 "",
@@ -5761,8 +5810,10 @@ def _render_report_text(manifest: dict[str, Any], summary: dict[str, Any], recor
                     f"### {category}",
                     "",
                     (
-                        f"- Accuracy: `{category_summary.get('accuracy', 0.0):.3f}` "
-                        f"({category_summary.get('passed', 0)}/{category_summary.get('question_count', 0)})"
+                        f"- Accuracy: `{accuracy_text(category_summary.get('accuracy'))}` "
+                        f"({category_summary.get('passed', 0)}/"
+                        f"{category_summary.get('judged', category_summary.get('question_count', 0))} judged; "
+                        f"{category_summary.get('pending', 0)} pending)"
                     ),
                     (
                         f"- Retrieved / injected / withheld memories: "
@@ -5787,13 +5838,15 @@ def _render_report_text(manifest: dict[str, Any], summary: dict[str, Any], recor
             )
     lines.extend(["## Questions", ""])
     for record in records:
-        status = "pass" if record_correct(record) else "fail"
+        question_judgment = record_judgment(record)
+        status = "pending" if question_judgment is None else ("pass" if question_judgment else "fail")
+        score = record_score(record)
         lines.extend(
             [
                 f"### {record['question_id']}",
                 "",
                 f"- Category: `{record['category']}`",
-                f"- Score: `{record_score(record):.1f}`",
+                f"- Score: `{'pending' if score is None else f'{score:.1f}'}`",
                 f"- Status: `{status}`",
                 f"- Query: `{record.get('retrieval_query', 'n/a')}`",
                 f"- Should abstain: `{str(bool(record.get('should_abstain', False))).lower()}`",

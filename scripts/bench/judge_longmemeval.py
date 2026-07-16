@@ -31,6 +31,20 @@ def label_is_correct(label: str) -> bool:
     return label in {"correct", "true", "1", "yes"}
 
 
+def build_scored_receipt(receipt: dict[str, Any], scores: dict[str, Any]) -> dict[str, Any]:
+    return {
+        **receipt,
+        "scores": scores,
+        "judge": "gpt-4o",
+        "scoring_type": "longmemeval-gpt-4o-judge",
+        "public_benchmark_claim": False,
+        "claim_status": "review_required",
+        "claim_boundary": (
+            "Hosted-judge output is evidence for review, not an automatic public leaderboard claim."
+        ),
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--run-id", required=True)
@@ -94,13 +108,7 @@ def main() -> int:
         "judge_log": str(logs[0]),
     }
     receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
-    scored = {
-        **receipt,
-        "scores": scores,
-        "judge": "gpt-4o",
-        "scoring_type": "longmemeval-gpt-4o-judge",
-        "public_benchmark_claim": True,
-    }
+    scored = build_scored_receipt(receipt, scores)
     out_path = run_dir / "scored_receipt.json"
     out_path.write_text(json.dumps(scored, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(json.dumps(scores, indent=2, sort_keys=True))

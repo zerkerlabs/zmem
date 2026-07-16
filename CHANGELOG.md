@@ -2,6 +2,26 @@
 
 All notable Zerker Memory alpha changes are summarized here.
 
+## Unreleased
+
+### Runtime And MCP Hardening
+
+- Made implicit `zmem run` memory-context files mode `0600` and removed them after the child command exits. An explicit `--context-path` remains a retained user-owned artifact.
+- Bounded MCP request lines, JSON nesting, and external-provider result limits. Unexpected server failures now return a generic error instead of echoing internal exception details.
+- Confined operator-profile snapshot and restore paths to an explicit MCP I/O root. The default root is the memory database directory; operators can set `--io-root` when they need another local handoff directory.
+- Removed caller-supplied provider URLs and API keys from MCP tool calls. Operator MCP now resolves provider connections from the trusted provider config, while local and private provider endpoints remain supported.
+- Rejected non-finite provider governance values such as `NaN` and infinity.
+
+### Benchmark Claim Integrity
+
+- Changed LLM answerer runs from automatic failures to `pending-external-judge`. Pending questions are excluded from accuracy and failure counts until scored.
+- Kept LongMemEval hosted-judge output non-public by default. A scored receipt now requires explicit review before it can support a public claim.
+
+### Compatibility Boundary
+
+- Kept `binary-sha256-v1` unchanged. Its concrete compatibility weakness is duplicate-last leaf-count ambiguity; the fixed-width receipt hashes do not demonstrate the variable-boundary concatenation collision claimed in the external review.
+- Deferred Merkle v2 until legacy fixtures, per-receipt algorithm dispatch, mixed v1/v2 bundle verification, and no-rewrite migration rules are specified and tested together.
+
 ## 0.1.6 - 2026-07-16
 
 ### Retrieval Quality

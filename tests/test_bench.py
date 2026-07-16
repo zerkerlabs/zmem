@@ -7754,6 +7754,52 @@ class BenchmarkHarnessTest(unittest.TestCase):
             self.assertTrue(all(check["ok"] for check in verify["checks"]))
             self.assertEqual(result["summary"]["accuracy"], 1.0)
 
+    def test_llm_answerer_records_pending_judgment_instead_of_false_failures(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            dataset = self._write_longmemeval_jsonl(Path(tmp))
+            with mock.patch("zerker_memory.bench._generate_llm_hypothesis", return_value="Nia owns launch."):
+                result = run_longmemeval_benchmark(
+                    Path(tmp) / "bench",
+                    dataset,
+                    "small",
+                    seed=0,
+                    run_id="lme-llm-pending",
+                    answerer="llm",
+                    compact_artifacts=True,
+                )
+            run_dir = Path(result["run_dir"])
+            result_payload = json.loads((run_dir / "benchmark-result.json").read_text(encoding="utf-8"))
+            report = (run_dir / "report.md").read_text(encoding="utf-8")
+
+        self.assertIsNone(result["summary"]["accuracy"])
+        self.assertEqual(result["summary"]["judged"], 0)
+        self.assertEqual(result["summary"]["pending"], 2)
+        self.assertEqual(result["summary"]["failed"], 0)
+        self.assertTrue(all(question["correct"] is None for question in result_payload["questions"]))
+        self.assertTrue(all(question["score"] is None for question in result_payload["questions"]))
+        self.assertTrue(all(question["outcome_reason"] == "pending_judge" for question in result_payload["questions"]))
+        self.assertIn("Accuracy: `pending`", report)
+        self.assertIn("Status: `pending`", report)
+
+    def test_locomo_llm_answerer_records_pending_judgment(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            dataset = self._write_locomo_jsonl(Path(tmp))
+            with mock.patch("zerker_memory.bench._generate_llm_hypothesis", return_value="A generated answer."):
+                result = run_locomo_benchmark(
+                    Path(tmp) / "bench",
+                    dataset,
+                    "dev",
+                    seed=0,
+                    run_id="locomo-llm-pending",
+                    answerer="llm",
+                    compact_artifacts=True,
+                )
+
+        self.assertIsNone(result["summary"]["accuracy"])
+        self.assertEqual(result["summary"]["judged"], 0)
+        self.assertEqual(result["summary"]["pending"], result["summary"]["question_count"])
+        self.assertEqual(result["summary"]["failed"], 0)
+
     def test_longmemeval_shared_session_reuses_history_memory(self):
         with tempfile.TemporaryDirectory() as tmp:
             dataset = Path(tmp) / "longmemeval-shared-session.jsonl"
