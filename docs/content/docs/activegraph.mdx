@@ -60,7 +60,7 @@ enable_precall_recall(
 
 `enable_precall_recall(...)` enriches the prompt before ActiveGraph hashes it, emits `llm.requested`, and calls the provider. The verifier confirms that the provider-bound message and the event-recorded message are identical.
 
-The installed ActiveGraph 1.9 `zmem.recall` behavior still observes the immutable `llm.requested` event and records the corresponding local read receipt. It is an audit hook, not a second prompt mutation path.
+The installed `zmem.recall` behavior on supported ActiveGraph runtimes still observes the immutable `llm.requested` event and records the corresponding local read receipt. It is an audit hook, not a second prompt mutation path.
 
 ## Run The Two-Run Host
 

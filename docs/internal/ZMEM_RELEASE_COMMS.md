@@ -1,10 +1,10 @@
 # ZMem Release Comms
 
-## 2026-07-16 - v0.1.6 candidate and independent review boundary
+## 2026-07-16 - v0.1.6 publication and independent review boundary
 
 Audience: internal Zerker product, engineering, security review, and release coordination.
 
-The coherent candidate combines the three post-`v0.1.5` feature commits with four bounded release hardening fixes: serialized event-chain appends, consistent `~` expansion, strict MCP boolean parsing, and corrected public dependency/copy surfaces. Local Python, ActiveGraph, strict release smoke, all five benchmark verifiers, package reinstall, site, docs, and dependency checks are green. Final merged-source artifacts are wheel `sha256:f587f652...` and source distribution `sha256:7a77df87...`; final-commit CI, publication, and production canary are the remaining gates.
+`v0.1.6` combines the three post-`v0.1.5` feature commits with four bounded release hardening fixes: serialized event-chain appends, consistent `~` expansion, strict MCP boolean parsing, and corrected public dependency/copy surfaces. It is published from `34b4e8aa2b41a454e2e8969576511ffd56a66027`; final-commit CI run `29524503194` and tag CI run `29524866769` are green. The GitHub release carries the verified wheel `sha256:f587f652...` and source distribution `sha256:7a77df87...`. Production deployments `dpl_9WBakHxq6DtPXF5cXVzQ1FuQjj9e` and `dpl_FWZYRG1NhwjKQCdp2MtUp6nwYMfc` are live at `zmem.sh` and `docs.zmem.sh` with clean desktop/mobile, console, and network canaries.
 
 The external review was useful but mixed real defects with incorrect trust-boundary assumptions. Search, provider calls, snapshot/restore, and lifecycle mutation tools are operator-profile capabilities, not default agent-profile tools. Direct `MemoryStore` methods are in-process library primitives; the current interface boundary is the MCP profile, not multi-user authentication.
 

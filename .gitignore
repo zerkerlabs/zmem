@@ -14,3 +14,4 @@ dist/
 .vercel/
 .zerker-clean-public-verify-*/
 data/
+.env.local

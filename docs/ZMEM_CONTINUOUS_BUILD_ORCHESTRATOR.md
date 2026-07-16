@@ -14,12 +14,12 @@ Use this language precisely:
 
 ## Current Product Truth
 
-As of 2026-07-16, the product has a tested `v0.1.6` release candidate and a lane-by-lane progress board:
+As of 2026-07-16, the product has a published `v0.1.6` release and a lane-by-lane progress board:
 
 - Progress tracker: [`ZMEM_PROGRESS_TRACKER.md`](ZMEM_PROGRESS_TRACKER.md)
-- Current public release: `v0.1.5` until remote `v0.1.6` CI and publication complete.
-- Current release candidate: `v0.1.6`
-- Current unpublished lane diff: the isolated release-hardening branch only. Broad swarms and launch oversight remain paused through publication.
+- Current public release: `v0.1.6` at `34b4e8aa2b41a454e2e8969576511ffd56a66027`.
+- Current release candidate: none.
+- Current unpublished lane diff: none at the publication checkpoint. Broad swarms and launch oversight remain paused.
 
 The product already has meaningful working surface:
 
@@ -109,8 +109,8 @@ Use this when the user is present and actively working with Codex. Do not wait h
 
 Current live-session stance:
 
-- Keep recurring swarms paused through `v0.1.6` publication.
-- After publication, resume one bounded dense-retrieval implementation lane and one separate proof-format design lane. Do not let them edit the same files concurrently.
+- Keep broad recurring swarms paused after `v0.1.6` publication.
+- Start one bounded dense-retrieval implementation lane. Keep proof-format work read-only until the Merkle `v2` compatibility design is reviewed; do not let the two lanes edit the same files concurrently.
 - Use the stable cohort as a safety gate and LoCoMo/LongMemEval as the quality gate for the hybrid retrieval change.
 
 ## Final Acceptance Gates

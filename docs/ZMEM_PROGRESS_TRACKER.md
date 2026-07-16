@@ -25,11 +25,11 @@ Every push or meaningful automation drop should update this file alongside:
 | `v0.1.3` | Published | `d029b99` / `v0.1.3` | Agent capability boundary, compact proof bundles, CLI summaries, and public site/docs hardening. |
 | `v0.1.4` | Published | `0ea8316` / `v0.1.4` | Deterministic retrieval, bounded morphology gains, BEAM scale adapter, and verified ActiveGraph pack/batching. |
 | `v0.1.5` | Published | `d4f6d9a` / `v0.1.5` | Bounded completion support, BEAM 500K evidence, verified ActiveGraph pre-call prompt integrity, and the simplified public hero. |
-| `v0.1.6` | Release candidate | pending release commit | Transcript-neighbor retrieval, runnable ActiveGraph host, BEAM 10M scale/index evidence, and concurrent event-chain hardening. |
+| `v0.1.6` | Published | `34b4e8a` / `v0.1.6` | Transcript-neighbor retrieval, runnable ActiveGraph host, BEAM 10M scale/index evidence, and concurrent event-chain hardening. |
 
 Current public release:
 
-- GitHub: `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.5`
+- GitHub: `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.6`
 - Site: `https://www.zmem.sh`
 - Raw installer: `https://raw.githubusercontent.com/zerkerlabs/zmem/main/install.sh`
 
@@ -51,7 +51,7 @@ Current `v0.1.5` release checkpoint:
 - The tested Vercel deployment `dpl_3eCbYfb2MejVCAs9U6ZvWuUWG9SK` is live at `zmem.sh`; production desktop/mobile and clean-console checks pass.
 - Broad swarms remain paused after publication.
 
-Current `v0.1.6` candidate checkpoint:
+Current `v0.1.6` release checkpoint:
 
 - Packages the three post-`v0.1.5` commits already landed on `main`: bounded transcript-neighbor retrieval, the runnable two-run ActiveGraph host, and the BEAM 1M/10M scale plus SQLite event-index work.
 - Serializes event-chain head advancement with SQLite's cross-process writer lock and proves the chain remains linear under forced two-connection contention.
@@ -60,14 +60,16 @@ Current `v0.1.6` candidate checkpoint:
 - Strict fresh-workspace release smoke and all five benchmark artifact verifiers pass. A clean wheel reinstall reports `zmem 0.1.6` and passes eval `11/11`.
 - Final merged-source artifacts: wheel `sha256:f587f65227d790374512548dc253d45ae3fa414fd7cc6e31a2841f5a7791e98c`; source distribution `sha256:7a77df87c8f699bf7d4ffe95a791ace87a6e71a202db4e5787d4584aaf751062`.
 - The existing `binary-sha256-v1` format is unchanged for compatibility. A count-bound, domain-separated Merkle successor is tracked as a separate migration.
+- Published from `34b4e8aa2b41a454e2e8969576511ffd56a66027`; final-commit CI run `29524503194` and tag CI run `29524866769` passed every Python, ActiveGraph, site, docs, and release-smoke job.
+- The release attaches both distributions with matching GitHub digests. Production deployments `dpl_9WBakHxq6DtPXF5cXVzQ1FuQjj9e` and `dpl_FWZYRG1NhwjKQCdp2MtUp6nwYMfc` are live at `zmem.sh` and `docs.zmem.sh`; desktop/mobile and clean-console checks pass.
 
-Current unreleased L3 candidate:
+Included `v0.1.6` L3 checkpoint:
 
 - Bounded transcript-neighbor onset support passes the stable gate at `160/227` versus `159/227`, with one gain, zero losses, one changed retrieval context, and `+17` query tokens.
 - Full adaptive LoCoMo reaches `1,220/1,986` (`0.6143`) versus `1,219/1,986`; LongMemEval remains exactly unchanged at `386/500` (`0.772`).
 - Verified result hashes: stable `ec83cfdf...`, full LoCoMo `308a492a...`, LongMemEval `e81b886c...`.
 
-Current unreleased scale and integration checkpoint:
+Included `v0.1.6` scale and integration checkpoint:
 
 - The runnable ActiveGraph host is landed on `main` through PR `#2` at `fbca687`; it verifies a distinct write run and resume run with causal lineage, recall receipt attachment, and recorded/provider prompt equality.
 - Isolated official-layout BEAM 1M and 10M runs now complete and verify. The 10M conversation contains 19,895 messages, 6,209,948 observed whitespace tokens, and `201/201` resolved references.
@@ -108,8 +110,8 @@ Percentages are practical launch-grade alpha estimates, not benchmark scores.
 | L4 Consolidation | Hierarchical summaries and job ledger | 35% | Deterministic fixture, job lifecycle, reversible summary payloads, append-only summary ledger | Source candidates from live store or expose persisted summaries through read-only CLI |
 | L5 Identity / Workspaces | Multi-agent source lineage and conflicts | 50% | Source reports, claim conflicts, resolution basis, exact-tie abstention summaries | Persist merge decisions or add repo/tool lineage descriptors |
 | L6 Benchmark Harness | LoCoMo/LongMemEval/BEAM evidence | 100% for local harness and sampled scale | Verified LoCoMo/LongMemEval evidence plus official-layout BEAM 100K, 500K, 1M, and 10M runs exist; compact artifacts verify | Add broader evidence and an official model-judged path; do not report unjudged LLM answers as incorrect |
-| Launch Oversight | Release pack, proof evidence, public release | 100% for v0.1.5 | Public verify `6/6`, assets `8/8`, return packet ready, `v0.1.5` published | Keep automation paused; repeat the gate only for the next release |
-| Website / Docs | Landing, proof page, docs, changelog | 100% for v0.1.5 | `Agent memory you can trust`, current benchmark/BEAM/ActiveGraph facts, dedicated CI gates, and responsive QA | Keep factual surfaces aligned as retrieval evidence changes |
+| Launch Oversight | Release pack, proof evidence, public release | 100% for v0.1.6 | Public verify `6/6`, assets `8/8`, return packet ready, `v0.1.6` published | Keep automation paused; repeat the gate only for the next release |
+| Website / Docs | Landing, proof page, docs, changelog | 100% for v0.1.6 | `Agent memory you can trust`, current benchmark/BEAM/ActiveGraph facts, dedicated CI gates, and responsive production QA | Keep factual surfaces aligned as retrieval evidence changes |
 | ActiveGraph Integration | Event substrate and compact traces | 100% | The real pack loads, persists events, batches traces, and ships a runnable two-run host with recorded/sent prompt equality | Keep larger selected-mode traces and aggregate Treeship artifacts as optional follow-ups |
 
 ## Lane Checklists
@@ -392,8 +394,8 @@ Every release tag should include:
 
 ## Current Highest-Leverage Next Move
 
-1. Publish the coherent `v0.1.6` candidate: transcript-neighbor retrieval, the runnable ActiveGraph host, BEAM scale indexing, serialized event-chain appends, user-path expansion, strict MCP booleans, and synchronized public surfaces.
-2. Freeze new one-question lexical rescue rules. Keep the `160/227` stable cohort as a regression gate, but do not require architectural retrieval changes to reproduce byte-identical candidate sets.
-3. Build a real local dense candidate source that is independent of FTS, then fuse dense and lexical candidates behind the existing policy, packing, and receipt boundary. Record the model, model digest, configuration, candidate-source ranks, and fusion result.
+1. Freeze new one-question lexical rescue rules. Keep the `160/227` stable cohort as a regression gate, but do not require architectural retrieval changes to reproduce byte-identical candidate sets.
+2. Build a real local dense candidate source that is independent of FTS, then fuse dense and lexical candidates behind the existing policy, packing, and receipt boundary. Record the model, model digest, configuration, candidate-source ranks, and fusion result.
+3. Give an independent reviewer the clean `v0.1.6` tag for a read-only adversarial re-test of the fixed release findings and the remaining trust-boundary assumptions.
 4. Design Merkle `v2` as a separate compatibility project with leaf/node domain separation, explicit leaf-count or tree-shape binding, legacy `binary-sha256-v1` verification, and a migration story. Do not silently reinterpret existing roots.
 5. Keep BEAM quality and model-judged benchmark scoring open, with `public_benchmark_claim: false` until the scoring contract is implemented and independently reproducible.
