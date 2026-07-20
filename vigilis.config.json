@@ -1,0 +1,5 @@
+{
+  "baseUrl": "http://127.0.0.1:8765",
+  "testDir": "qa/e2e",
+  "memory": "off"
+}

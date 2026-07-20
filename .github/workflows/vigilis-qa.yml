@@ -1,0 +1,79 @@
+name: vigilis-qa
+
+# Report-only: this workflow never blocks a PR. It runs the Vigilis-driven E2E
+# gate against the ZMem review dashboard and uploads the Playwright report plus
+# the attestation bundle for humans to inspect.
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  vigilis-qa:
+    runs-on: ubuntu-latest
+    continue-on-error: true # <-- report-only; do not fail the PR
+    env:
+      ZMEM_DB: ${{ runner.temp }}/zmem-ci.db
+      ZMEM_DASHBOARD_URL: http://127.0.0.1:8765
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Detect optional secrets
+        run: echo "HAS_ANTHROPIC=${{ secrets.ANTHROPIC_API_KEY != '' }}" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -e .
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Seed deterministic review state
+        run: python scripts/seed_review_state.py --db "$ZMEM_DB"
+
+      - name: Boot the review dashboard
+        run: |
+          python -m zerker_memory.dashboard --db "$ZMEM_DB" --host 127.0.0.1 --port 8765 &
+          for i in $(seq 1 30); do
+            curl -sf "$ZMEM_DASHBOARD_URL/" >/dev/null && break || sleep 1
+          done
+          curl -sf "$ZMEM_DASHBOARD_URL/" >/dev/null
+
+      - name: Install Playwright + browser
+        working-directory: qa
+        run: |
+          npm install
+          npx playwright install --with-deps chromium
+
+      - name: Run E2E specs (report-only)
+        working-directory: qa
+        continue-on-error: true
+        run: npx playwright test
+
+      - name: Vigilis triage + heal + attest (needs ANTHROPIC_API_KEY)
+        if: ${{ env.HAS_ANTHROPIC == 'true' }}
+        continue-on-error: true
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          npx vigilis@0.5.1 heal "$ZMEM_DASHBOARD_URL" \
+            --spec qa/e2e/promote-memory.spec.ts \
+            --error "CI QA gate: triage the dashboard promote flow" \
+            --no-pr --no-publish
+
+      - name: Upload Playwright report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: zmem-playwright-report
+          path: qa/playwright-report/
+          if-no-files-found: ignore
+
+      - name: Upload attestation bundle
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: zmem-vigilis-attestation
+          path: .vigilis/attestation/
+          if-no-files-found: ignore
