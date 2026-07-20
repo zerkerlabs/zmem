@@ -12,13 +12,16 @@ jobs:
     runs-on: ubuntu-latest
     continue-on-error: true # <-- report-only; do not fail the PR
     env:
-      ZMEM_DB: ${{ runner.temp }}/zmem-ci.db
+      # NOTE: `runner.*` is not available in job-level env — ZMEM_DB is set in the
+      # first step below (where $RUNNER_TEMP exists) via $GITHUB_ENV.
       ZMEM_DASHBOARD_URL: http://127.0.0.1:8765
     steps:
       - uses: actions/checkout@v4
 
-      - name: Detect optional secrets
-        run: echo "HAS_ANTHROPIC=${{ secrets.ANTHROPIC_API_KEY != '' }}" >> "$GITHUB_ENV"
+      - name: Set up job env (DB path + optional secrets)
+        run: |
+          echo "ZMEM_DB=$RUNNER_TEMP/zmem-ci.db" >> "$GITHUB_ENV"
+          echo "HAS_ANTHROPIC=${{ secrets.ANTHROPIC_API_KEY != '' }}" >> "$GITHUB_ENV"
 
       - uses: actions/setup-python@v5
         with:
