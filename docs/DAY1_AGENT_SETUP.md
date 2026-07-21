@@ -197,11 +197,12 @@ The wrapped command receives:
 ```text
 ZERKER_ACTION_ID
 ZERKER_MEMORY_CONTEXT
+ZERKER_MEMORY_CONTEXT_DIGEST
 ZERKER_MEMORY_DB
 ZERKER_MEMORY_MERKLE_ROOT
 ```
 
-`ZERKER_MEMORY_CONTEXT` is a JSON file with authorized memories, withheld memories, policy checks, and the Merkle root at decision time.
+`ZERKER_MEMORY_CONTEXT` is a JSON file with admitted memories, withheld memories, budget-dropped memories, policy decisions, temporal state, and the Merkle root at decision time. `ZERKER_MEMORY_CONTEXT_DIGEST` commits to that exact file so an agent or later verifier can detect changes. It does not cover prompts or hidden reasoning outside the ZMem context artifact.
 
 ## Permanent Chat Windows
 

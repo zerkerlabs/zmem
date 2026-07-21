@@ -73,6 +73,13 @@ def to_treeship_statement(receipt: Mapping[str, Any]) -> dict[str, Any]:
         "receipt_type": "MemoryActionReceipt",
         "receipt": normalized,
     }
+    context_commitment = _memory_context_commitment(receipt_payload)
+    if context_commitment is not None:
+        evidence["memory_context_digest"] = context_commitment["context_digest"]
+        policy_digest = context_commitment.get("policy_digest")
+        if isinstance(policy_digest, str) and policy_digest:
+            evidence["policy_digest"] = policy_digest
+        source["memory_context_commitment"] = context_commitment
     if _is_bundle(receipt):
         bundle = dict(receipt)
         proof = dict(bundle.get("proof", {}))
@@ -530,6 +537,42 @@ def _normalize_receipt(receipt: Mapping[str, Any]) -> dict[str, Any]:
         else:
             normalized[canonical] = value
     return normalized
+
+
+def _memory_context_commitment(receipt: Mapping[str, Any]) -> dict[str, Any] | None:
+    candidate = receipt.get("memory_context")
+    if not isinstance(candidate, Mapping):
+        retrieval = receipt.get("retrieval")
+        if isinstance(retrieval, Mapping):
+            candidate = retrieval.get("context_commitment")
+    if not isinstance(candidate, Mapping):
+        return None
+    if candidate.get("schema") != "zerker.memory_context.v1":
+        raise ValueError("memory context commitment schema is invalid")
+    digest = candidate.get("context_digest")
+    if not _is_sha256_uri(digest):
+        raise ValueError("memory context commitment digest is invalid")
+    if candidate.get("hash_alg") != "sha256":
+        raise ValueError("memory context commitment hash algorithm is invalid")
+    policy_digest = candidate.get("policy_digest")
+    if policy_digest is not None and not _is_sha256_uri(policy_digest):
+        raise ValueError("memory context policy digest is invalid")
+    for key in ("action_id", "agent_id", "task_hash", "merkle_root", "created_at"):
+        expected = receipt.get(key)
+        if expected is not None and candidate.get(key) != expected:
+            raise ValueError(f"memory context commitment {key} mismatch")
+    for key in ("retrieved_memory_ids", "injected_memory_ids", "withheld_memory_ids"):
+        expected = receipt.get(key)
+        if isinstance(expected, list) and list(candidate.get(key) or []) != expected:
+            raise ValueError(f"memory context commitment {key} mismatch")
+    return dict(candidate)
+
+
+def _is_sha256_uri(value: Any) -> bool:
+    if not isinstance(value, str) or not value.startswith("sha256:"):
+        return False
+    hex_digest = value.removeprefix("sha256:")
+    return len(hex_digest) == 64 and all(character in "0123456789abcdef" for character in hex_digest)
 
 
 def _first_present(receipt: Mapping[str, Any], aliases: tuple[str, ...]) -> Any:

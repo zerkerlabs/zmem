@@ -1,3 +1,28 @@
+## 2026-07-20 - Digest-bound agent memory context candidate
+
+Built locally:
+
+- Added a canonical `sha256:` commitment to `zerker.memory_context.v1`, covering the task/agent boundary, exact admitted memory records, retrieved/withheld/budget-dropped ids, policy decisions and digest, temporal metadata, and memory Merkle references.
+- Persisted only the compact commitment inside existing receipt retrieval metadata, avoiding a SQLite migration and a second raw-context copy.
+- Exposed the same digest through `zmem inject`, `zmem why`, `ZERKER_MEMORY_CONTEXT_DIGEST`, run receipts/events, Treeship memory-proof statements, and ActiveGraph `memory.read.v1` payloads.
+- Updated public and internal docs with the July 20 Moltbook priorities: scheduled-agent cold starts, discontinuity handoffs, memory-as-state, and silent-success failure memory.
+
+Evidence:
+
+- Full Python suite passes `1,266` tests with two expected optional skips; eval passes `11/11`.
+- Site and docs production builds pass.
+- Release smoke, release-pack verification, public proof `6/6`, launch assets `8/8`, return packet verification, and strict prelaunch pass.
+- A real CLI smoke produced one identical context digest across `inject --summary-only`, `why --summary-only`, retained run context, `zmem context verify`, and Treeship export; the export also carried the canonical policy digest.
+
+Claim boundary:
+
+- The commitment proves the exact ZMem memory-context artifact supplied at the decision boundary. It does not prove semantic truth, capture hidden model reasoning, or cover provider prompt material outside that artifact.
+- This slice does not change retrieval, SQLite schema, `binary-sha256-v1`, default agent capabilities, or the optional nature of Treeship.
+
+Next:
+
+- Package this bounded L0/L2 candidate, then build the scheduled-agent cold-start gap-audit workflow. Start true local dense retrieval only from a separate clean L3 checkpoint.
+
 ## 2026-07-16 - v0.1.7 runtime and claim-integrity release
 
 Built locally:

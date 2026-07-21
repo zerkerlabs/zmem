@@ -2,6 +2,17 @@
 
 All notable Zerker Memory alpha changes are summarized here.
 
+## Unreleased
+
+### Governed Context Proof
+
+- Added a canonical `sha256:` commitment to `zerker.memory_context.v1`, covering the exact memories admitted to an agent, the considered/withheld/budget-dropped sets, policy decisions and policy digest, temporal metadata, and memory Merkle references.
+- Persisted the compact commitment with inject receipts so `zmem why` can recover the original decision reference without storing a second raw-context copy.
+- Exposed the digest to wrapped agents as `ZERKER_MEMORY_CONTEXT_DIGEST` and in compact `inject` / `why` summaries.
+- Added `zmem context verify <file> --summary-only` for direct local or receive-side verification of retained context artifacts.
+- Added the context and policy digests to Treeship memory-proof statements and ActiveGraph `memory.read.v1` payloads while preserving older receipts and exports.
+- Kept the claim boundary explicit: this proves the exact ZMem context artifact, not semantic truth, hidden reasoning, or provider prompt material outside that artifact.
+
 ## 0.1.7 - 2026-07-16
 
 ### Runtime And MCP Hardening

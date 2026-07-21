@@ -128,18 +128,23 @@ def recall(
             retrieval_config=_retrieval_config(retrieval_mode),
         )
         memory_prefix = _memory_prefix(receipt.get("memories", []))
+        memory_context = receipt.get("memory_context") if isinstance(receipt.get("memory_context"), dict) else {}
+        treeship_payload = {
+            "zmem_receipt_id": receipt["action_id"],
+            "trace_sha256": sha256_text(stable_json(receipt.get("retrieval", {}))),
+            "activegraph_event_id": event_id,
+            "activegraph_run_id": _run_id(event, payload),
+            "query_hash": receipt["task_hash"],
+            "retrieval_mode": retrieval_mode,
+            "memories_returned": len(receipt.get("memories", [])),
+            "scope": scope,
+        }
+        context_digest = memory_context.get("context_digest")
+        if isinstance(context_digest, str) and context_digest:
+            treeship_payload["memory_context_digest"] = context_digest
         treeship = _maybe_emit_treeship(
             "memory.read.v1",
-            {
-                "zmem_receipt_id": receipt["action_id"],
-                "trace_sha256": sha256_text(stable_json(receipt.get("retrieval", {}))),
-                "activegraph_event_id": event_id,
-                "activegraph_run_id": _run_id(event, payload),
-                "query_hash": receipt["task_hash"],
-                "retrieval_mode": retrieval_mode,
-                "memories_returned": len(receipt.get("memories", [])),
-                "scope": scope,
-            },
+            treeship_payload,
             enabled=treeship_enabled,
         )
         return ActiveGraphMemoryResult(

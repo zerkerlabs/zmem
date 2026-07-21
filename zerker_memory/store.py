@@ -12356,6 +12356,7 @@ class MemoryStore:
         policy_checks: list[str] = []
         policy_decisions: list[dict[str, str]] = []
         policy_config = load_policy_config(self.policy_path or default_policy_path())
+        policy_digest = f"{HASH_ALG}:{sha256_text(stable_json(policy_config.to_dict()))}"
         for memory in policy_candidates:
             candidate_metadata = candidate_metadata_by_id.get(memory.id)
             decision = decide_memory(memory, risk=risk, config=policy_config)
@@ -12371,10 +12372,13 @@ class MemoryStore:
             if memory.type == "policy":
                 policy_checks.append(memory.id)
         retrieval = dict(search_result["retrieval"])
+        retrieval["scope"] = scope
         retrieval["policy"] = {
             "engine": POLICY_ENGINE,
+            "policy_digest": policy_digest,
             "authorized_ids": [memory.id for memory in injected],
             "withheld_ids": [item["memory_id"] for item in withheld],
+            "decisions": policy_decisions,
         }
         packing = pack_memory_context(injected, retrieval=retrieval, max_tokens=context_budget_tokens)
         injected = packing["memories"]
@@ -12503,6 +12507,14 @@ class MemoryStore:
             "merkle_root": root,
             "created_at": receipt_created_at,
         }
+        from .runner import build_context, memory_context_commitment
+
+        context_receipt = dict(receipt)
+        context_receipt["memories"] = [memory.to_dict() for memory in injected]
+        context = build_context(context_receipt)
+        context_commitment = memory_context_commitment(context)
+        retrieval["context_commitment"] = context_commitment
+        receipt["memory_context"] = context_commitment
         self.conn.execute(
             """
             INSERT INTO receipts (
@@ -12548,12 +12560,14 @@ class MemoryStore:
         retrieved_ids = json.loads(row["retrieved_ids_json"])
         withheld = json.loads(row["withheld_json"])
         memory_tree = json.loads(row["memory_tree_json"] or "{}")
+        retrieval = json.loads(row["retrieval_json"])
+        policy = retrieval.get("policy") if isinstance(retrieval.get("policy"), dict) else {}
         injected_memory_proofs = {
             memory_id: memory_tree.get("proofs", {}).get(memory_id)
             for memory_id in injected_ids
             if memory_tree.get("proofs", {}).get(memory_id)
         }
-        return {
+        receipt = {
             "receipt_schema": row["receipt_schema"],
             "hash_alg": row["hash_alg"],
             "merkle_alg": row["merkle_alg"],
@@ -12569,7 +12583,8 @@ class MemoryStore:
             "withheld": withheld,
             "policy_checks": json.loads(row["policy_checks_json"]),
             "policy_engine": POLICY_ENGINE,
-            "retrieval": json.loads(row["retrieval_json"]),
+            "policy_decisions": policy.get("decisions", []),
+            "retrieval": retrieval,
             "memory_tree": memory_tree,
             "injected_memory_proofs": injected_memory_proofs,
             "injected_memory_write_receipts": {
@@ -12580,6 +12595,10 @@ class MemoryStore:
             "merkle_root": row["merkle_root"],
             "created_at": row["created_at"],
         }
+        context_commitment = retrieval.get("context_commitment")
+        if isinstance(context_commitment, Mapping):
+            receipt["memory_context"] = dict(context_commitment)
+        return receipt
 
     def receipt(self, action_id: str) -> dict[str, Any]:
         return self.why(action_id)

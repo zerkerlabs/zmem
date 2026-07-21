@@ -610,6 +610,12 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
     run.add_argument("--context-path", type=expand_user_path)
     run.add_argument("run_command", nargs=argparse.REMAINDER, help="Command to run after --")
 
+    context = sub.add_parser("context", help="Inspect or verify a governed memory context artifact")
+    context_sub = context.add_subparsers(dest="context_command", required=True)
+    context_verify = context_sub.add_parser("verify", help="Verify a memory context digest")
+    context_verify.add_argument("path", type=expand_user_path)
+    context_verify.add_argument("--summary-only", action="store_true", help="Print only a compact verification summary")
+
     why = sub.add_parser("why", help="Explain which memories were used for an action")
     why.add_argument("action_id")
     why.add_argument("--summary", action="store_true", help="Print a compact explanation before the JSON receipt")
@@ -1586,6 +1592,15 @@ def main(argv: list[str] | None = None) -> int:
             )
             print_json(run_receipt)
             return int(run_receipt["exit_code"])
+        if args.command == "context":
+            from .runner import verify_memory_context_file
+
+            result = verify_memory_context_file(args.path)
+            if args.summary_only:
+                print(render_memory_context_verification_summary(result), end="")
+            else:
+                print_json(result)
+            return 0 if result["ok"] else 1
         if args.command == "why":
             receipt = store.why(args.action_id)
             if args.summary or args.summary_only:
@@ -2060,6 +2075,7 @@ def _append_summary_items(lines: list[str], heading: str, items: list[dict], *, 
 def render_inject_summary(receipt: dict[str, Any]) -> str:
     memories = [item for item in receipt.get("memories", []) if isinstance(item, dict)]
     withheld = [item for item in receipt.get("withheld", []) if isinstance(item, dict)]
+    memory_context = receipt.get("memory_context") if isinstance(receipt.get("memory_context"), dict) else {}
     lines = [
         "ZMem memory decision",
         f"Action: {receipt.get('action_id', 'unknown')}",
@@ -2071,6 +2087,7 @@ def render_inject_summary(receipt: dict[str, Any]) -> str:
             f"Withheld: {len(withheld)}"
         ),
         f"Proof root: {receipt.get('merkle_root', 'unknown')}",
+        f"Context proof: {memory_context.get('context_digest', 'not recorded')}",
     ]
     _append_summary_items(lines, "Injected memory", memories)
     _append_summary_items(lines, "Withheld memory", withheld)
@@ -2081,6 +2098,7 @@ def render_inject_summary(receipt: dict[str, Any]) -> str:
 def render_why_summary(receipt: dict[str, Any], *, verified: bool | None = None) -> str:
     injected = [item for item in receipt.get("injected", []) if isinstance(item, dict)]
     withheld = [item for item in receipt.get("withheld", []) if isinstance(item, dict)]
+    memory_context = receipt.get("memory_context") if isinstance(receipt.get("memory_context"), dict) else {}
     verification = "not checked" if verified is None else ("ok" if verified else "failed")
     lines = [
         "ZMem action explanation",
@@ -2094,10 +2112,26 @@ def render_why_summary(receipt: dict[str, Any], *, verified: bool | None = None)
         ),
         f"Verification: {verification}",
         f"Proof root: {receipt.get('merkle_root', 'unknown')}",
+        f"Context proof: {memory_context.get('context_digest', 'not recorded')}",
     ]
     _append_summary_items(lines, "Memory that shaped the action", injected)
     _append_summary_items(lines, "Memory kept out", withheld)
     return "\n".join(lines) + "\n"
+
+
+def render_memory_context_verification_summary(result: dict[str, Any]) -> str:
+    return "\n".join(
+        [
+            "ZMem memory context verification",
+            f"Verified: {'yes' if result.get('ok') else 'no'}",
+            f"Reason: {result.get('reason', 'unknown')}",
+            f"Action: {result.get('action_id') or 'unknown'}",
+            f"Agent: {result.get('agent_id') or 'unknown'}",
+            f"Recorded: {result.get('recorded_context_digest') or 'missing'}",
+            f"Computed: {result.get('computed_context_digest') or 'unknown'}",
+            f"Path: {result.get('path') or 'unknown'}",
+        ]
+    ) + "\n"
 
 
 def build_retrieval_provider_readiness_report(*, config_path: Path | None = None, env: dict[str, str] | None = None) -> dict:

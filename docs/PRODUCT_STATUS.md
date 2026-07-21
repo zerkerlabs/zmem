@@ -8,6 +8,8 @@ Current published release: `v0.1.7` at `https://github.com/zerkerlabs/zmem/relea
 
 The release packages bounded runtime, MCP, provider-boundary, and benchmark-claim hardening while preserving retrieval, receipt, Merkle, snapshot, and default agent-capability compatibility.
 
+Current unreleased work adds a digest-bound `zerker.memory_context.v1` artifact: inject receipts commit to the exact admitted, withheld, and budget-dropped context plus the policy and memory roots behind the decision. The commitment is visible through `inject`, `why`, wrapped runs, ActiveGraph recall, and Treeship export.
+
 It is ready for:
 
 - local developer dogfooding,
@@ -22,7 +24,7 @@ It is not yet:
 
 - a hosted SaaS,
 - a production enterprise control plane,
-- a fully signed Treeship publishing workflow,
+- a semantic-truth oracle; receipts prove integrity, provenance, and influence rather than truth,
 - a full vector/graph memory replacement,
 - a fully polished hosted review workflow.
 
@@ -31,15 +33,15 @@ Product signal note: the current wedge is validated by builder demand for local,
 ## Not Built Yet, In Priority Order
 
 1. True local dense candidate generation plus FTS fusion; the current provider embedding path reranks lexical candidates and is not yet independent semantic recall.
-2. A versioned Merkle successor with domain separation, explicit leaf-count binding, legacy `binary-sha256-v1` verification, and a tested migration path.
-3. An official model-judged BEAM submission path plus broader multi-conversation 1M and 10M coverage; the first isolated runs are complete.
-4. Retrieval quality beyond the current adaptive route, using broad hybrid improvements instead of more one-question lexical rules.
-5. Hosted or team review console: shared queue, roles, approvals, retention controls, and audit export beyond the current local console.
-6. Hardened integrations beyond local MCP and ActiveGraph for Mem0, Zep/Graphiti, Letta, LangMem, Cognee, and other agent frameworks.
-7. Memory quality layer: usage reinforcement, decay, live consolidation, compression thresholds, and curation policy templates.
-8. Shared memory and swarm coordination: team-scoped stores, conflict policy, permissions, collective receipts, and multi-agent handoff workflows.
-9. Enterprise hardening: tenant isolation, customer-managed keys, policy packs, SSO, audit retention, and VPC/on-prem guides.
-10. Package-registry publishing and a hosted recovery-memory control plane.
+2. A first-class scheduled-agent cold-start workflow: verified handoff restore, wall-clock gap audit, stale/unknown-state report, and next-run checkpoint.
+3. Typed failure memory for expected invariant, observed effect, confidence, correction, and invalidation, including silent-success cases.
+4. A versioned Merkle successor with domain separation, explicit leaf-count binding, legacy `binary-sha256-v1` verification, and a tested migration path.
+5. An official model-judged BEAM submission path plus broader multi-conversation 1M and 10M coverage; the first isolated runs are complete.
+6. Hosted or team review console: shared queue, roles, approvals, retention controls, and audit export beyond the current local console.
+7. Hardened integrations beyond local MCP and ActiveGraph for Mem0, Zep/Graphiti, Letta, LangMem, Cognee, and other agent frameworks.
+8. Memory quality layer: usage reinforcement, expiry, decay, live consolidation, compression thresholds, and curation policy templates.
+9. Shared memory and swarm coordination: team-scoped stores, conflict policy, permissions, collective receipts, and multi-agent handoff workflows.
+10. Enterprise hardening: tenant isolation, customer-managed keys, policy packs, SSO, audit retention, and VPC/on-prem guides.
 
 ## Functional Today
 

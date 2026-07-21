@@ -1,6 +1,6 @@
 # ZMem Progress Tracker
 
-Last updated: 2026-07-16
+Last updated: 2026-07-20
 
 This is the shared progress board for ZMem release and frontier work. It turns the
 continuous-build lanes into a checkpointable product plan: what is built, what is
@@ -76,6 +76,14 @@ Current `v0.1.7` release checkpoint:
 - The clean public wheel reinstall reports `zmem 0.1.7` and passes eval `11/11`. GitHub assets match wheel `sha256:d8a3fdba9c5e60c5d00cc8918c8c9e5d87b40cee764ea9756f8e5f9b8053d89b` and source distribution `sha256:8a7102958be108098f9576d61d80730566d6c1bd1515ec1f21278ffea0fa13c4`.
 - Production deployments `dpl_9Xb2upPsawLoDhaco6r5CSJppvxW` and `dpl_ckk7y9HhAg4fg2n1z67uBLJJQ8e8` are live at `zmem.sh` and `docs.zmem.sh`; responsive browser, console, network, raw-installer, agent-smoke, and MCP-smoke canaries pass.
 
+Current unreleased checkpoint:
+
+- `zerker.memory_context.v1` now carries a canonical `sha256:` commitment over the exact ZMem context supplied to an agent, including admitted, withheld, and budget-dropped memory, policy decisions, temporal state, and memory roots.
+- Inject receipts persist a compact commitment in existing retrieval JSON; no SQLite migration, retrieval change, Merkle v1 change, or duplicate raw-context copy is introduced.
+- Wrapped runs expose `ZERKER_MEMORY_CONTEXT_DIGEST`; compact `inject` and `why` summaries show the same proof reference.
+- Treeship memory-proof statements and ActiveGraph `memory.read.v1` payloads carry the context digest while keeping raw memory out of the compact commitment.
+- Full Python verification passes `1,266` tests with two expected optional skips; eval `11/11`, site/docs builds, strict release smoke, and the end-to-end CLI/Treeship digest smoke also pass.
+
 Included `v0.1.6` L3 checkpoint:
 
 - Bounded transcript-neighbor onset support passes the stable gate at `160/227` versus `159/227`, with one gain, zero losses, one changed retrieval context, and `+17` query tokens.
@@ -116,9 +124,9 @@ Percentages are practical launch-grade alpha estimates, not benchmark scores.
 
 | Lane | Focus | Alpha completion | Shipped state | Next acceptance target |
 | --- | --- | ---: | --- | --- |
-| L0 Trust Ledger | Receipts, Merkle lineage, restore/export proof | 82% | Mutation/lifecycle/restore receipts, compact v2 event witnesses, and serialized cross-process event appends exist; default MCP agents cannot claim trusted write/review authority | Design a domain-separated, count-bound Merkle successor with backward-compatible v1 verification |
+| L0 Trust Ledger | Receipts, Merkle lineage, context and restore/export proof | 86% | Mutation/lifecycle/restore receipts, compact v2 event witnesses, serialized event appends, and digest-bound memory context exist; default MCP agents cannot claim trusted write/review authority | Carry the context commitment through cold-start handoff evidence, then design a backward-compatible Merkle successor |
 | L1 Temporal KG | Current/history/superseded temporal memory | 55% | `query_at`, supersession, omitted-memory envelopes, runtime temporal context | Add contradiction/abstention runtime fixture and decide when true bi-temporal graph schema is needed |
-| L2 Lifecycle Compaction | Sessions, checkpoints, snapshots, retention | 45% | Checkpoint/snapshot store contracts plus read-only CLI summaries | Add write-facing `zmem session checkpoint` or retention policy without widening scope |
+| L2 Lifecycle Compaction | Sessions, checkpoints, snapshots, retention | 50% | Checkpoint/snapshot contracts, read-only CLI summaries, handoff/restore, and a committed agent-context artifact | Ship the scheduled-agent cold-start and gap-audit workflow |
 | L3 Retrieval Baseline | FTS/BM25, semantic backfill, RRF, packing | 86% | Adaptive lexical routing plus bounded morphology, completion, and transcript-neighbor support are measured; the effort-to-gain curve has flattened | Add true dense candidates independently of FTS, fuse ranks, and require meaningful full-dataset gains with safety guardrails |
 | L4 Consolidation | Hierarchical summaries and job ledger | 35% | Deterministic fixture, job lifecycle, reversible summary payloads, append-only summary ledger | Source candidates from live store or expose persisted summaries through read-only CLI |
 | L5 Identity / Workspaces | Multi-agent source lineage and conflicts | 50% | Source reports, claim conflicts, resolution basis, exact-tie abstention summaries | Persist merge decisions or add repo/tool lineage descriptors |

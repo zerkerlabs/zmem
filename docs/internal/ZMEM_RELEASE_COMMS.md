@@ -1,5 +1,17 @@
 # ZMem Release Comms
 
+## 2026-07-20 - Digest-bound memory context candidate
+
+Audience: internal Zerker product, engineering, security review, and release coordination.
+
+ZMem can now commit the exact memory context it supplied to an agent. The `zerker.memory_context.v1` digest covers admitted records, considered/withheld/budget-dropped sets, policy decisions and policy digest, temporal metadata, and memory/event roots. The compact commitment persists with the action receipt and follows the decision through `why`, wrapped runs, Treeship export, and ActiveGraph read proof.
+
+This sharpens the product claim without overreaching. We can prove which ZMem context artifact crossed the decision boundary and detect later tampering. We are not claiming semantic truth, hidden-reasoning capture, or full provider-prompt capture. Treeship remains optional and receives compact digests; ZMem remains useful and verifiable locally.
+
+The July 20 product signal changes the next sequence. First, turn existing session/handoff primitives into a scheduled-agent cold-start demo with wall-clock gap audit and explicit stale/unknown state. Second, add typed failure memory for expected invariant, observed effect, correction, and invalidation. Third, begin isolated true local dense candidate generation; stop buying retrieval gains one lexical exception at a time.
+
+Local acceptance is green: `1,266` tests, eval `11/11`, both public builds, strict release smoke, and an end-to-end CLI/Treeship digest smoke pass. This is an unreleased candidate until it is committed, reviewed, and packaged.
+
 ## 2026-07-16 - v0.1.7 runtime and claim-integrity publication
 
 Audience: internal Zerker product, engineering, security review, and release coordination.

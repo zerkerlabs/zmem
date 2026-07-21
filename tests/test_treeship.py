@@ -116,6 +116,40 @@ class TreeshipAdapterTest(unittest.TestCase):
         self.assertEqual(statement["evidence"]["signature"], "sig_123")
         self.assertEqual(statement["source"]["receipt"]["created_at"], "2026-05-25T12:00:00Z")
 
+    def test_exports_compact_memory_context_commitment(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = MemoryStore(Path(tmp) / "memory.sqlite")
+            store.remember(
+                "The release owner is Priya.",
+                memory_type="semantic",
+                scope="project",
+                source_kind="human",
+            )
+            receipt = store.inject("Who owns the release?", agent_id="codex", risk="low", scope="project")
+
+            statement = to_treeship_statement(receipt)
+
+        commitment = receipt["memory_context"]
+        self.assertEqual(statement["evidence"]["memory_context_digest"], commitment["context_digest"])
+        self.assertEqual(statement["evidence"]["policy_digest"], commitment["policy_digest"])
+        self.assertEqual(statement["source"]["memory_context_commitment"], commitment)
+        self.assertNotIn("memories", statement["source"]["memory_context_commitment"])
+
+    def test_rejects_incoherent_memory_context_commitment(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = MemoryStore(Path(tmp) / "memory.sqlite")
+            store.remember(
+                "The release owner is Priya.",
+                memory_type="semantic",
+                scope="project",
+                source_kind="human",
+            )
+            receipt = store.inject("Who owns the release?", agent_id="codex", risk="low", scope="project")
+
+        receipt["memory_context"]["action_id"] = "act_forged"
+        with self.assertRaisesRegex(ValueError, "memory context commitment action_id mismatch"):
+            to_treeship_statement(receipt)
+
     def test_embeds_bundle_proof_when_exporting_from_receipt_bundle(self):
         bundle = self._valid_bundle()
 

@@ -1,5 +1,13 @@
 # Trust Ledger Lane Log
 
+## 2026-07-20 - L0 digest-bound memory context - Codex
+
+- Scope: added one canonical commitment for the exact `zerker.memory_context.v1` artifact supplied to an agent, without changing retrieval, SQLite schema, Merkle v1, or agent authority.
+- Behavior changed: inject persists a compact context commitment; `why`, wrapped runs, CLI summaries, Treeship action proof, and ActiveGraph read proof carry the same digest and policy reference.
+- Tests: full Python suite passes `1,266` tests with two expected optional skips; eval `11/11`, site/docs builds, release smoke, strict prelaunch, public proof, assets, and return-packet verification pass.
+- Proof boundary: the digest proves exact ZMem context at the admission boundary. It does not prove memory truth, model reasoning, or prompts outside that context artifact.
+- Next safe slice: carry this proof into the scheduled-agent cold-start/gap-audit demo before starting isolated dense retrieval work.
+
 ## 2026-07-16 - L0 review hardening and versioned-root boundary - Codex
 
 - Scope: fixed the confirmed event-chain concurrency, user-path, and MCP boolean issues without changing receipt schemas, artifact types, signing logic, or the published Merkle contract.

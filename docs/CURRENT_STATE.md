@@ -3,6 +3,15 @@
 This is the short orchestration dashboard for Zerker Memory. Every autonomous build run should update this file after it updates `docs/BUILD_LOG.md`.
 
 ## Release Coordination
+`2026-07-20`
+
+- The July 20 Moltbook signal was triaged into ZMem-owned work: cold-start continuity, memory-state admissibility, failure memory, and exact context proof. Skill-package authority and side-effect enforcement remain Treeship/Guard concerns; ZMem may retain their trust state as governed memory.
+- A bounded unreleased candidate now commits `zerker.memory_context.v1` with `sha256:` and persists a compact action reference containing the policy digest, memory roots, and retrieved/admitted/withheld/budget-dropped ids.
+- `zmem inject`, `zmem why`, wrapped runs, Treeship export, and ActiveGraph recall now carry the same context proof reference. Older receipts and Treeship exports remain compatible.
+- Full verification passes `1,266` Python tests with two expected optional skips, eval `11/11`, site/docs production builds, strict release smoke, public proof `6/6`, launch assets `8/8`, and return-packet verification.
+- A real local CLI smoke confirmed the same digest across inject summary, why summary, retained run context, `zmem context verify`, and Treeship export. The proof claim is exact ZMem context, not semantic truth or hidden reasoning.
+- Broad swarms remain paused. Next sequence: package this candidate, build the scheduled-agent cold-start/gap-audit demo, then start true local dense candidate generation in an isolated L3 branch.
+
 `2026-07-16`
 
 - Independent adversarial re-testing confirmed the `v0.1.6` path expansion, strict MCP boolean parsing, and concurrent linear event-chain fixes.

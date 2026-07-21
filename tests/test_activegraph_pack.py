@@ -53,6 +53,7 @@ class ActiveGraphPackTest(unittest.TestCase):
             self.assertIsNotNone(persisted.memory_id)
             self.assertEqual(recalled.scope, "ag:session-a")
             self.assertIn("The release target is Production.", recalled.payload["prepend_context"])
+            self.assertTrue(recalled.payload["receipt"]["memory_context"]["context_digest"].startswith("sha256:"))
             receipt = store.memory_write_receipt(persisted.memory_id)
             self.assertEqual(
                 receipt["treeship_statement"]["object"]["caused_by_event"],

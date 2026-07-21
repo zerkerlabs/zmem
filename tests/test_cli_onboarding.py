@@ -64,6 +64,7 @@ from zerker_memory.cli import (
     render_launch_assets_summary,
     render_launch_proof_summary,
     render_manual_agent_pack_summary,
+    render_memory_context_verification_summary,
     render_operator_packet_summary,
     render_session_end_summary,
     render_session_ends_summary,
@@ -163,6 +164,7 @@ class CliOnboardingTest(unittest.TestCase):
             ],
             "withheld": [{"memory_id": "mem_2", "reason": "untrusted source"}],
             "merkle_root": "abc123",
+            "memory_context": {"context_digest": "sha256:context123"},
         }
 
         inject_summary = render_inject_summary(receipt)
@@ -170,11 +172,60 @@ class CliOnboardingTest(unittest.TestCase):
 
         self.assertIn("Injected: 1 | Withheld: 1", inject_summary)
         self.assertIn("Explain: zmem why act_123 --summary-only", inject_summary)
+        self.assertIn("Context proof: sha256:context123", inject_summary)
         self.assertIn("Memory that shaped the action", why_summary)
         self.assertIn("Memory kept out", why_summary)
         self.assertIn("Verification: ok", why_summary)
+        self.assertIn("Context proof: sha256:context123", why_summary)
         self.assertLess(len(inject_summary), 1200)
         self.assertLess(len(why_summary), 1200)
+
+    def test_context_verify_cli_reports_valid_and_tampered_artifacts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            context_path = Path(tmp) / "context.json"
+            context = {
+                "schema": "zerker.memory_context.v1",
+                "action_id": "act_context",
+                "agent_id": "codex",
+                "memories": [],
+            }
+            from zerker_memory.runner import memory_context_digest
+
+            context["context_digest"] = memory_context_digest(context)
+            context_path.write_text(json.dumps(context), encoding="utf-8")
+
+            output = io.StringIO()
+            with redirect_stdout(output):
+                return_code = main(["context", "verify", str(context_path), "--summary-only"])
+
+            self.assertEqual(return_code, 0)
+            self.assertIn("Verified: yes", output.getvalue())
+
+            context["agent_id"] = "mallory"
+            context_path.write_text(json.dumps(context), encoding="utf-8")
+            output = io.StringIO()
+            with redirect_stdout(output):
+                return_code = main(["context", "verify", str(context_path), "--summary-only"])
+
+            self.assertEqual(return_code, 1)
+            self.assertIn("Reason: context-digest-mismatch", output.getvalue())
+
+    def test_context_verification_summary_is_compact(self):
+        summary = render_memory_context_verification_summary(
+            {
+                "ok": True,
+                "reason": "verified",
+                "action_id": "act_context",
+                "agent_id": "codex",
+                "recorded_context_digest": "sha256:recorded",
+                "computed_context_digest": "sha256:recorded",
+                "path": "/tmp/context.json",
+            }
+        )
+
+        self.assertIn("ZMem memory context verification", summary)
+        self.assertIn("Verified: yes", summary)
+        self.assertLess(len(summary), 600)
 
     def test_runtime_reexec_command_filter_is_scoped(self):
         self.assertTrue(command_supports_runtime_reexec("doctor"))

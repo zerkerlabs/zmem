@@ -480,7 +480,15 @@ zmem handoff --summary-only
 
 For write-time signing, set `ZMEM_TREESHIP_AUTO_SIGN=1` after `treeship init`. ZMem will ask Treeship to attest the compact write-receipt digest as `system://zmem` / `kind=memory.write` and store the returned artifact metadata with the write receipt. Set `ZMEM_TREESHIP_STRICT=1` when unsigned writes should fail instead of falling back to local-only receipts.
 
-The command receives `ZERKER_MEMORY_CONTEXT`, `ZERKER_ACTION_ID`, `ZERKER_MEMORY_DB`, and `ZERKER_MEMORY_MERKLE_ROOT`.
+The command receives `ZERKER_MEMORY_CONTEXT`, `ZERKER_MEMORY_CONTEXT_DIGEST`, `ZERKER_ACTION_ID`, `ZERKER_MEMORY_DB`, and `ZERKER_MEMORY_MERKLE_ROOT`. The context file contains the exact admitted, withheld, and budget-dropped memory decision plus its policy and Merkle references. `ZERKER_MEMORY_CONTEXT_DIGEST` is the `sha256:` commitment to that file, excluding only the digest field itself.
+
+The context commitment proves which ZMem memory artifact was supplied to the wrapped command. It does not claim the memory was semantically true, capture hidden model reasoning, or commit provider prompt material outside the ZMem context file.
+
+Verify a retained or received context artifact directly:
+
+```bash
+zmem context verify .zerker/context.json --summary-only
+```
 
 ## Local Review Console
 
