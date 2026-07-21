@@ -31,7 +31,7 @@ def verify_memory_context(context: Mapping[str, Any]) -> bool:
 
 
 def memory_context_commitment(context: Mapping[str, Any]) -> dict[str, Any]:
-    return {
+    commitment = {
         "schema": MEMORY_CONTEXT_SCHEMA,
         "context_digest": memory_context_digest(context),
         "hash_alg": MEMORY_CONTEXT_DIGEST_ALG,
@@ -48,6 +48,9 @@ def memory_context_commitment(context: Mapping[str, Any]) -> dict[str, Any]:
         "budget_dropped_memory_ids": list(context.get("budget_dropped_memory_ids") or []),
         "created_at": context.get("created_at"),
     }
+    if context.get("continuity") is not None:
+        commitment["continuity"] = context.get("continuity")
+    return commitment
 
 
 def verify_memory_context_file(path: Path) -> dict[str, Any]:
@@ -158,11 +161,18 @@ def run_with_memory(
     risk: str,
     scope: str | None = None,
     context_path: Path | None = None,
+    continuity: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     if not command:
         raise ValueError("run command cannot be empty")
     receipt = store.inject(task, agent_id=agent_id, risk=risk, scope=scope)
     context = build_context(receipt)
+    if continuity is not None:
+        context["continuity"] = dict(continuity)
+        context["instructions"].append(
+            "Inspect `continuity` before acting; stale or unknown state must not be treated as current evidence."
+        )
+        context["context_digest"] = memory_context_digest(context)
     context_retained = context_path is not None
     if context_path is None:
         file_descriptor, raw_context_path = tempfile.mkstemp(

@@ -3,6 +3,14 @@
 This is the short orchestration dashboard for Zerker Memory. Every autonomous build run should update this file after it updates `docs/BUILD_LOG.md`.
 
 ## Release Coordination
+`2026-07-21`
+
+- Packaged the canonical governed-context candidate as commit `ea67c51` after `1,266` tests, eval `11/11`, both public builds, and strict release smoke passed.
+- Added `zmem scheduled-run`: optional verified restore, receipt-bound wall-clock gap audit, explicit current/stale/unknown state, exact context-digest binding, governed command execution, checkpoint, and a compact linked proof.
+- Added typed `zerker.failure_memory.v1` recording and inspection. Expected result, observed result, confidence, correction, and invalidation are content-hashed and receipted; agent-authored corrections stay quarantined until review.
+- Acceptance passes eight new cold-start/failure tests, `1,274` full-suite tests with two expected skips, eval `11/11`, the docs production build, direct CLI summary smokes, and strict release smoke with public proof `6/6`, assets `8/8`, and return-packet verification ready.
+- Broad swarms remain paused. Do not mix dense retrieval changes into this continuity/failure checkpoint.
+
 `2026-07-20`
 
 - The July 20 Moltbook signal was triaged into ZMem-owned work: cold-start continuity, memory-state admissibility, failure memory, and exact context proof. Skill-package authority and side-effect enforcement remain Treeship/Guard concerns; ZMem may retain their trust state as governed memory.

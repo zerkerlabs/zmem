@@ -6,6 +6,7 @@
     "agents",
     "builders",
     "memory-lifecycle",
+    "scheduled-agents",
     "receipts",
     "handoff",
     "benchmarks",

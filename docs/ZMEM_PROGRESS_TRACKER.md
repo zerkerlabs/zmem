@@ -115,7 +115,7 @@ Shipped in `v0.1.3`:
 - Compact receipt bundle v2 replaces repeated full event histories with supporting-event Merkle witnesses by default; legacy v1 artifacts remain verifiable.
 - A 31-event repeated-action fixture measured a 96.32% serialized-size reduction (963,288 bytes to 35,453 bytes), with both formats verifying successfully.
 - Site and docs now have dedicated CI build gates.
-- Full Python tests (`1215`), eval (`11/11`), release smoke, both web builds, and production-preview responsive QA pass locally.
+- Full Python tests (`1,274`), eval (`11/11`), release smoke, and the docs production build pass locally for the current candidate.
 - Docs audit and the site production-dependency audit report zero vulnerabilities; site development tooling still has advisories pending a separate Vite major upgrade.
 
 ## Lane Scoreboard
@@ -124,9 +124,9 @@ Percentages are practical launch-grade alpha estimates, not benchmark scores.
 
 | Lane | Focus | Alpha completion | Shipped state | Next acceptance target |
 | --- | --- | ---: | --- | --- |
-| L0 Trust Ledger | Receipts, Merkle lineage, context and restore/export proof | 86% | Mutation/lifecycle/restore receipts, compact v2 event witnesses, serialized event appends, and digest-bound memory context exist; default MCP agents cannot claim trusted write/review authority | Carry the context commitment through cold-start handoff evidence, then design a backward-compatible Merkle successor |
+| L0 Trust Ledger | Receipts, Merkle lineage, context and restore/export proof | 90% | Mutation/lifecycle/restore receipts, compact v2 event witnesses, serialized event appends, digest-bound memory context, and linked cold-start proof exist; default MCP agents cannot claim trusted write/review authority | Add direct mutation-chain UX, then design a backward-compatible Merkle successor |
 | L1 Temporal KG | Current/history/superseded temporal memory | 55% | `query_at`, supersession, omitted-memory envelopes, runtime temporal context | Add contradiction/abstention runtime fixture and decide when true bi-temporal graph schema is needed |
-| L2 Lifecycle Compaction | Sessions, checkpoints, snapshots, retention | 50% | Checkpoint/snapshot contracts, read-only CLI summaries, handoff/restore, and a committed agent-context artifact | Ship the scheduled-agent cold-start and gap-audit workflow |
+| L2 Lifecycle Compaction | Sessions, checkpoints, snapshots, retention | 70% | Session start/end/checkpoint/snapshot CLI, handoff/restore, cold-start gap audit, governed scheduled run, and linked proof are implemented | Add automatic retention/compaction policy and richer continuation UI |
 | L3 Retrieval Baseline | FTS/BM25, semantic backfill, RRF, packing | 86% | Adaptive lexical routing plus bounded morphology, completion, and transcript-neighbor support are measured; the effort-to-gain curve has flattened | Add true dense candidates independently of FTS, fuse ranks, and require meaningful full-dataset gains with safety guardrails |
 | L4 Consolidation | Hierarchical summaries and job ledger | 35% | Deterministic fixture, job lifecycle, reversible summary payloads, append-only summary ledger | Source candidates from live store or expose persisted summaries through read-only CLI |
 | L5 Identity / Workspaces | Multi-agent source lineage and conflicts | 50% | Source reports, claim conflicts, resolution basis, exact-tie abstention summaries | Persist merge decisions or add repo/tool lineage descriptors |
@@ -152,6 +152,7 @@ Built:
 - [x] Agent proposals cannot claim human/system source authority.
 - [x] Local SQLite defaults use private permissions, WAL, and bounded lock waiting.
 - [x] Compact v2 receipt bundles with indexed supporting-event witnesses and backward-compatible v1 verification.
+- [x] Canonical governed-context digest carried through cold-start evidence and scheduled-run proof.
 
 Left:
 
@@ -188,13 +189,15 @@ Built:
 - [x] Read-only CLI summaries for `zmem session snapshots`.
 - [x] Snapshot payload visibility and retention tombstone reporting.
 - [x] Lifecycle memory-class separation in context.
+- [x] CLI write surfaces for start, end, checkpoint, and snapshot.
+- [x] Scheduled-agent cold start with optional restore and explicit current/stale/unknown gap state.
+- [x] Governed scheduled execution, checkpoint, and compact linked proof.
+- [x] Typed failure memory with quarantined agent corrections.
 
 Left:
 
-- [ ] CLI write surface for checkpoint/snapshot.
-- [ ] `start_session` / `end_session` user flow.
 - [ ] Automatic retention/compaction policy.
-- [ ] Session lifecycle UX for real agent continuation.
+- [ ] Richer session lifecycle and failure-review UI for real agent continuation.
 
 ### L3 Retrieval Baseline
 

@@ -51,6 +51,14 @@ zmem handoff --summary-only
 zmem --db .zerker/imported.sqlite restore --handoff-dir .zerker/handoff
 ```
 
+For a scheduled agent, use one command to audit continuity, run with governed memory, checkpoint, and prove the result:
+
+```bash
+zmem scheduled-run --session-id cron://daily --agent hermes --task "daily review" --scope project --summary-only -- your-agent-command
+```
+
+Add `--handoff-dir .zerker/handoff` when the target database is empty and the run must restore portable state first.
+
 For launch or clean-shell proof work, use the dedicated operator docs instead of this quickstart:
 
 - [docs/CLEAN_SHELL_VERIFICATION_CHECKLIST.md](docs/CLEAN_SHELL_VERIFICATION_CHECKLIST.md)

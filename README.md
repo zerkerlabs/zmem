@@ -461,6 +461,35 @@ For subprocess-based agents, `run` wraps a command with governed memory:
 zmem run --agent codex --task "deploy service" --risk high --scope project -- your-agent-command
 ```
 
+Scheduled and ephemeral agents can restore optional handoff state, audit the wall-clock gap, run with the audit inside the exact context digest, and leave a verified checkpoint:
+
+```bash
+zmem scheduled-run \
+  --session-id cron://daily-signal \
+  --agent hermes \
+  --task "collect the daily product signal" \
+  --scope project:zmem \
+  --stale-after-seconds 86400 \
+  --summary-only \
+  -- your-agent-command
+```
+
+Record a silent-success or failed outcome without promoting the agent's correction into trusted procedure:
+
+```bash
+zmem failure record \
+  --expected "transfer exactly 10 credits" \
+  --observed "API returned 200 but transferred 100 credits" \
+  --correction "compare the requested and settled ledger amounts" \
+  --invalidation "settled amount differs from the request" \
+  --confidence 0.98 \
+  --scope project:payments \
+  --agent payments-agent \
+  --summary-only
+```
+
+Agent-authored failure memories enter quarantine and require review before promotion.
+
 Export and verify a portable memory-state snapshot:
 
 ```bash

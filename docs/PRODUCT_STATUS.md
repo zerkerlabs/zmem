@@ -33,8 +33,8 @@ Product signal note: the current wedge is validated by builder demand for local,
 ## Not Built Yet, In Priority Order
 
 1. True local dense candidate generation plus FTS fusion; the current provider embedding path reranks lexical candidates and is not yet independent semantic recall.
-2. A first-class scheduled-agent cold-start workflow: verified handoff restore, wall-clock gap audit, stale/unknown-state report, and next-run checkpoint.
-3. Typed failure memory for expected invariant, observed effect, confidence, correction, and invalidation, including silent-success cases.
+2. Broader scheduled-agent integrations around the new first-class cold-start workflow, which now composes verified restore, wall-clock gap audit, stale/unknown-state reporting, governed execution, checkpoint, and proof.
+3. Evaluation and UI coverage around the new typed failure-memory path for expected invariant, observed effect, confidence, correction, and invalidation, including silent-success cases.
 4. A versioned Merkle successor with domain separation, explicit leaf-count binding, legacy `binary-sha256-v1` verification, and a tested migration path.
 5. An official model-judged BEAM submission path plus broader multi-conversation 1M and 10M coverage; the first isolated runs are complete.
 6. Hosted or team review console: shared queue, roles, approvals, retention controls, and audit export beyond the current local console.

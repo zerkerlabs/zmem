@@ -403,13 +403,13 @@ Blocked conditions:
 
 ## Immediate Coordinator Queue
 
-1. Finish and verify the canonical memory-context commitment across inject, `why`, wrapped runs, Treeship export, ActiveGraph recall, CLI summaries, and public docs.
-2. Package that bounded L0/L2 slice from a clean diff before starting dense retrieval work.
-3. Build one scheduled-agent cold-start demo from existing handoff/session primitives: restore, gap audit, admissibility report, run, checkpoint, and portable proof.
-4. Specify typed failure memory around expected invariant, observed outcome, confidence, correction, and invalidation. Do not confuse HTTP success with verified state transition success.
-5. Start true local dense candidate generation in an isolated L3 branch. Fuse dense and lexical candidates behind the existing policy/receipt boundary and require stable-gate safety plus meaningful full-dataset gain.
-6. Keep benchmark output directories isolated and rerun full LoCoMo/LongMemEval only after the stable cohort passes.
-7. Keep `.treeship/`, `.zerker/bench/`, datasets, build output, and other generated/runtime state uncommitted unless explicitly reviewed.
+1. [x] Finish and verify the canonical memory-context commitment across inject, `why`, wrapped runs, Treeship export, ActiveGraph recall, CLI summaries, and public docs.
+2. [x] Package that bounded L0/L2 slice from a clean diff before starting dense retrieval work.
+3. [x] Build one scheduled-agent cold-start path from existing handoff/session primitives: restore, gap audit, admissibility report, run, checkpoint, and portable proof.
+4. [x] Add typed failure memory around expected invariant, observed outcome, confidence, correction, and invalidation without confusing HTTP success with verified state-transition success.
+5. [ ] Start true local dense candidate generation in an isolated L3 branch. Fuse dense and lexical candidates behind the existing policy/receipt boundary and require stable-gate safety plus meaningful full-dataset gain.
+6. [ ] Keep benchmark output directories isolated and rerun full LoCoMo/LongMemEval only after the stable cohort passes.
+7. [ ] Keep `.treeship/`, `.zerker/bench/`, datasets, build output, and other generated/runtime state uncommitted unless explicitly reviewed.
 
 ## Done Definition For This Roadmap
 

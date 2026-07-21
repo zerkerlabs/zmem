@@ -594,6 +594,26 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
         help="Print only the compact human-readable readiness summary",
     )
 
+    failure = sub.add_parser("failure", help="Record or inspect governed failure memory")
+    failure_sub = failure.add_subparsers(dest="failure_command", required=True)
+    failure_record = failure_sub.add_parser("record", help="Record expected, observed, corrected, and invalidated state")
+    failure_record.add_argument("--expected", required=True)
+    failure_record.add_argument("--observed", required=True)
+    failure_record.add_argument("--correction", required=True)
+    failure_record.add_argument("--invalidation", required=True)
+    failure_record.add_argument("--confidence", type=float, required=True)
+    failure_record.add_argument("--scope", required=True)
+    failure_record.add_argument("--agent", required=True)
+    failure_record.add_argument("--source-kind", choices=["agent", "human", "tool", "import"], default="agent")
+    failure_record.add_argument("--action-id")
+    failure_record.add_argument("--session-id")
+    failure_record.add_argument("--invalidates-memory", action="append", default=[])
+    failure_record.add_argument("--source-uri")
+    failure_record.add_argument("--summary-only", action="store_true")
+    failure_show = failure_sub.add_parser("show", help="Inspect and verify a typed failure memory")
+    failure_show.add_argument("memory_id")
+    failure_show.add_argument("--summary-only", action="store_true")
+
     inject = sub.add_parser("inject", help="Retrieve authorized memories for an agent action")
     inject.add_argument("task")
     inject.add_argument("--agent", required=True)
@@ -609,6 +629,29 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
     run.add_argument("--scope")
     run.add_argument("--context-path", type=expand_user_path)
     run.add_argument("run_command", nargs=argparse.REMAINDER, help="Command to run after --")
+
+    scheduled_run = sub.add_parser(
+        "scheduled-run",
+        help="Restore, audit, run, checkpoint, and prove a scheduled agent invocation",
+    )
+    scheduled_run.add_argument("--session-id", required=True)
+    scheduled_run.add_argument("--agent", required=True)
+    scheduled_run.add_argument("--actor-id")
+    scheduled_run.add_argument("--task", required=True)
+    scheduled_run.add_argument("--risk", choices=["low", "medium", "high"], default="medium")
+    scheduled_run.add_argument("--scope")
+    scheduled_run.add_argument("--summary")
+    scheduled_run.add_argument("--summary-only", action="store_true")
+    scheduled_run.add_argument("--stale-after-seconds", type=int, default=86_400)
+    scheduled_run.add_argument("--context-path", type=expand_user_path)
+    scheduled_restore = scheduled_run.add_mutually_exclusive_group()
+    scheduled_restore.add_argument("--snapshot", type=expand_user_path, help="Restore a verified snapshot before the run")
+    scheduled_restore.add_argument(
+        "--handoff-dir",
+        type=expand_user_path,
+        help="Restore a verified handoff package before the run",
+    )
+    scheduled_run.add_argument("run_command", nargs=argparse.REMAINDER, help="Command to run after --")
 
     context = sub.add_parser("context", help="Inspect or verify a governed memory context artifact")
     context_sub = context.add_subparsers(dest="context_command", required=True)
@@ -1570,6 +1613,32 @@ def main(argv: list[str] | None = None) -> int:
                 if not args.summary_only:
                     print_json(result)
                 return 0 if result["ok"] else 1
+        if args.command == "failure":
+            from .failure_memory import inspect_failure_memory, record_failure_memory, render_failure_summary
+
+            if args.failure_command == "record":
+                result = record_failure_memory(
+                    store,
+                    expected_result=args.expected,
+                    observed_result=args.observed,
+                    correction=args.correction,
+                    invalidation=args.invalidation,
+                    confidence=args.confidence,
+                    scope=args.scope,
+                    actor_id=args.agent,
+                    source_kind=args.source_kind,
+                    action_id=args.action_id,
+                    session_id=args.session_id,
+                    invalidated_memory_ids=args.invalidates_memory,
+                    source_uri=args.source_uri,
+                )
+            else:
+                result = inspect_failure_memory(store, args.memory_id)
+            if args.summary_only:
+                print(render_failure_summary(result), end="")
+            else:
+                print_json(result)
+            return 0 if result["ok"] else 1
         if args.command == "inject":
             receipt = store.inject(args.task, agent_id=args.agent, risk=args.risk, scope=args.scope)
             if args.summary or args.summary_only:
@@ -1592,6 +1661,33 @@ def main(argv: list[str] | None = None) -> int:
             )
             print_json(run_receipt)
             return int(run_receipt["exit_code"])
+        if args.command == "scheduled-run":
+            from .scheduled import render_scheduled_run_summary, run_scheduled_agent
+
+            restore = None
+            if args.snapshot is not None:
+                restore = restore_snapshot_file(store, snapshot_path=args.snapshot)
+            elif args.handoff_dir is not None:
+                restore = restore_handoff_package(store, handoff_dir=args.handoff_dir)
+            result = run_scheduled_agent(
+                store,
+                strip_command_separator(args.run_command),
+                session_id=args.session_id,
+                agent_id=args.agent,
+                actor_id=args.actor_id,
+                task=args.task,
+                risk=args.risk,
+                scope=args.scope,
+                summary=args.summary,
+                stale_after_seconds=args.stale_after_seconds,
+                restore=restore,
+                context_path=args.context_path,
+            )
+            if args.summary_only:
+                print(render_scheduled_run_summary(result), end="")
+            else:
+                print_json(result)
+            return int(result["run"]["exit_code"])
         if args.command == "context":
             from .runner import verify_memory_context_file
 

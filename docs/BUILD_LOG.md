@@ -1,3 +1,30 @@
+## 2026-07-21 - Scheduled-agent continuity and failure memory
+
+Built locally:
+
+- Added `zmem scheduled-run` as one composable cold-start path: optional verified snapshot/handoff restore, receipt-bound wall-clock gap audit, explicit `current` / `stale` / `unknown` state, session start, governed execution, checkpoint, and linked proof.
+- Bound the compact cold-start audit into the exact `zerker.memory_context.v1` digest supplied to the command.
+- Kept proof validity distinct from operational success. A nonzero command still leaves a checkpoint and a verifiable execution record.
+- Added typed `zerker.failure_memory.v1` recording and inspection for expected result, observed result, confidence, correction, and invalidation.
+- Kept agent-authored corrections quarantined by default; invalidated-memory references remain explicit evidence and do not silently mutate prior memory.
+- Added a public scheduled-agents docs page, README/quickstart examples, and changelog/product-status updates.
+
+Evidence:
+
+- Full Python suite passes `1,274` tests with two expected optional skips; eval passes `11/11`.
+- The docs production build passes with the new scheduled-agents route.
+- Direct CLI smokes pass for compact scheduled-run and failure-memory summaries.
+- Release smoke passes with strict publish ready, public proof `6/6`, launch assets `8/8`, and return-packet verification ready.
+
+Claim boundary:
+
+- A cold-start audit proves the observed prior lifecycle evidence and measured gap; it does not prove every retained fact is still true.
+- Failure memory records what an actor reported and the receipt lineage for that report. It does not automatically authorize the proposed correction.
+
+Next:
+
+- Commit this L0/L2 checkpoint, then create an isolated L3 branch for true local dense candidate generation and lexical/dense rank fusion.
+
 ## 2026-07-20 - Digest-bound agent memory context candidate
 
 Built locally:

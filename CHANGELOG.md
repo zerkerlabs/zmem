@@ -13,6 +13,18 @@ All notable Zerker Memory alpha changes are summarized here.
 - Added the context and policy digests to Treeship memory-proof statements and ActiveGraph `memory.read.v1` payloads while preserving older receipts and exports.
 - Kept the claim boundary explicit: this proves the exact ZMem context artifact, not semantic truth, hidden reasoning, or provider prompt material outside that artifact.
 
+### Scheduled-Agent Continuity
+
+- Added `zmem scheduled-run` to compose optional verified restore, wall-clock gap audit, session start, governed execution, checkpoint, and one linked proof receipt.
+- Classified continuity as `current`, `stale`, or `unknown`; an uncheckpointed prior run and a deleted latest snapshot payload remain explicitly unknown.
+- Bound the compact continuity audit into `zerker.memory_context.v1`, so the agent sees the same gap state committed by the run context digest.
+- Kept operational success separate from proof validity: nonzero commands are still checkpointed and their execution proof can verify.
+
+### Failure Memory
+
+- Added `zmem failure record` and `zmem failure show` for a typed, receipted `zerker.failure_memory.v1` payload containing expected result, observed result, confidence, correction, and invalidation.
+- Agent-authored corrections remain quarantined evidence until reviewed. Recording an invalidated memory reference does not silently revoke or rewrite that memory.
+
 ## 0.1.7 - 2026-07-16
 
 ### Runtime And MCP Hardening
