@@ -1,5 +1,17 @@
 # ZMem Release Comms
 
+## 2026-07-21 - Local dense retrieval candidate
+
+Audience: internal Zerker product, engineering, benchmark review, and release coordination.
+
+ZMem now has an opt-in true local dense candidate source rather than another lexical exception. FastEmbed generates candidates independently of FTS, and reciprocal-rank fusion preserves the adaptive lexical candidate set before the normal scope, lifecycle, policy, packing, and receipt path runs. Search cannot download a model. Vectors are derived local state bound to memory content, provider config, and a digest of the cached model files.
+
+The measured quality change is material. The frozen gate moves from `160/227` to `203/227`; full LoCoMo moves from `1,220/1,986` to `1,567/1,986`; full LongMemEval moves from `386/500` to `477/500`. The comparisons contain 43, 347, and 91 gains with zero losses. All result and cross-mode comparison artifacts verify locally, one pinned model digest was used, and no query-time network call or fallback occurred.
+
+The cost is also material. Mean query context rises about 69% on LoCoMo and 44% on LongMemEval. Observed full-run p95 latency rises from `690.389 ms` to `3,158.984 ms` on LoCoMo and from `193.610 ms` to `368.415 ms` on LongMemEval. Product decision: package dense-hybrid as opt-in, then tune candidate depth and packing under the same zero-loss gates. Do not make it the default or add ANN complexity until profiling justifies that move.
+
+Claim boundary: these are deterministic local evidence-support scores, not official LoCoMo or LongMemEval leaderboard submissions. Dense similarity finds candidates; it does not make a memory true, trusted, current, or authorized. Existing MCP schemas remain on stable FTS behavior in this candidate.
+
 ## 2026-07-20 - Digest-bound memory context candidate
 
 Audience: internal Zerker product, engineering, security review, and release coordination.

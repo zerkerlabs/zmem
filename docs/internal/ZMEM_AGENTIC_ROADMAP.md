@@ -1,6 +1,6 @@
 # ZMem Agentic Roadmap
 
-Last audit: 2026-07-20
+Last audit: 2026-07-21
 
 This is the control-plane roadmap for agentic ZMem work. It is not a calendar. Each lane should keep improving until its evidence gate is green, honestly blocked, or deliberately paused by the coordinator.
 
@@ -21,11 +21,11 @@ Confirmed from this audit:
 
 - `v0.1.7` is the current public release; GitHub release, wheel reinstall, site, docs, CI, eval `11/11`, public proof `6/6`, launch assets `8/8`, and return packet are green.
 - Broad recurring swarms and launch oversight remain paused. Work should proceed as explicit bounded slices from a clean checkpoint.
-- The stable retrieval gate is `160/227`; full local LoCoMo is `1,220/1,986` (`0.6143`) and LongMemEval is `386/500` (`0.772`). These remain provisional local evidence, not leaderboard claims.
+- The published lexical baseline is `160/227`; full local LoCoMo is `1,220/1,986` (`0.6143`) and LongMemEval is `386/500` (`0.772`). The isolated dense-hybrid candidate reaches `203/227`, `1,567/1,986` (`0.7890`), and `477/500` (`0.954`) with zero losses against those baselines. These remain provisional local evidence, not leaderboard claims.
 - ActiveGraph pack discovery, batching, pre-call recall, compact traces, and the two-run host are implemented and verified.
 - The July 20 Moltbook signal prioritizes cold-start handoff, memory-as-state, silent-success/failure memory, and proof of the exact context admitted to an action.
-- Current unreleased work adds a canonical `zerker.memory_context.v1` digest, policy digest, persisted compact commitment, wrapped-run environment binding, Treeship export, and ActiveGraph read-proof binding without changing retrieval or SQLite schema.
-- True local dense candidate generation remains the highest-leverage retrieval project. Stop adding one-question lexical rules unless a safety regression requires one.
+- Current unreleased work adds a canonical `zerker.memory_context.v1` digest, scheduled-agent continuity, typed failure memory, and true local dense recall without changing the existing Merkle or MCP compatibility contracts.
+- The isolated L3 branch now has FastEmbed candidates, SQLite vector caching, exact cosine search, FTS RRF fusion, stale-vector rejection, lexical-conflict isolation, and verified stable/full benchmark evidence. Stop adding one-question lexical rules; optimize candidate and packing cost next.
 - Skill installation authority, delegated capabilities, and side-effect enforcement belong primarily to Treeship plus a future Guard/runtime layer. ZMem may retain their trust state as governed memory but should not become a package manager.
 
 ## Public Claim Boundary
@@ -122,7 +122,7 @@ Next queue:
 
 - Keep dataset hashes, conversion commands, result hashes, and claim boundaries pinned for every publishable run.
 - Add an official model-judged BEAM path and broader multi-conversation scale coverage.
-- Compare true dense and fused retrieval against the frozen lexical baseline only after the stable cohort passes.
+- Keep the verified dense/full comparisons pinned and add cost sweeps without weakening the zero-loss boundary.
 - Keep the benchmark panel separated into local evidence, provisional scored runs, and official submissions.
 
 Fast checks:
@@ -158,14 +158,14 @@ Primary inputs:
 Current evidence:
 
 - Adaptive FTS/BM25, context packing, temporal routing, semantic backfill, RRF, and bounded morphology/completion/transcript support are active and receipt-visible.
-- The stable gate is `160/227`; full LoCoMo is `1,220/1,986` and LongMemEval is `386/500`.
+- The lexical stable/full baselines are `160/227`, `1,220/1,986`, and `386/500`. Dense-hybrid reaches `203/227`, `1,567/1,986`, and `477/500` with zero losses.
 - The lexical rule effort-to-gain curve has flattened. Provider reranking of lexical candidates is not independent dense recall.
 
 Next queue:
 
-- Add true local dense candidate generation independent of FTS.
-- Fuse lexical and dense candidate ranks behind the unchanged policy, packing, and receipt boundary.
-- Require zero stable-cohort regressions and a meaningful full-dataset gain before making dense the recommended mode.
+- Sweep dense candidate depth and packing budget while preserving the current zero-loss comparisons.
+- Profile exact cosine at larger stores before choosing `sqlite-vec` or another ANN backend.
+- Add a server-controlled MCP dense mode only after the cache/download/operator boundary is accepted.
 - Keep model id, model artifact digest, query digest, candidate-source ranks, and fusion decision receipt-visible without storing raw vectors in portable proofs.
 
 Fast checks:
@@ -407,9 +407,11 @@ Blocked conditions:
 2. [x] Package that bounded L0/L2 slice from a clean diff before starting dense retrieval work.
 3. [x] Build one scheduled-agent cold-start path from existing handoff/session primitives: restore, gap audit, admissibility report, run, checkpoint, and portable proof.
 4. [x] Add typed failure memory around expected invariant, observed outcome, confidence, correction, and invalidation without confusing HTTP success with verified state-transition success.
-5. [ ] Start true local dense candidate generation in an isolated L3 branch. Fuse dense and lexical candidates behind the existing policy/receipt boundary and require stable-gate safety plus meaningful full-dataset gain.
-6. [ ] Keep benchmark output directories isolated and rerun full LoCoMo/LongMemEval only after the stable cohort passes.
-7. [ ] Keep `.treeship/`, `.zerker/bench/`, datasets, build output, and other generated/runtime state uncommitted unless explicitly reviewed.
+5. [x] Start true local dense candidate generation in an isolated L3 branch, with explicit model setup, independent candidates, FTS RRF fusion, stale-vector rejection, and receipt-visible model/config/fusion evidence.
+6. [x] Pass the frozen stable cohort. Offline dense-hybrid improved `160/227` to `203/227` with 43 gains, zero losses, lexical recall preservation, zero fallbacks, and one pinned model digest.
+7. [x] Keep benchmark output directories isolated and finish full LoCoMo/LongMemEval comparisons. Dense-hybrid improved both full datasets with 347 and 91 gains, zero losses, and locally verified result/comparison artifacts.
+8. [ ] Keep `.treeship/`, `.zerker/bench/`, datasets, build output, and other generated/runtime state uncommitted unless explicitly reviewed.
+9. [ ] Tune candidate depth and packing cost under the same frozen/full zero-loss gates before recommending dense mode or adding an ANN backend.
 
 ## Done Definition For This Roadmap
 

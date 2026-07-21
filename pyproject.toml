@@ -39,6 +39,7 @@ zmem-bench-locomo = "zerker_memory.bench.activegraph_runner:main"
 
 [project.optional-dependencies]
 activegraph = ["activegraph>=1.9,<2"]
+dense = ["fastembed>=0.8,<1"]
 
 [project.entry-points."activegraph.packs"]
 zmem = "zerker_memory.pack:pack"

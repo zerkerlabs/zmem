@@ -8,7 +8,7 @@ Current published release: `v0.1.7` at `https://github.com/zerkerlabs/zmem/relea
 
 The release packages bounded runtime, MCP, provider-boundary, and benchmark-claim hardening while preserving retrieval, receipt, Merkle, snapshot, and default agent-capability compatibility.
 
-Current unreleased work adds a digest-bound `zerker.memory_context.v1` artifact: inject receipts commit to the exact admitted, withheld, and budget-dropped context plus the policy and memory roots behind the decision. The commitment is visible through `inject`, `why`, wrapped runs, ActiveGraph recall, and Treeship export.
+Current unreleased work adds a digest-bound `zerker.memory_context.v1` artifact, scheduled-agent cold-start continuity, typed failure memory, and opt-in local dense/FTS retrieval. Inject receipts commit to the admitted, withheld, and budget-dropped context plus the policy and memory roots behind the decision. Scheduled runs restore, audit the wall-clock gap, expose stale or unknown state, execute, checkpoint, and prove the handoff. Dense candidates remain governed by the same policy and receipt boundary.
 
 It is ready for:
 
@@ -32,21 +32,22 @@ Product signal note: the current wedge is validated by builder demand for local,
 
 ## Not Built Yet, In Priority Order
 
-1. True local dense candidate generation plus FTS fusion; the current provider embedding path reranks lexical candidates and is not yet independent semantic recall.
-2. Broader scheduled-agent integrations around the new first-class cold-start workflow, which now composes verified restore, wall-clock gap audit, stale/unknown-state reporting, governed execution, checkpoint, and proof.
-3. Evaluation and UI coverage around the new typed failure-memory path for expected invariant, observed effect, confidence, correction, and invalidation, including silent-success cases.
-4. A versioned Merkle successor with domain separation, explicit leaf-count binding, legacy `binary-sha256-v1` verification, and a tested migration path.
-5. An official model-judged BEAM submission path plus broader multi-conversation 1M and 10M coverage; the first isolated runs are complete.
-6. Hosted or team review console: shared queue, roles, approvals, retention controls, and audit export beyond the current local console.
-7. Hardened integrations beyond local MCP and ActiveGraph for Mem0, Zep/Graphiti, Letta, LangMem, Cognee, and other agent frameworks.
-8. Memory quality layer: usage reinforcement, expiry, decay, live consolidation, compression thresholds, and curation policy templates.
-9. Shared memory and swarm coordination: team-scoped stores, conflict policy, permissions, collective receipts, and multi-agent handoff workflows.
-10. Enterprise hardening: tenant isolation, customer-managed keys, policy packs, SSO, audit retention, and VPC/on-prem guides.
+1. Efficiency tuning for the new opt-in local dense/FTS candidate. Full local LoCoMo and LongMemEval comparisons completed with 347 and 91 gains, zero losses, and materially higher token and latency cost.
+2. A server-controlled MCP dense-retrieval mode after the CLI/library candidate is accepted; existing MCP tool schemas intentionally retain stable FTS behavior.
+3. A profiled ANN or `sqlite-vec` scale path if exact cosine becomes the measured bottleneck.
+4. Broader scheduled-agent integrations around the new first-class cold-start workflow, which now composes verified restore, wall-clock gap audit, stale/unknown-state reporting, governed execution, checkpoint, and proof.
+5. Evaluation and UI coverage around the new typed failure-memory path for expected invariant, observed effect, confidence, correction, and invalidation, including silent-success cases.
+6. An official model-judged BEAM submission path plus broader multi-conversation 1M and 10M coverage; the first isolated runs are complete.
+7. Hosted or team review console: shared queue, roles, approvals, retention controls, and audit export beyond the current local console.
+8. Hardened integrations beyond local MCP and ActiveGraph for Mem0, Zep/Graphiti, Letta, LangMem, Cognee, and other agent frameworks.
+9. Memory quality layer: usage reinforcement, expiry, decay, live consolidation, compression thresholds, and curation policy templates.
+10. Shared memory and swarm coordination plus enterprise hardening: team-scoped stores, conflict policy, permissions, collective receipts, tenant isolation, customer-managed keys, policy packs, SSO, audit retention, and VPC/on-prem guides.
 
 ## Functional Today
 
 - CLI.
 - Deterministic adaptive retrieval with receipt-visible routing, packing, semantic rescue, conservative regular-inflection evidence, bounded completion support, and exact-event-head transcript-neighbor support.
+- Opt-in FastEmbed local dense candidates, SQLite vector cache, exact cosine search, FTS RRF fusion, stale-vector rejection, and receipt-visible model/config/vector identity.
 - Verified local LoCoMo and LongMemEval matrices with explicit provisional claim boundaries.
 - BEAM official-layout adapter with verified isolated evidence at 100K, 500K, 1M, and 10M. The 10M conversation covers 19,895 messages, 6,209,948 observed whitespace tokens, and `201/201` source references in a compact proof artifact.
 - Real ActiveGraph 1.9+ pack discovery/loading, event persistence, a runnable no-key two-run host, a pre-call wrapper with recorded/sent prompt equality, and a batched compact trace runner.

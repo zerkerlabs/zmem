@@ -14,6 +14,7 @@ from typing import Any
 
 from .exporter import export_bundle, export_snapshot
 from .retrieval_providers import (
+    local_dense_provider_config,
     load_retrieval_provider_config,
     redacted_retrieval_provider_config,
     retrieval_provider_config_hash,
@@ -41,7 +42,7 @@ BENCHMARK_QUESTION_SCHEMA = "zerker.benchmark_question.v1"
 BENCHMARK_RETRIEVAL_CONFIG_SCHEMA = "zerker.benchmark_retrieval_config.v1"
 BENCHMARK_RETRIEVAL_PROVIDER_CONFIG_SCHEMA = "zerker.benchmark_retrieval_provider_config.v1"
 BENCHMARK_RETRIEVAL_MODES = ("fts", "fts-multihop", "pseudo-embedding", "pseudo-embedding-rerank")
-BENCHMARK_OPTIONAL_RETRIEVAL_MODES = ("fts-adaptive",)
+BENCHMARK_OPTIONAL_RETRIEVAL_MODES = ("fts-adaptive", "dense-hybrid")
 BENCHMARK_PROVIDER_RETRIEVAL_MODES = ("provider-embedding",)
 BENCHMARK_RETRIEVAL_RUN_MODES = (
     BENCHMARK_RETRIEVAL_MODES + BENCHMARK_OPTIONAL_RETRIEVAL_MODES + BENCHMARK_PROVIDER_RETRIEVAL_MODES
@@ -81,6 +82,13 @@ def resolve_benchmark_retrieval_config(mode: str, override: dict[str, Any] | Non
             "max_subqueries": 8,
             "per_subquery_limit": 5,
         },
+        "dense": {
+            "enabled": mode == "dense-hybrid",
+            "provider_id": "local:fastembed",
+            "limit": 20,
+            "min_score": 0.35,
+            "fusion": "reciprocal_rank_fusion_v1",
+        },
     }
     if mode == "provider-embedding":
         config["embedding"].update(
@@ -91,7 +99,7 @@ def resolve_benchmark_retrieval_config(mode: str, override: dict[str, Any] | Non
                 "model_id": "text-embedding-3-small",
             }
         )
-    if mode == "fts-adaptive":
+    if mode in {"fts-adaptive", "dense-hybrid"}:
         config.pop("multi_hop")
         config["routing"] = {"strategy": "store-auto-v1"}
     return _deep_merge(config, override or {})
@@ -104,18 +112,45 @@ def benchmark_retrieval_config_hash(config: dict[str, Any]) -> str:
 def _benchmark_retrieval_provider_config_metadata(
     path: Path | None,
     *,
+    retrieval_mode: str,
     allow_network_providers: bool = False,
 ) -> dict[str, Any] | None:
-    if path is None:
+    if path is None and retrieval_mode != "dense-hybrid":
         return None
-    config = load_retrieval_provider_config(path)
+    config = load_retrieval_provider_config(path) if path is not None else local_dense_provider_config()
     return {
         "schema": BENCHMARK_RETRIEVAL_PROVIDER_CONFIG_SCHEMA,
-        "config_path": str(path),
+        "config_path": str(path) if path is not None else None,
         "config_hash": retrieval_provider_config_hash(config),
         "redacted_config": redacted_retrieval_provider_config(config),
         "network_calls_enabled": bool(allow_network_providers),
     }
+
+
+def _benchmark_retrieval_provider_runtime_config(
+    retrieval_mode: str,
+    path: Path | None,
+) -> dict[str, Any] | None:
+    if path is not None:
+        return load_retrieval_provider_config(path)
+    if retrieval_mode == "dense-hybrid":
+        return local_dense_provider_config()
+    return None
+
+
+def _index_dense_benchmark_scope(
+    store: MemoryStore,
+    *,
+    retrieval_mode: str,
+    retrieval_provider_config: dict[str, Any] | None,
+    scope: str,
+) -> None:
+    if retrieval_mode != "dense-hybrid":
+        return
+    store.index_embeddings(
+        provider_config=retrieval_provider_config or local_dense_provider_config(),
+        scope=scope,
+    )
 
 
 def _provider_config_command_arg(path: Path | None) -> str:
@@ -156,6 +191,8 @@ def _validate_provider_benchmark_gate(
 def _benchmark_retrieval_reproducibility(retrieval_mode: str) -> str:
     if retrieval_mode in BENCHMARK_PROVIDER_RETRIEVAL_MODES:
         return "provider-observed"
+    if retrieval_mode == "dense-hybrid":
+        return "model-hash-pinned-local"
     return "deterministic-local"
 
 
@@ -215,10 +252,12 @@ def run_synthetic_benchmark(
     retrieval_config_hash = benchmark_retrieval_config_hash(retrieval_config)
     retrieval_provider_config = _benchmark_retrieval_provider_config_metadata(
         retrieval_provider_config_path,
+        retrieval_mode=retrieval_mode,
         allow_network_providers=allow_network_providers,
     )
-    retrieval_provider_runtime_config = (
-        load_retrieval_provider_config(retrieval_provider_config_path) if retrieval_provider_config_path else None
+    retrieval_provider_runtime_config = _benchmark_retrieval_provider_runtime_config(
+        retrieval_mode,
+        retrieval_provider_config_path,
     )
     run_id = run_id or f"synthetic-seed-{seed}"
     run_dir = out_dir / run_id
@@ -402,10 +441,12 @@ def run_longmemeval_benchmark(
     retrieval_config_hash = benchmark_retrieval_config_hash(retrieval_config)
     retrieval_provider_config = _benchmark_retrieval_provider_config_metadata(
         retrieval_provider_config_path,
+        retrieval_mode=retrieval_mode,
         allow_network_providers=allow_network_providers,
     )
-    retrieval_provider_runtime_config = (
-        load_retrieval_provider_config(retrieval_provider_config_path) if retrieval_provider_config_path else None
+    retrieval_provider_runtime_config = _benchmark_retrieval_provider_runtime_config(
+        retrieval_mode,
+        retrieval_provider_config_path,
     )
     run_id = run_id or f"longmemeval-{split}-seed-{seed}"
     run_dir = out_dir / run_id
@@ -664,10 +705,12 @@ def run_locomo_benchmark(
     retrieval_config_hash = benchmark_retrieval_config_hash(retrieval_config)
     retrieval_provider_config = _benchmark_retrieval_provider_config_metadata(
         retrieval_provider_config_path,
+        retrieval_mode=retrieval_mode,
         allow_network_providers=allow_network_providers,
     )
-    retrieval_provider_runtime_config = (
-        load_retrieval_provider_config(retrieval_provider_config_path) if retrieval_provider_config_path else None
+    retrieval_provider_runtime_config = _benchmark_retrieval_provider_runtime_config(
+        retrieval_mode,
+        retrieval_provider_config_path,
     )
     run_id = run_id or f"locomo-{split}-seed-{seed}"
     run_dir = out_dir / run_id
@@ -923,10 +966,12 @@ def run_beam_benchmark(
     retrieval_config_hash = benchmark_retrieval_config_hash(retrieval_config)
     retrieval_provider_config = _benchmark_retrieval_provider_config_metadata(
         retrieval_provider_config_path,
+        retrieval_mode=retrieval_mode,
         allow_network_providers=allow_network_providers,
     )
-    retrieval_provider_runtime_config = (
-        load_retrieval_provider_config(retrieval_provider_config_path) if retrieval_provider_config_path else None
+    retrieval_provider_runtime_config = _benchmark_retrieval_provider_runtime_config(
+        retrieval_mode,
+        retrieval_provider_config_path,
     )
     run_id = run_id or f"beam-{scale_bucket.lower()}-seed-{seed}"
     run_dir = out_dir / run_id
@@ -4768,6 +4813,12 @@ def _run_question(
         )
         for index, memory in enumerate(question["setup_memories"])
     ]
+    _index_dense_benchmark_scope(
+        store,
+        retrieval_mode=retrieval_mode,
+        retrieval_provider_config=retrieval_provider_config,
+        scope=scope,
+    )
     started = time.perf_counter()
     receipt = store.inject(
         question["query"],
@@ -4925,6 +4976,12 @@ def _run_longmemeval_question(
         memory_type="semantic",
         scope=scope,
         labels=["benchmark", "longmemeval", question["category"]],
+    )
+    _index_dense_benchmark_scope(
+        store,
+        retrieval_mode=retrieval_mode,
+        retrieval_provider_config=retrieval_provider_config,
+        scope=scope,
     )
     started = time.perf_counter()
     receipt = store.inject(
@@ -5303,6 +5360,12 @@ def _run_locomo_question(
             scope=scope,
             labels=["benchmark", benchmark_name, question["category"]],
         )
+    _index_dense_benchmark_scope(
+        store,
+        retrieval_mode=retrieval_mode,
+        retrieval_provider_config=retrieval_provider_config,
+        scope=scope,
+    )
     started = time.perf_counter()
     receipt = store.inject(
         question["query"],
@@ -5488,6 +5551,8 @@ def _retrieval_proof_block(
     embedding = retrieval.get("embedding", {}) if isinstance(retrieval.get("embedding"), dict) else {}
     reranker = retrieval.get("reranker", {}) if isinstance(retrieval.get("reranker"), dict) else {}
     multi_hop = retrieval.get("multi_hop", {}) if isinstance(retrieval.get("multi_hop"), dict) else {}
+    dense = retrieval.get("dense_hybrid", {}) if isinstance(retrieval.get("dense_hybrid"), dict) else {}
+    dense_fusion = dense.get("fusion", {}) if isinstance(dense.get("fusion"), dict) else {}
     return {
         "mode": retrieval_mode,
         "config_hash": retrieval_config_hash,
@@ -5506,8 +5571,28 @@ def _retrieval_proof_block(
         "embedding_model_id": embedding.get("model_id"),
         "embedding_provider_id": embedding.get("provider_id"),
         "embedding_provider_config_hash": embedding.get("provider_config_hash"),
-        "network_calls_enabled": bool(embedding.get("network_calls_enabled", False)),
-        "retrieval_reproducibility": embedding.get("retrieval_reproducibility", "deterministic-local"),
+        "dense_enabled": bool(dense.get("enabled", False)),
+        "dense_provider_id": dense.get("provider_id"),
+        "dense_model_id": dense.get("model_id"),
+        "dense_model_digest": dense.get("model_digest"),
+        "dense_provider_config_hash": dense.get("config_hash"),
+        "dense_query_vector_hash": dense.get("query_vector_hash"),
+        "dense_index_coverage": dense.get("index_coverage"),
+        "dense_fallback": bool(dense.get("fallback", False)),
+        "dense_disabled_reason": dense.get("disabled_reason"),
+        "dense_conflict_resolution_boundary": dense.get("conflict_resolution_boundary"),
+        "dense_introduced_candidate_ids": dense.get("introduced_candidate_ids", []),
+        "dense_lexical_recall_preserved": dense.get("lexical_recall_preserved"),
+        "dense_fusion_strategy": dense_fusion.get("strategy"),
+        "dense_fusion_rank_hash": sha256_text(stable_json(dense_fusion.get("ranked_candidate_ids", []))),
+        "network_calls_enabled": bool(
+            embedding.get("network_calls_enabled", False) or dense.get("network_calls_enabled", False)
+        ),
+        "retrieval_reproducibility": (
+            "model-hash-pinned-local"
+            if dense.get("enabled") and not dense.get("fallback")
+            else embedding.get("retrieval_reproducibility", "deterministic-local")
+        ),
         "reranker_id": reranker.get("reranker_id"),
     }
 
@@ -5536,6 +5621,14 @@ def _candidate_rank_hash(retrieval: dict[str, Any]) -> str:
                         "embedding_rank",
                         "pre_rerank_rank",
                         "post_rerank_rank",
+                        "pre_dense_rank",
+                        "dense_rank",
+                        "dense_score",
+                        "dense_vector_hash",
+                        "dense_candidate_source",
+                        "dense_fusion_rank",
+                        "dense_fusion_score",
+                        "dense_fusion_sources",
                     )
                     if key in candidate
                 }

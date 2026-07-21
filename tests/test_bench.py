@@ -550,6 +550,49 @@ class BenchmarkHarnessTest(unittest.TestCase):
         )
         self.assertEqual(args.mode, "fts-adaptive")
 
+    def test_dense_hybrid_benchmark_indexes_locally_and_records_proof(self):
+        def fake_embed(provider_entry, texts, *, input_type="document", allow_model_download=False, **_kwargs):
+            vectors = [[1.0, 0.0] for _text in texts]
+            return EmbeddingProviderResult(
+                provider_id=provider_entry.provider_id,
+                model_id=provider_entry.model_id or "BAAI/bge-small-en-v1.5",
+                dims=2,
+                normalized=True,
+                vectors=vectors,
+                latency_ms=0.1,
+                network_call=False,
+                vector_hashes=[f"sha256:vector-{index}" for index, _vector in enumerate(vectors)],
+                model_digest="sha256:test-model",
+            )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch("zerker_memory.retrieval_providers.embed_texts", side_effect=fake_embed):
+                result = run_synthetic_benchmark(
+                    Path(tmp),
+                    seed=0,
+                    run_id="dense-hybrid-run",
+                    retrieval_mode="dense-hybrid",
+                )
+            result_payload = json.loads(Path(result["result_path"]).read_text(encoding="utf-8"))
+            first_proof = result_payload["questions"][0]["retrieval_proof"]
+
+        self.assertIn("dense-hybrid", BENCHMARK_OPTIONAL_RETRIEVAL_MODES)
+        self.assertNotIn("dense-hybrid", BENCHMARK_RETRIEVAL_MODES)
+        self.assertTrue(result_payload["retrieval_config"]["dense"]["enabled"])
+        self.assertEqual(result_payload["retrieval_config"]["routing"], {"strategy": "store-auto-v1"})
+        self.assertIsNone(result_payload["retrieval_provider_config"]["config_path"])
+        self.assertEqual(result_payload["retrieval_reproducibility"], "model-hash-pinned-local")
+        self.assertTrue(first_proof["dense_enabled"])
+        self.assertFalse(first_proof["dense_fallback"])
+        self.assertEqual(first_proof["dense_model_digest"], "sha256:test-model")
+        self.assertEqual(first_proof["dense_fusion_strategy"], "reciprocal_rank_fusion_v1")
+        self.assertEqual(
+            first_proof["dense_conflict_resolution_boundary"],
+            "dense-only-candidates-cannot-trigger-lexical-conflicts-v1",
+        )
+        self.assertTrue(first_proof["dense_lexical_recall_preserved"])
+        self.assertFalse(first_proof["network_calls_enabled"])
+
     def test_fts_adaptive_benchmark_proof_records_store_auto_activation(self):
         with tempfile.TemporaryDirectory() as tmp:
             dataset = Path(tmp) / "locomo-adaptive.jsonl"

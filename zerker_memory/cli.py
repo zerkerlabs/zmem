@@ -594,6 +594,26 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
         help="Print only the compact human-readable readiness summary",
     )
 
+    embeddings = sub.add_parser("embeddings", help="Build or inspect the local semantic memory index")
+    embeddings_sub = embeddings.add_subparsers(dest="embeddings_command", required=True)
+    embeddings_index = embeddings_sub.add_parser("index", help="Index governed memory with a local embedding model")
+    embeddings_index.add_argument("--config", type=expand_user_path, help="Retrieval provider config JSON path")
+    embeddings_index.add_argument("--provider", default="local:fastembed")
+    embeddings_index.add_argument("--scope")
+    embeddings_index.add_argument("--batch-size", type=int)
+    embeddings_index.add_argument("--force", action="store_true")
+    embeddings_index.add_argument(
+        "--download-model",
+        action="store_true",
+        help="Allow the explicit first-run model download; inference remains local",
+    )
+    embeddings_index.add_argument("--summary-only", action="store_true")
+    embeddings_status = embeddings_sub.add_parser("status", help="Report local embedding index coverage")
+    embeddings_status.add_argument("--config", type=expand_user_path, help="Retrieval provider config JSON path")
+    embeddings_status.add_argument("--provider", default="local:fastembed")
+    embeddings_status.add_argument("--scope")
+    embeddings_status.add_argument("--summary-only", action="store_true")
+
     failure = sub.add_parser("failure", help="Record or inspect governed failure memory")
     failure_sub = failure.add_subparsers(dest="failure_command", required=True)
     failure_record = failure_sub.add_parser("record", help="Record expected, observed, corrected, and invalidated state")
@@ -619,6 +639,8 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
     inject.add_argument("--agent", required=True)
     inject.add_argument("--risk", choices=["low", "medium", "high"], default="medium")
     inject.add_argument("--scope")
+    inject.add_argument("--retrieval-mode", choices=["fts", "dense-hybrid"], default="fts")
+    inject.add_argument("--retrieval-provider-config", type=expand_user_path)
     inject.add_argument("--summary", action="store_true", help="Print a compact summary before the JSON receipt")
     inject.add_argument("--summary-only", action="store_true", help="Print only the compact memory decision summary")
 
@@ -627,6 +649,8 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
     run.add_argument("--task", required=True)
     run.add_argument("--risk", choices=["low", "medium", "high"], default="medium")
     run.add_argument("--scope")
+    run.add_argument("--retrieval-mode", choices=["fts", "dense-hybrid"], default="fts")
+    run.add_argument("--retrieval-provider-config", type=expand_user_path)
     run.add_argument("--context-path", type=expand_user_path)
     run.add_argument("run_command", nargs=argparse.REMAINDER, help="Command to run after --")
 
@@ -640,6 +664,8 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
     scheduled_run.add_argument("--task", required=True)
     scheduled_run.add_argument("--risk", choices=["low", "medium", "high"], default="medium")
     scheduled_run.add_argument("--scope")
+    scheduled_run.add_argument("--retrieval-mode", choices=["fts", "dense-hybrid"], default="fts")
+    scheduled_run.add_argument("--retrieval-provider-config", type=expand_user_path)
     scheduled_run.add_argument("--summary")
     scheduled_run.add_argument("--summary-only", action="store_true")
     scheduled_run.add_argument("--stale-after-seconds", type=int, default=86_400)
@@ -1613,6 +1639,34 @@ def main(argv: list[str] | None = None) -> int:
                 if not args.summary_only:
                     print_json(result)
                 return 0 if result["ok"] else 1
+        if args.command == "embeddings":
+            from .retrieval_providers import load_retrieval_provider_config, local_dense_provider_config
+
+            provider_config = (
+                load_retrieval_provider_config(args.config)
+                if args.config is not None
+                else local_dense_provider_config()
+            )
+            if args.embeddings_command == "index":
+                result = store.index_embeddings(
+                    provider_config=provider_config,
+                    provider_id=args.provider,
+                    scope=args.scope,
+                    allow_model_download=args.download_model,
+                    force=args.force,
+                    batch_size=args.batch_size,
+                )
+            else:
+                result = store.embedding_index_status(
+                    provider_config=provider_config,
+                    provider_id=args.provider,
+                    scope=args.scope,
+                )
+            if args.summary_only:
+                print(render_embedding_index_summary(result), end="")
+            else:
+                print_json(result)
+            return 0 if result["ok"] else 1
         if args.command == "failure":
             from .failure_memory import inspect_failure_memory, record_failure_memory, render_failure_summary
 
@@ -1640,7 +1694,18 @@ def main(argv: list[str] | None = None) -> int:
                 print_json(result)
             return 0 if result["ok"] else 1
         if args.command == "inject":
-            receipt = store.inject(args.task, agent_id=args.agent, risk=args.risk, scope=args.scope)
+            retrieval_config, retrieval_provider_config = dense_runtime_configs(
+                args.retrieval_mode,
+                config_path=args.retrieval_provider_config,
+            )
+            receipt = store.inject(
+                args.task,
+                agent_id=args.agent,
+                risk=args.risk,
+                scope=args.scope,
+                retrieval_config=retrieval_config,
+                retrieval_provider_config=retrieval_provider_config,
+            )
             if args.summary or args.summary_only:
                 print(render_inject_summary(receipt), end="")
             if not args.summary_only:
@@ -1650,6 +1715,10 @@ def main(argv: list[str] | None = None) -> int:
             from .runner import run_with_memory
 
             command = strip_command_separator(args.run_command)
+            retrieval_config, retrieval_provider_config = dense_runtime_configs(
+                args.retrieval_mode,
+                config_path=args.retrieval_provider_config,
+            )
             run_receipt = run_with_memory(
                 store,
                 command,
@@ -1658,6 +1727,8 @@ def main(argv: list[str] | None = None) -> int:
                 risk=args.risk,
                 scope=args.scope,
                 context_path=args.context_path,
+                retrieval_config=retrieval_config,
+                retrieval_provider_config=retrieval_provider_config,
             )
             print_json(run_receipt)
             return int(run_receipt["exit_code"])
@@ -1669,6 +1740,10 @@ def main(argv: list[str] | None = None) -> int:
                 restore = restore_snapshot_file(store, snapshot_path=args.snapshot)
             elif args.handoff_dir is not None:
                 restore = restore_handoff_package(store, handoff_dir=args.handoff_dir)
+            retrieval_config, retrieval_provider_config = dense_runtime_configs(
+                args.retrieval_mode,
+                config_path=args.retrieval_provider_config,
+            )
             result = run_scheduled_agent(
                 store,
                 strip_command_separator(args.run_command),
@@ -1682,6 +1757,8 @@ def main(argv: list[str] | None = None) -> int:
                 stale_after_seconds=args.stale_after_seconds,
                 restore=restore,
                 context_path=args.context_path,
+                retrieval_config=retrieval_config,
+                retrieval_provider_config=retrieval_provider_config,
             )
             if args.summary_only:
                 print(render_scheduled_run_summary(result), end="")
@@ -2168,6 +2245,17 @@ def _append_summary_items(lines: list[str], heading: str, items: list[dict], *, 
         lines.append(f"  - ... {len(items) - limit} more")
 
 
+def _dense_recall_summary_line(receipt: dict[str, Any]) -> str | None:
+    retrieval = receipt.get("retrieval") if isinstance(receipt.get("retrieval"), dict) else {}
+    dense = retrieval.get("dense_hybrid") if isinstance(retrieval.get("dense_hybrid"), dict) else {}
+    if not dense.get("enabled"):
+        return None
+    if dense.get("fallback"):
+        return f"Recall: FTS fallback ({dense.get('disabled_reason') or 'dense unavailable'})"
+    identity = dense.get("model_id") or dense.get("provider_id") or "local model"
+    return f"Recall: dense + FTS ({identity})"
+
+
 def render_inject_summary(receipt: dict[str, Any]) -> str:
     memories = [item for item in receipt.get("memories", []) if isinstance(item, dict)]
     withheld = [item for item in receipt.get("withheld", []) if isinstance(item, dict)]
@@ -2185,6 +2273,9 @@ def render_inject_summary(receipt: dict[str, Any]) -> str:
         f"Proof root: {receipt.get('merkle_root', 'unknown')}",
         f"Context proof: {memory_context.get('context_digest', 'not recorded')}",
     ]
+    dense_summary = _dense_recall_summary_line(receipt)
+    if dense_summary:
+        lines.insert(5, dense_summary)
     _append_summary_items(lines, "Injected memory", memories)
     _append_summary_items(lines, "Withheld memory", withheld)
     lines.append(f"Explain: zmem why {receipt.get('action_id', '<action-id>')} --summary-only")
@@ -2210,6 +2301,9 @@ def render_why_summary(receipt: dict[str, Any], *, verified: bool | None = None)
         f"Proof root: {receipt.get('merkle_root', 'unknown')}",
         f"Context proof: {memory_context.get('context_digest', 'not recorded')}",
     ]
+    dense_summary = _dense_recall_summary_line(receipt)
+    if dense_summary:
+        lines.insert(5, dense_summary)
     _append_summary_items(lines, "Memory that shaped the action", injected)
     _append_summary_items(lines, "Memory kept out", withheld)
     return "\n".join(lines) + "\n"
@@ -2265,6 +2359,36 @@ def render_retrieval_provider_readiness_summary(result: dict) -> str:
             f"{key_status}"
         )
     return "\n".join(lines) + "\n"
+
+
+def dense_runtime_configs(
+    retrieval_mode: str,
+    *,
+    config_path: Path | None,
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    if retrieval_mode != "dense-hybrid":
+        return None, None
+    from .dense import dense_hybrid_retrieval_config
+    from .retrieval_providers import load_retrieval_provider_config, local_dense_provider_config
+
+    provider_config = load_retrieval_provider_config(config_path) if config_path else local_dense_provider_config()
+    return dense_hybrid_retrieval_config(), provider_config
+
+
+def render_embedding_index_summary(result: dict[str, Any]) -> str:
+    return "\n".join(
+        [
+            "ZMem local embedding index",
+            f"Provider: {result.get('provider_id', 'unknown')}",
+            f"Model: {result.get('model_id', 'unknown')}",
+            f"Model digest: {result.get('model_digest') or 'not indexed'}",
+            f"Coverage: {result.get('indexed_memory_count', 0)}/{result.get('eligible_memory_count', 0)}",
+            f"Missing or stale: {result.get('missing_or_stale_count', 0)}",
+            f"Indexed now: {result.get('indexed_count', 0)}",
+            f"Model cached: {'yes' if result.get('model_cached') else 'no'}",
+            f"Index hash: {result.get('index_hash', 'unknown')}",
+        ]
+    ) + "\n"
 
 
 def _benchmark_question_summary_for_cli(question_summary: object) -> dict[str, object]:

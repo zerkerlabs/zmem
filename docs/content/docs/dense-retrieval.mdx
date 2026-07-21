@@ -1,0 +1,102 @@
+---
+title: Local Dense Retrieval
+description: Build an explicit local embedding index and fuse semantic candidates with FTS under the same ZMem policy and proof boundary.
+---
+
+ZMem's dense mode is an optional recall source. It finds semantic candidates independently of FTS, fuses both rankings with reciprocal rank fusion, preserves every candidate found by the adaptive lexical baseline, and then sends the combined candidate set through the existing scope, lifecycle, policy, packing, and receipt path.
+
+Dense similarity does not make a memory trusted. Quarantined memory can be retrieved as a candidate and still be withheld from the agent.
+
+## Install The Optional Runtime
+
+```bash
+python3 -m pip install -e '.[dense]'
+```
+
+The base ZMem install remains dependency-light. The dense extra uses FastEmbed with the local ONNX model `BAAI/bge-small-en-v1.5` by default.
+
+## Build The Index
+
+The first model download is explicit:
+
+```bash
+zmem embeddings index --download-model --summary-only
+```
+
+After the model is cached, indexing and retrieval stay local:
+
+```bash
+zmem embeddings index --summary-only
+zmem embeddings status --summary-only
+```
+
+Use `--scope project:zmem` to index one scope plus global memory. Use `--force` when intentionally rebuilding vectors after changing the model files or provider configuration.
+
+ZMem stores derived vectors in SQLite as float32 blobs. Each row is bound to the memory content hash, provider, model, model-file digest, and redacted provider-config hash. A changed memory cannot reuse its stale vector.
+
+## Use Dense And FTS Together
+
+```bash
+zmem inject "what maintenance cadence did we agree on?" \
+  --agent cursor \
+  --scope project:car \
+  --retrieval-mode dense-hybrid \
+  --summary-only
+```
+
+The same mode works with wrapped and scheduled agents:
+
+```bash
+zmem scheduled-run \
+  --session-id cron://daily-review \
+  --agent hermes \
+  --task "review the latest project state" \
+  --scope project:zmem \
+  --retrieval-mode dense-hybrid \
+  --summary-only \
+  -- your-agent-command
+```
+
+Search never downloads a model. If the optional runtime, cached model, or current index is unavailable, ZMem continues with lexical retrieval and records the dense fallback reason.
+
+Compact `inject` and `why` summaries show `Recall: dense + FTS` when the local model participated, or `Recall: FTS fallback (...)` with the exact reason when it did not.
+
+## What The Receipt Records
+
+`retrieval.dense_hybrid` records:
+
+- provider and model identity,
+- a digest of the local model files,
+- redacted provider-configuration hash,
+- query-vector hash,
+- index coverage,
+- dense rank and score per selected candidate,
+- lexical and dense source ranks,
+- the reciprocal-rank-fusion result,
+- whether lexical candidate recall was preserved,
+- candidates introduced independently of FTS,
+- the boundary that prevents a dense-only candidate from triggering legacy lexical conflict suppression,
+- any fallback reason.
+
+Raw vectors stay local and are not copied into action receipts.
+
+Dense similarity is candidate evidence, not state-transition evidence. A candidate found only by the dense source may be admitted by policy, but it cannot by itself cause the regex-based current-fact resolver to suppress a lexical candidate. Explicit parent, supersession, and typed update links continue to resolve normally.
+
+## Current Boundary
+
+This first implementation uses exact cosine search over the current SQLite vector cache. That is intentionally simple and auditable, but it is not yet an ANN or `sqlite-vec` scale path.
+
+The current opt-in surfaces are the Python store API, `inject`, `run`, `scheduled-run`, and the benchmark harness. Existing MCP tool schemas keep their stable FTS behavior in this candidate; a server-controlled MCP dense mode is a separate follow-up.
+
+On a clean repeat of the frozen 227-question local LoCoMo cohort, the candidate improved provisional evidence-recall accuracy from `160/227` (`70.48%`) to `203/227` (`89.43%`): 43 gains and zero losses. The model ran offline from one pinned model digest with zero fallbacks or query-time network calls. Observed p95 retrieval latency increased from `209.629 ms` to `419.818 ms`.
+
+The proof-verified full local comparisons also passed with zero answer regressions:
+
+| Dataset | Adaptive FTS | Dense + FTS | Gains | Losses |
+| --- | ---: | ---: | ---: | ---: |
+| LoCoMo | `1,220/1,986` (`61.43%`) | `1,567/1,986` (`78.90%`) | 347 | 0 |
+| LongMemEval | `386/500` (`77.2%`) | `477/500` (`95.4%`) | 91 | 0 |
+
+Every answerable category improved. LoCoMo adversarial abstention stayed `446/446`. The wider candidate set is not free: mean query context increased from `533.32` to `903.05` tokens on LoCoMo and from `2,510.65` to `3,615.88` on LongMemEval. Observed p95 retrieval latency increased from `690.389 ms` to `3,158.984 ms` on the full LoCoMo artifacts and from `193.610 ms` to `368.415 ms` on LongMemEval. Dense mode therefore remains opt-in while candidate depth, context packing, and exact-cosine performance are tuned.
+
+These are ZMem's deterministic local evidence-support scores, not an official LoCoMo leaderboard submission or model-judged answer score.

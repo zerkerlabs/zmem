@@ -162,10 +162,19 @@ def run_with_memory(
     scope: str | None = None,
     context_path: Path | None = None,
     continuity: Mapping[str, Any] | None = None,
+    retrieval_config: dict[str, Any] | None = None,
+    retrieval_provider_config: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     if not command:
         raise ValueError("run command cannot be empty")
-    receipt = store.inject(task, agent_id=agent_id, risk=risk, scope=scope)
+    receipt = store.inject(
+        task,
+        agent_id=agent_id,
+        risk=risk,
+        scope=scope,
+        retrieval_config=retrieval_config,
+        retrieval_provider_config=retrieval_provider_config,
+    )
     context = build_context(receipt)
     if continuity is not None:
         context["continuity"] = dict(continuity)

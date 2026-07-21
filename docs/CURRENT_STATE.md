@@ -5,11 +5,20 @@ This is the short orchestration dashboard for Zerker Memory. Every autonomous bu
 ## Release Coordination
 `2026-07-21`
 
+- Started the isolated `codex/l3-dense-retrieval` candidate after cleanly committing the governed-context and scheduled-agent/failure-memory checkpoints.
+- Added optional FastEmbed local embeddings, explicit first-run model download, SQLite float32 vector caching, stale-content rejection, exact cosine candidates independent of FTS, and lexical/dense RRF fusion behind the unchanged policy and receipt boundary.
+- `inject`, `run`, and `scheduled-run` accept `--retrieval-mode dense-hybrid`; action receipts record model id/digest, redacted config hash, query-vector hash, index coverage, candidate source ranks, fusion, and explicit fallback reason without copying raw vectors.
+- The frozen cohort gate passes twice: fresh `fts-adaptive` reproduced `160/227` (`70.48%`), while the final clean offline dense-hybrid repeat reached `203/227` (`89.43%`) with 43 gains, zero losses, zero fallbacks, zero query-time network calls, and one pinned model digest. Candidate proofs confirm lexical recall was preserved; p95 retrieval latency moved from `209.629 ms` to `419.818 ms`.
+- A full-run diagnostic found one dense-only transcript candidate triggering the broad lexical current-fact resolver. Dense-only candidates can no longer manufacture that conflict; explicit update/supersession evidence and conflicts between lexical candidates remain unchanged. The exact miss now passes and the corrected frozen gate remains `203/227` with zero losses.
+- The full isolated comparisons are complete and verify locally. LoCoMo improved from `1,220/1,986` (`61.43%`) to `1,567/1,986` (`78.90%`), with 347 gains and zero losses. LongMemEval improved from `386/500` (`77.2%`) to `477/500` (`95.4%`), with 91 gains and zero losses. Every answerable category improved; LoCoMo adversarial abstention remained `446/446`.
+- The gain has an explicit cost. Mean query context increased from `533.32` to `903.05` tokens on LoCoMo and from `2,510.65` to `3,615.88` on LongMemEval. Observed full-run p95 retrieval latency increased from `690.389 ms` to `3,158.984 ms` on LoCoMo and from `193.610 ms` to `368.415 ms` on LongMemEval. Dense remains opt-in while candidate depth, packing, and exact-cosine performance are tuned.
+- Full result hashes are LoCoMo `2b80a6ab...` with Merkle root `4a078285...`, and LongMemEval `34fe2a32...` with Merkle root `f01398f3...`. Both artifacts and their cross-mode comparisons verify locally; they are provisional local evidence-support scores, not official leaderboard results.
+- Dense-candidate acceptance is green: `1,289` tests pass with two expected skips, eval `11/11`, compile and dependency health, docs build/typecheck, fresh-workspace release smoke, and real wheel/sdist packaging. The candidate wheel includes `dense.py` and the optional FastEmbed dependency metadata.
 - Packaged the canonical governed-context candidate as commit `ea67c51` after `1,266` tests, eval `11/11`, both public builds, and strict release smoke passed.
 - Added `zmem scheduled-run`: optional verified restore, receipt-bound wall-clock gap audit, explicit current/stale/unknown state, exact context-digest binding, governed command execution, checkpoint, and a compact linked proof.
 - Added typed `zerker.failure_memory.v1` recording and inspection. Expected result, observed result, confidence, correction, and invalidation are content-hashed and receipted; agent-authored corrections stay quarantined until review.
-- Acceptance passes eight new cold-start/failure tests, `1,274` full-suite tests with two expected skips, eval `11/11`, the docs production build, direct CLI summary smokes, and strict release smoke with public proof `6/6`, assets `8/8`, and return-packet verification ready.
-- Broad swarms remain paused. Do not mix dense retrieval changes into this continuity/failure checkpoint.
+- The earlier cold-start/failure checkpoint passed eight new focused tests and `1,274` full-suite tests; the combined dense candidate now passes `1,289` tests with two expected skips.
+- Broad swarms remain paused. The dense candidate is isolated on `codex/l3-dense-retrieval`; exact cosine is the auditable baseline, not an ANN scale claim.
 
 `2026-07-20`
 

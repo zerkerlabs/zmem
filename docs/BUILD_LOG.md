@@ -1,3 +1,29 @@
+## 2026-07-21 - Isolated local dense retrieval candidate
+
+Built locally on `codex/l3-dense-retrieval`:
+
+- Added the optional `dense` install extra using FastEmbed and `BAAI/bge-small-en-v1.5`; the base install remains unchanged.
+- Added explicit `zmem embeddings index` / `status` UX. Only `--download-model` may fetch the model; query inference is local-only.
+- Added a derived SQLite float32 embedding cache bound to content hash, provider, model id, model-file digest, and redacted config hash. Changed memory content cannot reuse a stale vector.
+- Added independent exact-cosine dense candidates plus lexical/dense RRF fusion. The resulting set still passes through existing scope, status, policy, temporal, context-packing, receipt, and context-digest logic.
+- Added `--retrieval-mode dense-hybrid` to `inject`, `run`, and `scheduled-run`, with receipt-visible candidate ranks, scores, source attribution, fusion, index coverage, and fallback reason.
+
+Evidence so far:
+
+- Twelve focused dense tests cover independent candidate recovery, scope isolation, quarantine withholding, stale-vector exclusion, model-digest mismatch, empty-store model prefetch, local-provider enforcement, lexical fallback, additive fusion, lexical conflict boundaries, CLI parsing, and compact recall/fallback summaries. The 13-test provider suite also proves a cache miss fails before provider initialization and an already-cached model stays offline even when the explicit download flag is present.
+- A real FastEmbed smoke explicitly downloaded and cached the model, indexed `2/2` memories, then recovered candidates for a paraphrase with no lexical result while recording no query-time network call.
+- The frozen 227-question gate passes against a fresh control and a clean final repeat: adaptive FTS reproduced `160/227` (`70.48%`), while offline dense-hybrid reached `203/227` (`89.43%`) with 43 gains and zero losses. Every non-abstention proof preserved lexical candidate recall; no dense fallback or network call occurred. Clean p95 retrieval latency moved from `209.629 ms` to `419.818 ms`.
+- The first full LongMemEval pass exposed one false lexical conflict between a correct lexical+dense fact and a transcript-shaped dense-only candidate. The corrected boundary replays that exact question from failure to pass, preserves all 43 frozen-cohort gains with zero losses, and is carried into compact benchmark proof metadata.
+- The full LoCoMo comparison improved from `1,220/1,986` (`61.43%`) to `1,567/1,986` (`78.90%`): 347 gains, zero losses, and adversarial abstention unchanged at `446/446`. Result hash `2b80a6ab...`; Merkle root `4a078285...`; result and comparison verification `ok`.
+- The full LongMemEval comparison improved from `386/500` (`77.2%`) to `477/500` (`95.4%`): 91 gains, zero losses, and every category improved. Result hash `34fe2a32...`; Merkle root `f01398f3...`; result and comparison verification `ok`.
+- Mean query context increased from `533.32` to `903.05` tokens on LoCoMo and from `2,510.65` to `3,615.88` on LongMemEval. Observed full-artifact p95 latency increased from `690.389 ms` to `3,158.984 ms` and from `193.610 ms` to `368.415 ms`, respectively. This cost is now the next L3 optimization target.
+- Full verification passes `1,289` tests with two expected skips, eval `11/11`, compile and dependency health, docs build/typecheck, and fresh-workspace release smoke with strict publish ready.
+- Candidate artifacts build successfully. Wheel `sha256:59ed5cb949ed2e92aed616085a4bb712cc97dd55e51f3f952a7b1151bccf8860`; source distribution `sha256:3b84d88eb7c80cb996b0556b8289973739c59d326c95f237a355f90f3e61a656`. The wheel contains `dense.py`, declares FastEmbed only through the `dense` extra, and passes a clean Python 3.11 no-dependency import/CLI parser smoke.
+
+Claim boundary:
+
+- This is an opt-in exact-cosine candidate, not yet the default retrieval mode, an ANN implementation, an MCP retrieval-mode change, or an official leaderboard claim. Stable/full promotion passed; efficiency tuning and packaging remain before release recommendation.
+
 ## 2026-07-21 - Scheduled-agent continuity and failure memory
 
 Built locally:

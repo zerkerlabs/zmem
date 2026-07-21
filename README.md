@@ -16,6 +16,7 @@ Short version:
 ## What Ships Today
 
 - Local SQLite memory with FTS search and safe fallback search.
+- Optional true local dense candidates with explicit indexing, exact cosine search, and FTS rank fusion.
 - Typed memories: episodic, semantic, procedural, and policy.
 - Quarantine, review queue, promote, reject, revoke, lineage, and revocation propagation.
 - Symbolic injection policy using status, trust, authority, scope, labels, type, and task risk.
@@ -162,6 +163,20 @@ zmem eval
 zmem doctor
 zmem demo
 ```
+
+Optional local semantic recall is explicit and remains behind the same policy and receipt boundary:
+
+```bash
+python3 -m pip install -e '.[dense]'
+zmem embeddings index --download-model --summary-only
+zmem inject "what maintenance cadence did we agree on?" \
+  --agent cursor \
+  --scope project:car \
+  --retrieval-mode dense-hybrid \
+  --summary-only
+```
+
+The first model fetch occurs only with `--download-model`. Later search is local-only, stale content vectors are excluded, and receipts record model/config/query-vector hashes plus lexical/dense fusion. See [docs/content/docs/dense-retrieval.mdx](docs/content/docs/dense-retrieval.mdx).
 
 `zmem status --summary-only` is the fastest readiness check. It summarizes the local workspace, proof counts, agent handoff artifacts, launch-proof state, and the next action to take.
 

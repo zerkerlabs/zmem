@@ -6,6 +6,7 @@
     "agents",
     "builders",
     "memory-lifecycle",
+    "dense-retrieval",
     "scheduled-agents",
     "receipts",
     "handoff",

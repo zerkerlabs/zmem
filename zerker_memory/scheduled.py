@@ -264,6 +264,8 @@ def run_scheduled_agent(
     context_path: Path | None = None,
     summary: str | None = None,
     evaluated_at: str | None = None,
+    retrieval_config: dict[str, Any] | None = None,
+    retrieval_provider_config: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     if not command:
         raise ValueError("scheduled run command cannot be empty")
@@ -293,6 +295,8 @@ def run_scheduled_agent(
         scope=scope,
         context_path=context_path,
         continuity=_continuity_context(audit),
+        retrieval_config=retrieval_config,
+        retrieval_provider_config=retrieval_provider_config,
     )
     checkpoint = store.checkpoint_session(
         session_id,

@@ -57,6 +57,16 @@ For a scheduled agent, use one command to audit continuity, run with governed me
 zmem scheduled-run --session-id cron://daily --agent hermes --task "daily review" --scope project --summary-only -- your-agent-command
 ```
 
+Optional semantic recall uses an explicit local index and the same governance path:
+
+```bash
+python3 -m pip install -e '.[dense]'
+zmem embeddings index --download-model --summary-only
+zmem inject "continue the release work" --agent cursor --scope project --retrieval-mode dense-hybrid --summary-only
+```
+
+Ordinary search never downloads the model. If the local runtime or index is unavailable, the action receipt records the fallback and FTS continues.
+
 Add `--handoff-dir .zerker/handoff` when the target database is empty and the run must restore portable state first.
 
 For launch or clean-shell proof work, use the dedicated operator docs instead of this quickstart:

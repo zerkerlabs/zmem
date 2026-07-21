@@ -1,12 +1,17 @@
 import json
+import sys
 import tempfile
+import types
 import unittest
 from pathlib import Path
+from unittest.mock import Mock, patch
 
 from zerker_memory.retrieval_providers import (
     REDACTED_CONFIG_SCHEMA,
     RETRIEVAL_PROVIDERS_SCHEMA,
+    embed_texts,
     load_retrieval_provider_config,
+    local_dense_provider_config,
     lookup_retrieval_provider,
     redacted_retrieval_provider_config,
     resolve_embedding_provider,
@@ -147,6 +152,48 @@ class RetrievalProviderConfigTest(unittest.TestCase):
 
         self.assertEqual(entry.provider_id, "openai:text-embedding-3-small")
         self.assertTrue(entry.network)
+
+    def test_local_dense_cache_miss_fails_before_provider_initialization(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = local_dense_provider_config(cache_dir=Path(tmp))
+            entry = resolve_embedding_provider(config, "local:fastembed")
+            constructor = Mock()
+            fake_fastembed = types.ModuleType("fastembed")
+            fake_fastembed.TextEmbedding = constructor
+
+            with patch.dict(sys.modules, {"fastembed": fake_fastembed}):
+                with self.assertRaisesRegex(ValueError, "embeddings index --download-model"):
+                    embed_texts(entry, ["offline query"], input_type="query")
+
+        constructor.assert_not_called()
+
+    def test_cached_dense_model_stays_offline_when_download_flag_is_set(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache_dir = Path(tmp)
+            model_dir = cache_dir / "model"
+            model_dir.mkdir()
+            (model_dir / "model.onnx").write_bytes(b"cached-model")
+            config = local_dense_provider_config(cache_dir=cache_dir)
+            entry = resolve_embedding_provider(config, "local:fastembed")
+            vector = Mock()
+            vector.tolist.return_value = [1.0, 0.0]
+            model = Mock()
+            model.passage_embed.return_value = [vector]
+            model.model._model_dir = str(model_dir)
+            constructor = Mock(return_value=model)
+            fake_fastembed = types.ModuleType("fastembed")
+            fake_fastembed.TextEmbedding = constructor
+
+            with patch.dict(sys.modules, {"fastembed": fake_fastembed}):
+                result = embed_texts(
+                    entry,
+                    ["offline document"],
+                    input_type="document",
+                    allow_model_download=True,
+                )
+
+        self.assertTrue(constructor.call_args.kwargs["local_files_only"])
+        self.assertFalse(result.network_call)
 
     def test_network_reranker_provider_requires_explicit_runtime_allow(self):
         config = retrieval_provider_config_template()

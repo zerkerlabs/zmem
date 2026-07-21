@@ -14,8 +14,10 @@ from typing import Any, Mapping
 
 from .paths import expand_user_path
 from .policy import POLICY_ENGINE, authority_at_least, decide_memory, load_policy_config, max_authority
+from .dense import dense_candidates, ensure_dense_schema
 from .retrieval_providers import (
     embed_texts,
+    local_dense_provider_config,
     resolve_embedding_provider,
     resolve_reranker_provider,
     rerank_texts,
@@ -1147,6 +1149,8 @@ def _baseline_candidate_sort_key(memory: MemoryRecord, candidate: dict[str, Any]
     features = candidate.get("features", {})
     hybrid_semantic_score = candidate.get("semantic_backfill_score")
     hybrid_semantic_signal_applied = isinstance(hybrid_semantic_score, (int, float))
+    dense_fusion_score = candidate.get("dense_fusion_score")
+    dense_fusion_signal_applied = isinstance(dense_fusion_score, (int, float))
     multi_hop_fusion_score = candidate.get("multi_hop_fusion_score")
     multi_hop_fusion_signal_applied = isinstance(multi_hop_fusion_score, (int, float))
     temporal_fusion_score = candidate.get("temporal_fusion_score")
@@ -1154,6 +1158,9 @@ def _baseline_candidate_sort_key(memory: MemoryRecord, candidate: dict[str, Any]
     return (
         -int(hybrid_semantic_signal_applied),
         -float(hybrid_semantic_score) if hybrid_semantic_signal_applied else 0.0,
+        -int(dense_fusion_signal_applied),
+        -float(dense_fusion_score) if dense_fusion_signal_applied else 0.0,
+        -len(candidate.get("dense_fusion_sources") or []),
         -int(multi_hop_fusion_signal_applied),
         -float(multi_hop_fusion_score) if multi_hop_fusion_signal_applied else 0.0,
         -int(candidate.get("multi_hop_fusion_source_count", 0) or 0),
@@ -1202,6 +1209,10 @@ def _apply_baseline_ranking(memories: list[MemoryRecord], retrieval: dict[str, A
         isinstance(candidate.get("semantic_backfill_score"), (int, float))
         for candidate in ordered_candidates
     )
+    dense_fusion_signal_applied = any(
+        isinstance(candidate.get("dense_fusion_score"), (int, float))
+        for candidate in ordered_candidates
+    )
     multi_hop_fusion_signal_applied = any(
         isinstance(candidate.get("multi_hop_fusion_score"), (int, float))
         for candidate in ordered_candidates
@@ -1224,6 +1235,8 @@ def _apply_baseline_ranking(memories: list[MemoryRecord], retrieval: dict[str, A
         "lookup_fact_boosts": ["lookup_key_match", "lookup_value_compactness"],
         "hybrid_semantic_signal": "semantic_backfill_score_v1" if hybrid_semantic_signal_applied else None,
         "hybrid_semantic_signal_applied": hybrid_semantic_signal_applied,
+        "dense_fusion_signal": "dense_fts_rrf_score_v1" if dense_fusion_signal_applied else None,
+        "dense_fusion_signal_applied": dense_fusion_signal_applied,
         "multi_hop_fusion_signal": "multi_hop_rrf_score_v1" if multi_hop_fusion_signal_applied else None,
         "multi_hop_fusion_signal_applied": multi_hop_fusion_signal_applied,
         "temporal_fusion_signal": temporal_fusion_signal,
@@ -2509,6 +2522,14 @@ def _ranking_payload(
             "support_expansion_kind",
             "support_expansion_rank",
             "support_expansion_nucleus_ids",
+            "pre_dense_rank",
+            "dense_rank",
+            "dense_score",
+            "dense_vector_hash",
+            "dense_candidate_source",
+            "dense_fusion_rank",
+            "dense_fusion_score",
+            "dense_fusion_sources",
         ):
             candidate[key] = metadata.get(key)
             features[key] = metadata.get(key)
@@ -2735,6 +2756,7 @@ def _packing_priority(
     candidate_count: int,
     prefer_temporal_fusion_rank: bool = False,
     prefer_multi_hop_fusion_rank: bool = False,
+    prefer_dense_fusion_rank: bool = False,
     prefer_reranker_rank: bool = False,
     prefer_embedding_rank: bool = False,
     prefer_hybrid_semantic_rank: bool = False,
@@ -2746,6 +2768,7 @@ def _packing_priority(
         candidate.get("selected_by_temporal_strategy", features.get("selected_by_temporal_strategy", False))
     )
     multi_hop_fusion_rank = candidate.get("multi_hop_fusion_rank", features.get("multi_hop_fusion_rank"))
+    dense_fusion_rank = candidate.get("dense_fusion_rank", features.get("dense_fusion_rank"))
     temporal_fusion_rank = candidate.get("temporal_fusion_rank", features.get("temporal_fusion_rank"))
     reranker_rank = candidate.get("reranker_rank", features.get("reranker_rank"))
     embedding_rank = candidate.get("embedding_rank", features.get("embedding_rank"))
@@ -2761,6 +2784,8 @@ def _packing_priority(
         rank = temporal_fusion_rank
     elif isinstance(multi_hop_fusion_rank, int) and multi_hop_fusion_rank > 0 and prefer_multi_hop_fusion_rank:
         rank = multi_hop_fusion_rank
+    elif isinstance(dense_fusion_rank, int) and dense_fusion_rank > 0 and prefer_dense_fusion_rank:
+        rank = dense_fusion_rank
     elif (
         prefer_reranker_rank
         and (not selected_by_temporal_strategy or allow_default_current_selection_override)
@@ -7033,6 +7058,7 @@ def _resolve_current_conflicts(
     candidate_by_id: dict[str, MemoryRecord],
     current_ids: list[str],
     candidate_ids_in_rank_order: list[str],
+    candidate_meta: dict[str, dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     rank_by_id = {
         memory_id: rank
@@ -7054,8 +7080,19 @@ def _resolve_current_conflicts(
         groups.setdefault(signature["group_key"], []).append(item)
 
     conflict_sets: list[dict[str, Any]] = []
+    dense_hybrid_active = any(
+        candidate.get("dense_candidate_source")
+        for candidate in (candidate_meta or {}).values()
+    )
     for group_key in sorted(groups):
         items = groups[group_key]
+        if dense_hybrid_active:
+            items = [
+                item
+                for item in items
+                if (candidate_meta or {}).get(item["memory"].id, {}).get("dense_candidate_source")
+                != "dense"
+            ]
         if len(items) < 2:
             continue
         distinct_values = {item["value_key"] for item in items}
@@ -7631,6 +7668,7 @@ def resolve_temporal_lifecycle(
             candidate_by_id=candidate_by_id,
             current_ids=current_ids,
             candidate_ids_in_rank_order=candidate_ids_in_rank_order,
+            candidate_meta=candidate_meta,
         )
     )
     selection = _temporal_selection_metadata(
@@ -8039,6 +8077,13 @@ def pack_memory_context(
         .get("fusion", {})
         .get("applied")
     )
+    dense_metadata = (
+        (retrieval.get("dense_hybrid") or {})
+        if isinstance(retrieval.get("dense_hybrid"), dict)
+        else {}
+    )
+    dense_fusion = dense_metadata.get("fusion") if isinstance(dense_metadata.get("fusion"), dict) else {}
+    dense_fusion_applied = bool(dense_fusion.get("ranked_candidate_ids"))
     hybrid_semantic_applied = bool(
         ((retrieval.get("hybrid") or {}) if isinstance(retrieval.get("hybrid"), dict) else {}).get("applied")
     )
@@ -8057,23 +8102,36 @@ def pack_memory_context(
         "temporal_earliest_relation_pair_rrf_score_v1",
     }
     prefer_multi_hop_fusion_rank = multi_hop_fusion_applied and not prefer_temporal_fusion_rank
+    prefer_dense_fusion_rank = (
+        dense_fusion_applied
+        and not prefer_temporal_fusion_rank
+        and not prefer_multi_hop_fusion_rank
+    )
     allow_default_current_selection_override = (
         temporal_selection_strategy == "current_only_v1"
         and temporal_injection_strategy in {None, ""}
         and not prefer_temporal_fusion_rank
         and not prefer_multi_hop_fusion_rank
+        and not prefer_dense_fusion_rank
     )
-    prefer_reranker_rank = reranker_enabled and not prefer_temporal_fusion_rank and not prefer_multi_hop_fusion_rank
+    prefer_reranker_rank = (
+        reranker_enabled
+        and not prefer_temporal_fusion_rank
+        and not prefer_multi_hop_fusion_rank
+        and not prefer_dense_fusion_rank
+    )
     prefer_embedding_rank = (
         embedding_enabled
         and not prefer_temporal_fusion_rank
         and not prefer_multi_hop_fusion_rank
+        and not prefer_dense_fusion_rank
         and not prefer_reranker_rank
     )
     prefer_hybrid_semantic_rank = (
         hybrid_semantic_applied
         and not prefer_temporal_fusion_rank
         and not prefer_multi_hop_fusion_rank
+        and not prefer_dense_fusion_rank
         and not prefer_reranker_rank
         and not prefer_embedding_rank
     )
@@ -8086,6 +8144,7 @@ def pack_memory_context(
         candidate = candidate_by_id.get(memory.id)
         hybrid_semantic_rank = candidate.get("hybrid_semantic_rank") if candidate else None
         multi_hop_fusion_rank = candidate.get("multi_hop_fusion_rank") if candidate else None
+        dense_fusion_rank = candidate.get("dense_fusion_rank") if candidate else None
         temporal_fusion_rank = candidate.get("temporal_fusion_rank") if candidate else None
         temporal_injection_rank = candidate.get("temporal_injection_rank") if candidate else None
         temporal_selection_rank = candidate.get("temporal_selection_rank") if candidate else None
@@ -8101,6 +8160,9 @@ def pack_memory_context(
         elif prefer_multi_hop_fusion_rank and isinstance(multi_hop_fusion_rank, int) and multi_hop_fusion_rank > 0:
             packing_rank = multi_hop_fusion_rank
             packing_rank_basis = "multi_hop_fusion_rank"
+        elif prefer_dense_fusion_rank and isinstance(dense_fusion_rank, int) and dense_fusion_rank > 0:
+            packing_rank = dense_fusion_rank
+            packing_rank_basis = "dense_fusion_rank"
         elif (
             prefer_reranker_rank
             and isinstance(candidate.get("reranker_rank"), int)
@@ -8148,6 +8210,7 @@ def pack_memory_context(
                 ),
                 "hybrid_outranked_reason": candidate.get("hybrid_outranked_reason") if candidate else None,
                 "multi_hop_fusion_rank": multi_hop_fusion_rank if isinstance(multi_hop_fusion_rank, int) else None,
+                "dense_fusion_rank": dense_fusion_rank if isinstance(dense_fusion_rank, int) else None,
                 "multi_hop_outranked_by_fusion": bool(candidate.get("multi_hop_outranked_by_fusion")) if candidate else False,
                 "multi_hop_outranked_reason": candidate.get("multi_hop_outranked_reason") if candidate else None,
                 "temporal_fusion_rank": temporal_fusion_rank if isinstance(temporal_fusion_rank, int) else None,
@@ -8160,6 +8223,7 @@ def pack_memory_context(
                     candidate_count=candidate_count,
                     prefer_temporal_fusion_rank=prefer_temporal_fusion_rank,
                     prefer_multi_hop_fusion_rank=prefer_multi_hop_fusion_rank,
+                    prefer_dense_fusion_rank=prefer_dense_fusion_rank,
                     prefer_reranker_rank=prefer_reranker_rank,
                     prefer_embedding_rank=prefer_embedding_rank,
                     prefer_hybrid_semantic_rank=prefer_hybrid_semantic_rank,
@@ -8956,7 +9020,48 @@ class MemoryStore:
         self._ensure_column("session_snapshot_payloads", "deleted_by", "TEXT")
         self._ensure_column("session_snapshot_payloads", "deleted_reason", "TEXT")
         self._ensure_column("session_snapshot_payloads", "deleted_event_hash", "TEXT")
+        ensure_dense_schema(self.conn)
         self.conn.commit()
+
+    def index_embeddings(
+        self,
+        *,
+        provider_config: Mapping[str, Any] | None = None,
+        provider_id: str = "local:fastembed",
+        scope: str | None = None,
+        allow_model_download: bool = False,
+        force: bool = False,
+        batch_size: int | None = None,
+    ) -> dict[str, Any]:
+        from .dense import index_embeddings
+
+        self.init()
+        return index_embeddings(
+            self.conn,
+            provider_config=provider_config or local_dense_provider_config(),
+            provider_id=provider_id,
+            scope=scope,
+            allow_model_download=allow_model_download,
+            force=force,
+            batch_size=batch_size,
+        )
+
+    def embedding_index_status(
+        self,
+        *,
+        provider_config: Mapping[str, Any] | None = None,
+        provider_id: str = "local:fastembed",
+        scope: str | None = None,
+    ) -> dict[str, Any]:
+        from .dense import embedding_index_status
+
+        self.init()
+        return embedding_index_status(
+            self.conn,
+            provider_config=provider_config or local_dense_provider_config(),
+            provider_id=provider_id,
+            scope=scope,
+        )
 
     def _ensure_column(self, table: str, column: str, definition: str) -> None:
         columns = {row["name"] for row in self.conn.execute(f"PRAGMA table_info({table})")}
@@ -11845,6 +11950,153 @@ class MemoryStore:
         }
         return memories, bm25_scores, metadata, candidate_metadata
 
+    def _dense_hybrid_candidate_union(
+        self,
+        query: str,
+        *,
+        scope: str | None,
+        include_quarantined: bool,
+        lexical_memories: list[MemoryRecord],
+        retrieval_config: dict[str, Any] | None,
+        retrieval_provider_config: dict[str, Any] | None,
+    ) -> tuple[list[MemoryRecord], dict[str, Any], dict[str, dict[str, Any]]]:
+        dense_config = _candidate_config(retrieval_config, "dense")
+        enabled = bool(dense_config.get("enabled", False))
+        provider_id = str(dense_config.get("provider_id") or "local:fastembed")
+        limit = int(dense_config.get("limit", RETRIEVAL_CANDIDATE_LIMIT))
+        min_score = float(dense_config.get("min_score", 0.35))
+        metadata: dict[str, Any] = {
+            "schema": "zerker.dense_hybrid_retrieval.v1",
+            "enabled": enabled,
+            "provider_id": provider_id if enabled else None,
+            "model_id": None,
+            "model_digest": None,
+            "config_hash": None,
+            "network_calls_enabled": False,
+            "query_vector_hash": None,
+            "index_coverage": None,
+            "min_score": min_score,
+            "dense_ranked_candidate_ids": [],
+            "introduced_candidate_ids": [],
+            "fallback": not enabled,
+            "disabled_reason": None if enabled else "disabled-by-config",
+            "fusion": None,
+            "conflict_resolution_boundary": (
+                "dense-only-candidates-cannot-trigger-lexical-conflicts-v1" if enabled else None
+            ),
+        }
+        if not enabled:
+            return lexical_memories, metadata, {}
+
+        provider_config = retrieval_provider_config or local_dense_provider_config()
+        try:
+            result = dense_candidates(
+                self.conn,
+                query,
+                provider_config=provider_config,
+                provider_id=provider_id,
+                scope=scope,
+                include_quarantined=include_quarantined,
+                limit=limit,
+                min_score=min_score,
+            )
+        except (KeyError, RuntimeError, ValueError) as exc:
+            metadata["fallback"] = True
+            metadata["disabled_reason"] = _provider_disabled_reason(str(exc))
+            metadata["error"] = str(exc)
+            return lexical_memories, metadata, {}
+
+        dense_ranked_ids = [str(memory_id) for memory_id in result["ranked_candidate_ids"]]
+        lexical_ranked_ids = [memory.id for memory in lexical_memories]
+        if result["eligible_memory_count"] and not result["indexed_candidate_count"]:
+            metadata.update(
+                {
+                    "model_id": result["model_id"],
+                    "model_digest": result["model_digest"],
+                    "config_hash": result["config_hash"],
+                    "query_vector_hash": result["query_vector_hash"],
+                    "index_coverage": result["index_coverage"],
+                    "eligible_memory_count": result["eligible_memory_count"],
+                    "indexed_candidate_count": 0,
+                    "fallback": True,
+                    "disabled_reason": "index-empty-or-stale",
+                }
+            )
+            return lexical_memories, metadata, {}
+        fusion = _reciprocal_rank_fusion(
+            {
+                "lexical": lexical_ranked_ids,
+                "dense": dense_ranked_ids,
+            }
+        )
+        ordered_ids = list(fusion["ranked_candidate_ids"])
+        memory_by_id = {memory.id: memory for memory in lexical_memories}
+        for memory_id in dense_ranked_ids:
+            if memory_id not in memory_by_id:
+                memory_by_id[memory_id] = self.get(memory_id)
+        ordered_memories = [memory_by_id[memory_id] for memory_id in ordered_ids if memory_id in memory_by_id]
+        dense_candidate_by_id = {
+            str(candidate["memory_id"]): candidate for candidate in result["ranked_candidates"]
+        }
+        fusion_candidate_by_id = {
+            str(candidate["memory_id"]): candidate for candidate in fusion["candidate_scores"]
+        }
+        lexical_rank_by_id = {
+            memory_id: rank for rank, memory_id in enumerate(lexical_ranked_ids, start=1)
+        }
+        dense_rank_by_id = {
+            memory_id: rank for rank, memory_id in enumerate(dense_ranked_ids, start=1)
+        }
+        candidate_metadata: dict[str, dict[str, Any]] = {}
+        for memory_id in ordered_ids:
+            dense_candidate = dense_candidate_by_id.get(memory_id, {})
+            fusion_candidate = fusion_candidate_by_id.get(memory_id, {})
+            sources = [
+                str(item["source"])
+                for item in fusion_candidate.get("source_contributions", [])
+                if item.get("source")
+            ]
+            candidate_metadata[memory_id] = {
+                "pre_dense_rank": lexical_rank_by_id.get(memory_id),
+                "dense_rank": dense_rank_by_id.get(memory_id),
+                "dense_score": dense_candidate.get("score"),
+                "dense_vector_hash": dense_candidate.get("vector_hash"),
+                "dense_candidate_source": (
+                    "lexical+dense"
+                    if memory_id in lexical_rank_by_id and memory_id in dense_rank_by_id
+                    else "dense"
+                    if memory_id in dense_rank_by_id
+                    else "lexical"
+                ),
+                "dense_fusion_rank": fusion_candidate.get("fusion_rank"),
+                "dense_fusion_score": fusion_candidate.get("score"),
+                "dense_fusion_sources": sources,
+            }
+        introduced_ids = [memory_id for memory_id in ordered_ids if memory_id not in lexical_rank_by_id]
+        metadata.update(
+            {
+                "model_id": result["model_id"],
+                "model_digest": result["model_digest"],
+                "config_hash": result["config_hash"],
+                "query_vector_hash": result["query_vector_hash"],
+                "index_coverage": result["index_coverage"],
+                "eligible_memory_count": result["eligible_memory_count"],
+                "indexed_candidate_count": result["indexed_candidate_count"],
+                "dense_ranked_candidate_ids": dense_ranked_ids,
+                "introduced_candidate_ids": introduced_ids,
+                "lexical_recall_preserved": all(
+                    memory_id in ordered_ids for memory_id in lexical_ranked_ids
+                ),
+                "lexical_preserved_candidate_ids": lexical_ranked_ids,
+                "source_candidate_limit": RETRIEVAL_CANDIDATE_LIMIT,
+                "fused_candidate_count": len(ordered_ids),
+                "fallback": False,
+                "disabled_reason": None,
+                "fusion": fusion,
+            }
+        )
+        return ordered_memories, metadata, candidate_metadata
+
     def search_with_meta(
         self,
         query: str,
@@ -11884,11 +12136,20 @@ class MemoryStore:
             retrieval_config=effective_multi_hop_config,
             query_lookup=parent["query_lookup"],
         )
+        memories, dense_hybrid_metadata, dense_candidate_metadata = self._dense_hybrid_candidate_union(
+            query,
+            scope=scope,
+            include_quarantined=include_quarantined,
+            lexical_memories=memories,
+            retrieval_config=effective_multi_hop_config,
+            retrieval_provider_config=retrieval_provider_config,
+        )
         base_candidate_metadata = parent.get("candidate_metadata", {})
         combined_candidate_metadata = {
             memory.id: {
                 **base_candidate_metadata.get(memory.id, {}),
                 **multi_hop_candidate_metadata.get(memory.id, {}),
+                **dense_candidate_metadata.get(memory.id, {}),
             }
             for memory in memories
         }
@@ -11906,6 +12167,7 @@ class MemoryStore:
         )
         memories = _apply_baseline_ranking(memories, ranking)
         ranking["multi_hop"] = multi_hop_metadata
+        ranking["dense_hybrid"] = dense_hybrid_metadata
         ranking["fts_preselection"] = parent["fts_preselection"]
         ranking["chronology_support"] = parent["chronology_support"]
         ranking["history_support"] = parent["history_support"]
