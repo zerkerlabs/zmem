@@ -1,8 +1,8 @@
 name: vigilis-qa
 
 # Report-only: this workflow never blocks a PR. It runs the Vigilis-driven E2E
-# gate against the ZMem review dashboard and uploads the Playwright report plus
-# the attestation bundle for humans to inspect.
+# gate against the ZMem review dashboard, attests the actual run (bound to the
+# report digest + commit), and uploads the report + attestation bundle.
 on:
   pull_request:
   workflow_dispatch:
@@ -43,27 +43,43 @@ jobs:
           done
           curl -sf "$ZMEM_DASHBOARD_URL/" >/dev/null
 
-      - name: Install Playwright + browser
+      - name: Install Playwright + Vigilis (pinned, from lockfile)
         working-directory: qa
         run: |
-          npm install
+          npm ci
           npx playwright install --with-deps chromium
 
       - name: Run E2E specs (report-only)
+        id: e2e
         working-directory: qa
         continue-on-error: true
-        run: npx playwright test
+        run: |
+          set +e
+          npx playwright test
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
 
-      - name: Vigilis triage + heal + attest (needs ANTHROPIC_API_KEY)
-        if: ${{ env.HAS_ANTHROPIC == 'true' }}
+      - name: Attest the QA run (bound receipt — no secrets)
+        working-directory: qa
+        run: |
+          npx --no-install vigilis attest-run results.json \
+            --commit "$GITHUB_SHA" \
+            --exit-code "${{ steps.e2e.outputs.exit_code }}"
+
+      - name: Vigilis heal the failing spec (only on failure; needs ANTHROPIC_API_KEY)
+        if: ${{ env.HAS_ANTHROPIC == 'true' && steps.e2e.outputs.exit_code != '0' }}
+        working-directory: qa
         continue-on-error: true
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
-          npx vigilis@0.5.1 heal "$ZMEM_DASHBOARD_URL" \
-            --spec qa/e2e/promote-memory.spec.ts \
-            --error "CI QA gate: triage the dashboard promote flow" \
-            --no-pr --no-publish
+          FAILING=$(node ci-first-failing.mjs results.json)
+          if [ -n "$FAILING" ]; then
+            echo "Healing failing spec: $FAILING"
+            npx --no-install vigilis heal "$ZMEM_DASHBOARD_URL" \
+              --spec "e2e/$FAILING" \
+              --error "CI QA gate: spec $FAILING failed" \
+              --no-pr --no-publish
+          fi
 
       - name: Upload Playwright report
         if: ${{ always() }}
@@ -71,12 +87,14 @@ jobs:
         with:
           name: zmem-playwright-report
           path: qa/playwright-report/
-          if-no-files-found: ignore
+          if-no-files-found: warn
 
       - name: Upload attestation bundle
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
           name: zmem-vigilis-attestation
-          path: .vigilis/attestation/
-          if-no-files-found: ignore
+          # attest-run always writes a bound QA-run receipt here; a missing bundle
+          # is a real failure, so surface it rather than silently ignoring.
+          path: qa/.vigilis/attestation/
+          if-no-files-found: error

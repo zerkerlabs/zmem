@@ -6,6 +6,7 @@
     "test": "playwright test"
   },
   "devDependencies": {
-    "@playwright/test": "^1.60.0"
+    "@playwright/test": "^1.60.0",
+    "vigilis": "0.5.2"
   }
 }

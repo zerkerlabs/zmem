@@ -12,4 +12,13 @@ test('exporting a snapshot produces a proof artifact', async ({ page }) => {
     snapshotBtn.click(),
   ]);
   expect(resp.ok()).toBeTruthy();
+
+  // Prove an artifact was actually produced — not just a 200. The snapshot
+  // export returns a typed, content-addressed artifact.
+  const body = await resp.json();
+  expect(body.format).toBe('snapshot');
+  expect(body.artifact_id).toMatch(/^zmem_snapshot_/);
+  expect(body.sha256).toMatch(/^[0-9a-f]{64}$/);
+  expect(body.path).toContain('.snapshot.json');
+  expect(body.payload?.snapshot_hash).toMatch(/^[0-9a-f]{64}$/);
 });

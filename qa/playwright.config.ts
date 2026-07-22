@@ -12,6 +12,12 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   retries: process.env.CI ? 1 : 0,
-  reporter: [['html', { outputFolder: 'playwright-report', open: 'never' }], ['list']],
+  // JSON report (results.json) is consumed by `vigilis attest-run` to bind the
+  // attestation receipt to the actual run.
+  reporter: [
+    ['html', { outputFolder: 'playwright-report', open: 'never' }],
+    ['json', { outputFile: 'results.json' }],
+    ['list'],
+  ],
   use: { baseURL, trace: 'on-first-retry' },
 });
