@@ -1,3 +1,12 @@
+## 2026-07-30 - v0.1.8 published
+
+- Merged PR `#9` at `969a943a987ac9528e4781702b8cb14ed59a9387`, tagged that exact commit as `v0.1.8`, and published `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.8`.
+- Uploaded the tested wheel and source distribution. GitHub reports the expected digests: wheel `sha256:6e5bedd198927a4c3aaa1cdf87b97268f9e47fe272e8ec6a435b61b66be32fc2`; source distribution `sha256:84b773c70a5b99bf6cd85c1fd7713cb3cad4f7ec1f2f8205f2bc3e017fab424e`.
+- Main CI run `30571175219` and tag CI run `30571663116` passed Python 3.10/3.11/3.12, ActiveGraph, site, docs, and release smoke.
+- Deployed the release site and docs to the existing production projects at `https://www.zmem.sh` and `https://docs.zmem.sh`.
+- Production canary found and corrected one stale pre-dense benchmark summary on the public changelog. The replacement states the v0.1.8 local evidence-support comparison and preserves the non-leaderboard claim boundary.
+- Started the next isolated priority lane: a read-only `zmem audit health` report. Broad recurring swarms remain paused.
+
 ## 2026-07-30 - v0.1.8 release candidate and product-signal reconciliation
 
 Prepared locally on `codex/l3-dense-retrieval`:

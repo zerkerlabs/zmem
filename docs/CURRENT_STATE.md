@@ -5,11 +5,13 @@ This is the short orchestration dashboard for Zerker Memory. Every autonomous bu
 ## Release Coordination
 `2026-07-30`
 
-- Prepared the coherent post-`v0.1.7` work as the `v0.1.8` candidate without adding another runtime feature. Package, ActiveGraph pack, docs example, site example, and changelog surfaces all report `0.1.8`.
+- Published `v0.1.8` from merge commit `969a943a987ac9528e4781702b8cb14ed59a9387` through PR `#9` at `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.8`.
+- Package, ActiveGraph pack, docs examples, site changelog, wheel, and source distribution all report `0.1.8`; uploaded release assets match the recorded SHA-256 digests.
 - Reconciled the July 21 Moltbook signal/backlog against shipped behavior. The post-release order is now read-only memory health audit, contradiction-driven abstention, reviewable lifecycle maintenance, live source-backed consolidation, handoff ownership/import preview, and governed tool-contract state. Effect/capability/witness enforcement remains in Treeship/Guard.
-- Release verification is green: `1,289` tests with two expected skips, eval `11/11`, site lint/build, docs typecheck/build, and full fresh-workspace release smoke.
+- Release verification is green: `1,289` tests with two expected skips, eval `11/11`, site lint/build, docs typecheck/build, and full fresh-workspace release smoke. Main CI run `30571175219` and tag CI run `30571663116` passed every job.
 - Final local distributions build and reinstall cleanly under Python 3.10. Wheel `sha256:6e5bedd198927a4c3aaa1cdf87b97268f9e47fe272e8ec6a435b61b66be32fc2`; source distribution `sha256:84b773c70a5b99bf6cd85c1fd7713cb3cad4f7ec1f2f8205f2bc3e017fab424e`.
-- Broad swarms remain paused. Next release step: push `codex/l3-dense-retrieval`, open the `v0.1.8` PR, and require remote CI before merge/tag/publication.
+- Production site and docs deployments are live at `https://www.zmem.sh` and `https://docs.zmem.sh`.
+- Broad swarms remain paused. The isolated next lane is the read-only `zmem audit health` surface; no lifecycle mutation belongs in that first slice.
 
 `2026-07-21`
 

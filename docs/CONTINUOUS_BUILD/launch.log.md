@@ -1,5 +1,15 @@
 # Launch Lane Log
 
+## 2026-07-30 - v0.1.8 publication
+
+- Scope: merged PR `#9`, tagged the exact merge commit, published the GitHub release assets, deployed the production site/docs, and ran public canaries.
+- Release: `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.8` from `969a943a987ac9528e4781702b8cb14ed59a9387`.
+- CI: main run `30571175219` and tag run `30571663116` passed every Python, ActiveGraph, site, docs, and release-smoke job.
+- Artifacts: GitHub reports wheel `sha256:6e5bedd198927a4c3aaa1cdf87b97268f9e47fe272e8ec6a435b61b66be32fc2` and source distribution `sha256:84b773c70a5b99bf6cd85c1fd7713cb3cad4f7ec1f2f8205f2bc3e017fab424e`.
+- Production: `https://www.zmem.sh` and `https://docs.zmem.sh` are live. The homepage and v0.1.8 changelog entry render without console errors.
+- Follow-up: production canary found one stale pre-dense benchmark callout; the publication follow-up replaces it with the v0.1.8 comparison and explicit local-evidence claim boundary.
+- Next safe slice: keep launch oversight paused and continue the isolated read-only memory-health audit lane.
+
 ## 2026-07-30 - v0.1.8 candidate preparation
 
 - Scope: versioned and verified the existing governed-context, scheduled-agent/failure-memory, and dense/FTS feature commits without adding runtime scope.
