@@ -184,7 +184,7 @@ Left:
 
 - [ ] True bi-temporal graph schema/edges.
 - [ ] Contradiction-driven abstention envelope.
-- [ ] Read-only memory-health audit across stale, expired, contradictory, duplicate, weak-provenance, and high-risk active records.
+- [x] Read-only memory-health audit across stale, expired, contradictory, duplicate, weak-provenance, and high-risk active records.
 - [ ] Richer temporal query filters.
 - [ ] Entity/relation graph traversal.
 - [ ] Temporal benchmark proof beyond fixtures.
@@ -433,10 +433,9 @@ Every release tag should include:
 
 ## Current Highest-Leverage Next Move
 
-1. Publish the already-verified `v0.1.8` candidate without adding another runtime feature.
-2. Build a bounded read-only `zmem audit health` report with a stable JSON contract and terminal summary.
-3. Add contradiction-driven withholding/abstention, then reviewable lifecycle maintenance with dry-run/apply receipts.
-4. Connect consolidation to the live store with source coverage and reversible summaries; do not promote summaries into canonical truth.
-5. Add handoff ownership/import preview and governed tool-contract state while keeping effect/capability enforcement in Treeship/Guard.
-6. Sweep dense candidate depth and context packing before recommending dense as a default or exposing server-controlled MCP dense retrieval.
-7. Keep Merkle `v2`, BEAM quality, and official model-judged scoring as separate compatibility/evidence projects.
+1. Land the bounded read-only `zmem audit health` report with its stable JSON contract and terminal summary.
+2. Add contradiction-driven withholding/abstention, then reviewable lifecycle maintenance with dry-run/apply receipts.
+3. Connect consolidation to the live store with source coverage and reversible summaries; do not promote summaries into canonical truth.
+4. Add handoff ownership/import preview and governed tool-contract state while keeping effect/capability enforcement in Treeship/Guard.
+5. Sweep dense candidate depth and context packing before recommending dense as a default or exposing server-controlled MCP dense retrieval.
+6. Keep Merkle `v2`, BEAM quality, and official model-judged scoring as separate compatibility/evidence projects.

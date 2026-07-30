@@ -11,7 +11,8 @@ This is the short orchestration dashboard for Zerker Memory. Every autonomous bu
 - Release verification is green: `1,289` tests with two expected skips, eval `11/11`, site lint/build, docs typecheck/build, and full fresh-workspace release smoke. Main CI run `30571175219` and tag CI run `30571663116` passed every job.
 - Final local distributions build and reinstall cleanly under Python 3.10. Wheel `sha256:6e5bedd198927a4c3aaa1cdf87b97268f9e47fe272e8ec6a435b61b66be32fc2`; source distribution `sha256:84b773c70a5b99bf6cd85c1fd7713cb3cad4f7ec1f2f8205f2bc3e017fab424e`.
 - Production site and docs deployments are live at `https://www.zmem.sh` and `https://docs.zmem.sh`.
-- Broad swarms remain paused. The isolated next lane is the read-only `zmem audit health` surface; no lifecycle mutation belongs in that first slice.
+- The isolated read-only `zmem audit health` candidate now has a stable JSON contract, compact terminal summary, five observable finding categories, deterministic ordering, and explicit no-semantic-truth limits. A WAL freshness regression proves it sees committed state without becoming a writer.
+- Broad swarms remain paused. After this candidate lands, the next isolated lane is contradiction-driven withholding and abstention with receipt-visible conflict evidence.
 
 `2026-07-21`
 

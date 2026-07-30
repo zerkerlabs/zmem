@@ -1,3 +1,19 @@
+## 2026-07-30 - Read-only memory health candidate
+
+- Added `zmem audit health` with stable `zerker.memory_health_report.v1` JSON and compact `--summary-only` output.
+- Added deterministic findings for stale or expired state, lexical conflicts, exact duplicates, weak provenance, and explicit high-risk active use.
+- Kept the command inspection-only: it bypasses `MemoryStore`, opens SQLite read-only, and does not mutate lifecycle state.
+- Reproduced and fixed a WAL freshness bug found during review. The audit now reads freshly committed WAL state while cleanly shut down databases retain immutable no-touch reads.
+- Added public operator docs and retained the explicit limitation that metadata and lexical findings do not establish factual or semantic truth.
+
+Evidence:
+
+- Focused health suite: `5/5`.
+- Combined CLI, store, policy, and health suite: `591/591`.
+- Full Python suite: `1,294` tests with two expected optional skips.
+- Eval: `11/11`.
+- Site lint/build, docs typecheck/build, Python compilation, and diff checks pass.
+
 ## 2026-07-30 - v0.1.8 published
 
 - Merged PR `#9` at `969a943a987ac9528e4781702b8cb14ed59a9387`, tagged that exact commit as `v0.1.8`, and published `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.8`.
