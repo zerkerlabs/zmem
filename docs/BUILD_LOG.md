@@ -1,3 +1,104 @@
+## 2026-07-30 - v0.1.8 release candidate and product-signal reconciliation
+
+Prepared locally on `codex/l3-dense-retrieval`:
+
+- Versioned the existing three-commit governed-context, scheduled-agent/failure-memory, and local dense/FTS candidate as `0.1.8`.
+- Reconciled the combined Moltbook ZMem/Treeship backlog against the implemented product. Added handoff ownership leases, dry-run import, failed-claim reopen conditions, and governed tool-contract state to the post-release queue.
+- Kept effect verification, capability leases, missing-witness reporting, skill cold-start execution proof, and runtime side-effect enforcement outside ZMem's ownership boundary.
+- Updated the canonical product signal, progress tracker, product status, changelog, public changelog, ActiveGraph pack/docs examples, and internal release communication.
+
+Evidence:
+
+- Full suite: `1,289` tests passed with two expected skips.
+- Eval: `11/11`.
+- Site lint/build and docs typecheck/build passed.
+- Fresh-workspace release smoke passed with the installed CLI and MCP server reporting `0.1.8`.
+- Clean Python 3.10 wheel reinstall reports `zmem 0.1.8` and passes eval `11/11`.
+- Wheel `sha256:6e5bedd198927a4c3aaa1cdf87b97268f9e47fe272e8ec6a435b61b66be32fc2`; source distribution `sha256:84b773c70a5b99bf6cd85c1fd7713cb3cad4f7ec1f2f8205f2bc3e017fab424e`.
+
+Next:
+
+- Commit and push the release candidate, open a PR, and require remote CI before merge/tag/publication.
+- Start `zmem audit health` only from a fresh post-release branch.
+
+## 2026-07-21 - Isolated local dense retrieval candidate
+
+Built locally on `codex/l3-dense-retrieval`:
+
+- Added the optional `dense` install extra using FastEmbed and `BAAI/bge-small-en-v1.5`; the base install remains unchanged.
+- Added explicit `zmem embeddings index` / `status` UX. Only `--download-model` may fetch the model; query inference is local-only.
+- Added a derived SQLite float32 embedding cache bound to content hash, provider, model id, model-file digest, and redacted config hash. Changed memory content cannot reuse a stale vector.
+- Added independent exact-cosine dense candidates plus lexical/dense RRF fusion. The resulting set still passes through existing scope, status, policy, temporal, context-packing, receipt, and context-digest logic.
+- Added `--retrieval-mode dense-hybrid` to `inject`, `run`, and `scheduled-run`, with receipt-visible candidate ranks, scores, source attribution, fusion, index coverage, and fallback reason.
+
+Evidence so far:
+
+- Twelve focused dense tests cover independent candidate recovery, scope isolation, quarantine withholding, stale-vector exclusion, model-digest mismatch, empty-store model prefetch, local-provider enforcement, lexical fallback, additive fusion, lexical conflict boundaries, CLI parsing, and compact recall/fallback summaries. The 13-test provider suite also proves a cache miss fails before provider initialization and an already-cached model stays offline even when the explicit download flag is present.
+- A real FastEmbed smoke explicitly downloaded and cached the model, indexed `2/2` memories, then recovered candidates for a paraphrase with no lexical result while recording no query-time network call.
+- The frozen 227-question gate passes against a fresh control and a clean final repeat: adaptive FTS reproduced `160/227` (`70.48%`), while offline dense-hybrid reached `203/227` (`89.43%`) with 43 gains and zero losses. Every non-abstention proof preserved lexical candidate recall; no dense fallback or network call occurred. Clean p95 retrieval latency moved from `209.629 ms` to `419.818 ms`.
+- The first full LongMemEval pass exposed one false lexical conflict between a correct lexical+dense fact and a transcript-shaped dense-only candidate. The corrected boundary replays that exact question from failure to pass, preserves all 43 frozen-cohort gains with zero losses, and is carried into compact benchmark proof metadata.
+- The full LoCoMo comparison improved from `1,220/1,986` (`61.43%`) to `1,567/1,986` (`78.90%`): 347 gains, zero losses, and adversarial abstention unchanged at `446/446`. Result hash `2b80a6ab...`; Merkle root `4a078285...`; result and comparison verification `ok`.
+- The full LongMemEval comparison improved from `386/500` (`77.2%`) to `477/500` (`95.4%`): 91 gains, zero losses, and every category improved. Result hash `34fe2a32...`; Merkle root `f01398f3...`; result and comparison verification `ok`.
+- Mean query context increased from `533.32` to `903.05` tokens on LoCoMo and from `2,510.65` to `3,615.88` on LongMemEval. Observed full-artifact p95 latency increased from `690.389 ms` to `3,158.984 ms` and from `193.610 ms` to `368.415 ms`, respectively. This cost is now the next L3 optimization target.
+- Full verification passes `1,289` tests with two expected skips, eval `11/11`, compile and dependency health, docs build/typecheck, and fresh-workspace release smoke with strict publish ready.
+- Candidate artifacts build successfully. Wheel `sha256:59ed5cb949ed2e92aed616085a4bb712cc97dd55e51f3f952a7b1151bccf8860`; source distribution `sha256:3b84d88eb7c80cb996b0556b8289973739c59d326c95f237a355f90f3e61a656`. The wheel contains `dense.py`, declares FastEmbed only through the `dense` extra, and passes a clean Python 3.11 no-dependency import/CLI parser smoke.
+
+Claim boundary:
+
+- This is an opt-in exact-cosine candidate, not yet the default retrieval mode, an ANN implementation, an MCP retrieval-mode change, or an official leaderboard claim. Stable/full promotion passed; efficiency tuning and packaging remain before release recommendation.
+
+## 2026-07-21 - Scheduled-agent continuity and failure memory
+
+Built locally:
+
+- Added `zmem scheduled-run` as one composable cold-start path: optional verified snapshot/handoff restore, receipt-bound wall-clock gap audit, explicit `current` / `stale` / `unknown` state, session start, governed execution, checkpoint, and linked proof.
+- Bound the compact cold-start audit into the exact `zerker.memory_context.v1` digest supplied to the command.
+- Kept proof validity distinct from operational success. A nonzero command still leaves a checkpoint and a verifiable execution record.
+- Added typed `zerker.failure_memory.v1` recording and inspection for expected result, observed result, confidence, correction, and invalidation.
+- Kept agent-authored corrections quarantined by default; invalidated-memory references remain explicit evidence and do not silently mutate prior memory.
+- Added a public scheduled-agents docs page, README/quickstart examples, and changelog/product-status updates.
+
+Evidence:
+
+- Full Python suite passes `1,274` tests with two expected optional skips; eval passes `11/11`.
+- The docs production build passes with the new scheduled-agents route.
+- Direct CLI smokes pass for compact scheduled-run and failure-memory summaries.
+- Release smoke passes with strict publish ready, public proof `6/6`, launch assets `8/8`, and return-packet verification ready.
+
+Claim boundary:
+
+- A cold-start audit proves the observed prior lifecycle evidence and measured gap; it does not prove every retained fact is still true.
+- Failure memory records what an actor reported and the receipt lineage for that report. It does not automatically authorize the proposed correction.
+
+Next:
+
+- Commit this L0/L2 checkpoint, then create an isolated L3 branch for true local dense candidate generation and lexical/dense rank fusion.
+
+## 2026-07-20 - Digest-bound agent memory context candidate
+
+Built locally:
+
+- Added a canonical `sha256:` commitment to `zerker.memory_context.v1`, covering the task/agent boundary, exact admitted memory records, retrieved/withheld/budget-dropped ids, policy decisions and digest, temporal metadata, and memory Merkle references.
+- Persisted only the compact commitment inside existing receipt retrieval metadata, avoiding a SQLite migration and a second raw-context copy.
+- Exposed the same digest through `zmem inject`, `zmem why`, `ZERKER_MEMORY_CONTEXT_DIGEST`, run receipts/events, Treeship memory-proof statements, and ActiveGraph `memory.read.v1` payloads.
+- Updated public and internal docs with the July 20 Moltbook priorities: scheduled-agent cold starts, discontinuity handoffs, memory-as-state, and silent-success failure memory.
+
+Evidence:
+
+- Full Python suite passes `1,266` tests with two expected optional skips; eval passes `11/11`.
+- Site and docs production builds pass.
+- Release smoke, release-pack verification, public proof `6/6`, launch assets `8/8`, return packet verification, and strict prelaunch pass.
+- A real CLI smoke produced one identical context digest across `inject --summary-only`, `why --summary-only`, retained run context, `zmem context verify`, and Treeship export; the export also carried the canonical policy digest.
+
+Claim boundary:
+
+- The commitment proves the exact ZMem memory-context artifact supplied at the decision boundary. It does not prove semantic truth, capture hidden model reasoning, or cover provider prompt material outside that artifact.
+- This slice does not change retrieval, SQLite schema, `binary-sha256-v1`, default agent capabilities, or the optional nature of Treeship.
+
+Next:
+
+- Package this bounded L0/L2 candidate, then build the scheduled-agent cold-start gap-audit workflow. Start true local dense retrieval only from a separate clean L3 checkpoint.
+
 ## 2026-07-16 - v0.1.7 runtime and claim-integrity release
 
 Built locally:

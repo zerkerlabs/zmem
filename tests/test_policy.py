@@ -66,6 +66,18 @@ class PolicyTest(unittest.TestCase):
 
         self.assertEqual(config.deny_labels, ["secret"])
 
+    def test_policy_config_has_canonical_round_trip_shape(self):
+        config = PolicyConfig.from_dict(
+            {
+                "schema": "zerker.policy.v1",
+                "risk_thresholds": {"high": {"min_trust": 0.95}},
+                "deny_labels": ["secret"],
+            }
+        )
+
+        self.assertEqual(PolicyConfig.from_dict(config.to_dict()), config)
+        self.assertEqual(list(config.to_dict()["risk_thresholds"]), ["low", "medium", "high"])
+
 
 if __name__ == "__main__":
     unittest.main()

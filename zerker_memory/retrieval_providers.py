@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -19,6 +20,8 @@ REDACTED_CONFIG_SCHEMA = "zerker.redacted_config.v1"
 _SECRET_KEY_RE = re.compile(r"(api[_-]?key|authorization|token|secret|password)", re.IGNORECASE)
 _SECRET_VALUE_RE = re.compile(r"(sk-[A-Za-z0-9_-]+|bearer\s+\S+|secret|token|password|api[_-]?key)", re.IGNORECASE)
 _REDACTED = "<redacted>"
+_FASTEMBED_MODELS: dict[tuple[str, str, int | None], Any] = {}
+_FASTEMBED_MODEL_DIGESTS: dict[str, str] = {}
 
 
 @dataclass(frozen=True)
@@ -47,6 +50,7 @@ class EmbeddingProviderResult:
     latency_ms: float
     network_call: bool
     vector_hashes: list[str]
+    model_digest: str | None = None
 
 
 @dataclass(frozen=True)
@@ -76,6 +80,15 @@ def retrieval_provider_config_template() -> dict[str, Any]:
                     "model_id": "zmem-pseudo-embedding-v1",
                     "dimensions": 384,
                     "normalized": True,
+                },
+                "local:fastembed": {
+                    "enabled": False,
+                    "network": False,
+                    "model_id": "BAAI/bge-small-en-v1.5",
+                    "dimensions": 384,
+                    "normalized": True,
+                    "cache_dir": ".zerker/models/fastembed",
+                    "batch_size": 64,
                 },
                 "openai:text-embedding-3-small": {
                     "enabled": False,
@@ -107,6 +120,17 @@ def retrieval_provider_config_template() -> dict[str, Any]:
             },
         },
     }
+
+
+def local_dense_provider_config(*, cache_dir: Path | None = None) -> dict[str, Any]:
+    config = retrieval_provider_config_template()
+    embedding = config["embedding"]
+    embedding["default"] = "local:fastembed"
+    settings = embedding["providers"]["local:fastembed"]
+    settings["enabled"] = True
+    if cache_dir is not None:
+        settings["cache_dir"] = str(cache_dir)
+    return normalize_retrieval_provider_config(config)
 
 
 def load_retrieval_provider_config(path: Path | None = None) -> dict[str, Any]:
@@ -248,15 +272,27 @@ def embed_texts(
     texts: list[str],
     *,
     env: Mapping[str, str] | None = None,
+    input_type: str = "document",
+    allow_model_download: bool = False,
 ) -> EmbeddingProviderResult:
     settings = provider_entry.settings or {}
     model_id = provider_entry.model_id or str(settings.get("model_id") or provider_entry.provider_id)
     dims = int(settings.get("dimensions") or settings.get("dims") or (1536 if provider_entry.network else 384))
     normalized = bool(settings.get("normalized", True))
     started = time.perf_counter()
+    model_digest = None
     if provider_entry.provider_id == "local:pseudo":
         vectors = [_pseudo_embedding(text, dims=dims) for text in texts]
         network_call = False
+    elif provider_entry.provider_id == "local:fastembed":
+        vectors, network_call, model_digest = _fastembed_vectors(
+            provider_entry,
+            texts,
+            input_type=input_type,
+            allow_model_download=allow_model_download,
+        )
+        if vectors:
+            dims = len(vectors[0])
     elif provider_entry.provider_id == "openai:text-embedding-3-small":
         vectors = _openai_embedding_vectors(provider_entry, texts, env=env)
         network_call = True
@@ -274,7 +310,97 @@ def embed_texts(
         latency_ms=latency_ms,
         network_call=network_call,
         vector_hashes=[_vector_hash(vector) for vector in vectors],
+        model_digest=model_digest,
     )
+
+
+def fastembed_model_cached(provider_entry: RetrievalProviderEntry) -> bool:
+    settings = provider_entry.settings or {}
+    cache_dir = Path(str(settings.get("cache_dir") or ".zerker/models/fastembed")).expanduser()
+    if not cache_dir.is_absolute():
+        cache_dir = Path.cwd() / cache_dir
+    return cache_dir.exists() and any(cache_dir.rglob("*.onnx"))
+
+
+def _fastembed_vectors(
+    provider_entry: RetrievalProviderEntry,
+    texts: list[str],
+    *,
+    input_type: str,
+    allow_model_download: bool,
+) -> tuple[list[list[float]], bool, str]:
+    if input_type not in {"document", "query"}:
+        raise ValueError(f"unsupported embedding input type: {input_type}")
+    if not texts:
+        return [], False, ""
+    try:
+        from fastembed import TextEmbedding
+    except ImportError as exc:
+        raise ValueError("local dense embeddings require: pip install 'zerker-memory[dense]'") from exc
+
+    settings = provider_entry.settings or {}
+    model_id = provider_entry.model_id or str(settings.get("model_id") or provider_entry.provider_id)
+    cache_dir = Path(str(settings.get("cache_dir") or ".zerker/models/fastembed")).expanduser()
+    if not cache_dir.is_absolute():
+        cache_dir = Path.cwd() / cache_dir
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    threads_value = settings.get("threads")
+    threads = int(threads_value) if threads_value is not None else None
+    key = (model_id, str(cache_dir.resolve()), threads)
+    was_cached = fastembed_model_cached(provider_entry)
+    model = _FASTEMBED_MODELS.get(key)
+    if model is None and not allow_model_download and not was_cached:
+        raise ValueError("local dense model is not cached; run 'zmem embeddings index --download-model'")
+    if model is None:
+        try:
+            model = TextEmbedding(
+                model_name=model_id,
+                cache_dir=str(cache_dir),
+                threads=threads,
+                local_files_only=was_cached or not allow_model_download,
+            )
+        except ValueError as exc:
+            if not allow_model_download:
+                raise ValueError(
+                    "local dense model is not cached; run 'zmem embeddings index --download-model'"
+                ) from exc
+            raise
+        _FASTEMBED_MODELS[key] = model
+    batch_size = int(settings.get("batch_size", 64))
+    generator = model.query_embed(texts, batch_size=batch_size) if input_type == "query" else model.passage_embed(
+        texts,
+        batch_size=batch_size,
+    )
+    vectors = [[float(value) for value in vector.tolist()] for vector in generator]
+    model_dir = Path(str(getattr(model.model, "_model_dir", "")))
+    model_digest = _directory_digest(model_dir)
+    return vectors, bool(allow_model_download and not was_cached), model_digest
+
+
+def _directory_digest(path: Path) -> str:
+    resolved = str(path.resolve())
+    cached = _FASTEMBED_MODEL_DIGESTS.get(resolved)
+    if cached is not None:
+        return cached
+    if not path.is_dir():
+        raise ValueError("local dense model directory is unavailable")
+    manifest = []
+    for child in sorted((item for item in path.rglob("*") if item.is_file()), key=lambda item: str(item.relative_to(path))):
+        digest = hashlib.sha256()
+        with child.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+        manifest.append(
+            {
+                "path": str(child.relative_to(path)),
+                "size": child.stat().st_size,
+                "sha256": digest.hexdigest(),
+            }
+        )
+    payload = json.dumps(manifest, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    result = "sha256:" + hashlib.sha256(payload.encode("utf-8")).hexdigest()
+    _FASTEMBED_MODEL_DIGESTS[resolved] = result
+    return result
 
 
 def rerank_texts(
@@ -330,6 +456,25 @@ def retrieval_provider_readiness(
                     "hosted": bool(settings.get("network")),
                     "api_key_env": api_key_env,
                     "api_key_ready": bool(api_key_env and env.get(api_key_env)),
+                    "runtime_ready": (
+                        importlib.util.find_spec("fastembed") is not None
+                        if provider_id == "local:fastembed"
+                        else True
+                    ),
+                    "model_cached": (
+                        fastembed_model_cached(
+                            RetrievalProviderEntry(
+                                kind=kind,
+                                provider_id=provider_id,
+                                enabled=bool(settings.get("enabled")),
+                                network=bool(settings.get("network")),
+                                model_id=_string_or_none(settings.get("model_id")),
+                                settings=settings,
+                            )
+                        )
+                        if provider_id == "local:fastembed"
+                        else None
+                    ),
                 }
             )
     return {

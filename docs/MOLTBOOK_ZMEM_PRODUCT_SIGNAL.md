@@ -1,28 +1,32 @@
 # Moltbook Product Signal For ZMem
 
-This note captures the product signal from Moltbook memory posts and related builder threads.
+This note captures the product signal from Moltbook memory posts and related builder threads. Last product review: `2026-07-30`.
 
 ## Short Read
 
-The market does not need another opaque vector database. Builders want a local, inspectable, high-signal memory layer that agents can use across sessions without losing accountability.
+The market does not need another opaque vector database. Builders want a local, inspectable memory-state layer that survives cold starts and handoffs without silently promoting stale, contradictory, or untrusted information into agent context.
 
 `zmem` should keep positioning around:
 
-> Open-source, local-first portable memory with proof for AI agents.
+> Local-first governed memory for AI agents, with portable proof of what shaped an action.
 
-The strongest wedge is not storage alone. It is structured memory, curation policy, explainable recall, and verifiable action receipts.
+The strongest wedge is not storage alone. It is the boundary between retrieval and use: ZMem records what was observed, what was selected, what was admitted, what stayed out, and which policy and memory state produced that decision.
 
-Important implementation distinction: the current repo already has SQLite memory, append-only events, Merkle roots, action receipts, bundles, snapshots, revocation, and Treeship-ready export. It should not yet claim local Ed25519 signing of every memory event until that is implemented. The honest public claim is "Merkle-backed, verifiable memory receipts" today, with "signed memory events" as the next proof upgrade.
+Important implementation distinction: the current repo has SQLite memory, append-only events, Merkle roots, action and mutation receipts, bundles, session checkpoints/snapshots, handoff/restore, revocation, optional Treeship write attestation, and Treeship-ready action proof. New inject receipts also commit to the exact `zerker.memory_context.v1` artifact. The honest claim is "tamper-evident memory lineage and digest-bound context decisions," not "provably true memory" and not capture of hidden model reasoning.
+
+The strongest July 20 demo is a scheduled agent waking after a gap: verify the last handoff, audit elapsed time, admit only current trusted memory, name stale/withheld/unknown state, perform the task, and emit the next compact handoff proof.
 
 ## Repeated User Problems
 
 - Agents often have no useful long-term memory, so each session restarts from scratch.
 - Agents lose task queues and execution state across sessions, then continue without knowing what was dropped.
+- Scheduled and ephemeral agents wake without a trustworthy account of what happened during the wall-clock gap.
 - Existing memory is frequently opaque: users cannot see, query, debug, or audit what the agent remembers.
 - Memory quality is weak without behavioral rules; agents hoard logs and low-value trivia.
 - Builders are rebuilding one-off memory systems: daily logs, soul files, SQL schemas, semantic indexes, and pre-compaction hooks.
 - Cloud-hosted vector databases create privacy, cost, portability, and trust concerns for indie builders and small teams.
 - Governance fails when agent contributions cannot be traced to who said what, when it was said, and which memory/proof chain backs it.
+- Successful execution signals such as HTTP 200, valid JSON, or a green tool call can hide stale inputs and wrong state transitions.
 
 ## Source Signals Captured
 
@@ -31,6 +35,7 @@ Important implementation distinction: the current repo already has SQLite memory
 - Moltbook memory search surfaced strong adjacent patterns: SQLite/database-first memory, hybrid text plus semantic search, pre-compression checkpointing, local embeddings, memory files over vectors, and setup environments blocking agent memory installs.
 - Indexed comments around persistent memory emphasize agent-held keys, append-only signed writes, signed snapshots, superseding instead of overwriting, and recall latency as a health check.
 - The governance prompt crystallizes the social version of the same problem: if an agent contribution has no provenance, audit trail, or cryptographic permanence, it becomes noise instead of standing evidence.
+- July 20 threads converged on discontinuity handoffs, cold-start proof, silent-success failures, memory-as-state, delegated authority, and skill supply-chain discipline. The ZMem implication is governed continuity and failure memory; executable-package authority belongs in Treeship plus a future Guard/runtime layer.
 
 ## Signal Audit
 
@@ -47,6 +52,9 @@ Verified source clusters:
 | Poisoning and trust boundaries | Memory poisoning, signed/allowlisted sources, untrusted envelopes, prompt-injection incidents | Keep policy gates, quarantine, source labels, and withheld-memory receipts front-and-center. |
 | Verifiable memory | Signed snapshots, enclave/key continuity, attestation chains, third-party proof of prior memory state | Add local event signing and Treeship anchoring as the proof upgrade. |
 | Multi-agent consistency | Shared-memory/cache-coherence framing, conflict visibility, ordering, agent-to-agent commitments | Treat handoff/sync as signed deltas and receipts, not silent shared mutable state. |
+| Cold-start continuity | Discontinuity handoff threads, cron/ephemeral agent gaps, instruction/observation separation | Make resume-gap audit and verified handoff state a flagship workflow. |
+| Silent success | HTTP 200 / valid JSON but wrong amount, symbol, state, or context | Preserve observed outcome, expected invariant, confidence, and later correction as governed memory transitions. |
+| Memory as state | Retrieval returns candidates while state constrains legal transitions | Model observed, selected, admitted/used, contradicted, withheld, expired, invalidated, and revoked explicitly. |
 
 What this confirms:
 
@@ -87,6 +95,12 @@ Recommended product language:
 - Preserve receipt and event history for memory creation, injection, withholding, update, revocation, and restore.
 - Keep deterministic retrieval modes available for audits and repeatable demos.
 
+### Cold-start continuity and failure memory
+
+- Make scheduled-agent resume a first-class workflow: restore the last verified handoff, measure the gap, and identify stale or unknown state before acting.
+- Preserve failed outcomes and silent-success corrections as governed memories linked to the action, expected invariant, observed effect, and superseding evidence.
+- Keep instructions, observations, inferred state, and operator approvals distinguishable through source and authority metadata.
+
 ### Built-in curation and decay
 
 - Make memory quality a core product feature.
@@ -125,49 +139,56 @@ Already aligned:
 
 High-value next product slices:
 
-1. Add explicit event signing with a local keypair and verification command.
-2. Add dock/undock vocabulary for attach/retract memory use, including retraction receipts for revoked or forgotten memories.
-3. Add memory strength and usage counters.
-4. Add decay/reinforcement scoring to recall.
-5. Add curation policy templates for what agents should store or ignore.
-6. Add an inspectable SQL/schema guide for power users.
-7. Add a "what do you know about X?" command or dashboard view.
-8. Add optional semantic indexing on top of the structured store.
+1. Ship the completed `v0.1.8` candidate: canonical memory-context commitment, scheduled-agent cold-start continuity, typed failure memory, and opt-in local dense/FTS fusion.
+2. Add a read-only `zmem audit health` report for stale, expired, contradictory, duplicate, weak-provenance, and high-risk active memory.
+3. Harden contradiction-driven withholding and abstention for equally supported claims.
+4. Add reviewable lifecycle maintenance for revalidation, expiry, decay, tombstones, and failed-claim reopen conditions.
+5. Connect consolidation to the live store while keeping summaries regenerable, source-covered, reversible views rather than canonical truth.
+6. Add handoff ownership/lease metadata and a provenance-preserving dry-run import preview.
+7. Treat skill/tool/interface trust records as governed candidate memory linked to Treeship canary proof, while leaving install/run authority and side-effect enforcement to Treeship/Guard.
+8. Keep observable decision events narrow: input/evidence digests, selected action, policy result, and observed outcome; do not store hidden chain-of-thought as memory.
+
+### July 30 backlog reconciliation
+
+The combined ZMem and Treeship backlog reinforces four product boundaries:
+
+- ZMem owns memory state, lifecycle, admissibility, continuity, and inspectable health.
+- Treeship owns portable proof of effects, capabilities, witnesses, canaries, and state transitions.
+- Guard owns runtime authorization and side-effect enforcement.
+- ZMem may retain Treeship/Guard outputs as governed memory, but should not become a package manager, policy executor, or second signing stack.
+
+Additional validated ZMem gaps from the combined backlog are handoff ownership leases, dry-run import, failed-claim reopen conditions, stable tool-contract state, and optional agent-profile drift history. The first four enter the implementation queue above. Agent-profile drift remains lower priority until the health, lifecycle, consolidation, and handoff loops are complete.
 
 ## Competitive Wedge
 
-The whitespace is the gap between retrievable memory and verifiable memory.
+The whitespace is the gap between retrievable memory and admissible, verifiable memory state.
 
-Mem0, Zep, Letta, and similar systems compete primarily on recall and developer integration. ZMem should not try to win first on benchmarked retrieval quality. It should win by proving memory state transitions:
+Mem0, Zep, Letta, and similar systems compete primarily on recall and developer integration. ZMem still needs credible native retrieval, but its differentiated contract is the governed state transition around recall:
 
 - what was remembered,
 - what was injected,
 - what was withheld,
 - what was revoked,
-- what was forgotten,
+- what expired, contradicted, or was forgotten,
 - and what evidence proves that sequence.
 
-The dock/undock concept is worth prototyping because it gives memory lifecycle a sharper language:
-
-- Dock: attach a memory to an agent action or session as admissible context.
-- Undock: retract a memory from admissible context.
-- Retraction receipt: durable proof that the memory was withdrawn, not silently deleted.
-
-That maps the proof layer to a real operator pain: forgetting should leave a trace.
+Use plain lifecycle language in the product: observed, proposed, active, admitted, withheld, contradicted, expired, revoked, forgotten, and restored. Internal `dock`/`undock` metaphors are not required for the user experience. Retraction and forgetting should still leave a durable trace.
 
 ## Governance Primitive
 
 For ZMem, the governance primitive should be:
 
-> A signed, append-only memory transition that can be replayed and verified across machines.
+> A digest-bound, append-only memory decision that can be replayed locally and exported as portable proof.
 
 That primitive should cover both agent memory and agent speech:
 
 - `remembered`: an agent or human created a durable claim.
 - `promoted`: the claim became admissible.
-- `docked`: the claim was attached to an action or governance contribution.
+- `selected`: retrieval considered the claim for an action.
+- `admitted`: policy allowed the claim into the agent's memory context.
+- `used`: the runtime or action receipt records that the admitted context shaped execution.
 - `withheld`: the claim was considered but blocked.
-- `undocked`: the claim was removed from admissible context.
+- `contradicted` or `expired`: newer evidence or time made the claim unsafe to use.
 - `revoked`: the claim was marked wrong or unsafe, with descendants tainted.
 - `forgotten`: the content was withdrawn while the fact of withdrawal stayed provable.
 

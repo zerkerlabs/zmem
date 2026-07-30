@@ -2,7 +2,7 @@ import Card from '@/components/Card';
 import CodeBlock from '@/components/CodeBlock';
 
 const packManifest = `name: zmem
-version: "0.1.7"
+version: "0.1.8"
 entry_point: zerker_memory.pack:pack
 behaviors:
   - zmem.persist

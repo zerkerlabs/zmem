@@ -1,5 +1,15 @@
 # Launch Lane Log
 
+## 2026-07-30 - v0.1.8 candidate preparation
+
+- Scope: versioned and verified the existing governed-context, scheduled-agent/failure-memory, and dense/FTS feature commits without adding runtime scope.
+- Files touched: release metadata, product-signal/tracker/status docs, public changelog and ActiveGraph version examples, internal release communication, and coordinator logs.
+- Behavior changed: no new runtime behavior beyond the three already-committed candidate features.
+- Tests: full `1,289`-test suite with two expected skips; eval `11/11`; site lint/build; docs typecheck/build; full fresh-workspace release smoke; wheel/sdist build; clean Python 3.10 wheel reinstall and eval.
+- Artifacts: wheel `sha256:6e5bedd198927a4c3aaa1cdf87b97268f9e47fe272e8ec6a435b61b66be32fc2`; source distribution `sha256:84b773c70a5b99bf6cd85c1fd7713cb3cad4f7ec1f2f8205f2bc3e017fab424e`.
+- Blockers: remote CI, merge, tag, GitHub release assets, and production site/docs deployment remain.
+- Next safe slice: push/open the candidate PR. Start memory-health audit work only after the release branch is landed.
+
 ## 2026-06-23 - coordinator rerun 21:59:45Z
 
 - Scope: revalidated the bounded Phase 1 public-alpha gate and refreshed launch oversight docs only.

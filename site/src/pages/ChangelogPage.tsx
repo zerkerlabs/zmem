@@ -2,6 +2,10 @@ import Card from '@/components/Card';
 
 const updates = [
   {
+    title: 'v0.1.8 governed continuity and dense retrieval',
+    detail: 'Digest-bound memory context, scheduled-agent cold-start continuity, typed failure memory, and opt-in local dense/FTS retrieval now ship behind the same policy and receipt boundary.',
+  },
+  {
     title: 'v0.1.7 runtime and claim-integrity release',
     detail: 'Private ephemeral run context, bounded MCP inputs and outputs, confined operator file access, trusted provider configuration, finite governance values, and honest pending benchmark judgments now ship together.',
   },

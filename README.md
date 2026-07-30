@@ -16,6 +16,7 @@ Short version:
 ## What Ships Today
 
 - Local SQLite memory with FTS search and safe fallback search.
+- Optional true local dense candidates with explicit indexing, exact cosine search, and FTS rank fusion.
 - Typed memories: episodic, semantic, procedural, and policy.
 - Quarantine, review queue, promote, reject, revoke, lineage, and revocation propagation.
 - Symbolic injection policy using status, trust, authority, scope, labels, type, and task risk.
@@ -162,6 +163,20 @@ zmem eval
 zmem doctor
 zmem demo
 ```
+
+Optional local semantic recall is explicit and remains behind the same policy and receipt boundary:
+
+```bash
+python3 -m pip install -e '.[dense]'
+zmem embeddings index --download-model --summary-only
+zmem inject "what maintenance cadence did we agree on?" \
+  --agent cursor \
+  --scope project:car \
+  --retrieval-mode dense-hybrid \
+  --summary-only
+```
+
+The first model fetch occurs only with `--download-model`. Later search is local-only, stale content vectors are excluded, and receipts record model/config/query-vector hashes plus lexical/dense fusion. See [docs/content/docs/dense-retrieval.mdx](docs/content/docs/dense-retrieval.mdx).
 
 `zmem status --summary-only` is the fastest readiness check. It summarizes the local workspace, proof counts, agent handoff artifacts, launch-proof state, and the next action to take.
 
@@ -461,6 +476,35 @@ For subprocess-based agents, `run` wraps a command with governed memory:
 zmem run --agent codex --task "deploy service" --risk high --scope project -- your-agent-command
 ```
 
+Scheduled and ephemeral agents can restore optional handoff state, audit the wall-clock gap, run with the audit inside the exact context digest, and leave a verified checkpoint:
+
+```bash
+zmem scheduled-run \
+  --session-id cron://daily-signal \
+  --agent hermes \
+  --task "collect the daily product signal" \
+  --scope project:zmem \
+  --stale-after-seconds 86400 \
+  --summary-only \
+  -- your-agent-command
+```
+
+Record a silent-success or failed outcome without promoting the agent's correction into trusted procedure:
+
+```bash
+zmem failure record \
+  --expected "transfer exactly 10 credits" \
+  --observed "API returned 200 but transferred 100 credits" \
+  --correction "compare the requested and settled ledger amounts" \
+  --invalidation "settled amount differs from the request" \
+  --confidence 0.98 \
+  --scope project:payments \
+  --agent payments-agent \
+  --summary-only
+```
+
+Agent-authored failure memories enter quarantine and require review before promotion.
+
 Export and verify a portable memory-state snapshot:
 
 ```bash
@@ -480,7 +524,15 @@ zmem handoff --summary-only
 
 For write-time signing, set `ZMEM_TREESHIP_AUTO_SIGN=1` after `treeship init`. ZMem will ask Treeship to attest the compact write-receipt digest as `system://zmem` / `kind=memory.write` and store the returned artifact metadata with the write receipt. Set `ZMEM_TREESHIP_STRICT=1` when unsigned writes should fail instead of falling back to local-only receipts.
 
-The command receives `ZERKER_MEMORY_CONTEXT`, `ZERKER_ACTION_ID`, `ZERKER_MEMORY_DB`, and `ZERKER_MEMORY_MERKLE_ROOT`.
+The command receives `ZERKER_MEMORY_CONTEXT`, `ZERKER_MEMORY_CONTEXT_DIGEST`, `ZERKER_ACTION_ID`, `ZERKER_MEMORY_DB`, and `ZERKER_MEMORY_MERKLE_ROOT`. The context file contains the exact admitted, withheld, and budget-dropped memory decision plus its policy and Merkle references. `ZERKER_MEMORY_CONTEXT_DIGEST` is the `sha256:` commitment to that file, excluding only the digest field itself.
+
+The context commitment proves which ZMem memory artifact was supplied to the wrapped command. It does not claim the memory was semantically true, capture hidden model reasoning, or commit provider prompt material outside the ZMem context file.
+
+Verify a retained or received context artifact directly:
+
+```bash
+zmem context verify .zerker/context.json --summary-only
+```
 
 ## Local Review Console
 

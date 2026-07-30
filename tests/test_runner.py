@@ -5,7 +5,13 @@ from pathlib import Path
 from unittest import mock
 
 from zerker_memory.retrieval_providers import RerankerProviderResult
-from zerker_memory.runner import build_context, run_with_memory
+from zerker_memory.runner import (
+    build_context,
+    memory_context_commitment,
+    run_with_memory,
+    verify_memory_context,
+    verify_memory_context_file,
+)
 from zerker_memory.store import MemoryStore, approx_memory_tokens
 
 
@@ -29,7 +35,16 @@ class RunnerTest(unittest.TestCase):
         context_path = self.tmp_path / "context.json"
         receipt = run_with_memory(
             self.store,
-            ["python3", "-c", "import os, pathlib; assert pathlib.Path(os.environ['ZERKER_MEMORY_CONTEXT']).exists()"],
+            [
+                "python3",
+                "-c",
+                (
+                    "import json, os, pathlib; "
+                    "path = pathlib.Path(os.environ['ZERKER_MEMORY_CONTEXT']); "
+                    "context = json.loads(path.read_text()); "
+                    "assert context['context_digest'] == os.environ['ZERKER_MEMORY_CONTEXT_DIGEST']"
+                ),
+            ],
             task="deploy service to production",
             agent_id="codex",
             risk="high",
@@ -43,8 +58,50 @@ class RunnerTest(unittest.TestCase):
         self.assertTrue(context_path.exists())
         context = json.loads(context_path.read_text())
         self.assertEqual(context["schema"], "zerker.memory_context.v1")
+        self.assertTrue(verify_memory_context(context))
+        self.assertEqual(receipt["memory_context"], memory_context_commitment(context))
         self.assertEqual(len(context["memories"]), 1)
         self.assertEqual(context["memories"][0]["type"], "policy")
+
+    def test_context_commitment_is_persisted_and_detects_tampering(self):
+        self.store.remember(
+            "The release owner is Priya.",
+            memory_type="semantic",
+            scope="project",
+            source_kind="human",
+        )
+        receipt = self.store.inject(
+            "Who owns the release?",
+            agent_id="codex",
+            risk="low",
+            scope="project",
+        )
+        context = build_context(receipt)
+
+        self.assertTrue(verify_memory_context(context))
+        self.assertEqual(receipt["memory_context"], memory_context_commitment(context))
+        self.assertEqual(context["scope"], "project")
+        self.assertTrue(context["policy_digest"].startswith("sha256:"))
+
+        persisted = self.store.why(receipt["action_id"])
+        self.assertEqual(persisted["memory_context"], receipt["memory_context"])
+        self.assertEqual(build_context(persisted)["context_digest"], context["context_digest"])
+
+        tampered = json.loads(json.dumps(context))
+        tampered["memories"][0]["content"] = "The release owner is Mallory."
+        self.assertFalse(verify_memory_context(tampered))
+        self.assertNotEqual(memory_context_commitment(tampered)["context_digest"], context["context_digest"])
+
+        context_path = self.tmp_path / "memory-context.json"
+        context_path.write_text(json.dumps(context), encoding="utf-8")
+        verification = verify_memory_context_file(context_path)
+        self.assertTrue(verification["ok"])
+        self.assertEqual(verification["reason"], "verified")
+
+        context_path.write_text(json.dumps(tampered), encoding="utf-8")
+        verification = verify_memory_context_file(context_path)
+        self.assertFalse(verification["ok"])
+        self.assertEqual(verification["reason"], "context-digest-mismatch")
 
     def test_default_run_context_is_private_and_removed_after_command(self):
         mode_path = self.tmp_path / "context-mode.txt"

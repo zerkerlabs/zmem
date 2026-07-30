@@ -1,0 +1,53 @@
+---
+title: Scheduled Agents
+description: Restore verified state, audit the gap, run with governed memory, and leave a proof-bearing checkpoint.
+---
+
+Scheduled and ephemeral agents need more than a diary from the previous run. ZMem checks whether prior state is current, stale, or unknown before that state reaches the agent.
+
+## Run A Scheduled Agent
+
+```bash
+zmem scheduled-run \
+  --session-id cron://daily-signal \
+  --agent hermes \
+  --task "collect the daily product signal" \
+  --scope project:zmem \
+  --stale-after-seconds 86400 \
+  --summary-only \
+  -- your-agent-command
+```
+
+The command writes a cold-start audit, starts the session, injects admissible memory, runs the command, checkpoints the result, and links those records in one proof digest.
+
+Use `--handoff-dir .zerker/handoff` or `--snapshot path/to/snapshot.json` to restore into an empty database before the audit.
+
+## Continuity States
+
+- `current`: the latest completed lifecycle state is within the configured wall-clock gap.
+- `stale`: the latest completed state is older than the configured gap.
+- `unknown`: there is no prior state, the previous session was not checkpointed, the latest snapshot payload is unavailable, or the clocks cannot establish ordering.
+
+Stale or unknown does not mean every memory is false. It means the agent must not silently treat continuity as established.
+
+## Record Silent Success
+
+```bash
+zmem failure record \
+  --expected "transfer exactly 10 credits" \
+  --observed "API returned 200 but transferred 100 credits" \
+  --correction "compare requested and settled ledger amounts" \
+  --invalidation "settled amount differs from the request" \
+  --confidence 0.98 \
+  --scope project:payments \
+  --agent payments-agent \
+  --summary-only
+```
+
+The result is a typed episodic memory with a write receipt. Agent-authored failure memories enter quarantine. The correction becomes inspectable evidence, not an automatically trusted instruction.
+
+Inspect it later:
+
+```bash
+zmem failure show <memory-id> --summary-only
+```

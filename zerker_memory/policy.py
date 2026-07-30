@@ -72,6 +72,19 @@ class PolicyConfig:
         deny_labels = [str(label) for label in value.get("deny_labels", [])]
         return cls(min_trust_by_risk=min_trust, min_policy_authority_by_risk=min_authority, deny_labels=deny_labels)
 
+    def to_dict(self) -> dict:
+        return {
+            "schema": POLICY_CONFIG_SCHEMA,
+            "risk_thresholds": {
+                risk: {
+                    "min_trust": self.min_trust_by_risk[risk],
+                    "min_policy_authority": self.min_policy_authority_by_risk[risk],
+                }
+                for risk in ("low", "medium", "high")
+            },
+            "deny_labels": sorted(set(self.deny_labels)),
+        }
+
 
 def load_policy_config(path: Path | None) -> PolicyConfig:
     if path is None or not path.exists():

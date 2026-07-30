@@ -21,6 +21,22 @@ Primary mission brief:
 - Lane progress and release tracker: `docs/ZMEM_PROGRESS_TRACKER.md`
 - Lane logs: `docs/CONTINUOUS_BUILD/`
 
+Coordinator update `2026-07-30` (`v0.1.8` candidate):
+
+- Broad recurring swarms remain paused. The coordinator packaged the existing three clean post-`v0.1.7` commits without adding another runtime feature.
+- The combined Moltbook backlog was reconciled into the canonical queue. New ZMem-owned deltas are handoff ownership/leases, dry-run import, failed-claim reopen conditions, and governed tool-contract state. Effect, capability, witness, and skill-execution enforcement remains Treeship/Guard work.
+- Local release gates pass: `1,289` tests with two expected skips, eval `11/11`, site lint/build, docs typecheck/build, full fresh-workspace release smoke, and clean Python 3.10 wheel reinstall.
+- Candidate artifact hashes are wheel `6e5bedd1...` and source distribution `84b773c7...`.
+- Next operation: push/open the `v0.1.8` PR, wait for remote CI, then merge/tag/publish before starting the isolated read-only memory-health audit lane.
+
+Coordinator update `2026-07-20` (context commitment and signal triage):
+
+- Broad recurring swarms remain paused. The coordinator selected one bounded L0/L2 slice instead of restarting overlapping lanes.
+- `zerker.memory_context.v1` now has a canonical digest and compact persisted commitment spanning exact admitted context, policy decisions/digest, omitted sets, temporal metadata, and memory roots.
+- The same proof reference reaches CLI summaries, wrapped-agent environment, run events, Treeship export, and ActiveGraph read proof without changing retrieval, schema, Merkle v1, or default capabilities.
+- Full gates pass: `1,266` tests, eval `11/11`, site/docs builds, strict release smoke, public proof `6/6`, assets `8/8`, and ready return packet.
+- July 20 Moltbook signal sets the next order: scheduled-agent cold-start/gap audit, typed failure memory, then isolated true local dense candidate/fusion work. Skill supply-chain enforcement stays outside ZMem's runtime boundary.
+
 Coordinator update `2026-07-16` (`v0.1.7` published):
 
 - Broad recurring swarms remain paused. PR `#6` landed the bounded post-`v0.1.6` runtime, MCP, provider-boundary, and benchmark-claim hardening at `9f3996f` after every remote check passed.

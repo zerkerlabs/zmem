@@ -2,6 +2,48 @@
 
 All notable Zerker Memory alpha changes are summarized here.
 
+## 0.1.8 - 2026-07-30
+
+### Governed Context Proof
+
+- Added a canonical `sha256:` commitment to `zerker.memory_context.v1`, covering the exact memories admitted to an agent, the considered/withheld/budget-dropped sets, policy decisions and policy digest, temporal metadata, and memory Merkle references.
+- Persisted the compact commitment with inject receipts so `zmem why` can recover the original decision reference without storing a second raw-context copy.
+- Exposed the digest to wrapped agents as `ZERKER_MEMORY_CONTEXT_DIGEST` and in compact `inject` / `why` summaries.
+- Added `zmem context verify <file> --summary-only` for direct local or receive-side verification of retained context artifacts.
+- Added the context and policy digests to Treeship memory-proof statements and ActiveGraph `memory.read.v1` payloads while preserving older receipts and exports.
+- Kept the claim boundary explicit: this proves the exact ZMem context artifact, not semantic truth, hidden reasoning, or provider prompt material outside that artifact.
+
+### Scheduled-Agent Continuity
+
+- Added `zmem scheduled-run` to compose optional verified restore, wall-clock gap audit, session start, governed execution, checkpoint, and one linked proof receipt.
+- Classified continuity as `current`, `stale`, or `unknown`; an uncheckpointed prior run and a deleted latest snapshot payload remain explicitly unknown.
+- Bound the compact continuity audit into `zerker.memory_context.v1`, so the agent sees the same gap state committed by the run context digest.
+- Kept operational success separate from proof validity: nonzero commands are still checkpointed and their execution proof can verify.
+
+### Failure Memory
+
+- Added `zmem failure record` and `zmem failure show` for a typed, receipted `zerker.failure_memory.v1` payload containing expected result, observed result, confidence, correction, and invalidation.
+- Agent-authored corrections remain quarantined evidence until reviewed. Recording an invalidated memory reference does not silently revoke or rewrite that memory.
+
+### Local Dense Retrieval Candidate
+
+- Added optional FastEmbed-backed local embeddings with an explicit `zmem embeddings index --download-model` first-run boundary; ordinary search cannot download a model.
+- Added a derived SQLite float32 vector cache bound to memory content hash, provider, model id, local model-file digest, and redacted provider-config hash. Stale vectors are excluded.
+- Added `dense-hybrid` retrieval for `inject`, `run`, and `scheduled-run`. Dense candidates are generated independently of FTS, fused with the adaptive lexical baseline through RRF without deleting lexical candidates, and then governed by the existing policy, temporal, packing, and receipt pipeline.
+- Added receipt-visible provider/model/config/query-vector identity, index coverage, candidate source ranks, fusion results, and explicit lexical fallback reasons without copying raw vectors into receipts.
+- Kept semantic expansion from manufacturing a state conflict: dense-only candidates cannot trigger the legacy lexical current-fact resolver, while conflicts supported by lexical candidates and explicit update/supersession links still resolve normally.
+- Passed a clean repeat of the frozen 227-question gate at `203/227` versus `160/227`: 43 gains, zero losses, zero fallbacks, zero query-time network calls, and one pinned model digest. Observed p95 retrieval latency increased from `209.629 ms` to `419.818 ms`.
+- Completed proof-verified full local comparisons with zero answer regressions. LoCoMo improved from `1,220/1,986` (`61.43%`) to `1,567/1,986` (`78.90%`), with 347 gains. LongMemEval improved from `386/500` (`77.2%`) to `477/500` (`95.4%`), with 91 gains. Every answerable category improved; LoCoMo adversarial abstention remained `446/446`.
+- Kept the cost visible: mean query context increased from `533.32` to `903.05` tokens on LoCoMo and from `2,510.65` to `3,615.88` on LongMemEval. The mode remains opt-in while candidate depth, packing cost, and exact-cosine latency are tuned.
+
+### Verification
+
+- Full Python suite: `1,289` tests passed with two expected optional skips; eval passed `11/11`.
+- Docs production build and typecheck passed after a clean generated cache; fresh-workspace release smoke reports strict publish ready.
+- Wheel and source distribution build successfully. The wheel contains `zerker_memory/dense.py` and advertises `fastembed>=0.8,<1` only through the optional `dense` extra.
+- Clean Python 3.10 wheel reinstall reports `zmem 0.1.8` and passes eval `11/11`.
+- Wheel `sha256:6e5bedd198927a4c3aaa1cdf87b97268f9e47fe272e8ec6a435b61b66be32fc2`; source distribution `sha256:84b773c70a5b99bf6cd85c1fd7713cb3cad4f7ec1f2f8205f2bc3e017fab424e`.
+
 ## 0.1.7 - 2026-07-16
 
 ### Runtime And MCP Hardening

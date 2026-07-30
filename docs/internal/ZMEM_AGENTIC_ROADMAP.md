@@ -1,6 +1,6 @@
 # ZMem Agentic Roadmap
 
-Last audit: 2026-06-22
+Last audit: 2026-07-21
 
 This is the control-plane roadmap for agentic ZMem work. It is not a calendar. Each lane should keep improving until its evidence gate is green, honestly blocked, or deliberately paused by the coordinator.
 
@@ -19,16 +19,14 @@ The public promise is:
 
 Confirmed from this audit:
 
-- Public surfaces are live: `zmem.sh` and `docs.zmem.sh`.
-- Public routed docs are under `docs/content/docs/**`; `docs/internal/**` and top-level operator markdown must stay non-routed.
-- The public site/docs no longer show the internal strict-publish gate language in routed public content.
-- `python3 -m zerker_memory status --summary-only` reports workspace, doctor, memory proof, release packet, and manual agent pack ready.
-- `python3 -m zerker_memory eval` passes `11/11`.
-- Focused verification passed for benchmark scripts, consolidation fixture, store, snapshot, and workspace tests.
-- Local benchmark artifacts exist for synthetic, LongMemEval-style, and LoCoMo-style runs with matrix/comparison hashes.
-- The strict public publish gate remains an internal release-evidence gate, not a product readiness gate: public verify logs are `0/6`, launch assets are `0/8`, and return packet is not ready.
-- Local `main` is ahead of `origin/main` by multiple continuous-build commits. Treat those commits as pending review/checkpoint work before pushing.
-- Dirty files remain in continuous-build docs and core benchmark/store tests. Preserve them unless the lane explicitly owns them.
+- `v0.1.7` is the current public release; GitHub release, wheel reinstall, site, docs, CI, eval `11/11`, public proof `6/6`, launch assets `8/8`, and return packet are green.
+- Broad recurring swarms and launch oversight remain paused. Work should proceed as explicit bounded slices from a clean checkpoint.
+- The published lexical baseline is `160/227`; full local LoCoMo is `1,220/1,986` (`0.6143`) and LongMemEval is `386/500` (`0.772`). The isolated dense-hybrid candidate reaches `203/227`, `1,567/1,986` (`0.7890`), and `477/500` (`0.954`) with zero losses against those baselines. These remain provisional local evidence, not leaderboard claims.
+- ActiveGraph pack discovery, batching, pre-call recall, compact traces, and the two-run host are implemented and verified.
+- The July 20 Moltbook signal prioritizes cold-start handoff, memory-as-state, silent-success/failure memory, and proof of the exact context admitted to an action.
+- Current unreleased work adds a canonical `zerker.memory_context.v1` digest, scheduled-agent continuity, typed failure memory, and true local dense recall without changing the existing Merkle or MCP compatibility contracts.
+- The isolated L3 branch now has FastEmbed candidates, SQLite vector caching, exact cosine search, FTS RRF fusion, stale-vector rejection, lexical-conflict isolation, and verified stable/full benchmark evidence. Stop adding one-question lexical rules; optimize candidate and packing cost next.
+- Skill installation authority, delegated capabilities, and side-effect enforcement belong primarily to Treeship plus a future Guard/runtime layer. ZMem may retain their trust state as governed memory but should not become a package manager.
 
 ## Public Claim Boundary
 
@@ -115,18 +113,17 @@ Primary inputs:
 
 Current evidence:
 
-- Official conversion/scoring scripts exist under `scripts/bench/`.
-- `tests.test_bench_scripts` passes.
-- Matrix artifacts exist with hashes for synthetic, LongMemEval-style, and LoCoMo-style runs.
-- Full matrix verification can be heavy; it is not yet a good cheap audit check.
+- Official conversion/scoring scripts and compact artifact verifiers exist under `scripts/bench/`.
+- Verified local evidence exists for full LoCoMo, LongMemEval, and official-layout BEAM 100K/500K/1M/10M runs.
+- ActiveGraph compact traces avoid per-question receipt-bundle explosion.
+- LLM-judged results remain pending until an external judge completes; unjudged answers do not count as failures or public claims.
 
 Next queue:
 
-- Add a tiny fixture-backed smoke for the documented `--mode zmem-retrieval` path.
-- Add fast summary verification for matrix/comparison artifacts so agents can inspect benchmark health without long artifact replays.
-- Pin dataset hashes and conversion commands for any run considered publishable.
-- Add conflict/temporal benchmark slices before public comparison claims.
-- Build a benchmark panel that separates local evidence, provisional scored runs, and official submissions.
+- Keep dataset hashes, conversion commands, result hashes, and claim boundaries pinned for every publishable run.
+- Add an official model-judged BEAM path and broader multi-conversation scale coverage.
+- Keep the verified dense/full comparisons pinned and add cost sweeps without weakening the zero-loss boundary.
+- Keep the benchmark panel separated into local evidence, provisional scored runs, and official submissions.
 
 Fast checks:
 
@@ -160,16 +157,16 @@ Primary inputs:
 
 Current evidence:
 
-- FTS baseline, context packing, support-chain reservation, chronology support backfill, and receipt-visible retrieval decisions are active.
-- Recent focused store/runner tests have passed in lane logs.
+- Adaptive FTS/BM25, context packing, temporal routing, semantic backfill, RRF, and bounded morphology/completion/transcript support are active and receipt-visible.
+- The lexical stable/full baselines are `160/227`, `1,220/1,986`, and `386/500`. Dense-hybrid reaches `203/227`, `1,567/1,986`, and `477/500` with zero losses.
+- The lexical rule effort-to-gain curve has flattened. Provider reranking of lexical candidates is not independent dense recall.
 
 Next queue:
 
-- Extend explicit support-chain reservation to target-history prompts.
-- Add retrieval depth/context expansion regression around nucleus hits.
-- Add router contracts: direct, parallel decomposition, chain-of-query, temporal override.
-- Add RRF/fusion contract after local keyword/temporal path is stable.
-- Keep every retrieved/injected/withheld/budget-dropped decision receipt-visible.
+- Sweep dense candidate depth and packing budget while preserving the current zero-loss comparisons.
+- Profile exact cosine at larger stores before choosing `sqlite-vec` or another ANN backend.
+- Add a server-controlled MCP dense mode only after the cache/download/operator boundary is accepted.
+- Keep model id, model artifact digest, query digest, candidate-source ranks, and fusion decision receipt-visible without storing raw vectors in portable proofs.
 
 Fast checks:
 
@@ -198,15 +195,15 @@ Primary inputs:
 
 Current evidence:
 
-- `query_at(timestamp)` exists as a derived projection over events plus parent lineage.
-- Tests cover learned-vs-valid time and `Alice` vs `Alice Chen` identity separation.
+- `query_at(timestamp)` plus current/history/future/superseded/learned/unlearned projections are implemented.
+- Inject receipts and runtime context preserve temporal subsets, selection ordering, conflicts, omissions, and abstention envelopes.
+- Same-subject updates can supersede prior state without requiring explicit parent edges.
 
 Next queue:
 
-- Port explicit same-subject update/restatement supersession rules into `query_at`.
-- Decide whether `inject`/`why` should surface derived temporal envelopes.
-- Add current-value, historical, and timeline conflict assembly fixtures.
-- Add monotonic serial/valid-time side table only after tests show projection is insufficient.
+- Add benchmark-backed contradiction and stale-state abstention coverage.
+- Add richer temporal filters and relation traversal only where fixtures prove the projection is insufficient.
+- Keep bi-temporal schema migration deferred until query/runtime evidence requires it.
 
 Fast checks:
 
@@ -237,16 +234,17 @@ Primary inputs:
 
 Current evidence:
 
-- Add/source write receipts exist.
-- `promote()` now emits a mutation receipt chain.
-- Snapshot export preserves ordered write receipts.
+- Add/source, promote, reject, revoke, forget, checkpoint, snapshot, and restore receipts exist.
+- Compact receipt bundle v2 uses Merkle witnesses while legacy v1 remains verifiable.
+- Optional Treeship write attestation signs compact write-receipt digests.
+- Current unreleased work commits the exact `zerker.memory_context.v1` artifact and carries its digest into Treeship proof.
 
 Next queue:
 
-- Add mutation receipts for `reject`, `revoke`, and `forget`.
-- Add one CLI/report surface that summarizes ordered memory receipt chains.
-- Build the memory-poisoning incident reconstruction demo: poisoned write -> later action -> receipt-chain traceback.
-- Keep Treeship optional and explain it as public proof export, not product dependency.
+- Finish the memory-context commitment verification and portable handoff path.
+- Add one CLI/report surface that summarizes ordered per-memory mutation chains.
+- Build the poisoned-memory and silent-success incident reconstruction demos.
+- Design Merkle v2 only with domain separation, leaf-count binding, mixed v1/v2 verification, and migration fixtures.
 
 Fast checks:
 
@@ -275,15 +273,13 @@ Primary inputs:
 
 Current evidence:
 
-- First fixture helpers and tests exist.
-- No durable job table, scheduler, or runtime summary writer yet.
+- Deterministic fixtures, append-only job lifecycle, source-child ids, duplicate suppression, and reversible summary payloads exist.
 
 Next queue:
 
-- Add non-blocking local consolidation job model.
-- Persist source-child ids and output summary ids.
-- Add profile/project aggregation fixture.
-- Add dedupe/clustering status for console before hosted summarization.
+- Source consolidation candidates from the live store.
+- Add the runtime summary writer and a read-only status/report surface.
+- Keep summaries reversible and linked to source children; consolidation must not mask weak retrieval.
 
 Fast checks:
 
@@ -314,15 +310,14 @@ Primary inputs:
 Current evidence:
 
 - Agent handoff reports ok for Codex, Claude Code, Cursor, OpenClaw, Hermes, and generic MCP.
-- `workspace sources` exists as a read-only JSON lineage report.
-- Status currently shows a profile match mismatch that should be clarified: current profile is `treeship.dev`, matched workspace is `Zerker Memory`.
+- `workspace sources --summary-only` and dashboard source reports expose claims, conflicts, and unresolved exact ties.
+- Handoff/restore carries verified state across agents and machines.
 
 Next queue:
 
-- Add human-readable `workspace sources` summary.
-- Add dashboard card for connected agents, workspace ids, source URI, trust status, and proof lineage.
-- Design memory store switching for multiple projects/sessions.
-- Add source-level conflict/merge fixture.
+- Persist explicit merge decisions and source-lineage detail.
+- Add durable identity keys/anchors and intentional multi-store switching.
+- Make connected agent, workspace, source URI, trust status, and proof lineage easy to scan in the console.
 
 Fast checks:
 
@@ -353,15 +348,14 @@ Primary inputs:
 
 Current evidence:
 
-- Handoff, snapshots, restore, and action receipts exist.
-- Lane is seeded but not deeply implemented.
+- Session start/end, checkpoint, snapshot, retention summaries, handoff, restore, action receipts, and committed runtime context exist.
+- Context packing records admitted, withheld, and budget-dropped memory.
 
 Next queue:
 
-- Inventory session, checkpoint, snapshot, handoff, inject, and propose flows.
-- Define `start_session`, `checkpoint_session`, `snapshot_session`, and `end_session` contract or document deferral.
-- Make checkpoint roots receipt-visible.
-- Ensure context packing records injected, withheld, and budget-dropped memory.
+- Build the scheduled-agent cold-start workflow over the existing primitives.
+- Add wall-clock gap audit, stale/unknown-state summary, and next-run checkpoint guidance.
+- Add write-facing lifecycle UX only where it reduces setup friction without widening agent authority.
 
 Fast checks:
 
@@ -409,13 +403,15 @@ Blocked conditions:
 
 ## Immediate Coordinator Queue
 
-1. Review local commits ahead of `origin/main`: `20469a7`, `5a56571`, `a8b26ae`, `612ce4b`. Decide whether to push, split, or hold.
-2. Keep `.treeship/`, `data/`, and generated/runtime outputs uncommitted unless explicitly reviewed.
-3. Stabilize dirty lane files before spawning more overlapping work.
-4. Give L7 this thread as the public/frontend/copy specialist lane.
-5. Give L6 and L3 separate implementation threads so benchmark/retrieval work does not collide with public copy.
-6. Add the fast benchmark artifact verification path so future agents can inspect benchmark health cheaply.
-7. Start the memory-poisoning incident reconstruction demo only after L0 receipt-chain summary is visible to a human.
+1. [x] Finish and verify the canonical memory-context commitment across inject, `why`, wrapped runs, Treeship export, ActiveGraph recall, CLI summaries, and public docs.
+2. [x] Package that bounded L0/L2 slice from a clean diff before starting dense retrieval work.
+3. [x] Build one scheduled-agent cold-start path from existing handoff/session primitives: restore, gap audit, admissibility report, run, checkpoint, and portable proof.
+4. [x] Add typed failure memory around expected invariant, observed outcome, confidence, correction, and invalidation without confusing HTTP success with verified state-transition success.
+5. [x] Start true local dense candidate generation in an isolated L3 branch, with explicit model setup, independent candidates, FTS RRF fusion, stale-vector rejection, and receipt-visible model/config/fusion evidence.
+6. [x] Pass the frozen stable cohort. Offline dense-hybrid improved `160/227` to `203/227` with 43 gains, zero losses, lexical recall preservation, zero fallbacks, and one pinned model digest.
+7. [x] Keep benchmark output directories isolated and finish full LoCoMo/LongMemEval comparisons. Dense-hybrid improved both full datasets with 347 and 91 gains, zero losses, and locally verified result/comparison artifacts.
+8. [ ] Keep `.treeship/`, `.zerker/bench/`, datasets, build output, and other generated/runtime state uncommitted unless explicitly reviewed.
+9. [ ] Tune candidate depth and packing cost under the same frozen/full zero-loss gates before recommending dense mode or adding an ANN backend.
 
 ## Done Definition For This Roadmap
 
@@ -428,4 +424,3 @@ This roadmap is useful when a fresh agent can:
 - know the fast checks,
 - know the final evidence gate,
 - stop honestly when blocked.
-

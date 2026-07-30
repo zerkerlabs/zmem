@@ -14,6 +14,20 @@ zmem why <action-id>
 zmem verify <action-id>
 ```
 
+## Memory Context Commitment
+
+Every new inject receipt carries a compact `zerker.memory_context.v1` commitment. Its `sha256:` digest binds the task and agent identifiers, policy digest and decisions, retrieved/admitted/withheld/budget-dropped ids, temporal envelope, memory Merkle roots, and the exact memory records supplied as ZMem context.
+
+`zmem inject --summary-only` and `zmem why <action-id> --summary-only` show the commitment. `zmem run` also writes the full context artifact to `ZERKER_MEMORY_CONTEXT` and exposes the matching digest as `ZERKER_MEMORY_CONTEXT_DIGEST`.
+
+Retain a context with `zmem run --context-path <file> ...`, then verify it locally or after handoff:
+
+```bash
+zmem context verify <file> --summary-only
+```
+
+Changing the context artifact causes verification to fail. The commitment proves the ZMem context supplied at the decision boundary; it does not prove semantic truth, hidden model reasoning, or provider prompt material outside that artifact.
+
 ## Receipt Bundle
 
 ```bash
@@ -37,7 +51,7 @@ zmem treeship doctor
 zmem treeship publish <action-id> --dry-run --command-template "treeship prove {statement} --action {action_id}"
 ```
 
-The Treeship export is a portable statement derived from a verified receipt bundle. It records enough evidence to make the proof shareable without turning local memory into a hosted dependency.
+The Treeship export is a portable statement derived from a verified receipt bundle. For new receipts it includes the compact memory-context and policy digests, without adding raw context to the commitment. It records enough evidence to make the proof shareable without turning local memory into a hosted dependency.
 
 ## Write Attestation
 

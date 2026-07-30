@@ -3,6 +3,40 @@
 This is the short orchestration dashboard for Zerker Memory. Every autonomous build run should update this file after it updates `docs/BUILD_LOG.md`.
 
 ## Release Coordination
+`2026-07-30`
+
+- Prepared the coherent post-`v0.1.7` work as the `v0.1.8` candidate without adding another runtime feature. Package, ActiveGraph pack, docs example, site example, and changelog surfaces all report `0.1.8`.
+- Reconciled the July 21 Moltbook signal/backlog against shipped behavior. The post-release order is now read-only memory health audit, contradiction-driven abstention, reviewable lifecycle maintenance, live source-backed consolidation, handoff ownership/import preview, and governed tool-contract state. Effect/capability/witness enforcement remains in Treeship/Guard.
+- Release verification is green: `1,289` tests with two expected skips, eval `11/11`, site lint/build, docs typecheck/build, and full fresh-workspace release smoke.
+- Final local distributions build and reinstall cleanly under Python 3.10. Wheel `sha256:6e5bedd198927a4c3aaa1cdf87b97268f9e47fe272e8ec6a435b61b66be32fc2`; source distribution `sha256:84b773c70a5b99bf6cd85c1fd7713cb3cad4f7ec1f2f8205f2bc3e017fab424e`.
+- Broad swarms remain paused. Next release step: push `codex/l3-dense-retrieval`, open the `v0.1.8` PR, and require remote CI before merge/tag/publication.
+
+`2026-07-21`
+
+- Started the isolated `codex/l3-dense-retrieval` candidate after cleanly committing the governed-context and scheduled-agent/failure-memory checkpoints.
+- Added optional FastEmbed local embeddings, explicit first-run model download, SQLite float32 vector caching, stale-content rejection, exact cosine candidates independent of FTS, and lexical/dense RRF fusion behind the unchanged policy and receipt boundary.
+- `inject`, `run`, and `scheduled-run` accept `--retrieval-mode dense-hybrid`; action receipts record model id/digest, redacted config hash, query-vector hash, index coverage, candidate source ranks, fusion, and explicit fallback reason without copying raw vectors.
+- The frozen cohort gate passes twice: fresh `fts-adaptive` reproduced `160/227` (`70.48%`), while the final clean offline dense-hybrid repeat reached `203/227` (`89.43%`) with 43 gains, zero losses, zero fallbacks, zero query-time network calls, and one pinned model digest. Candidate proofs confirm lexical recall was preserved; p95 retrieval latency moved from `209.629 ms` to `419.818 ms`.
+- A full-run diagnostic found one dense-only transcript candidate triggering the broad lexical current-fact resolver. Dense-only candidates can no longer manufacture that conflict; explicit update/supersession evidence and conflicts between lexical candidates remain unchanged. The exact miss now passes and the corrected frozen gate remains `203/227` with zero losses.
+- The full isolated comparisons are complete and verify locally. LoCoMo improved from `1,220/1,986` (`61.43%`) to `1,567/1,986` (`78.90%`), with 347 gains and zero losses. LongMemEval improved from `386/500` (`77.2%`) to `477/500` (`95.4%`), with 91 gains and zero losses. Every answerable category improved; LoCoMo adversarial abstention remained `446/446`.
+- The gain has an explicit cost. Mean query context increased from `533.32` to `903.05` tokens on LoCoMo and from `2,510.65` to `3,615.88` on LongMemEval. Observed full-run p95 retrieval latency increased from `690.389 ms` to `3,158.984 ms` on LoCoMo and from `193.610 ms` to `368.415 ms` on LongMemEval. Dense remains opt-in while candidate depth, packing, and exact-cosine performance are tuned.
+- Full result hashes are LoCoMo `2b80a6ab...` with Merkle root `4a078285...`, and LongMemEval `34fe2a32...` with Merkle root `f01398f3...`. Both artifacts and their cross-mode comparisons verify locally; they are provisional local evidence-support scores, not official leaderboard results.
+- Dense-candidate acceptance is green: `1,289` tests pass with two expected skips, eval `11/11`, compile and dependency health, docs build/typecheck, fresh-workspace release smoke, and real wheel/sdist packaging. The candidate wheel includes `dense.py` and the optional FastEmbed dependency metadata.
+- Packaged the canonical governed-context candidate as commit `ea67c51` after `1,266` tests, eval `11/11`, both public builds, and strict release smoke passed.
+- Added `zmem scheduled-run`: optional verified restore, receipt-bound wall-clock gap audit, explicit current/stale/unknown state, exact context-digest binding, governed command execution, checkpoint, and a compact linked proof.
+- Added typed `zerker.failure_memory.v1` recording and inspection. Expected result, observed result, confidence, correction, and invalidation are content-hashed and receipted; agent-authored corrections stay quarantined until review.
+- The earlier cold-start/failure checkpoint passed eight new focused tests and `1,274` full-suite tests; the combined dense candidate now passes `1,289` tests with two expected skips.
+- Broad swarms remain paused. The dense candidate is isolated on `codex/l3-dense-retrieval`; exact cosine is the auditable baseline, not an ANN scale claim.
+
+`2026-07-20`
+
+- The July 20 Moltbook signal was triaged into ZMem-owned work: cold-start continuity, memory-state admissibility, failure memory, and exact context proof. Skill-package authority and side-effect enforcement remain Treeship/Guard concerns; ZMem may retain their trust state as governed memory.
+- A bounded unreleased candidate now commits `zerker.memory_context.v1` with `sha256:` and persists a compact action reference containing the policy digest, memory roots, and retrieved/admitted/withheld/budget-dropped ids.
+- `zmem inject`, `zmem why`, wrapped runs, Treeship export, and ActiveGraph recall now carry the same context proof reference. Older receipts and Treeship exports remain compatible.
+- Full verification passes `1,266` Python tests with two expected optional skips, eval `11/11`, site/docs production builds, strict release smoke, public proof `6/6`, launch assets `8/8`, and return-packet verification.
+- A real local CLI smoke confirmed the same digest across inject summary, why summary, retained run context, `zmem context verify`, and Treeship export. The proof claim is exact ZMem context, not semantic truth or hidden reasoning.
+- Broad swarms remain paused. Next sequence: package this candidate, build the scheduled-agent cold-start/gap-audit demo, then start true local dense candidate generation in an isolated L3 branch.
+
 `2026-07-16`
 
 - Independent adversarial re-testing confirmed the `v0.1.6` path expansion, strict MCP boolean parsing, and concurrent linear event-chain fixes.

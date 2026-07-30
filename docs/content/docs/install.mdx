@@ -33,6 +33,15 @@ zmem eval
 zmem doctor
 ```
 
+For optional local semantic retrieval, install the dense runtime and explicitly cache the model:
+
+```bash
+python3 -m pip install -e '.[dense]'
+zmem embeddings index --download-model --summary-only
+```
+
+No model is downloaded by ordinary search. See [Local Dense Retrieval](/docs/dense-retrieval) for indexing, fusion, proof fields, and current scale limits.
+
 ## Readiness Check
 
 `zmem status --summary-only` is the shortest truth surface. It reports workspace state, proof counts, agent handoff readiness, and the next useful command.

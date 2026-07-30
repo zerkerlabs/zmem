@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "zerker-memory"
-version = "0.1.7"
+version = "0.1.8"
 description = "Open-source, local-first portable memory with proof for AI agents"
 requires-python = ">=3.10"
 readme = "README.md"
@@ -39,6 +39,7 @@ zmem-bench-locomo = "zerker_memory.bench.activegraph_runner:main"
 
 [project.optional-dependencies]
 activegraph = ["activegraph>=1.9,<2"]
+dense = ["fastembed>=0.8,<1"]
 
 [project.entry-points."activegraph.packs"]
 zmem = "zerker_memory.pack:pack"
