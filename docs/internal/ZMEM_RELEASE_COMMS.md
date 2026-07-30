@@ -1,5 +1,15 @@
 # ZMem Release Comms
 
+## 2026-07-30 - v0.1.8 publication
+
+Audience: internal Zerker product, engineering, benchmark review, security review, and release coordination.
+
+`v0.1.8` is published from `969a943a987ac9528e4781702b8cb14ed59a9387` at `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.8`. Main CI run `30571175219` and tag CI run `30571663116` passed every Python 3.10/3.11/3.12, ActiveGraph, site, docs, and release-smoke job. GitHub assets match wheel `sha256:6e5bedd1...` and source distribution `sha256:84b773c7...`.
+
+The site and docs are live at `https://www.zmem.sh` and `https://docs.zmem.sh`. Production canary caught one stale pre-dense benchmark callout below the new release entry; the follow-up replaces it with the verified v0.1.8 dense-hybrid comparison and retains the explicit local-evidence, non-leaderboard boundary.
+
+The next isolated product lane is a read-only memory-health audit. It may identify stale, contradictory, duplicate, weak-provenance, or high-risk active memory, but it must not mutate lifecycle state or present heuristic findings as semantic truth.
+
 ## 2026-07-30 - v0.1.8 governed continuity and dense-retrieval candidate
 
 Audience: internal Zerker product, engineering, benchmark review, security review, and release coordination.

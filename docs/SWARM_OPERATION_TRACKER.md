@@ -21,13 +21,13 @@ Primary mission brief:
 - Lane progress and release tracker: `docs/ZMEM_PROGRESS_TRACKER.md`
 - Lane logs: `docs/CONTINUOUS_BUILD/`
 
-Coordinator update `2026-07-30` (`v0.1.8` candidate):
+Coordinator update `2026-07-30` (`v0.1.8` published):
 
-- Broad recurring swarms remain paused. The coordinator packaged the existing three clean post-`v0.1.7` commits without adding another runtime feature.
+- Broad recurring swarms remain paused. PR `#9` merged at `969a943a987ac9528e4781702b8cb14ed59a9387`; that exact commit is tagged and published as `v0.1.8`.
 - The combined Moltbook backlog was reconciled into the canonical queue. New ZMem-owned deltas are handoff ownership/leases, dry-run import, failed-claim reopen conditions, and governed tool-contract state. Effect, capability, witness, and skill-execution enforcement remains Treeship/Guard work.
-- Local release gates pass: `1,289` tests with two expected skips, eval `11/11`, site lint/build, docs typecheck/build, full fresh-workspace release smoke, and clean Python 3.10 wheel reinstall.
-- Candidate artifact hashes are wheel `6e5bedd1...` and source distribution `84b773c7...`.
-- Next operation: push/open the `v0.1.8` PR, wait for remote CI, then merge/tag/publish before starting the isolated read-only memory-health audit lane.
+- Main CI run `30571175219` and tag CI run `30571663116` passed every Python, ActiveGraph, site, docs, and release-smoke job. Published asset hashes are wheel `6e5bedd1...` and source distribution `84b773c7...`.
+- The site and docs are deployed to their production domains. A production canary caught one stale benchmark summary, which is corrected in the publication follow-up.
+- Next operation: land the publication record and stale-copy correction, then continue only the isolated read-only memory-health audit lane.
 
 Coordinator update `2026-07-20` (context commitment and signal triage):
 

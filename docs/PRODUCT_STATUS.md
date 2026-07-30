@@ -4,11 +4,9 @@
 
 Zerker Memory is a functional open-source, local-first alpha with a public site, tagged releases, and a verified local proof path.
 
-Current published release: `v0.1.7` at `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.7`.
+Current published release: `v0.1.8` at `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.8`.
 
-The release packages bounded runtime, MCP, provider-boundary, and benchmark-claim hardening while preserving retrieval, receipt, Merkle, snapshot, and default agent-capability compatibility.
-
-Current release candidate: `v0.1.8`, adding a digest-bound `zerker.memory_context.v1` artifact, scheduled-agent cold-start continuity, typed failure memory, and opt-in local dense/FTS retrieval. Inject receipts commit to the admitted, withheld, and budget-dropped context plus the policy and memory roots behind the decision. Scheduled runs restore, audit the wall-clock gap, expose stale or unknown state, execute, checkpoint, and prove the handoff. Dense candidates remain governed by the same policy and receipt boundary.
+The release adds a digest-bound `zerker.memory_context.v1` artifact, scheduled-agent cold-start continuity, typed failure memory, and opt-in local dense/FTS retrieval. Inject receipts commit to the admitted, withheld, and budget-dropped context plus the policy and memory roots behind the decision. Scheduled runs restore, audit the wall-clock gap, expose stale or unknown state, execute, checkpoint, and prove the handoff. Dense candidates remain governed by the same policy and receipt boundary.
 
 It is ready for:
 

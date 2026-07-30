@@ -123,15 +123,16 @@ export default function ChangelogPage() {
 
       <section className="bg-zsurface py-20">
         <div className="mx-auto max-w-[900px] px-6">
-          <p className="text-eyebrow text-zlime">Current benchmark fact</p>
+          <p className="text-eyebrow text-zlime">Current verified local comparison</p>
           <h2 className="mt-3 font-heading text-4xl font-semibold tracking-tight text-zink">
-            Adaptive routing leads the local LoCoMo comparison.
+            Dense hybrid recall leads ZMem's local benchmark comparison.
           </h2>
           <p className="mt-5 text-sm leading-relaxed text-zmuted">
-            In ZMem's latest verified local provisional run, adaptive routing answered 1,220 of
-            1,986 questions correctly, or 0.6143 accuracy. Bounded transcript-neighbor support added
-            one answer with no regressions against the completion-support checkpoint. LongMemEval
-            held at 0.772 with no retrieval changes.
+            Opt-in dense hybrid retrieval answered 1,567 of 1,986 LoCoMo evidence-support
+            questions and 477 of 500 LongMemEval questions, gaining 347 and 91 with zero answer
+            regressions against the adaptive lexical baseline. These are deterministic local
+            evidence-support measurements, not official leaderboard submissions. Dense retrieval
+            remains opt-in because mean context size and p95 latency increased.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
             <a

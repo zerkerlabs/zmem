@@ -27,11 +27,11 @@ Every push or meaningful automation drop should update this file alongside:
 | `v0.1.5` | Published | `d4f6d9a` / `v0.1.5` | Bounded completion support, BEAM 500K evidence, verified ActiveGraph pre-call prompt integrity, and the simplified public hero. |
 | `v0.1.6` | Published | `34b4e8a` / `v0.1.6` | Transcript-neighbor retrieval, runnable ActiveGraph host, BEAM 10M scale/index evidence, and concurrent event-chain hardening. |
 | `v0.1.7` | Published | `5b1cf0f` / `v0.1.7` | Private ephemeral run context, bounded MCP/operator/provider boundaries, finite governance values, and honest pending-judge benchmark state. |
-| `v0.1.8` | Candidate | `codex/l3-dense-retrieval` | Digest-bound memory context, scheduled-agent continuity, typed failure memory, and opt-in local dense/FTS retrieval. |
+| `v0.1.8` | Published | `969a943` / `v0.1.8` | Digest-bound memory context, scheduled-agent continuity, typed failure memory, and opt-in local dense/FTS retrieval. |
 
 Current public release:
 
-- GitHub: `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.7`
+- GitHub: `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.8`
 - Site: `https://www.zmem.sh`
 - Raw installer: `https://raw.githubusercontent.com/zerkerlabs/zmem/main/install.sh`
 
@@ -77,7 +77,7 @@ Current `v0.1.7` release checkpoint:
 - The clean public wheel reinstall reports `zmem 0.1.7` and passes eval `11/11`. GitHub assets match wheel `sha256:d8a3fdba9c5e60c5d00cc8918c8c9e5d87b40cee764ea9756f8e5f9b8053d89b` and source distribution `sha256:8a7102958be108098f9576d61d80730566d6c1bd1515ec1f21278ffea0fa13c4`.
 - Production deployments `dpl_9Xb2upPsawLoDhaco6r5CSJppvxW` and `dpl_ckk7y9HhAg4fg2n1z67uBLJJQ8e8` are live at `zmem.sh` and `docs.zmem.sh`; responsive browser, console, network, raw-installer, agent-smoke, and MCP-smoke canaries pass.
 
-Current `v0.1.8` candidate checkpoint:
+Published `v0.1.8` checkpoint:
 
 - `zerker.memory_context.v1` now carries a canonical `sha256:` commitment over the exact ZMem context supplied to an agent, including admitted, withheld, and budget-dropped memory, policy decisions, temporal state, and memory roots.
 - Inject receipts persist a compact commitment in existing retrieval JSON; no SQLite migration, retrieval change, Merkle v1 change, or duplicate raw-context copy is introduced.
@@ -88,7 +88,9 @@ Current `v0.1.8` candidate checkpoint:
 - The dense gain costs more context and latency, so it remains opt-in. Existing MCP schemas retain stable FTS behavior; server-controlled MCP dense retrieval and any ANN backend remain follow-ups.
 - Combined acceptance passes `1,289` tests with two expected skips, eval `11/11`, docs build/typecheck, fresh-workspace release smoke, and wheel/sdist packaging with the optional dense runtime correctly declared.
 - Site lint/build passes. Clean Python 3.10 wheel reinstall reports `zmem 0.1.8` and passes eval `11/11`.
-- Candidate artifacts: wheel `sha256:6e5bedd198927a4c3aaa1cdf87b97268f9e47fe272e8ec6a435b61b66be32fc2`; source distribution `sha256:84b773c70a5b99bf6cd85c1fd7713cb3cad4f7ec1f2f8205f2bc3e017fab424e`.
+- Published from `969a943a987ac9528e4781702b8cb14ed59a9387` through PR `#9`; main CI run `30571175219` and tag CI run `30571663116` passed every Python, ActiveGraph, site, docs, and release-smoke job.
+- Release assets: wheel `sha256:6e5bedd198927a4c3aaa1cdf87b97268f9e47fe272e8ec6a435b61b66be32fc2`; source distribution `sha256:84b773c70a5b99bf6cd85c1fd7713cb3cad4f7ec1f2f8205f2bc3e017fab424e`.
+- Production deployments are live at `https://www.zmem.sh` and `https://docs.zmem.sh`.
 
 Included `v0.1.6` L3 checkpoint:
 
@@ -137,8 +139,8 @@ Percentages are practical launch-grade alpha estimates, not benchmark scores.
 | L4 Consolidation | Hierarchical summaries and job ledger | 35% | Deterministic fixture, job lifecycle, reversible summary payloads, append-only summary ledger | Source candidates from live store or expose persisted summaries through read-only CLI |
 | L5 Identity / Workspaces | Multi-agent source lineage and conflicts | 50% | Source reports, claim conflicts, resolution basis, exact-tie abstention summaries | Add handoff ownership/lease metadata and a dry-run import preview, then persist merge decisions |
 | L6 Benchmark Harness | LoCoMo/LongMemEval/BEAM evidence | 100% for local harness and sampled scale | Verified LoCoMo/LongMemEval evidence plus official-layout BEAM 100K, 500K, 1M, and 10M runs exist; compact artifacts verify | Add broader evidence and an official model-judged path; do not report unjudged LLM answers as incorrect |
-| Launch Oversight | Release pack, proof evidence, public release | 100% for v0.1.7 | Public verify `6/6`, assets `8/8`, return packet ready, release assets published, and production canaries pass | Keep automation paused until the next bounded release candidate exists |
-| Website / Docs | Landing, proof page, docs, changelog | 100% for v0.1.7 | Release copy and ActiveGraph pack version are synchronized and live on the production domains | Keep release facts synchronized with the next shipped product change |
+| Launch Oversight | Release pack, proof evidence, public release | 100% for v0.1.8 | Public verify `6/6`, assets `8/8`, return packet ready, release assets published, and production canaries pass | Keep automation paused until the next bounded release candidate exists |
+| Website / Docs | Landing, proof page, docs, changelog | 100% for v0.1.8 | Release copy, benchmark boundary, and ActiveGraph pack version are synchronized and live on the production domains | Keep release facts synchronized with the next shipped product change |
 | ActiveGraph Integration | Event substrate and compact traces | 100% | The real pack loads, persists events, batches traces, and ships a runnable two-run host with recorded/sent prompt equality | Keep larger selected-mode traces and aggregate Treeship artifacts as optional follow-ups |
 
 ## Lane Checklists
