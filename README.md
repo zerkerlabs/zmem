@@ -180,6 +180,14 @@ The first model fetch occurs only with `--download-model`. Later search is local
 
 `zmem status --summary-only` is the fastest readiness check. It summarizes the local workspace, proof counts, agent handoff artifacts, launch-proof state, and the next action to take.
 
+To inspect persisted memory health without changing any memory state:
+
+```bash
+zmem audit health --summary-only
+```
+
+The audit reports observable expiry, stale lineage, lexical conflicts, exact duplicates, weak provenance, and explicit high-risk active use. It does not claim that memory content is factually or semantically true. See [Memory Health](docs/content/docs/memory-health.mdx).
+
 For day-1 agent setup:
 
 ```bash

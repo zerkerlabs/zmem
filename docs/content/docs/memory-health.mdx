@@ -1,0 +1,48 @@
+---
+title: Memory Health
+description: Inspect stale, conflicting, duplicate, weak-provenance, and high-risk memory without changing it.
+---
+
+ZMem can inspect the persisted state of a memory store without promoting, revoking, rewriting, or deleting any memory.
+
+## Run The Audit
+
+Use the default local store:
+
+```bash
+zmem audit health --summary-only
+```
+
+Inspect a specific project store:
+
+```bash
+zmem --db .zerker/memory.sqlite audit health
+```
+
+JSON is the default machine contract. `--summary-only` prints a compact terminal view for an operator or agent.
+
+## What It Reports
+
+The stable `zerker.memory_health_report.v1` result groups observable findings into:
+
+- stale or expired active memory,
+- active lexical claims with conflicting values,
+- exact duplicate content in the same type and scope,
+- missing or incomplete write provenance,
+- active memory with explicit high-risk evidence.
+
+Each finding includes memory ids, a deterministic reason, and bounded evidence. Findings are sorted for reproducible output.
+
+## What It Does Not Prove
+
+The audit does not decide whether a memory is factually or semantically true. It inspects persisted metadata, lineage, receipts, and deterministic lexical signals.
+
+It also does not repair findings. Review remains a separate action:
+
+```bash
+zmem queue
+zmem promote <memory-id>
+zmem revoke <memory-id>
+```
+
+This separation keeps inspection read-only and makes later lifecycle changes explicit and receipted.

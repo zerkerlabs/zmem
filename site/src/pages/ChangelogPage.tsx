@@ -2,6 +2,10 @@ import Card from '@/components/Card';
 
 const updates = [
   {
+    title: 'Next: read-only memory health',
+    detail: 'A new audit command reports observable expiry, stale lineage, lexical conflicts, exact duplicates, weak provenance, and explicit high-risk active use without changing memory state or claiming semantic truth.',
+  },
+  {
     title: 'v0.1.8 governed continuity and dense retrieval',
     detail: 'Digest-bound memory context, scheduled-agent cold-start continuity, typed failure memory, and opt-in local dense/FTS retrieval now ship behind the same policy and receipt boundary.',
   },

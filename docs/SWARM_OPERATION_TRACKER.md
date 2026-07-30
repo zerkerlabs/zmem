@@ -26,8 +26,9 @@ Coordinator update `2026-07-30` (`v0.1.8` published):
 - Broad recurring swarms remain paused. PR `#9` merged at `969a943a987ac9528e4781702b8cb14ed59a9387`; that exact commit is tagged and published as `v0.1.8`.
 - The combined Moltbook backlog was reconciled into the canonical queue. New ZMem-owned deltas are handoff ownership/leases, dry-run import, failed-claim reopen conditions, and governed tool-contract state. Effect, capability, witness, and skill-execution enforcement remains Treeship/Guard work.
 - Main CI run `30571175219` and tag CI run `30571663116` passed every Python, ActiveGraph, site, docs, and release-smoke job. Published asset hashes are wheel `6e5bedd1...` and source distribution `84b773c7...`.
-- The site and docs are deployed to their production domains. A production canary caught one stale benchmark summary, which is corrected in the publication follow-up.
-- Next operation: land the publication record and stale-copy correction, then continue only the isolated read-only memory-health audit lane.
+- The site and docs are deployed to their production domains. PR `#10` landed the publication record and corrected the stale benchmark summary; the production changelog canary now shows the current dense comparison with no console errors.
+- The isolated `zmem audit health` candidate reports five deterministic finding categories through stable JSON or a compact summary, stays read-only, and explicitly does not claim semantic truth. Review caught and fixed an immutable-SQLite bug that hid committed WAL state.
+- Next operation: land the memory-health candidate, then continue only the contradiction-driven withholding and abstention lane.
 
 Coordinator update `2026-07-20` (context commitment and signal triage):
 

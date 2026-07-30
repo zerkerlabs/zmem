@@ -2,6 +2,15 @@
 
 All notable Zerker Memory alpha changes are summarized here.
 
+## Unreleased
+
+### Read-Only Memory Health
+
+- Added `zmem audit health` with stable `zerker.memory_health_report.v1` JSON and a compact `--summary-only` view.
+- Reports observable stale or expired state, lexical conflicts, exact duplicates, weak provenance, and explicit high-risk active use without changing memory lifecycle state.
+- Reads committed SQLite WAL state when present while retaining a read-only database connection.
+- Keeps the claim boundary explicit: health findings describe persisted metadata and deterministic lexical signals, not whether memory content is factually or semantically true.
+
 ## 0.1.8 - 2026-07-30
 
 ### Governed Context Proof

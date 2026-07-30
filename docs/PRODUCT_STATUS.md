@@ -30,20 +30,20 @@ Product signal note: the current wedge is validated by builder demand for local,
 
 ## Not Built Yet, In Priority Order
 
-1. A read-only `zmem audit health` surface for stale, expired, contradictory, duplicate, weak-provenance, and high-risk active memory.
-2. Contradiction-driven withholding/abstention with receipt-visible conflict evidence.
-3. Reviewable lifecycle maintenance for revalidation, expiry, decay, tombstones, and failed-claim reopen conditions.
-4. Efficiency tuning for the opt-in local dense/FTS candidate. Full local LoCoMo and LongMemEval comparisons completed with 347 and 91 gains, zero losses, and materially higher token and latency cost.
-5. Live-store consolidation with source coverage, omissions, reversible summaries, and no elevation of source authority.
-6. Handoff ownership/lease metadata plus a provenance-preserving dry-run import preview.
-7. Governed tool and interface-contract trust records linked to Treeship canary proof without moving install/run authority into ZMem.
-8. A server-controlled MCP dense-retrieval mode after the CLI/library candidate is accepted; existing MCP tool schemas intentionally retain stable FTS behavior.
-9. An official model-judged BEAM submission path plus broader multi-conversation 1M and 10M coverage; the first isolated runs are complete.
-10. Shared memory and enterprise hardening: team-scoped stores, conflict policy, permissions, collective receipts, tenant isolation, customer-managed keys, policy packs, SSO, audit retention, and VPC/on-prem guides.
+1. Contradiction-driven withholding/abstention with receipt-visible conflict evidence.
+2. Reviewable lifecycle maintenance for revalidation, expiry, decay, tombstones, and failed-claim reopen conditions.
+3. Efficiency tuning for the opt-in local dense/FTS candidate. Full local LoCoMo and LongMemEval comparisons completed with 347 and 91 gains, zero losses, and materially higher token and latency cost.
+4. Live-store consolidation with source coverage, omissions, reversible summaries, and no elevation of source authority.
+5. Handoff ownership/lease metadata plus a provenance-preserving dry-run import preview.
+6. Governed tool and interface-contract trust records linked to Treeship canary proof without moving install/run authority into ZMem.
+7. A server-controlled MCP dense-retrieval mode after the CLI/library candidate is accepted; existing MCP tool schemas intentionally retain stable FTS behavior.
+8. An official model-judged BEAM submission path plus broader multi-conversation 1M and 10M coverage; the first isolated runs are complete.
+9. Shared memory and enterprise hardening: team-scoped stores, conflict policy, permissions, collective receipts, tenant isolation, customer-managed keys, policy packs, SSO, audit retention, and VPC/on-prem guides.
 
 ## Functional Today
 
 - CLI.
+- Read-only `zmem audit health` JSON and terminal summaries for observable memory-state findings, with no semantic-truth claim.
 - Deterministic adaptive retrieval with receipt-visible routing, packing, semantic rescue, conservative regular-inflection evidence, bounded completion support, and exact-event-head transcript-neighbor support.
 - Opt-in FastEmbed local dense candidates, SQLite vector cache, exact cosine search, FTS RRF fusion, stale-vector rejection, and receipt-visible model/config/vector identity.
 - Verified local LoCoMo and LongMemEval matrices with explicit provisional claim boundaries.

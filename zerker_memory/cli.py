@@ -279,6 +279,15 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
         help="Print only the compact human-readable status summary",
     )
 
+    audit = sub.add_parser("audit", help="Inspect persisted memory health without changing it")
+    audit_sub = audit.add_subparsers(dest="audit_command", required=True)
+    audit_health = audit_sub.add_parser("health", help="Report observable memory-health findings")
+    audit_health.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Print only a compact human-readable health summary",
+    )
+
     workspace = sub.add_parser("workspace", aliases=["ws"], help="Manage Zerker Memory workspaces and active project profiles")
     workspace_sub = workspace.add_subparsers(dest="workspace_command", required=True)
     workspace_register = workspace_sub.add_parser("register", help="Register a project-local memory workspace")
@@ -1054,6 +1063,15 @@ def main(argv: list[str] | None = None) -> int:
     reexec_code = maybe_reexec_with_supported_python(args.command, argv)
     if reexec_code is not None:
         return reexec_code
+    if args.command == "audit":
+        from .health import build_memory_health_report, render_memory_health_summary
+
+        result = build_memory_health_report(args.db)
+        if args.summary_only:
+            print(render_memory_health_summary(result), end="")
+        else:
+            print_json(result)
+        return 0 if result["ok"] else 1
     store = MemoryStore(args.db, policy_path=args.policy)
 
     try:
