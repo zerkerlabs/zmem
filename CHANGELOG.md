@@ -2,7 +2,7 @@
 
 All notable Zerker Memory alpha changes are summarized here.
 
-## Unreleased
+## 0.1.8 - 2026-07-30
 
 ### Governed Context Proof
 
@@ -41,6 +41,8 @@ All notable Zerker Memory alpha changes are summarized here.
 - Full Python suite: `1,289` tests passed with two expected optional skips; eval passed `11/11`.
 - Docs production build and typecheck passed after a clean generated cache; fresh-workspace release smoke reports strict publish ready.
 - Wheel and source distribution build successfully. The wheel contains `zerker_memory/dense.py` and advertises `fastembed>=0.8,<1` only through the optional `dense` extra.
+- Clean Python 3.10 wheel reinstall reports `zmem 0.1.8` and passes eval `11/11`.
+- Wheel `sha256:6e5bedd198927a4c3aaa1cdf87b97268f9e47fe272e8ec6a435b61b66be32fc2`; source distribution `sha256:84b773c70a5b99bf6cd85c1fd7713cb3cad4f7ec1f2f8205f2bc3e017fab424e`.
 
 ## 0.1.7 - 2026-07-16
 

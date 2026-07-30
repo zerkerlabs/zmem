@@ -1,6 +1,6 @@
 # ZMem Progress Tracker
 
-Last updated: 2026-07-21
+Last updated: 2026-07-30
 
 This is the shared progress board for ZMem release and frontier work. It turns the
 continuous-build lanes into a checkpointable product plan: what is built, what is
@@ -27,6 +27,7 @@ Every push or meaningful automation drop should update this file alongside:
 | `v0.1.5` | Published | `d4f6d9a` / `v0.1.5` | Bounded completion support, BEAM 500K evidence, verified ActiveGraph pre-call prompt integrity, and the simplified public hero. |
 | `v0.1.6` | Published | `34b4e8a` / `v0.1.6` | Transcript-neighbor retrieval, runnable ActiveGraph host, BEAM 10M scale/index evidence, and concurrent event-chain hardening. |
 | `v0.1.7` | Published | `5b1cf0f` / `v0.1.7` | Private ephemeral run context, bounded MCP/operator/provider boundaries, finite governance values, and honest pending-judge benchmark state. |
+| `v0.1.8` | Candidate | `codex/l3-dense-retrieval` | Digest-bound memory context, scheduled-agent continuity, typed failure memory, and opt-in local dense/FTS retrieval. |
 
 Current public release:
 
@@ -76,7 +77,7 @@ Current `v0.1.7` release checkpoint:
 - The clean public wheel reinstall reports `zmem 0.1.7` and passes eval `11/11`. GitHub assets match wheel `sha256:d8a3fdba9c5e60c5d00cc8918c8c9e5d87b40cee764ea9756f8e5f9b8053d89b` and source distribution `sha256:8a7102958be108098f9576d61d80730566d6c1bd1515ec1f21278ffea0fa13c4`.
 - Production deployments `dpl_9Xb2upPsawLoDhaco6r5CSJppvxW` and `dpl_ckk7y9HhAg4fg2n1z67uBLJJQ8e8` are live at `zmem.sh` and `docs.zmem.sh`; responsive browser, console, network, raw-installer, agent-smoke, and MCP-smoke canaries pass.
 
-Current unreleased checkpoint:
+Current `v0.1.8` candidate checkpoint:
 
 - `zerker.memory_context.v1` now carries a canonical `sha256:` commitment over the exact ZMem context supplied to an agent, including admitted, withheld, and budget-dropped memory, policy decisions, temporal state, and memory roots.
 - Inject receipts persist a compact commitment in existing retrieval JSON; no SQLite migration, retrieval change, Merkle v1 change, or duplicate raw-context copy is introduced.
@@ -86,6 +87,8 @@ Current unreleased checkpoint:
 - Opt-in local dense/FTS fusion passes the frozen gate at `203/227` versus `160/227`, then improves full LoCoMo from `1,220/1,986` to `1,567/1,986` and LongMemEval from `386/500` to `477/500`, with zero losses in all three comparisons. Full result and comparison artifacts verify locally.
 - The dense gain costs more context and latency, so it remains opt-in. Existing MCP schemas retain stable FTS behavior; server-controlled MCP dense retrieval and any ANN backend remain follow-ups.
 - Combined acceptance passes `1,289` tests with two expected skips, eval `11/11`, docs build/typecheck, fresh-workspace release smoke, and wheel/sdist packaging with the optional dense runtime correctly declared.
+- Site lint/build passes. Clean Python 3.10 wheel reinstall reports `zmem 0.1.8` and passes eval `11/11`.
+- Candidate artifacts: wheel `sha256:6e5bedd198927a4c3aaa1cdf87b97268f9e47fe272e8ec6a435b61b66be32fc2`; source distribution `sha256:84b773c70a5b99bf6cd85c1fd7713cb3cad4f7ec1f2f8205f2bc3e017fab424e`.
 
 Included `v0.1.6` L3 checkpoint:
 
@@ -129,10 +132,10 @@ Percentages are practical launch-grade alpha estimates, not benchmark scores.
 | --- | --- | ---: | --- | --- |
 | L0 Trust Ledger | Receipts, Merkle lineage, context and restore/export proof | 90% | Mutation/lifecycle/restore receipts, compact v2 event witnesses, serialized event appends, digest-bound memory context, and linked cold-start proof exist; default MCP agents cannot claim trusted write/review authority | Add direct mutation-chain UX, then design a backward-compatible Merkle successor |
 | L1 Temporal KG | Current/history/superseded temporal memory | 55% | `query_at`, supersession, omitted-memory envelopes, runtime temporal context | Add contradiction/abstention runtime fixture and decide when true bi-temporal graph schema is needed |
-| L2 Lifecycle Compaction | Sessions, checkpoints, snapshots, retention | 70% | Session start/end/checkpoint/snapshot CLI, handoff/restore, cold-start gap audit, governed scheduled run, and linked proof are implemented | Add automatic retention/compaction policy and richer continuation UI |
+| L2 Lifecycle Compaction | Sessions, checkpoints, snapshots, retention | 70% | Session start/end/checkpoint/snapshot CLI, handoff/restore, cold-start gap audit, governed scheduled run, and linked proof are implemented | Add reviewable maintenance for revalidation, expiry, decay, tombstones, and failed-claim reopen conditions |
 | L3 Retrieval Baseline | FTS/BM25, local dense candidates, RRF, packing | 97% | Offline FastEmbed plus adaptive FTS passes the frozen gate and full LoCoMo/LongMemEval comparisons with 43/347/91 gains, zero losses, lexical recall preservation, and receipt-visible model/fusion evidence | Tune candidate/context cost, then profile whether ANN or `sqlite-vec` is warranted before exposing server-controlled MCP dense retrieval |
 | L4 Consolidation | Hierarchical summaries and job ledger | 35% | Deterministic fixture, job lifecycle, reversible summary payloads, append-only summary ledger | Source candidates from live store or expose persisted summaries through read-only CLI |
-| L5 Identity / Workspaces | Multi-agent source lineage and conflicts | 50% | Source reports, claim conflicts, resolution basis, exact-tie abstention summaries | Persist merge decisions or add repo/tool lineage descriptors |
+| L5 Identity / Workspaces | Multi-agent source lineage and conflicts | 50% | Source reports, claim conflicts, resolution basis, exact-tie abstention summaries | Add handoff ownership/lease metadata and a dry-run import preview, then persist merge decisions |
 | L6 Benchmark Harness | LoCoMo/LongMemEval/BEAM evidence | 100% for local harness and sampled scale | Verified LoCoMo/LongMemEval evidence plus official-layout BEAM 100K, 500K, 1M, and 10M runs exist; compact artifacts verify | Add broader evidence and an official model-judged path; do not report unjudged LLM answers as incorrect |
 | Launch Oversight | Release pack, proof evidence, public release | 100% for v0.1.7 | Public verify `6/6`, assets `8/8`, return packet ready, release assets published, and production canaries pass | Keep automation paused until the next bounded release candidate exists |
 | Website / Docs | Landing, proof page, docs, changelog | 100% for v0.1.7 | Release copy and ActiveGraph pack version are synchronized and live on the production domains | Keep release facts synchronized with the next shipped product change |
@@ -179,6 +182,7 @@ Left:
 
 - [ ] True bi-temporal graph schema/edges.
 - [ ] Contradiction-driven abstention envelope.
+- [ ] Read-only memory-health audit across stale, expired, contradictory, duplicate, weak-provenance, and high-risk active records.
 - [ ] Richer temporal query filters.
 - [ ] Entity/relation graph traversal.
 - [ ] Temporal benchmark proof beyond fixtures.
@@ -199,7 +203,8 @@ Built:
 
 Left:
 
-- [ ] Automatic retention/compaction policy.
+- [ ] Reviewable lifecycle maintenance with dry-run/apply modes.
+- [ ] Revalidation deadlines, expiry/decay transitions, tombstones, and failed-claim reopen conditions.
 - [ ] Richer session lifecycle and failure-review UI for real agent continuation.
 
 ### L3 Retrieval Baseline
@@ -282,6 +287,7 @@ Left:
 - [ ] Persisted merge decisions.
 - [ ] Identity keys / cryptographic agent identity anchors.
 - [ ] Rich source-lineage details for repo/tool/context.
+- [ ] Handoff owner/lease/next-action metadata and provenance-preserving dry-run import.
 - [ ] Team/workspace permission model.
 - [ ] Merge/resolve UX.
 
@@ -425,8 +431,10 @@ Every release tag should include:
 
 ## Current Highest-Leverage Next Move
 
-1. Package and review the isolated dense/FTS candidate without adding more one-question lexical rescue rules.
-2. Sweep dense candidate depth and context packing against the frozen and full artifacts. Keep the zero-loss boundary and measure quality, tokens, latency, and index size before recommending a default.
-3. Add server-controlled MCP dense retrieval only after the CLI/library candidate and its operational model-cache boundary are accepted.
-4. Design Merkle `v2` as a separate compatibility project with leaf/node domain separation, explicit leaf-count or tree-shape binding, legacy `binary-sha256-v1` verification, and a migration story. Do not silently reinterpret existing roots.
-5. Keep BEAM quality and model-judged benchmark scoring open, with `public_benchmark_claim: false` until the scoring contract is implemented and independently reproducible.
+1. Publish the already-verified `v0.1.8` candidate without adding another runtime feature.
+2. Build a bounded read-only `zmem audit health` report with a stable JSON contract and terminal summary.
+3. Add contradiction-driven withholding/abstention, then reviewable lifecycle maintenance with dry-run/apply receipts.
+4. Connect consolidation to the live store with source coverage and reversible summaries; do not promote summaries into canonical truth.
+5. Add handoff ownership/import preview and governed tool-contract state while keeping effect/capability enforcement in Treeship/Guard.
+6. Sweep dense candidate depth and context packing before recommending dense as a default or exposing server-controlled MCP dense retrieval.
+7. Keep Merkle `v2`, BEAM quality, and official model-judged scoring as separate compatibility/evidence projects.

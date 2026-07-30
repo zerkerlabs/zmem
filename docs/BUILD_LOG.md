@@ -1,3 +1,26 @@
+## 2026-07-30 - v0.1.8 release candidate and product-signal reconciliation
+
+Prepared locally on `codex/l3-dense-retrieval`:
+
+- Versioned the existing three-commit governed-context, scheduled-agent/failure-memory, and local dense/FTS candidate as `0.1.8`.
+- Reconciled the combined Moltbook ZMem/Treeship backlog against the implemented product. Added handoff ownership leases, dry-run import, failed-claim reopen conditions, and governed tool-contract state to the post-release queue.
+- Kept effect verification, capability leases, missing-witness reporting, skill cold-start execution proof, and runtime side-effect enforcement outside ZMem's ownership boundary.
+- Updated the canonical product signal, progress tracker, product status, changelog, public changelog, ActiveGraph pack/docs examples, and internal release communication.
+
+Evidence:
+
+- Full suite: `1,289` tests passed with two expected skips.
+- Eval: `11/11`.
+- Site lint/build and docs typecheck/build passed.
+- Fresh-workspace release smoke passed with the installed CLI and MCP server reporting `0.1.8`.
+- Clean Python 3.10 wheel reinstall reports `zmem 0.1.8` and passes eval `11/11`.
+- Wheel `sha256:6e5bedd198927a4c3aaa1cdf87b97268f9e47fe272e8ec6a435b61b66be32fc2`; source distribution `sha256:84b773c70a5b99bf6cd85c1fd7713cb3cad4f7ec1f2f8205f2bc3e017fab424e`.
+
+Next:
+
+- Commit and push the release candidate, open a PR, and require remote CI before merge/tag/publication.
+- Start `zmem audit health` only from a fresh post-release branch.
+
 ## 2026-07-21 - Isolated local dense retrieval candidate
 
 Built locally on `codex/l3-dense-retrieval`:

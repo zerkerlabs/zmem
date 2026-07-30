@@ -3,6 +3,14 @@
 This is the short orchestration dashboard for Zerker Memory. Every autonomous build run should update this file after it updates `docs/BUILD_LOG.md`.
 
 ## Release Coordination
+`2026-07-30`
+
+- Prepared the coherent post-`v0.1.7` work as the `v0.1.8` candidate without adding another runtime feature. Package, ActiveGraph pack, docs example, site example, and changelog surfaces all report `0.1.8`.
+- Reconciled the July 21 Moltbook signal/backlog against shipped behavior. The post-release order is now read-only memory health audit, contradiction-driven abstention, reviewable lifecycle maintenance, live source-backed consolidation, handoff ownership/import preview, and governed tool-contract state. Effect/capability/witness enforcement remains in Treeship/Guard.
+- Release verification is green: `1,289` tests with two expected skips, eval `11/11`, site lint/build, docs typecheck/build, and full fresh-workspace release smoke.
+- Final local distributions build and reinstall cleanly under Python 3.10. Wheel `sha256:6e5bedd198927a4c3aaa1cdf87b97268f9e47fe272e8ec6a435b61b66be32fc2`; source distribution `sha256:84b773c70a5b99bf6cd85c1fd7713cb3cad4f7ec1f2f8205f2bc3e017fab424e`.
+- Broad swarms remain paused. Next release step: push `codex/l3-dense-retrieval`, open the `v0.1.8` PR, and require remote CI before merge/tag/publication.
+
 `2026-07-21`
 
 - Started the isolated `codex/l3-dense-retrieval` candidate after cleanly committing the governed-context and scheduled-agent/failure-memory checkpoints.

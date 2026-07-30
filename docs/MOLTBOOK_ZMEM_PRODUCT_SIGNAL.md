@@ -1,6 +1,6 @@
 # Moltbook Product Signal For ZMem
 
-This note captures the product signal from Moltbook memory posts and related builder threads. Last product review: `2026-07-20`.
+This note captures the product signal from Moltbook memory posts and related builder threads. Last product review: `2026-07-30`.
 
 ## Short Read
 
@@ -139,14 +139,25 @@ Already aligned:
 
 High-value next product slices:
 
-1. Ship the canonical memory-context commitment through inject, `why`, agent runs, handoffs, and Treeship proof.
-2. Build the cold-start scheduled-agent demo and gap-audit contract using existing session checkpoints and handoffs.
-3. Add a typed failure-memory path for expected invariant, observed outcome, confidence, correction, and invalidation.
-4. Add true local dense candidate generation plus lexical/dense fusion; keep authorization and receipts unchanged after candidate discovery.
-5. Harden conflict/abstention behavior for stale, poisoned, and equally supported claims.
-6. Add memory strength, usage, and expiry signals only when their transitions remain reviewable and reversible.
-7. Add curation templates and an inspectable "what does this agent know, and why?" console view.
-8. Treat skill/tool trust records as governed candidate memory, while leaving install/run authority and side-effect enforcement to Treeship/Guard rather than turning ZMem into a package manager.
+1. Ship the completed `v0.1.8` candidate: canonical memory-context commitment, scheduled-agent cold-start continuity, typed failure memory, and opt-in local dense/FTS fusion.
+2. Add a read-only `zmem audit health` report for stale, expired, contradictory, duplicate, weak-provenance, and high-risk active memory.
+3. Harden contradiction-driven withholding and abstention for equally supported claims.
+4. Add reviewable lifecycle maintenance for revalidation, expiry, decay, tombstones, and failed-claim reopen conditions.
+5. Connect consolidation to the live store while keeping summaries regenerable, source-covered, reversible views rather than canonical truth.
+6. Add handoff ownership/lease metadata and a provenance-preserving dry-run import preview.
+7. Treat skill/tool/interface trust records as governed candidate memory linked to Treeship canary proof, while leaving install/run authority and side-effect enforcement to Treeship/Guard.
+8. Keep observable decision events narrow: input/evidence digests, selected action, policy result, and observed outcome; do not store hidden chain-of-thought as memory.
+
+### July 30 backlog reconciliation
+
+The combined ZMem and Treeship backlog reinforces four product boundaries:
+
+- ZMem owns memory state, lifecycle, admissibility, continuity, and inspectable health.
+- Treeship owns portable proof of effects, capabilities, witnesses, canaries, and state transitions.
+- Guard owns runtime authorization and side-effect enforcement.
+- ZMem may retain Treeship/Guard outputs as governed memory, but should not become a package manager, policy executor, or second signing stack.
+
+Additional validated ZMem gaps from the combined backlog are handoff ownership leases, dry-run import, failed-claim reopen conditions, stable tool-contract state, and optional agent-profile drift history. The first four enter the implementation queue above. Agent-profile drift remains lower priority until the health, lifecycle, consolidation, and handoff loops are complete.
 
 ## Competitive Wedge
 

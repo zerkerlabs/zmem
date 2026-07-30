@@ -8,7 +8,7 @@ Current published release: `v0.1.7` at `https://github.com/zerkerlabs/zmem/relea
 
 The release packages bounded runtime, MCP, provider-boundary, and benchmark-claim hardening while preserving retrieval, receipt, Merkle, snapshot, and default agent-capability compatibility.
 
-Current unreleased work adds a digest-bound `zerker.memory_context.v1` artifact, scheduled-agent cold-start continuity, typed failure memory, and opt-in local dense/FTS retrieval. Inject receipts commit to the admitted, withheld, and budget-dropped context plus the policy and memory roots behind the decision. Scheduled runs restore, audit the wall-clock gap, expose stale or unknown state, execute, checkpoint, and prove the handoff. Dense candidates remain governed by the same policy and receipt boundary.
+Current release candidate: `v0.1.8`, adding a digest-bound `zerker.memory_context.v1` artifact, scheduled-agent cold-start continuity, typed failure memory, and opt-in local dense/FTS retrieval. Inject receipts commit to the admitted, withheld, and budget-dropped context plus the policy and memory roots behind the decision. Scheduled runs restore, audit the wall-clock gap, expose stale or unknown state, execute, checkpoint, and prove the handoff. Dense candidates remain governed by the same policy and receipt boundary.
 
 It is ready for:
 
@@ -32,16 +32,16 @@ Product signal note: the current wedge is validated by builder demand for local,
 
 ## Not Built Yet, In Priority Order
 
-1. Efficiency tuning for the new opt-in local dense/FTS candidate. Full local LoCoMo and LongMemEval comparisons completed with 347 and 91 gains, zero losses, and materially higher token and latency cost.
-2. A server-controlled MCP dense-retrieval mode after the CLI/library candidate is accepted; existing MCP tool schemas intentionally retain stable FTS behavior.
-3. A profiled ANN or `sqlite-vec` scale path if exact cosine becomes the measured bottleneck.
-4. Broader scheduled-agent integrations around the new first-class cold-start workflow, which now composes verified restore, wall-clock gap audit, stale/unknown-state reporting, governed execution, checkpoint, and proof.
-5. Evaluation and UI coverage around the new typed failure-memory path for expected invariant, observed effect, confidence, correction, and invalidation, including silent-success cases.
-6. An official model-judged BEAM submission path plus broader multi-conversation 1M and 10M coverage; the first isolated runs are complete.
-7. Hosted or team review console: shared queue, roles, approvals, retention controls, and audit export beyond the current local console.
-8. Hardened integrations beyond local MCP and ActiveGraph for Mem0, Zep/Graphiti, Letta, LangMem, Cognee, and other agent frameworks.
-9. Memory quality layer: usage reinforcement, expiry, decay, live consolidation, compression thresholds, and curation policy templates.
-10. Shared memory and swarm coordination plus enterprise hardening: team-scoped stores, conflict policy, permissions, collective receipts, tenant isolation, customer-managed keys, policy packs, SSO, audit retention, and VPC/on-prem guides.
+1. A read-only `zmem audit health` surface for stale, expired, contradictory, duplicate, weak-provenance, and high-risk active memory.
+2. Contradiction-driven withholding/abstention with receipt-visible conflict evidence.
+3. Reviewable lifecycle maintenance for revalidation, expiry, decay, tombstones, and failed-claim reopen conditions.
+4. Efficiency tuning for the opt-in local dense/FTS candidate. Full local LoCoMo and LongMemEval comparisons completed with 347 and 91 gains, zero losses, and materially higher token and latency cost.
+5. Live-store consolidation with source coverage, omissions, reversible summaries, and no elevation of source authority.
+6. Handoff ownership/lease metadata plus a provenance-preserving dry-run import preview.
+7. Governed tool and interface-contract trust records linked to Treeship canary proof without moving install/run authority into ZMem.
+8. A server-controlled MCP dense-retrieval mode after the CLI/library candidate is accepted; existing MCP tool schemas intentionally retain stable FTS behavior.
+9. An official model-judged BEAM submission path plus broader multi-conversation 1M and 10M coverage; the first isolated runs are complete.
+10. Shared memory and enterprise hardening: team-scoped stores, conflict policy, permissions, collective receipts, tenant isolation, customer-managed keys, policy packs, SSO, audit retention, and VPC/on-prem guides.
 
 ## Functional Today
 

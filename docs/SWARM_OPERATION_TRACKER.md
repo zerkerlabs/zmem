@@ -21,6 +21,14 @@ Primary mission brief:
 - Lane progress and release tracker: `docs/ZMEM_PROGRESS_TRACKER.md`
 - Lane logs: `docs/CONTINUOUS_BUILD/`
 
+Coordinator update `2026-07-30` (`v0.1.8` candidate):
+
+- Broad recurring swarms remain paused. The coordinator packaged the existing three clean post-`v0.1.7` commits without adding another runtime feature.
+- The combined Moltbook backlog was reconciled into the canonical queue. New ZMem-owned deltas are handoff ownership/leases, dry-run import, failed-claim reopen conditions, and governed tool-contract state. Effect, capability, witness, and skill-execution enforcement remains Treeship/Guard work.
+- Local release gates pass: `1,289` tests with two expected skips, eval `11/11`, site lint/build, docs typecheck/build, full fresh-workspace release smoke, and clean Python 3.10 wheel reinstall.
+- Candidate artifact hashes are wheel `6e5bedd1...` and source distribution `84b773c7...`.
+- Next operation: push/open the `v0.1.8` PR, wait for remote CI, then merge/tag/publish before starting the isolated read-only memory-health audit lane.
+
 Coordinator update `2026-07-20` (context commitment and signal triage):
 
 - Broad recurring swarms remain paused. The coordinator selected one bounded L0/L2 slice instead of restarting overlapping lanes.

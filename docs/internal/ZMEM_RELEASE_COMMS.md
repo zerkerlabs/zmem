@@ -1,5 +1,15 @@
 # ZMem Release Comms
 
+## 2026-07-30 - v0.1.8 governed continuity and dense-retrieval candidate
+
+Audience: internal Zerker product, engineering, benchmark review, security review, and release coordination.
+
+`v0.1.8` packages three clean post-`v0.1.7` commits: digest-bound governed memory context, scheduled-agent cold-start continuity plus typed failure memory, and opt-in local dense/FTS retrieval. The release keeps dense candidate discovery behind the existing scope, lifecycle, policy, packing, and receipt boundary; it does not make semantic similarity a truth or authorization signal.
+
+The full local evidence is material and zero-loss against the selected lexical baseline: the frozen cohort improves from `160/227` to `203/227`, LoCoMo from `1,220/1,986` to `1,567/1,986`, and LongMemEval from `386/500` to `477/500`. Dense remains opt-in because query context and latency both increase. The benchmark values are deterministic local evidence-support scores, not official leaderboard claims.
+
+The July 30 product-signal reconciliation sets the next post-release sequence: read-only memory health audit, contradiction-driven abstention, reviewable lifecycle maintenance, live source-backed consolidation, handoff ownership/import preview, and governed tool-contract trust records. Effect verification, capability leases, missing-witness reporting, and skill cold-start execution proof remain Treeship/Guard responsibilities.
+
 ## 2026-07-21 - Local dense retrieval candidate
 
 Audience: internal Zerker product, engineering, benchmark review, and release coordination.
