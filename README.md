@@ -28,6 +28,7 @@ Short version:
 - Behavior-tree recovery memory: trace ingest, fallback explanation, and BehaviorTree.CPP/Groot2 proof export.
 - ActiveGraph pack, cross-run memory, pre-call recall, compact traces, and a runnable no-key two-run host example.
 - Provider governance scaffold for Mem0 and Zep, with external imports quarantined by default.
+- Read-only memory health, explicit expiry maintenance, and live consolidation source preview on current `main`/post-release candidates.
 
 See [CHANGELOG.md](CHANGELOG.md) for the shipped build history.
 For a single feature-by-feature usage map, see [docs/ZMEM_FEATURE_GUIDE.md](docs/ZMEM_FEATURE_GUIDE.md).
@@ -201,6 +202,17 @@ zmem maintain verify <result.json> --summary-only
 ```
 
 Maintenance applies one action from a fresh plan. In this first contract, only a reached `expires_at` boundary is executable; conflicts, duplicates, weak provenance, lineage questions, and high-risk use remain review-only. Plan and result artifacts contain hashes and metadata, not raw memory content. See [Memory Maintenance](docs/content/docs/memory-maintenance.mdx).
+
+To inspect which live memories could support a reversible session summary:
+
+```bash
+zmem consolidation preview \
+  --scope project \
+  --min-sources 3 \
+  --summary-only
+```
+
+The preview opens SQLite read-only, verifies the global event chain and each source write-receipt chain, groups active episodic/semantic memories by origin actor, environment, and session provenance, and lists every omitted memory with reason codes. It writes no summary and no canonical memory. See [Consolidation Preview](docs/content/docs/consolidation-preview.mdx).
 
 For day-1 agent setup:
 

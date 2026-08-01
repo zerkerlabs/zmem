@@ -1,5 +1,13 @@
 # Consolidation Lane Log
 
+## 2026-08-01 - read-only live source preview
+
+- Scope: connect existing consolidation contracts to real MemoryStore sources without generating summaries, queuing jobs, writing ledgers, changing retrieval, or adding a daemon/model dependency.
+- Behavior: `zmem consolidation preview` reads one exact scope through SQLite read-only/query-only mode, verifies the global event chain and per-memory receipt chains, rejects row/receipt divergence or an unreceipted latest event, groups active episodic/semantic sources by origin actor, environment, and session, and reports explicit omissions.
+- Proof boundary: reports contain source ids and digests, not raw memory text; candidate output ceilings use the weakest source trust/authority; semantic truth is not claimed.
+- Tests: focused `16/16`; consolidation/store/CLI integration `663/663`; full repository `1,330` with two expected optional skips. Coverage includes normal promotion, malformed row/receipt isolation, unreceipted latest events, origin separation, stable identity across observational timestamps, exact scope, no raw-content leakage, and no database writes. Eval `11/11`, docs typecheck/build, wheel/sdist build, clean wheel import and CLI help, compilation, diff checks, and release smoke pass.
+- Next safe slice: require explicit candidate selection before materializing one deterministic summary into the existing append-only job and summary ledgers; keep canonical memory writes out of scope.
+
 ## 2026-07-06T08:52:34Z - L4 consolidation - Codex
 
 - Scope: surfaced persisted local summarizer metadata through the existing transitive and reverse summary-lineage reports.

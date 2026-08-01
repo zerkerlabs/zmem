@@ -8,7 +8,7 @@ Current published release: `v0.1.8` at `https://github.com/zerkerlabs/zmem/relea
 
 The release adds a digest-bound `zerker.memory_context.v1` artifact, scheduled-agent cold-start continuity, typed failure memory, and opt-in local dense/FTS retrieval. Inject receipts commit to the admitted, withheld, and budget-dropped context plus the policy and memory roots behind the decision. Scheduled runs restore, audit the wall-clock gap, expose stale or unknown state, execute, checkpoint, and prove the handoff. Dense candidates remain governed by the same policy and receipt boundary.
 
-The current post-release candidate adds read-only memory-health inspection plus reviewable lifecycle maintenance. An operator can preview eligible expiry transitions, apply exactly one action from a fresh state-bound plan, and verify the resulting mutation receipt. Conflicts and other semantic findings remain review-only.
+Current `main` adds read-only memory-health inspection plus reviewable lifecycle maintenance. The next isolated candidate adds read-only live consolidation source discovery: it verifies source receipts and current row coherence, groups eligible episodic/semantic memory by origin actor, environment, and session, and exposes omissions and weakest-source ceilings without generating a summary.
 
 It is ready for:
 
@@ -32,7 +32,7 @@ Product signal note: the current wedge is validated by builder demand for local,
 
 ## Not Built Yet, In Priority Order
 
-1. Live-store consolidation with source coverage, omissions, reversible summaries, and no elevation of source authority.
+1. Review-gated materialization of a live consolidation candidate into the existing reversible job/summary ledgers, without writing canonical memory or elevating source authority.
 2. Handoff ownership/lease metadata plus a provenance-preserving dry-run import preview.
 3. Efficiency tuning for the opt-in local dense/FTS candidate. Full local LoCoMo and LongMemEval comparisons completed with 347 and 91 gains, zero losses, and materially higher token and latency cost.
 4. Broader lifecycle maintenance for revalidation deadlines, decay, retention tombstones, and failed-claim reopen conditions. The first explicit-expiry transition is implemented in the post-release candidate.
@@ -47,6 +47,7 @@ Product signal note: the current wedge is validated by builder demand for local,
 - CLI.
 - Read-only `zmem audit health` JSON and terminal summaries for observable memory-state findings, with no semantic-truth claim.
 - Post-release candidate: `zmem maintain preview`, `apply`, and `verify` for one state-bound, non-cascading, receipt-backed explicit-expiry transition.
+- Current candidate: read-only `zmem consolidation preview` with exact-scope source coverage, omissions, receipt verification, row-coherence checks, and weakest-source trust/authority ceilings.
 - Deterministic adaptive retrieval with receipt-visible routing, packing, semantic rescue, conservative regular-inflection evidence, bounded completion support, and exact-event-head transcript-neighbor support.
 - Opt-in FastEmbed local dense candidates, SQLite vector cache, exact cosine search, FTS RRF fusion, stale-vector rejection, and receipt-visible model/config/vector identity.
 - Verified local LoCoMo and LongMemEval matrices with explicit provisional claim boundaries.

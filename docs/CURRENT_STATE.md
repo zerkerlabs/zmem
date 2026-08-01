@@ -5,12 +5,18 @@ This is the short orchestration dashboard for Zerker Memory. Every autonomous bu
 ## Release Coordination
 `2026-08-01`
 
+- Merged reviewable lifecycle maintenance through PR `#13` at `71729bd54c6f082f810ca1368c57b0ac19e65129`; all seven CI checks passed.
+- Started isolated branch `codex/live-store-consolidation-preview` from that merged `main`.
+- Added read-only `zmem consolidation preview` over one exact scope. It validates the global event/Merkle chain, verifies each source write-receipt chain, rejects out-of-band memory-row drift or an unreceipted latest event, groups active episodic/semantic sources by origin actor, environment, and session, and reports explicit omissions.
+- Candidate reports bind exact source ids, content/receipt digests, source-set hashes, and weakest-source trust/authority ceilings without including raw memory text. They write no summary, job, ledger row, or canonical memory.
+- Focused live-consolidation tests pass `16/16`; the consolidation/store/CLI integration cluster passes `663/663`; the full repository passes `1,330` tests with two expected optional skips. Specialist review findings for malformed-row isolation and stable preview identity are fixed. Eval `11/11`, docs typecheck/build, package build/import, compilation, diff checks, and release smoke all pass; the strict publish evidence remains ready.
+
 - Started isolated branch `codex/lifecycle-maintenance-v1` from current `origin/main` after the read-only health audit landed through PR `#11`.
 - Added `zmem maintain preview`, `apply`, and `verify` with versioned plan/result/verification artifacts. Preview is read-only; apply accepts exactly one selected action from a fresh plan; verify proves the historical transition and separately reports current-state drift.
 - Limited executable v1 maintenance to one objective transition: an active memory with a reached persisted `expires_at` boundary and a verifiable write receipt can move to the dedicated non-cascading `expired` state. Conflicts, duplicates, weak provenance, active lineage, and high-risk use remain review-only.
 - Plans bind the health report, event Merkle root, a content-free global memory-state hash, target metadata, and the latest receipt record. Stale or tampered plans, targets, and receipt chains fail before mutation; repeated apply is idempotent.
 - Corrected the tracker: receipt-visible current/history contradiction abstention was already implemented and tested, so the next frontier target after this candidate is live source-backed consolidation rather than another duplicate abstention slice.
-- Broad recurring swarms remain paused. Focused maintenance tests pass `20/20`; the combined integration suite passes `824/824`; the full repository suite passes `1,314` tests with two expected optional skips; eval, fresh-workspace and strict release smoke, wheel build/import, docs typecheck/build, compilation, and diff checks pass. No commit, PR, tag, or deployment has been made from this branch yet.
+- Broad recurring swarms remain paused. Focused maintenance tests pass `20/20`; the combined integration suite passes `824/824`; the full repository suite passes `1,314` tests with two expected optional skips; eval, fresh-workspace and strict release smoke, wheel build/import, docs typecheck/build, compilation, and diff checks passed before PR `#13` merged.
 
 `2026-07-30`
 

@@ -331,6 +331,34 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
         help="Print only a compact human-readable verification result",
     )
 
+    consolidation = sub.add_parser(
+        "consolidation",
+        help="Inspect live memory sources for reversible consolidation",
+    )
+    consolidation_sub = consolidation.add_subparsers(dest="consolidation_command", required=True)
+    consolidation_preview = consolidation_sub.add_parser(
+        "preview",
+        help="Build a read-only consolidation source report from live memories",
+    )
+    consolidation_preview.add_argument("--scope", required=True, help="Exact memory scope to inspect")
+    consolidation_preview.add_argument(
+        "--min-sources",
+        type=int,
+        default=3,
+        help="Minimum verified sources required for a review-ready candidate",
+    )
+    consolidation_preview.add_argument(
+        "--evaluated-at",
+        help="Evaluation timestamp recorded in the report; defaults to now",
+    )
+    consolidation_preview.add_argument("--out", type=expand_user_path, help="Write the report to this path")
+    consolidation_preview.add_argument("--force", action="store_true", help="Replace an existing report file")
+    consolidation_preview.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Print only a compact human-readable consolidation preview",
+    )
+
     workspace = sub.add_parser("workspace", aliases=["ws"], help="Manage Zerker Memory workspaces and active project profiles")
     workspace_sub = workspace.add_subparsers(dest="workspace_command", required=True)
     workspace_register = workspace_sub.add_parser("register", help="Register a project-local memory workspace")
@@ -1186,6 +1214,31 @@ def main(argv: list[str] | None = None) -> int:
                     print_json(verification)
                 return 0 if verification["ok"] else 1
         except (FileExistsError, KeyError, OSError, ValueError) as exc:
+            print_json({"ok": False, "error": str(exc)})
+            return 1
+    if args.command == "consolidation":
+        from .consolidation_live import (
+            build_live_consolidation_preview,
+            render_live_consolidation_preview_summary,
+            write_live_consolidation_preview,
+        )
+
+        try:
+            result = build_live_consolidation_preview(
+                args.db,
+                scope=args.scope,
+                min_source_children=args.min_sources,
+                evaluated_at=args.evaluated_at,
+            )
+            artifact_path = None
+            if args.out is not None:
+                artifact_path = write_live_consolidation_preview(args.out, result, force=args.force)
+            if args.summary_only:
+                print(render_live_consolidation_preview_summary(result, artifact_path=artifact_path), end="")
+            else:
+                print_json(result)
+            return 0 if result["ok"] else 1
+        except (FileExistsError, OSError, ValueError) as exc:
             print_json({"ok": False, "error": str(exc)})
             return 1
     store = MemoryStore(args.db, policy_path=args.policy)

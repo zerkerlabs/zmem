@@ -1,5 +1,15 @@
 # ZMem Release Comms
 
+## 2026-08-01 - Live consolidation source preview candidate
+
+Audience: internal Zerker product, engineering, security review, and release coordination.
+
+PR `#13` merged reviewable lifecycle maintenance with all CI checks green. The next isolated candidate now connects the existing consolidation ledgers to live MemoryStore evidence through a read-only preview. It verifies global events, each source receipt chain, latest-event coverage, and current row coherence before grouping active episodic/semantic sources by origin actor, environment, and session.
+
+The report keeps source ids and hashes, explicit omission reasons, and weakest-source trust/authority ceilings while excluding raw memory text. A future output would start quarantined at trust zero and authority none. It does not generate a summary, queue a consolidation job, write either ledger, or create canonical memory. The next reviewed action is explicit materialization into the existing reversible ledgers, still without canonical admission.
+
+Focused acceptance passes `16/16`, the consolidation/store/CLI integration cluster passes `663/663`, and the full repository passes `1,330` tests with two expected optional skips. Specialist review findings for malformed-row isolation and stable preview identity are closed. Eval, docs, package build/import, compilation, diff checks, and release smoke pass; strict publish evidence remains ready. This candidate is not yet merged, tagged, or deployed.
+
 ## 2026-08-01 - Reviewable lifecycle maintenance candidate
 
 Audience: internal Zerker product, engineering, security review, and release coordination.

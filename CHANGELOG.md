@@ -4,6 +4,14 @@ All notable Zerker Memory alpha changes are summarized here.
 
 ## Unreleased
 
+### Live Consolidation Source Preview
+
+- Added `zmem consolidation preview` with a stable `zerker.live_consolidation_preview.v1` report over one exact live-memory scope.
+- Opens the database in SQLite read-only/query-only mode, verifies the full event/Merkle chain plus each source write-receipt chain, and rejects out-of-band row drift or a latest memory event that lacks a receipt.
+- Groups active episodic and semantic sources by verified origin actor, environment, and session provenance. Policy, procedural, non-active, missing-receipt, invalid-receipt, row-divergent, and malformed sources remain explicit omissions with content-free reason codes.
+- Carries exact source ids, content and receipt digests, source-set hashes, and weakest-source trust/authority ceilings without copying raw memory text.
+- Stops at review: no summary is generated, no ledger job is queued, and no canonical memory is written. Any future summary starts quarantined at trust `0` and authority `none`, remains reversible and non-blocking, and cannot exceed its weakest source after review.
+
 ### Reviewable Memory Maintenance
 
 - Added `zmem maintain preview`, `apply`, and `verify` with versioned plan, result, and verification artifacts.

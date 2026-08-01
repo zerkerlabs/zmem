@@ -1,3 +1,14 @@
+## 2026-08-01 - Read-only live consolidation preview candidate
+
+- Merged reviewable lifecycle maintenance through PR `#13` at `71729bd54c6f082f810ca1368c57b0ac19e65129` with all seven CI jobs green.
+- Added `zmem consolidation preview --scope <scope>` and stable `zerker.live_consolidation_preview.v1` JSON.
+- Opens SQLite read-only/query-only in one snapshot, validates the full event/Merkle chain, verifies each source write-receipt chain, and checks current row fields against receipt-backed state.
+- Groups active episodic/semantic sources by verified origin actor, environment, and session provenance and exposes exact included ids, content/receipt digests, source-set hashes, and explicit omission reason codes without raw memory text.
+- Carries weakest-source trust/authority ceilings and a quarantined, trust-zero, authority-none, reversible, non-blocking output contract, but intentionally writes no summary, consolidation job, ledger row, or canonical memory.
+- Hardened the boundary after specialist review: malformed trust/timestamp data stays a local omission, normal receipted promotion remains eligible, and observational generation time does not change the preview identity.
+- Focused tests pass `16/16`; the consolidation/store/CLI integration cluster passes `663/663`; the full repository passes `1,330` tests with two expected optional skips.
+- Eval passes `11/11`; docs typecheck/build generates `17` static pages; compilation and diff checks pass. The `0.1.8` wheel and source distribution build, a clean Python 3.10 wheel install imports `zerker_memory.consolidation_live`, and packaged `zmem consolidation preview --help` works. Release smoke passes with public proof `6/6`, launch assets `8/8`, strict publish ready, and the return packet ready.
+
 ## 2026-08-01 - Reviewable explicit-expiry maintenance candidate
 
 - Added `zmem maintain preview`, `apply`, and `verify` as a separate operator surface; `zmem audit health` remains permanently read-only.
