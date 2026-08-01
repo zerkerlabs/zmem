@@ -8924,6 +8924,24 @@ class MemoryStore:
         self.conn.execute("PRAGMA journal_mode = WAL")
         self.conn.execute("PRAGMA synchronous = NORMAL")
 
+    @classmethod
+    def open_read_only(cls, db_path: Path) -> "MemoryStore":
+        path = expand_user_path(db_path)
+        if not path.is_file():
+            raise FileNotFoundError(f"memory database not found: {path}")
+        store = cls.__new__(cls)
+        store.db_path = path
+        store.policy_path = None
+        store.treeship_auto_sign = False
+        store.treeship_config_path = None
+        store.treeship_strict = False
+        store.conn = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True, timeout=5.0)
+        store.conn.row_factory = sqlite3.Row
+        store.conn.execute("PRAGMA foreign_keys = ON")
+        store.conn.execute("PRAGMA busy_timeout = 5000")
+        store.conn.execute("PRAGMA query_only = ON")
+        return store
+
     def init(self) -> None:
         self.conn.executescript(
             """

@@ -21,6 +21,13 @@ Primary mission brief:
 - Lane progress and release tracker: `docs/ZMEM_PROGRESS_TRACKER.md`
 - Lane logs: `docs/CONTINUOUS_BUILD/`
 
+Coordinator update `2026-08-01` (live consolidation preview):
+
+- PR `#13` merged reviewable lifecycle maintenance at `71729bd54c6f082f810ca1368c57b0ac19e65129`; all seven CI checks passed.
+- Broad swarms remain paused. The next L4 slice is isolated on `codex/live-store-consolidation-preview`.
+- The candidate connects real store rows to consolidation through read-only source discovery only. It verifies events, receipts, latest-event coverage, and row coherence; groups eligible sources by origin actor, environment, and session; and exposes omissions plus weakest-source ceilings without generating a summary.
+- Focused `16/16`, integration `663/663`, and full repository `1,330` with two expected optional skips pass. A specialist correctness review found and closed malformed-row isolation plus observational-timestamp identity gaps. Eval `11/11`, docs, package build/import, compilation, diff checks, and release smoke pass; strict publish evidence remains ready.
+
 Coordinator update `2026-08-01` (reviewable lifecycle maintenance):
 
 - Broad recurring swarms remain paused. Three read-only specialist reviews covered the contract, adversarial safety boundary, and CLI/operator experience before implementation.

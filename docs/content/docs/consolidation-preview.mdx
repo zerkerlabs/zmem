@@ -1,0 +1,58 @@
+---
+title: Consolidation Preview
+description: Inspect live, verified source sets before any memory summary is created.
+---
+
+ZMem can inspect live memory and show which records could support a reversible session summary. This first live-store contract is deliberately read-only: it discovers source sets and omissions, but does not summarize or write memory.
+
+## Run A Preview
+
+```bash
+zmem consolidation preview \
+  --scope project \
+  --min-sources 3 \
+  --summary-only
+```
+
+Use `--out preview.json` to retain the full `zerker.live_consolidation_preview.v1` report. Existing files require `--force`, and written reports use mode `0600`.
+
+## What Becomes A Source
+
+A source is included only when all of these are true:
+
+- its scope exactly matches `--scope`;
+- its status is `active`;
+- its type is `episodic` or `semantic`;
+- it has origin actor, environment, and session provenance;
+- its complete write-receipt chain verifies;
+- its latest memory event is covered by that receipt chain;
+- its current type, scope, source kind, trust, authority, status, and content still agree with those receipts.
+
+Included sources are grouped by the exact origin actor, environment, and session tuple. A group becomes `ready-for-review` when it reaches `--min-sources`; smaller groups remain visible as `waiting`.
+
+## What The Report Proves
+
+The report contains:
+
+- the verified event Merkle root;
+- exact source memory ids;
+- source content digests, receipt ids, and receipt hashes;
+- a deterministic source-set hash and candidate id;
+- a preview identity that excludes the local database path and observational generation time;
+- the weakest source trust and authority ceilings;
+- explicit omitted memory ids and reason codes.
+
+It does not contain raw memory text.
+
+## Safety Boundary
+
+The preview writes no database row, consolidation job, summary ledger record, or canonical memory. Policy and procedural memories are excluded because lossy summarization must not silently rewrite instructions or authority.
+
+A future summary may use a review-ready source set only under this output contract:
+
+- non-blocking and reversible;
+- initially quarantined with trust `0` and authority `none`;
+- no canonical-memory write without a separate reviewed action;
+- trust and authority no higher than the weakest source.
+
+This is source admissibility, not a semantic-truth judgment. A verified source may still be wrong.
