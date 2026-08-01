@@ -4,6 +4,15 @@ All notable Zerker Memory alpha changes are summarized here.
 
 ## Unreleased
 
+### Reviewable Memory Maintenance
+
+- Added `zmem maintain preview`, `apply`, and `verify` with versioned plan, result, and verification artifacts.
+- Kept `zmem audit health` permanently read-only. The first executable maintenance action is limited to an active memory whose explicit `expires_at` boundary has passed and whose write receipt verifies.
+- Added a dedicated non-cascading `expired` lifecycle state. Apply changes one memory per fresh plan, leaves the row in place, appends a mutation receipt, and is idempotent for the same action.
+- Bound plans to the event Merkle root, a content-free global memory-state hash, target metadata, and the latest receipt record. Changed or tampered state is rejected before mutation.
+- Kept conflicts, duplicates, lineage questions, weak provenance, and high-risk use review-only. The command does not claim semantic truth or authenticate the operator identity supplied through `--actor-id`.
+- Verification distinguishes historical transition proof from current state, reporting later event advancement and out-of-band state divergence without invalidating a sound historical receipt.
+
 ### Read-Only Memory Health
 
 - Added `zmem audit health` with stable `zerker.memory_health_report.v1` JSON and a compact `--summary-only` view.

@@ -1,5 +1,15 @@
 # Lifecycle Compaction Lane Log
 
+## 2026-08-01 - reviewable explicit-expiry maintenance
+
+- Scope: bounded L2 operator maintenance for objective expiry only; did not automate conflict resolution, duplicate selection, provenance repair, high-risk judgment, descendant revocation, retention pruning, or MCP mutation.
+- Files touched: `zerker_memory/maintenance.py`, `zerker_memory/health.py`, `zerker_memory/store.py`, `zerker_memory/cli.py`, `zerker_memory/dashboard.py`, `tests/test_maintenance.py`, and factual public/control-room docs.
+- Behavior changed: `zmem maintain preview` creates a content-free state-bound plan, `apply` performs one confirmed `active -> expired` transition, and `verify` proves the historical receipt while reporting current-state drift.
+- Safety: preview stays read-only; apply rejects stale plans and targets, future expiry, altered receipts, and unverified receipt chains; the transition does not cascade or delete the row; replay is idempotent.
+- Artifacts/receipts: `zerker.memory_maintenance_plan.v1`, `zerker.memory_maintenance_result.v1`, `zerker.memory_maintenance_verification.v1`, `EXPIRED`, and the existing `zerker.memory.mutation_receipt` contract with maintenance plan/action binding.
+- Tests: focused maintenance suite passes `20/20`; the combined integration suite passes `824/824`; the full repository suite passes `1,314` tests with two expected optional skips; eval passes `11/11`; fresh-workspace and strict release smoke, wheel build/import, docs typecheck/build, compilation, and diff checks pass.
+- Next safe slice: connect consolidation to live store candidates with source coverage and reversible summaries after this branch is reviewed and landed.
+
 ## 2026-07-05 - raw snapshot continuity receipt counts must be non-negative
 
 - Scope: bounded L2 slice on raw continuity sidecar lifecycle receipt-provenance count validation only; did not change lifecycle write semantics, restore mechanics, snapshot JSON schema, handoff manifests, or runner context packing.

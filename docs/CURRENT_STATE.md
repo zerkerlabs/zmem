@@ -3,6 +3,15 @@
 This is the short orchestration dashboard for Zerker Memory. Every autonomous build run should update this file after it updates `docs/BUILD_LOG.md`.
 
 ## Release Coordination
+`2026-08-01`
+
+- Started isolated branch `codex/lifecycle-maintenance-v1` from current `origin/main` after the read-only health audit landed through PR `#11`.
+- Added `zmem maintain preview`, `apply`, and `verify` with versioned plan/result/verification artifacts. Preview is read-only; apply accepts exactly one selected action from a fresh plan; verify proves the historical transition and separately reports current-state drift.
+- Limited executable v1 maintenance to one objective transition: an active memory with a reached persisted `expires_at` boundary and a verifiable write receipt can move to the dedicated non-cascading `expired` state. Conflicts, duplicates, weak provenance, active lineage, and high-risk use remain review-only.
+- Plans bind the health report, event Merkle root, a content-free global memory-state hash, target metadata, and the latest receipt record. Stale or tampered plans, targets, and receipt chains fail before mutation; repeated apply is idempotent.
+- Corrected the tracker: receipt-visible current/history contradiction abstention was already implemented and tested, so the next frontier target after this candidate is live source-backed consolidation rather than another duplicate abstention slice.
+- Broad recurring swarms remain paused. Focused maintenance tests pass `20/20`; the combined integration suite passes `824/824`; the full repository suite passes `1,314` tests with two expected optional skips; eval, fresh-workspace and strict release smoke, wheel build/import, docs typecheck/build, compilation, and diff checks pass. No commit, PR, tag, or deployment has been made from this branch yet.
+
 `2026-07-30`
 
 - Published `v0.1.8` from merge commit `969a943a987ac9528e4781702b8cb14ed59a9387` through PR `#9` at `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.8`.

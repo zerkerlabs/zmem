@@ -1,6 +1,6 @@
 # ZMem Progress Tracker
 
-Last updated: 2026-07-30
+Last updated: 2026-08-01
 
 This is the shared progress board for ZMem release and frontier work. It turns the
 continuous-build lanes into a checkpointable product plan: what is built, what is
@@ -133,8 +133,8 @@ Percentages are practical launch-grade alpha estimates, not benchmark scores.
 | Lane | Focus | Alpha completion | Shipped state | Next acceptance target |
 | --- | --- | ---: | --- | --- |
 | L0 Trust Ledger | Receipts, Merkle lineage, context and restore/export proof | 90% | Mutation/lifecycle/restore receipts, compact v2 event witnesses, serialized event appends, digest-bound memory context, and linked cold-start proof exist; default MCP agents cannot claim trusted write/review authority | Add direct mutation-chain UX, then design a backward-compatible Merkle successor |
-| L1 Temporal KG | Current/history/superseded temporal memory | 55% | `query_at`, supersession, omitted-memory envelopes, runtime temporal context | Add contradiction/abstention runtime fixture and decide when true bi-temporal graph schema is needed |
-| L2 Lifecycle Compaction | Sessions, checkpoints, snapshots, retention | 70% | Session start/end/checkpoint/snapshot CLI, handoff/restore, cold-start gap audit, governed scheduled run, and linked proof are implemented | Add reviewable maintenance for revalidation, expiry, decay, tombstones, and failed-claim reopen conditions |
+| L1 Temporal KG | Current/history/superseded temporal memory | 70% | `query_at`, supersession, omitted-memory envelopes, runtime temporal context, and receipt-visible contradiction abstention | Add richer filters and decide when a concrete consumer justifies a true bi-temporal graph schema |
+| L2 Lifecycle Compaction | Sessions, checkpoints, snapshots, retention | 82% | Session lifecycle, handoff/restore, cold-start gap audit, governed scheduled run, typed failure memory, and one-action receipted expiry maintenance are implemented | Add revalidation, decay, tombstone, and failed-claim reopen contracts without automating semantic judgment |
 | L3 Retrieval Baseline | FTS/BM25, local dense candidates, RRF, packing | 97% | Offline FastEmbed plus adaptive FTS passes the frozen gate and full LoCoMo/LongMemEval comparisons with 43/347/91 gains, zero losses, lexical recall preservation, and receipt-visible model/fusion evidence | Tune candidate/context cost, then profile whether ANN or `sqlite-vec` is warranted before exposing server-controlled MCP dense retrieval |
 | L4 Consolidation | Hierarchical summaries and job ledger | 35% | Deterministic fixture, job lifecycle, reversible summary payloads, append-only summary ledger | Source candidates from live store or expose persisted summaries through read-only CLI |
 | L5 Identity / Workspaces | Multi-agent source lineage and conflicts | 50% | Source reports, claim conflicts, resolution basis, exact-tie abstention summaries | Add handoff ownership/lease metadata and a dry-run import preview, then persist merge decisions |
@@ -183,7 +183,7 @@ Built:
 Left:
 
 - [ ] True bi-temporal graph schema/edges.
-- [ ] Contradiction-driven abstention envelope.
+- [x] Contradiction-driven abstention envelope with receipt-visible conflict sets and withheld memory.
 - [x] Read-only memory-health audit across stale, expired, contradictory, duplicate, weak-provenance, and high-risk active records.
 - [ ] Richer temporal query filters.
 - [ ] Entity/relation graph traversal.
@@ -202,11 +202,13 @@ Built:
 - [x] Scheduled-agent cold start with optional restore and explicit current/stale/unknown gap state.
 - [x] Governed scheduled execution, checkpoint, and compact linked proof.
 - [x] Typed failure memory with quarantined agent corrections.
+- [x] Read-only maintenance preview bound to health evidence, the event root, and a content-free memory-state hash.
+- [x] One-action explicit-expiry apply with exact confirmation, stale-state rejection, idempotence, and a verified mutation receipt.
+- [x] Maintenance result verification that separates historical transition proof from current-state drift.
 
 Left:
 
-- [ ] Reviewable lifecycle maintenance with dry-run/apply modes.
-- [ ] Revalidation deadlines, expiry/decay transitions, tombstones, and failed-claim reopen conditions.
+- [ ] Revalidation deadlines, decay transitions, retention tombstones, and failed-claim reopen conditions.
 - [ ] Richer session lifecycle and failure-review UI for real agent continuation.
 
 ### L3 Retrieval Baseline
@@ -433,9 +435,8 @@ Every release tag should include:
 
 ## Current Highest-Leverage Next Move
 
-1. Land the bounded read-only `zmem audit health` report with its stable JSON contract and terminal summary.
-2. Add contradiction-driven withholding/abstention, then reviewable lifecycle maintenance with dry-run/apply receipts.
-3. Connect consolidation to the live store with source coverage and reversible summaries; do not promote summaries into canonical truth.
-4. Add handoff ownership/import preview and governed tool-contract state while keeping effect/capability enforcement in Treeship/Guard.
-5. Sweep dense candidate depth and context packing before recommending dense as a default or exposing server-controlled MCP dense retrieval.
-6. Keep Merkle `v2`, BEAM quality, and official model-judged scoring as separate compatibility/evidence projects.
+1. Land and package the bounded health plus one-action expiry-maintenance candidate after full local review.
+2. Connect consolidation to the live store with source coverage and reversible summaries; do not promote summaries into canonical truth.
+3. Add handoff ownership/import preview and governed tool-contract state while keeping effect/capability enforcement in Treeship/Guard.
+4. Sweep dense candidate depth and context packing before recommending dense as a default or exposing server-controlled MCP dense retrieval.
+5. Keep broader lifecycle transitions, Merkle `v2`, BEAM quality, and official model-judged scoring as separate reviewed projects.

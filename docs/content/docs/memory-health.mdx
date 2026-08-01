@@ -37,12 +37,12 @@ Each finding includes memory ids, a deterministic reason, and bounded evidence. 
 
 The audit does not decide whether a memory is factually or semantically true. It inspects persisted metadata, lineage, receipts, and deterministic lexical signals.
 
-It also does not repair findings. Review remains a separate action:
+The audit never repairs findings. Use the separate maintenance preview to see whether any objective expiry boundary is eligible for an explicit transition:
 
 ```bash
-zmem queue
-zmem promote <memory-id>
-zmem revoke <memory-id>
+zmem maintain preview --summary-only
 ```
 
-This separation keeps inspection read-only and makes later lifecycle changes explicit and receipted.
+Only reached `expires_at` boundaries are executable in the first maintenance contract. Every semantic or provenance-sensitive finding remains review-only. See [Memory Maintenance](/docs/memory-maintenance) for the preview, apply, and verify flow.
+
+This separation keeps health inspection permanently read-only and makes later lifecycle changes explicit and receipted.

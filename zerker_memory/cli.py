@@ -288,6 +288,49 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
         help="Print only a compact human-readable health summary",
     )
 
+    maintain = sub.add_parser("maintain", help="Preview, apply, and verify reviewable memory maintenance")
+    maintain_sub = maintain.add_subparsers(dest="maintain_command", required=True)
+    maintain_preview = maintain_sub.add_parser(
+        "preview",
+        help="Create a read-only maintenance plan from observable health findings",
+    )
+    maintain_preview.add_argument(
+        "--evaluated-at",
+        help="Evaluate expiry at an ISO 8601 UTC timestamp; defaults to now",
+    )
+    maintain_preview.add_argument("--out", type=expand_user_path, help="Write the plan to this path")
+    maintain_preview.add_argument("--force", action="store_true", help="Replace an existing plan file")
+    maintain_preview.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Print only a compact human-readable maintenance preview",
+    )
+    maintain_apply = maintain_sub.add_parser(
+        "apply",
+        help="Apply one explicitly selected action from a fresh maintenance plan",
+    )
+    maintain_apply.add_argument("plan", type=expand_user_path, help="Maintenance plan JSON path")
+    maintain_apply.add_argument("--select", required=True, help="Exact selectable action id to apply")
+    maintain_apply.add_argument("--actor-id", required=True, help="Operator identity to record in the receipt")
+    maintain_apply.add_argument("--confirm-plan", required=True, help="Exact plan id being authorized")
+    maintain_apply.add_argument("--out", type=expand_user_path, help="Write the result to this path")
+    maintain_apply.add_argument("--force", action="store_true", help="Replace an existing result file")
+    maintain_apply.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Print only a compact human-readable maintenance result",
+    )
+    maintain_verify = maintain_sub.add_parser(
+        "verify",
+        help="Verify a maintenance result and its mutation receipt",
+    )
+    maintain_verify.add_argument("result", type=expand_user_path, help="Maintenance result JSON path")
+    maintain_verify.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Print only a compact human-readable verification result",
+    )
+
     workspace = sub.add_parser("workspace", aliases=["ws"], help="Manage Zerker Memory workspaces and active project profiles")
     workspace_sub = workspace.add_subparsers(dest="workspace_command", required=True)
     workspace_register = workspace_sub.add_parser("register", help="Register a project-local memory workspace")
@@ -1072,6 +1115,79 @@ def main(argv: list[str] | None = None) -> int:
         else:
             print_json(result)
         return 0 if result["ok"] else 1
+    if args.command == "maintain":
+        from .maintenance import (
+            apply_memory_maintenance_plan,
+            build_memory_maintenance_plan,
+            default_maintenance_plan_path,
+            default_maintenance_result_path,
+            load_json_artifact,
+            render_memory_maintenance_plan_summary,
+            render_memory_maintenance_result_summary,
+            render_memory_maintenance_verification_summary,
+            verify_memory_maintenance_result,
+            write_json_artifact,
+        )
+
+        try:
+            if args.maintain_command == "preview":
+                result = build_memory_maintenance_plan(args.db, evaluated_at=args.evaluated_at)
+                artifact_path = args.out or default_maintenance_plan_path(args.db, result)
+                write_json_artifact(artifact_path, result, force=args.force)
+                if args.summary_only:
+                    print(render_memory_maintenance_plan_summary(result, artifact_path=artifact_path), end="")
+                else:
+                    print_json(result)
+                return 0 if result["ok"] else 1
+            if args.maintain_command == "apply":
+                if args.out is not None and args.out.exists() and not args.force:
+                    raise FileExistsError(f"maintenance artifact already exists: {args.out}")
+                plan = load_json_artifact(args.plan)
+                result = apply_memory_maintenance_plan(
+                    args.db,
+                    plan,
+                    selected_action_id=args.select,
+                    actor_id=args.actor_id,
+                    confirmed_plan_id=args.confirm_plan,
+                )
+                artifact_path = args.out or default_maintenance_result_path(args.db, result)
+                try:
+                    write_json_artifact(artifact_path, result, force=args.force)
+                except (FileExistsError, OSError) as exc:
+                    if args.summary_only:
+                        print(render_memory_maintenance_result_summary(result), end="")
+                        transition_state = "committed" if result["status"] == "applied" else "already applied"
+                        print(f"Result file: not written ({exc})")
+                        print(f"Database transition: {transition_state}")
+                        print("Recovery: rerun the same action with a writable --out path; apply is idempotent.")
+                    else:
+                        print_json(
+                            {
+                                "ok": False,
+                                "artifact_error": str(exc),
+                                "artifact_path": str(artifact_path),
+                                "database_transition": result["status"],
+                                "recovery": "rerun the same action with a writable --out path; apply is idempotent",
+                                "result": result,
+                            }
+                        )
+                    return 1
+                if args.summary_only:
+                    print(render_memory_maintenance_result_summary(result, artifact_path=artifact_path), end="")
+                else:
+                    print_json(result)
+                return 0
+            if args.maintain_command == "verify":
+                result = load_json_artifact(args.result)
+                verification = verify_memory_maintenance_result(args.db, result)
+                if args.summary_only:
+                    print(render_memory_maintenance_verification_summary(verification), end="")
+                else:
+                    print_json(verification)
+                return 0 if verification["ok"] else 1
+        except (FileExistsError, KeyError, OSError, ValueError) as exc:
+            print_json({"ok": False, "error": str(exc)})
+            return 1
     store = MemoryStore(args.db, policy_path=args.policy)
 
     try:

@@ -29,7 +29,7 @@ MEMORY_TYPES = {"episodic", "semantic", "procedural", "policy"}
 INSTRUCTION_MEMORY_TYPES = ("policy", "procedural")
 RECALL_MEMORY_TYPES = ("episodic", "semantic")
 AUTHORITIES = {"none", "low", "medium", "high", "policy"}
-STATUSES = {"proposed", "quarantined", "active", "deprecated", "revoked", "forgotten"}
+STATUSES = {"proposed", "quarantined", "active", "deprecated", "revoked", "forgotten", "expired"}
 HASH_ALG = "sha256"
 MERKLE_ALG = "binary-sha256-v1"
 RECEIPT_SCHEMA = "zerker.memory_action.v1"
@@ -8831,6 +8831,8 @@ def _status_from_event(event_type: str, payload: dict[str, Any]) -> str | None:
         return "revoked"
     if event_type == "FORGOTTEN":
         return "forgotten"
+    if event_type == "EXPIRED":
+        return "expired"
     return None
 
 
@@ -9332,7 +9334,7 @@ class MemoryStore:
                 (
                     item["at"]
                     for item in status_history
-                    if item["status"] in {"deprecated", "revoked", "forgotten"}
+                    if item["status"] in {"deprecated", "revoked", "forgotten", "expired"}
                 ),
                 None,
             )
@@ -9442,7 +9444,7 @@ class MemoryStore:
                 temporal_resolution_reasons = list(supersession_reasons_by_id.get(memory.id, []))
             elif temporal_state == "unlearned":
                 temporal_resolution_kind = "unlearned"
-                if status_at_query in {"deprecated", "revoked", "forgotten"}:
+                if status_at_query in {"deprecated", "revoked", "forgotten", "expired"}:
                     temporal_resolution_reasons = [status_at_query]
 
             envelope = {
@@ -12318,8 +12320,14 @@ class MemoryStore:
             raise KeyError(f"write receipt not found for memory: {memory_id}")
         return self._memory_write_receipt_from_row(row)
 
-    def memory_write_receipts(self, memory_id: str) -> list[dict[str, Any]]:
-        self.init()
+    def memory_write_receipts(
+        self,
+        memory_id: str,
+        *,
+        initialize: bool = True,
+    ) -> list[dict[str, Any]]:
+        if initialize:
+            self.init()
         rows = self.conn.execute(
             """
             SELECT receipts.*
@@ -12579,6 +12587,76 @@ class MemoryStore:
             },
         )
         self.conn.commit()
+
+    def _expire_in_transaction(
+        self,
+        memory_id: str,
+        *,
+        actor_id: str,
+        reason: str,
+        maintenance: dict[str, Any],
+    ) -> dict[str, Any]:
+        if not self.conn.in_transaction:
+            raise RuntimeError("expiry transition requires an active transaction")
+        memory = self.get(memory_id)
+        if memory.status != "active":
+            raise ValueError(f"memory must be active before expiry: {memory_id}")
+        if not memory.expires_at:
+            raise ValueError(f"memory has no expires_at boundary: {memory_id}")
+        prior_receipts = self.memory_write_receipts(memory_id, initialize=False)
+        prior_receipt = prior_receipts[-1] if prior_receipts else None
+        prior_merkle_root = self.current_merkle_root()
+        self.conn.execute(
+            "UPDATE memories SET status = 'expired', authority = 'none', updated_at = ? WHERE id = ?",
+            (now_iso(), memory_id),
+        )
+        event = self._append_event(
+            "EXPIRED",
+            actor_id=actor_id,
+            memory_id=memory_id,
+            payload={
+                "id": memory_id,
+                "previous_status": memory.status,
+                "expires_at": memory.expires_at,
+                "reason": reason,
+                "maintenance": maintenance,
+            },
+        )
+        expired = self.get(memory_id)
+        receipt = self._append_write_receipt(
+            memory_id=memory_id,
+            actor_uri=actor_uri_for(actor_id),
+            session_id=prior_receipt["session_id"] if prior_receipt is not None else f"session://{self.db_path.resolve()}",
+            parent_action_id=prior_receipt.get("parent_action_id") if prior_receipt is not None else None,
+            source_uri=prior_receipt.get("source_uri") if prior_receipt is not None else None,
+            content_digest=digest_uri(expired.content),
+            environment_hash=prior_receipt["environment_hash"] if prior_receipt is not None else default_environment_hash(),
+            event=event,
+            created_at=event["created_at"],
+            statement_kind="zerker.memory.mutation_receipt",
+            predicate="memory.mutation.receipt.generated",
+            subject_type="memory_mutation",
+            object_updates={
+                "mutation": "expire",
+                "status": expired.status,
+                "authority": expired.authority,
+                "actor_id": actor_id,
+                "reason": reason,
+                "previous_status": memory.status,
+                "expires_at": memory.expires_at,
+                "maintenance": maintenance,
+            },
+            evidence_updates={
+                "prior_event_hash": event["prev_event_hash"],
+                "prior_merkle_root": prior_merkle_root,
+                "new_merkle_root": event["merkle_root"],
+            },
+            source_updates={
+                "prior_receipt_id": prior_receipt["receipt_id"] if prior_receipt is not None else None,
+                "prior_receipt_hash": prior_receipt["receipt_hash"] if prior_receipt is not None else None,
+            },
+        )
+        return {"memory": expired, "receipt": receipt, "event": event}
 
     def inject(
         self,
@@ -13920,6 +13998,7 @@ class MemoryStore:
                     "PROMOTED": ("promote", "active"),
                     "REJECTED": ("reject", "deprecated"),
                     "REVOKED": ("revoke", "revoked"),
+                    "EXPIRED": ("expire", "expired"),
                 }
                 event_type = source_event.get("event_type")
                 expected_mutation = expected_mutation_by_event_type.get(str(event_type))
@@ -13960,6 +14039,10 @@ class MemoryStore:
                         raise ValueError("write receipt source event descendant_ids mismatch")
                     if statement_object.get("descendant_count") != source_event_payload.get("descendant_count"):
                         raise ValueError("write receipt source event descendant_count mismatch")
+                elif expected_mutation_name == "expire":
+                    for key in ("reason", "previous_status", "expires_at", "maintenance"):
+                        if statement_object.get(key) != source_event_payload.get(key):
+                            raise ValueError(f"write receipt source event expire {key} mismatch")
 
             if isinstance(statement_attestation, dict):
                 if not isinstance(receipt_attestation, dict):
@@ -14016,7 +14099,12 @@ class MemoryStore:
             result["error"] = str(exc)
         return result
 
-    def verify_memory_write_receipt_chain(self, receipts: list[dict[str, Any]]) -> dict[str, Any]:
+    def verify_memory_write_receipt_chain(
+        self,
+        receipts: list[dict[str, Any]],
+        *,
+        initialize: bool = True,
+    ) -> dict[str, Any]:
         result = {
             "ok": True,
             "schema": "zerker.memory_write_receipt_chain_verification.v1",
@@ -14031,7 +14119,8 @@ class MemoryStore:
             "transitions": [],
         }
         try:
-            self.init()
+            if initialize:
+                self.init()
             if not isinstance(receipts, list) or not receipts:
                 raise ValueError("write receipt chain is empty")
             result["receipt_count"] = len(receipts)
@@ -14631,7 +14720,7 @@ class MemoryStore:
                 ):
                     valid_from_by_id[str(memory_id)] = event_created_at
                     valid_from_event_hash_by_id[str(memory_id)] = event_hash
-            elif status in {"deprecated", "revoked", "forgotten"}:
+            elif status in {"deprecated", "revoked", "forgotten", "expired"}:
                 prior_unlearned_at = unlearned_at_by_id[str(memory_id)]
                 if prior_unlearned_at is None or event_created_at < prior_unlearned_at:
                     unlearned_at_by_id[str(memory_id)] = event_created_at

@@ -577,7 +577,7 @@ INDEX_HTML = """<!doctype html>
       const status = stats.memory_status || {};
       const memories = state.memories || [];
       const duplicateGroups = groupMemories(memories).filter((group) => group.length > 1);
-      const staleCount = (status.deprecated || 0) + (status.revoked || 0) + (status.forgotten || 0);
+      const staleCount = (status.deprecated || 0) + (status.revoked || 0) + (status.forgotten || 0) + (status.expired || 0);
       $('memoryStatusPanel').innerHTML = `
         <div class="proof-status">
           ${pill(`active ${status.active || 0}`)}

@@ -1,0 +1,54 @@
+---
+title: Memory Maintenance
+description: Preview and apply one explicit, receipt-backed expiry without automating semantic judgment.
+---
+
+ZMem separates inspection from mutation. A health audit stays read-only; maintenance turns one eligible finding into one explicit lifecycle transition.
+
+## Preview
+
+```bash
+zmem maintain preview --summary-only
+```
+
+The command writes a `zerker.memory_maintenance_plan.v1` artifact under `.zerker/maintenance/` by default. The plan binds the health report, event Merkle root, global memory-state hash, and each target's metadata and latest receipt. It contains no raw memory content.
+
+Preview is read-only. It never promotes, revokes, rewrites, or deletes memory.
+
+## Apply One Action
+
+Copy the action and plan ids from the preview:
+
+```bash
+zmem maintain apply .zerker/maintenance/<plan-id>.json \
+  --select <action-id> \
+  --actor-id <operator-id> \
+  --confirm-plan <plan-id> \
+  --summary-only
+```
+
+Apply accepts exactly one selected action. It rejects a changed database, changed target, changed receipt chain, future expiry, altered plan, or mismatched confirmation. A successful transition moves an active memory to `expired`, does not cascade to descendants, leaves the row in place, and appends a mutation receipt. Re-run preview before another action.
+
+Repeated application of the same action is idempotent and returns the existing receipt instead of writing a second event.
+
+## Verify The Result
+
+```bash
+zmem maintain verify .zerker/maintenance/<result-id>.json --summary-only
+```
+
+Verification checks the result hash, plan and action binding, receipt hash and chain, and the exact `active` to `expired` transition. It also reports whether the current store still matches the result, advanced through later events, or diverged without a new event. Historical proof remains verifiable after legitimate later state changes.
+
+## Safety Boundary
+
+The first maintenance contract automates only an objective condition: an active memory has a persisted `expires_at` timestamp that has already passed and a verifiable write receipt.
+
+These findings always remain review-only:
+
+- conflicting claims,
+- exact duplicates,
+- missing or weak provenance,
+- active parent and child lineage,
+- high-risk memory use.
+
+ZMem does not infer which claim is true, choose a canonical duplicate, synthesize provenance, or revoke related memories automatically. `--actor-id` is recorded as an operator claim; this local command does not authenticate that identity. Treeship signing remains an optional proof step outside the database transaction.
