@@ -8,6 +8,8 @@ Current published release: `v0.1.8` at `https://github.com/zerkerlabs/zmem/relea
 
 The release adds a digest-bound `zerker.memory_context.v1` artifact, scheduled-agent cold-start continuity, typed failure memory, and opt-in local dense/FTS retrieval. Inject receipts commit to the admitted, withheld, and budget-dropped context plus the policy and memory roots behind the decision. Scheduled runs restore, audit the wall-clock gap, expose stale or unknown state, execute, checkpoint, and prove the handoff. Dense candidates remain governed by the same policy and receipt boundary.
 
+The current post-release candidate adds read-only memory-health inspection plus reviewable lifecycle maintenance. An operator can preview eligible expiry transitions, apply exactly one action from a fresh state-bound plan, and verify the resulting mutation receipt. Conflicts and other semantic findings remain review-only.
+
 It is ready for:
 
 - local developer dogfooding,
@@ -30,11 +32,11 @@ Product signal note: the current wedge is validated by builder demand for local,
 
 ## Not Built Yet, In Priority Order
 
-1. Contradiction-driven withholding/abstention with receipt-visible conflict evidence.
-2. Reviewable lifecycle maintenance for revalidation, expiry, decay, tombstones, and failed-claim reopen conditions.
+1. Live-store consolidation with source coverage, omissions, reversible summaries, and no elevation of source authority.
+2. Handoff ownership/lease metadata plus a provenance-preserving dry-run import preview.
 3. Efficiency tuning for the opt-in local dense/FTS candidate. Full local LoCoMo and LongMemEval comparisons completed with 347 and 91 gains, zero losses, and materially higher token and latency cost.
-4. Live-store consolidation with source coverage, omissions, reversible summaries, and no elevation of source authority.
-5. Handoff ownership/lease metadata plus a provenance-preserving dry-run import preview.
+4. Broader lifecycle maintenance for revalidation deadlines, decay, retention tombstones, and failed-claim reopen conditions. The first explicit-expiry transition is implemented in the post-release candidate.
+5. True bi-temporal graph storage and richer temporal filters when a concrete consumer requires them. Current contradiction-driven withholding and abstention are already receipt-visible.
 6. Governed tool and interface-contract trust records linked to Treeship canary proof without moving install/run authority into ZMem.
 7. A server-controlled MCP dense-retrieval mode after the CLI/library candidate is accepted; existing MCP tool schemas intentionally retain stable FTS behavior.
 8. An official model-judged BEAM submission path plus broader multi-conversation 1M and 10M coverage; the first isolated runs are complete.
@@ -44,6 +46,7 @@ Product signal note: the current wedge is validated by builder demand for local,
 
 - CLI.
 - Read-only `zmem audit health` JSON and terminal summaries for observable memory-state findings, with no semantic-truth claim.
+- Post-release candidate: `zmem maintain preview`, `apply`, and `verify` for one state-bound, non-cascading, receipt-backed explicit-expiry transition.
 - Deterministic adaptive retrieval with receipt-visible routing, packing, semantic rescue, conservative regular-inflection evidence, bounded completion support, and exact-event-head transcript-neighbor support.
 - Opt-in FastEmbed local dense candidates, SQLite vector cache, exact cosine search, FTS RRF fusion, stale-vector rejection, and receipt-visible model/config/vector identity.
 - Verified local LoCoMo and LongMemEval matrices with explicit provisional claim boundaries.

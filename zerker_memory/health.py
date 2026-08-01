@@ -57,25 +57,40 @@ def build_memory_health_report(
         return _failed_report(report, code="database_open_failed", message=str(exc))
 
     try:
-        missing_tables = _missing_tables(connection)
-        if missing_tables:
-            return _failed_report(
-                report,
-                code="missing_tables",
-                message=f"memory database is missing required tables: {', '.join(missing_tables)}",
-                evidence={"missing_tables": missing_tables},
-            )
-
-        memories = _load_memories(connection)
-        write_receipts = _load_write_receipts(connection)
-        high_risk_actions = _load_high_risk_actions(connection)
+        connection.execute("BEGIN")
+        return _build_memory_health_report_from_connection(
+            connection,
+            path=path,
+            evaluated_at=timestamp,
+        )
     except (json.JSONDecodeError, KeyError, sqlite3.Error, TypeError, ValueError) as exc:
         return _failed_report(report, code="database_read_failed", message=str(exc))
     finally:
         connection.close()
 
+
+def _build_memory_health_report_from_connection(
+    connection: sqlite3.Connection,
+    *,
+    path: Path,
+    evaluated_at: str,
+) -> dict[str, Any]:
+    report = _empty_report(path, evaluated_at=evaluated_at)
+    missing_tables = _missing_tables(connection)
+    if missing_tables:
+        return _failed_report(
+            report,
+            code="missing_tables",
+            message=f"memory database is missing required tables: {', '.join(missing_tables)}",
+            evidence={"missing_tables": missing_tables},
+        )
+
+    memories = _load_memories(connection)
+    write_receipts = _load_write_receipts(connection)
+    high_risk_actions = _load_high_risk_actions(connection)
+
     findings = {category: [] for category in CATEGORY_ORDER}
-    findings["stale_or_expired"].extend(_stale_or_expired_findings(memories, evaluated_at=timestamp))
+    findings["stale_or_expired"].extend(_stale_or_expired_findings(memories, evaluated_at=evaluated_at))
     findings["contradictory_or_conflicting"].extend(_conflict_findings(memories))
     findings["exact_duplicate"].extend(_duplicate_findings(memories))
     findings["weak_or_missing_provenance"].extend(_provenance_findings(memories, write_receipts))

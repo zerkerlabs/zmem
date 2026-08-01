@@ -21,6 +21,15 @@ Primary mission brief:
 - Lane progress and release tracker: `docs/ZMEM_PROGRESS_TRACKER.md`
 - Lane logs: `docs/CONTINUOUS_BUILD/`
 
+Coordinator update `2026-08-01` (reviewable lifecycle maintenance):
+
+- Broad recurring swarms remain paused. Three read-only specialist reviews covered the contract, adversarial safety boundary, and CLI/operator experience before implementation.
+- The resulting `maintain preview -> apply one -> verify` flow keeps health inspection read-only and permits only a reached explicit expiry with verified provenance to become an executable action.
+- The plan is snapshot-bound through the event root plus a content-free memory-state hash; apply requires exact plan/action confirmation, rejects drift, writes one non-cascading `expired` transition, and returns the existing receipt on replay.
+- Conflict, duplicate, lineage, provenance, and high-risk findings remain review-only. Operator identity is recorded but not cryptographically authenticated, and no semantic-truth claim is made.
+- Tracker reconciliation confirms contradiction-driven current/history abstention already exists. After this candidate lands, the next isolated build lane is live source-backed consolidation.
+- Final gates pass: focused maintenance `20/20`, combined integration `824/824`, full repository `1,314` with two expected optional skips, eval `11/11`, strict release smoke, wheel build/import, compilation, and diff checks.
+
 Coordinator update `2026-07-30` (`v0.1.8` published):
 
 - Broad recurring swarms remain paused. PR `#9` merged at `969a943a987ac9528e4781702b8cb14ed59a9387`; that exact commit is tagged and published as `v0.1.8`.

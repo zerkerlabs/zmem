@@ -1,3 +1,22 @@
+## 2026-08-01 - Reviewable explicit-expiry maintenance candidate
+
+- Added `zmem maintain preview`, `apply`, and `verify` as a separate operator surface; `zmem audit health` remains permanently read-only.
+- Added stable `zerker.memory_maintenance_plan.v1`, `zerker.memory_maintenance_result.v1`, and `zerker.memory_maintenance_verification.v1` artifacts with secure atomic local writes and no raw memory content.
+- Bound each plan to one SQLite snapshot, the source health-report hash, event Merkle root, global memory-state hash, target state leaf, and latest receipt record.
+- Added one executable v1 operation: a reached explicit expiry can move `active` to a dedicated non-cascading `expired` state. The row and lineage remain intact, and a normal mutation receipt records the exact plan/action binding.
+- Kept semantic findings review-only, required exact plan confirmation plus an asserted operator id, rejected stale/tampered state and unverified receipt chains, applied one action per invocation, and made repeat application idempotent.
+- Added historical result verification that remains valid after later state changes while surfacing whether the current state matches, advanced through events, or diverged without a new event.
+- Added public docs, changelog, product-status, and orchestration updates. Corrected the stale tracker item for contradiction-driven abstention, which was already implemented.
+
+Evidence:
+
+- Focused maintenance suite: `20/20`.
+- Combined store, runner, CLI onboarding, Treeship, health, and maintenance suite: `824/824`.
+- Full repository suite: `1,314` tests passed with two expected optional skips; eval passed `11/11`.
+- Fresh-workspace and strict release smoke passed; public verification is `6/6`, launch assets are `8/8`, and the return packet is ready.
+- The `0.1.8` wheel built in an isolated `uv` environment, contains `zerker_memory/maintenance.py`, imports the maintenance API directly from the wheel, and preserves the ZMem CLI and ActiveGraph entry points.
+- Docs typecheck and production build pass with all `16` static pages generated. Compilation and diff checks pass. Current setuptools emits a non-blocking warning that the existing license-table/classifier metadata should move to an SPDX expression before its 2027 removal deadline.
+
 ## 2026-07-30 - Read-only memory health candidate
 
 - Added `zmem audit health` with stable `zerker.memory_health_report.v1` JSON and compact `--summary-only` output.

@@ -1,5 +1,17 @@
 # ZMem Release Comms
 
+## 2026-08-01 - Reviewable lifecycle maintenance candidate
+
+Audience: internal Zerker product, engineering, security review, and release coordination.
+
+The post-`v0.1.8` candidate now joins read-only health inspection to a deliberately narrow maintenance workflow. An operator previews a hash-bound plan, selects one action, confirms the exact plan id, applies it, and verifies the resulting receipt. The only executable v1 condition is an active memory whose explicit expiry timestamp has passed and whose write receipt verifies.
+
+This does not turn ZMem into a semantic-truth engine. Conflicts, duplicates, weak provenance, active lineage, and high-risk use remain review-only. The new `expired` transition is non-cascading and preserves the row. Plans contain metadata and hashes rather than memory text, stale state is rejected, replay is idempotent, and result verification distinguishes historical proof from the current store state. The supplied operator id is an asserted audit field, not authenticated identity.
+
+Broad swarms remain paused. After review and release gates, the next isolated product lane should connect consolidation to live store candidates with explicit source coverage and reversible summaries.
+
+Local acceptance is complete: focused maintenance `20/20`, combined integration `824/824`, full repository `1,314` with two expected optional skips, eval `11/11`, fresh-workspace and strict release smoke, packaged-wheel import, and docs typecheck/build all pass. This branch has not yet been committed, opened as a PR, tagged, or deployed.
+
 ## 2026-07-30 - v0.1.8 publication
 
 Audience: internal Zerker product, engineering, benchmark review, security review, and release coordination.

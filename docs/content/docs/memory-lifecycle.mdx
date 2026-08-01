@@ -22,7 +22,9 @@ Most local workflows use a project store:
 zmem --db .zerker/memory.sqlite ui
 ```
 
-The local console makes memory status visible: proposed, quarantined, active, deprecated, revoked, forgotten, withheld, injected, or budget-dropped.
+The local console makes memory status visible: proposed, quarantined, active, expired, deprecated, revoked, forgotten, withheld, injected, or budget-dropped.
+
+An explicit `expires_at` boundary does not silently delete a memory. [Memory Maintenance](/docs/memory-maintenance) can move one eligible active memory to the non-cascading `expired` state and produce a mutation receipt.
 
 ## Snapshots
 

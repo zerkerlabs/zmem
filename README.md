@@ -188,6 +188,20 @@ zmem audit health --summary-only
 
 The audit reports observable expiry, stale lineage, lexical conflicts, exact duplicates, weak provenance, and explicit high-risk active use. It does not claim that memory content is factually or semantically true. See [Memory Health](docs/content/docs/memory-health.mdx).
 
+To turn an objective expiry finding into one explicit, receipted transition:
+
+```bash
+zmem maintain preview --summary-only
+zmem maintain apply <plan.json> \
+  --select <action-id> \
+  --actor-id <operator-id> \
+  --confirm-plan <plan-id> \
+  --summary-only
+zmem maintain verify <result.json> --summary-only
+```
+
+Maintenance applies one action from a fresh plan. In this first contract, only a reached `expires_at` boundary is executable; conflicts, duplicates, weak provenance, lineage questions, and high-risk use remain review-only. Plan and result artifacts contain hashes and metadata, not raw memory content. See [Memory Maintenance](docs/content/docs/memory-maintenance.mdx).
+
 For day-1 agent setup:
 
 ```bash

@@ -7,6 +7,7 @@
     "builders",
     "memory-lifecycle",
     "memory-health",
+    "memory-maintenance",
     "dense-retrieval",
     "scheduled-agents",
     "receipts",
