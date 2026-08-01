@@ -1,9 +1,9 @@
 ---
-title: Consolidation Preview
-description: Inspect live, verified source sets before any memory summary is created.
+title: Consolidation Review
+description: Inspect verified source sets, confirm one candidate, and materialize a reversible private summary.
 ---
 
-ZMem can inspect live memory and show which records could support a reversible session summary. This first live-store contract is deliberately read-only: it discovers source sets and omissions, but does not summarize or write memory.
+ZMem can turn a reviewed live-memory source set into a deterministic, reversible summary without admitting that summary into agent memory. The flow is explicit: preview, confirm one candidate, materialize it into private ledgers, then audit the result.
 
 ## Run A Preview
 
@@ -38,21 +38,57 @@ The report contains:
 - exact source memory ids;
 - source content digests, receipt ids, and receipt hashes;
 - a deterministic source-set hash and candidate id;
-- a preview identity that excludes the local database path and observational generation time;
+- a stable source-set preview identity;
+- a separate confirmation identity bound to the database path and evaluation time;
 - the weakest source trust and authority ceilings;
 - explicit omitted memory ids and reason codes.
 
 It does not contain raw memory text.
 
+## Confirm One Candidate
+
+Review the preview's `confirmation_id`, the selected `candidate_id`, its source ids, omissions, and weakest-source ceilings. Then materialize exactly that pair:
+
+```bash
+zmem consolidation materialize preview.json \
+  --select <candidate-id> \
+  --actor-id <operator-id> \
+  --confirm-preview <confirmation-id> \
+  --summary-only
+```
+
+The operator id is recorded audit metadata; this command does not authenticate that identity. The confirmation id prevents a reviewed preview from being silently retimed or pointed at a different database.
+
+Materialization:
+
+- holds the SQLite writer lock while reading through a query-only snapshot, so source state cannot change during commit;
+- re-verifies the event root, source receipts, current rows, exact candidate, and content digests;
+- writes one pending/completed job transition and one summary to private append-only ledgers;
+- binds the completed job to the summary content digest, source digests, review, admission contract, and preview confirmation;
+- starts the summary quarantined at trust `0` and authority `none`;
+- locks both ledgers across local processes, is idempotent on replay, and repairs an interrupted trailing fragment only after recording a durable local recovery receipt.
+
+By default, the ledgers live beside the database under `consolidation/jobs.jsonl` and `consolidation/summaries.jsonl`. The summary ledger contains the local summary text and is created with mode `0600`; the compact result artifact contains hashes and metadata rather than source or summary text.
+
+## Audit The Ledgers
+
+```bash
+zmem consolidation audit --summary-only
+```
+
+Audit fails on pending or incomplete jobs, missing or orphan summaries, duplicate summary records, invalid job histories, changed content, broken preview/admission/review bindings, or a summary that no longer matches the content digest committed by its job.
+
 ## Safety Boundary
 
-The preview writes no database row, consolidation job, summary ledger record, or canonical memory. Policy and procedural memories are excluded because lossy summarization must not silently rewrite instructions or authority.
+The preview writes nothing. Materialization writes only the private consolidation ledgers and a compact result artifact. Neither command writes a canonical memory row, changes retrieval, promotes trust, grants authority, or injects the summary into an agent context. Policy and procedural memories are excluded because lossy summarization must not silently rewrite instructions or authority.
 
-A future summary may use a review-ready source set only under this output contract:
+A materialized summary uses this output contract:
 
 - non-blocking and reversible;
 - initially quarantined with trust `0` and authority `none`;
 - no canonical-memory write without a separate reviewed action;
 - trust and authority no higher than the weakest source.
 
-This is source admissibility, not a semantic-truth judgment. A verified source may still be wrong.
+This is source admissibility and transition integrity, not a semantic-truth judgment. A verified source or deterministic summary may still be wrong.
+
+The ledgers and recovery receipts are private, self-hashed local artifacts. They detect ordinary corruption and inconsistent transitions; they do not defend against a principal who can replace local files and recompute every hash. That stronger boundary requires an external signature or Treeship anchor.

@@ -21,6 +21,14 @@ Primary mission brief:
 - Lane progress and release tracker: `docs/ZMEM_PROGRESS_TRACKER.md`
 - Lane logs: `docs/CONTINUOUS_BUILD/`
 
+Coordinator update `2026-08-01` (review-gated live consolidation):
+
+- PR `#14` merged the verified read-only preview at `5e4729bf662f4069866fe3a402a6543d60b90bf7`; all seven CI checks passed. Broad recurring swarms remain paused.
+- The isolated `codex/live-consolidation-materialize` candidate now requires an exact artifact-specific confirmation plus candidate selection, locks source state during revalidation and commit, and writes only one deterministic quarantined summary to private reversible ledgers.
+- Concurrent runs serialize; exact replay is idempotent; verified partial appends recover; the job commits the original summary content digest; and audit rejects pending, orphan, duplicate, reordered, content-changed, or binding-broken ledger state.
+- Focused consolidation coverage passes `109/109`, including the specialist review's preview/result path-alias, hard-exit recovery receipt, dual-ledger locking, concurrency, forged-summary, source-drift, incomplete-history, confirmation-binding, and resolved-sidecar findings. The full repository passes `1,354` tests with two expected optional skips; eval, docs, site, fresh-workspace packaged-path smoke, and strict publish gates pass.
+- The next L4 boundary is inspect/admit/discard UX for quarantined summaries. Periodic scheduling and canonical admission stay out of scope until that boundary exists.
+
 Coordinator update `2026-08-01` (live consolidation preview):
 
 - PR `#13` merged reviewable lifecycle maintenance at `71729bd54c6f082f810ca1368c57b0ac19e65129`; all seven CI checks passed.

@@ -1,5 +1,14 @@
 # Consolidation Lane Log
 
+## 2026-08-01 - review-gated live materialization
+
+- Scope: materialize one explicitly confirmed live candidate into the existing private reversible ledgers without creating canonical memory, changing retrieval, scheduling a daemon, or requiring a hosted LLM.
+- Behavior: `zmem consolidation materialize` binds the reviewed database, evaluation time, preview, candidate, source/receipt digests, operator assertion, admission contract, and deterministic summary content. `zmem consolidation audit` verifies the resulting history.
+- Safety: SQLite source state is writer-locked and query-only during commit; ledger appends are serialized, private, no-follow, resumable after either interruption boundary, and protected from database/sidecar aliasing. Summaries remain quarantined at trust `0`, authority `none`, non-blocking, and reversible.
+- Proof boundary: the compact result excludes raw source and summary text. The private summary ledger contains the local summary text. Integrity and provenance are checked; semantic truth and operator authentication are not claimed.
+- Tests: focused consolidation suite `109/109`, including concurrency, whole-record and hard-exit recovery, durable recovery receipts, dual-ledger locking, locked-source drift prevention, forged-summary replacement, incomplete-history/orphan audit, resolved-sidecar destination safety, replay, and canonical-memory absence. Full repository `1,354` with two expected optional skips, eval `11/11`, docs typecheck/build, site lint/build, fresh-workspace packaged-path smoke, and strict publish readiness pass.
+- Next safe slice: inspect and explicitly admit or discard quarantined summaries; do not start periodic consolidation until that lifecycle is reviewable end to end.
+
 ## 2026-08-01 - read-only live source preview
 
 - Scope: connect existing consolidation contracts to real MemoryStore sources without generating summaries, queuing jobs, writing ledgers, changing retrieval, or adding a daemon/model dependency.

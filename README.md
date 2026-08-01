@@ -28,7 +28,7 @@ Short version:
 - Behavior-tree recovery memory: trace ingest, fallback explanation, and BehaviorTree.CPP/Groot2 proof export.
 - ActiveGraph pack, cross-run memory, pre-call recall, compact traces, and a runnable no-key two-run host example.
 - Provider governance scaffold for Mem0 and Zep, with external imports quarantined by default.
-- Read-only memory health, explicit expiry maintenance, and live consolidation source preview on current `main`/post-release candidates.
+- Read-only memory health, explicit expiry maintenance, and review-gated live consolidation on current `main`/post-release candidates.
 
 See [CHANGELOG.md](CHANGELOG.md) for the shipped build history.
 For a single feature-by-feature usage map, see [docs/ZMEM_FEATURE_GUIDE.md](docs/ZMEM_FEATURE_GUIDE.md).
@@ -209,10 +209,19 @@ To inspect which live memories could support a reversible session summary:
 zmem consolidation preview \
   --scope project \
   --min-sources 3 \
+  --out preview.json \
   --summary-only
+
+zmem consolidation materialize preview.json \
+  --select <candidate-id> \
+  --actor-id <operator-id> \
+  --confirm-preview <confirmation-id> \
+  --summary-only
+
+zmem consolidation audit --summary-only
 ```
 
-The preview opens SQLite read-only, verifies the global event chain and each source write-receipt chain, groups active episodic/semantic memories by origin actor, environment, and session provenance, and lists every omitted memory with reason codes. It writes no summary and no canonical memory. See [Consolidation Preview](docs/content/docs/consolidation-preview.mdx).
+Preview verifies the global event chain and each source write-receipt chain, groups active episodic/semantic memories by origin actor, environment, and session provenance, and lists every omission without raw memory text. Materialize requires the exact candidate and confirmation ids, revalidates under a locked query-only snapshot, and writes one deterministic summary to private reversible ledgers. It does not write canonical memory, change retrieval, or elevate trust or authority. See [Consolidation Review](docs/content/docs/consolidation-preview.mdx).
 
 For day-1 agent setup:
 

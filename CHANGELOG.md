@@ -4,13 +4,17 @@ All notable Zerker Memory alpha changes are summarized here.
 
 ## Unreleased
 
-### Live Consolidation Source Preview
+### Review-Gated Live Consolidation
 
 - Added `zmem consolidation preview` with a stable `zerker.live_consolidation_preview.v1` report over one exact live-memory scope.
 - Opens the database in SQLite read-only/query-only mode, verifies the full event/Merkle chain plus each source write-receipt chain, and rejects out-of-band row drift or a latest memory event that lacks a receipt.
 - Groups active episodic and semantic sources by verified origin actor, environment, and session provenance. Policy, procedural, non-active, missing-receipt, invalid-receipt, row-divergent, and malformed sources remain explicit omissions with content-free reason codes.
 - Carries exact source ids, content and receipt digests, source-set hashes, and weakest-source trust/authority ceilings without copying raw memory text.
-- Stops at review: no summary is generated, no ledger job is queued, and no canonical memory is written. Any future summary starts quarantined at trust `0` and authority `none`, remains reversible and non-blocking, and cannot exceed its weakest source after review.
+- Added a second, artifact-bound confirmation identity that includes the reviewed database path and evaluation time while preserving stable source-set preview identity.
+- Added `zmem consolidation materialize` for one explicitly selected candidate. It revalidates the exact source state while holding the SQLite writer lock through a query-only snapshot, then records a deterministic summary in private append-only job and summary ledgers.
+- Keeps every materialized summary quarantined at trust `0` and authority `none`, reversible, non-blocking, and below the weakest source ceilings. No canonical memory is written, retrieval is unchanged, and the compact result excludes source and summary text.
+- Serializes both job and summary ledgers, makes exact replay idempotent, and repairs verified append interruptions. Abrupt trailing fragments use newline commit markers and leave a durable, hash-bound local recovery receipt before materialization continues. Custom ledgers and result paths cannot alias the database or use a symlinked final destination.
+- Added `zmem consolidation audit` with content-commitment, preview, admission, review, job-history, duplicate-summary, orphan-summary, and incomplete-transition checks. A changed summary cannot pass by merely recomputing its own digest.
 
 ### Reviewable Memory Maintenance
 

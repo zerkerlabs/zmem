@@ -8942,6 +8942,31 @@ class MemoryStore:
         store.conn.execute("PRAGMA query_only = ON")
         return store
 
+    @classmethod
+    def open_locked_read_snapshot(cls, db_path: Path) -> "MemoryStore":
+        """Hold the SQLite writer lock while exposing a query-only snapshot."""
+        path = expand_user_path(db_path)
+        if not path.is_file():
+            raise FileNotFoundError(f"memory database not found: {path}")
+        store = cls.__new__(cls)
+        store.db_path = path
+        store.policy_path = None
+        store.treeship_auto_sign = False
+        store.treeship_config_path = None
+        store.treeship_strict = False
+        connection = sqlite3.connect(f"{path.resolve().as_uri()}?mode=rw", uri=True, timeout=5.0)
+        try:
+            connection.row_factory = sqlite3.Row
+            connection.execute("PRAGMA foreign_keys = ON")
+            connection.execute("PRAGMA busy_timeout = 5000")
+            connection.execute("BEGIN IMMEDIATE")
+            connection.execute("PRAGMA query_only = ON")
+        except Exception:
+            connection.close()
+            raise
+        store.conn = connection
+        return store
+
     def init(self) -> None:
         self.conn.executescript(
             """

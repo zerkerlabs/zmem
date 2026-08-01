@@ -5,6 +5,13 @@ This is the short orchestration dashboard for Zerker Memory. Every autonomous bu
 ## Release Coordination
 `2026-08-01`
 
+- Merged read-only live consolidation preview through PR `#14` at `5e4729bf662f4069866fe3a402a6543d60b90bf7`; all seven CI checks passed.
+- Started isolated branch `codex/live-consolidation-materialize` from that merged `main` and added the explicit `preview -> materialize one -> audit` path.
+- Materialization requires one exact candidate plus the artifact-specific confirmation id, revalidates source rows and receipts while holding the SQLite writer lock through a query-only snapshot, and writes only private append-only consolidation ledgers. The deterministic summary starts quarantined at trust `0` and authority `none`; canonical memory, retrieval, and source state are unchanged.
+- The ledger path is locally serialized, exact replay is idempotent, verified interrupted appends resume safely, and the completed job commits the original summary content digest. Audit now fails on incomplete jobs, orphan or duplicate summaries, invalid job histories, changed summary content, and broken preview/admission/review bindings.
+- Adversarial destination checks prevent job, summary, or result artifacts from aliasing the SQLite database or following a final-path symlink. The compact result contains hashes and metadata rather than source or summary text.
+- Focused consolidation coverage passes `109/109`, including concurrent operators, whole-record and hard-exit tail recovery, durable recovery receipts, a blocked source mutation during commit, forged-summary replacement, incomplete-history and orphan audit states, resolved-sidecar path protection, and no canonical-memory write. The full repository passes `1,354` tests with two expected optional skips; eval `11/11`, docs typecheck/build (`17` static pages), site lint/build, the fresh-workspace packaged-path smoke, and strict publish readiness all pass.
+
 - Merged reviewable lifecycle maintenance through PR `#13` at `71729bd54c6f082f810ca1368c57b0ac19e65129`; all seven CI checks passed.
 - Started isolated branch `codex/live-store-consolidation-preview` from that merged `main`.
 - Added read-only `zmem consolidation preview` over one exact scope. It validates the global event/Merkle chain, verifies each source write-receipt chain, rejects out-of-band memory-row drift or an unreceipted latest event, groups active episodic/semantic sources by origin actor, environment, and session, and reports explicit omissions.
