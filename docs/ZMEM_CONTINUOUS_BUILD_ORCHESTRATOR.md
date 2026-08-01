@@ -135,7 +135,7 @@ These gates define when the recurring build automations can be paused or deleted
 | L1 temporal-kg | Current/history/superseded behavior is explicit; deterministic conflict assembly exists for current, historical, and timeline queries; `query_at(timestamp)` exists or is consciously deferred; identity disambiguation fixture passes | Pause after conflict resolver, point-in-time query, and identity tests pass |
 | L2 lifecycle-compaction | Session lifecycle commands/APIs exist or are documented as deferred; checkpoint/snapshot roots are receipt-visible; context packing records injected/withheld/budget-dropped | Pause after lifecycle tests and agent handoff docs agree |
 | L3 hybrid-retrieval | FTS/BM25, local provider config, retrieval depth tuning, context expansion, direct/parallel/chain query routing, graph/temporal candidates, RRF/fusion, and context-budget receipts have reproducible tests/benchmarks | Pause after benchmark matrix compares local modes with receipt hashes |
-| L4 consolidation | Consolidation levels, profile/character aggregation fixture, lineage fixture, durable job model, and reversible source-child-to-summary records exist without hosted LLM dependency | Pause after job model, profile fixture, and recall planner tests pass |
+| L4 consolidation | Consolidation levels, profile/character aggregation fixture, lineage fixture, durable job model, verified live-source preview, and explicitly confirmed reversible materialization exist without hosted LLM dependency or canonical-memory admission | Keep broad automation paused; resume only for bounded inspect/admit/discard UX or higher-level rollups after the current candidate lands |
 | L5 identity-workspaces | CLI/dashboard can show connected agents, chat/session ids, workspace ids, source URI, trust status, and proof lineage; conflict fixture exists | Pause after source report plus first conflict-resolution test pass |
 | L6 benchmarks | LongMemEval/LoCoMo adapters, conflict/temporal fixture candidates, isolated DBs, metrics, receipt bundles, and public-readable reports are reproducible | Pause after local matrix report can be regenerated from documented commands |
 | L7 DX-dashboard-site | Setup, MCP, dashboard, landing, feature matrix, and proof page are public-ready and mobile/desktop checked | Pause after launch QA checklist is complete |
@@ -228,6 +228,8 @@ Tasks:
 4. Add profile/character aggregation fixtures for scattered facts about the same person or project.
 5. Add recall-planner tests before adding LLM summarization.
 6. Do not add hosted summarization as a hard dependency.
+7. Require exact preview and candidate confirmation before live materialization.
+8. Keep materialized summaries quarantined and outside canonical memory until a separate reviewed admission action exists.
 
 ### L5 Identity Workspaces
 

@@ -246,6 +246,7 @@ def render_live_consolidation_preview_summary(
             f"Candidates: {report['candidate_count']} ({report['ready_candidate_count']} ready, {report['waiting_candidate_count']} waiting)",
             f"Sources: {report['included_source_count']} included, {report['omitted_source_count']} omitted",
             f"Event root: {report['event_merkle_root']}",
+            f"Confirmation: {report['confirmation_id']}",
             "Summary writes: none",
             "Canonical memory writes: none",
         ]
@@ -261,10 +262,21 @@ def write_live_consolidation_preview(
     *,
     force: bool = False,
 ) -> Path:
+    from .consolidation_materialize import (
+        database_protected_paths,
+        validate_consolidation_artifact_destination,
+    )
+
     destination = expand_user_path(path)
+    database = report.get("database")
+    if not isinstance(database, str) or not database:
+        raise ValueError("consolidation preview requires its source database path")
+    validate_consolidation_artifact_destination(
+        destination,
+        protected_paths=database_protected_paths(Path(database)),
+        force=force,
+    )
     destination.parent.mkdir(parents=True, exist_ok=True)
-    if destination.exists() and not force:
-        raise FileExistsError(f"consolidation preview already exists: {destination}")
     fd, temp_name = tempfile.mkstemp(prefix=f".{destination.name}.", dir=destination.parent)
     temp_path = Path(temp_name)
     try:
@@ -280,6 +292,85 @@ def write_live_consolidation_preview(
         temp_path.unlink(missing_ok=True)
         raise
     return destination
+
+
+def validate_live_consolidation_preview(report: Mapping[str, Any]) -> dict[str, Any]:
+    if not isinstance(report, Mapping):
+        raise ValueError("consolidation preview must be a JSON object")
+    canonical = json.loads(stable_json(dict(report)))
+    if canonical.get("schema") != LIVE_CONSOLIDATION_PREVIEW_SCHEMA:
+        raise ValueError("unsupported consolidation preview schema")
+    if canonical.get("ok") is not True:
+        raise ValueError("cannot materialize a failed consolidation preview")
+    expected_hash = _preview_hash(canonical)
+    if canonical.get("preview_hash") != expected_hash:
+        raise ValueError("consolidation preview hash mismatch")
+    if canonical.get("preview_id") != f"consolidation-preview:{expected_hash[:24]}":
+        raise ValueError("consolidation preview id mismatch")
+    expected_confirmation_hash = _preview_confirmation_hash(canonical)
+    if canonical.get("confirmation_hash") != expected_confirmation_hash:
+        raise ValueError("consolidation preview confirmation hash mismatch")
+    if canonical.get("confirmation_id") != f"consolidation-confirmation:{expected_confirmation_hash[:24]}":
+        raise ValueError("consolidation preview confirmation id mismatch")
+    if not isinstance(canonical.get("database"), str) or not canonical["database"]:
+        raise ValueError("consolidation preview database path is missing")
+    if not _valid_timestamp(canonical.get("evaluated_at")):
+        raise ValueError("consolidation preview evaluated_at is invalid")
+    if not isinstance(canonical.get("scope"), str) or not canonical["scope"]:
+        raise ValueError("consolidation preview scope is missing")
+    if not isinstance(canonical.get("min_source_children"), int) or canonical["min_source_children"] < 2:
+        raise ValueError("consolidation preview min_source_children is invalid")
+    if not isinstance(canonical.get("event_merkle_root"), str) or not canonical["event_merkle_root"]:
+        raise ValueError("consolidation preview event Merkle root is missing")
+    candidates = canonical.get("candidates")
+    if not isinstance(candidates, list):
+        raise ValueError("consolidation preview candidates must be a list")
+    candidate_ids: set[str] = set()
+    for candidate in candidates:
+        if not isinstance(candidate, dict):
+            raise ValueError("consolidation preview candidate must be an object")
+        candidate_id = candidate.get("candidate_id")
+        if not isinstance(candidate_id, str) or not candidate_id or candidate_id in candidate_ids:
+            raise ValueError("consolidation preview candidate ids must be unique non-empty strings")
+        candidate_ids.add(candidate_id)
+        source_ids = candidate.get("source_memory_ids")
+        if (
+            not isinstance(source_ids, list)
+            or not source_ids
+            or not all(isinstance(source_id, str) and source_id for source_id in source_ids)
+            or len(source_ids) != len(set(source_ids))
+        ):
+            raise ValueError("consolidation preview candidate source ids must be unique and non-empty")
+        if candidate.get("source_count") != len(source_ids):
+            raise ValueError("consolidation preview candidate source count mismatch")
+        try:
+            source_set = _candidate_source_set_from_report(candidate)
+        except KeyError as exc:
+            raise ValueError(f"consolidation preview candidate is missing {exc.args[0]}") from exc
+        source_set_hash = sha256_text(stable_json(source_set))
+        if candidate.get("source_set_hash") != source_set_hash:
+            raise ValueError("consolidation preview candidate source-set hash mismatch")
+        if candidate_id != f"consolidation-candidate:{source_set_hash[:24]}":
+            raise ValueError("consolidation preview candidate id mismatch")
+        output_contract = candidate.get("output_contract")
+        if not isinstance(output_contract, dict) or any(
+            (
+                output_contract.get("canonical_memory_write_allowed") is not False,
+                output_contract.get("required_initial_status") != "quarantined",
+                output_contract.get("required_initial_trust") != 0.0,
+                output_contract.get("required_initial_authority") != "none",
+                output_contract.get("non_blocking") is not True,
+                output_contract.get("reversible") is not True,
+            )
+        ):
+            raise ValueError("consolidation preview candidate output contract mismatch")
+    if canonical.get("candidate_count") != len(candidates):
+        raise ValueError("consolidation preview candidate count mismatch")
+    return canonical
+
+
+def verified_live_event_state(store: MemoryStore) -> dict[str, Any]:
+    return _verified_event_state(store)
 
 
 def _candidate(
@@ -441,6 +532,8 @@ def _empty_report(
         "ok": False,
         "preview_id": None,
         "preview_hash": None,
+        "confirmation_id": None,
+        "confirmation_hash": None,
         "database": str(path),
         "evaluated_at": evaluated_at,
         "scope": scope,
@@ -487,15 +580,50 @@ def _failed_report(
 
 
 def _finalize_report(report: dict[str, Any]) -> dict[str, Any]:
+    preview_hash = _preview_hash(report)
+    report["preview_hash"] = preview_hash
+    report["preview_id"] = f"consolidation-preview:{preview_hash[:24]}"
+    confirmation_hash = _preview_confirmation_hash(report)
+    report["confirmation_hash"] = confirmation_hash
+    report["confirmation_id"] = f"consolidation-confirmation:{confirmation_hash[:24]}"
+    return report
+
+
+def _preview_hash(report: Mapping[str, Any]) -> str:
     payload = dict(report)
     payload["database"] = None
     payload["evaluated_at"] = None
     payload["preview_id"] = None
     payload["preview_hash"] = None
-    preview_hash = sha256_text(stable_json(payload))
-    report["preview_hash"] = preview_hash
-    report["preview_id"] = f"consolidation-preview:{preview_hash[:24]}"
-    return report
+    payload["confirmation_id"] = None
+    payload["confirmation_hash"] = None
+    return sha256_text(stable_json(payload))
+
+
+def _preview_confirmation_hash(report: Mapping[str, Any]) -> str:
+    payload = dict(report)
+    payload["confirmation_id"] = None
+    payload["confirmation_hash"] = None
+    return sha256_text(stable_json(payload))
+
+
+def _candidate_source_set_from_report(candidate: Mapping[str, Any]) -> dict[str, Any]:
+    source_ids = list(candidate["source_memory_ids"])
+    content_digests = candidate.get("source_content_digests")
+    receipt_hashes = candidate.get("source_receipt_hashes")
+    if not isinstance(content_digests, dict) or set(content_digests) != set(source_ids):
+        raise ValueError("consolidation preview candidate content digests mismatch")
+    if not isinstance(receipt_hashes, dict) or set(receipt_hashes) != set(source_ids):
+        raise ValueError("consolidation preview candidate receipt hashes mismatch")
+    return {
+        "scope": candidate["scope"],
+        "session_id": candidate["session_id"],
+        "origin_actor_uri": candidate["origin_actor_uri"],
+        "origin_environment_hash": candidate["origin_environment_hash"],
+        "source_memory_ids": source_ids,
+        "source_content_digests": content_digests,
+        "source_receipt_hashes": receipt_hashes,
+    }
 
 
 def _valid_timestamp(value: Any) -> bool:

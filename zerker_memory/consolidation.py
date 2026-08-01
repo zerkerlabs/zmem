@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import uuid
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 
 CONSOLIDATION_LEVEL_SCHEMA = "zerker.consolidation_levels.v1"
@@ -947,10 +948,36 @@ def transition_consolidation_job(
 
 def append_consolidation_job_record(path: Path, job: ConsolidationJobRecord) -> None:
     _validate_job_record(job)
+    _append_json_line(path, job.to_dict())
+
+
+def _append_json_line(path: Path, value: Mapping[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(job.to_dict(), sort_keys=True))
-        handle.write("\n")
+    if path.is_symlink():
+        raise ValueError(f"consolidation ledger cannot be a symlink: {path}")
+    flags = os.O_APPEND | os.O_CREAT | os.O_WRONLY | getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(path, flags, 0o600)
+    original_size = os.fstat(fd).st_size
+    try:
+        payload = (json.dumps(dict(value), sort_keys=True) + "\n").encode("utf-8")
+        view = memoryview(payload)
+        while view:
+            written = os.write(fd, view)
+            if written <= 0:
+                raise OSError("failed to append consolidation ledger record")
+            view = view[written:]
+        os.fsync(fd)
+    except BaseException:
+        try:
+            os.ftruncate(fd, original_size)
+            os.fsync(fd)
+        except OSError as rollback_error:
+            raise OSError(
+                f"failed to restore consolidation ledger after an interrupted append: {path}"
+            ) from rollback_error
+        raise
+    finally:
+        os.close(fd)
 
 
 def load_consolidation_job_records(path: Path) -> list[ConsolidationJobRecord]:
@@ -1166,10 +1193,7 @@ def append_consolidation_summary_record(
     summary: dict[str, Any],
 ) -> None:
     _validate_summary_record(job, summary)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(summary, sort_keys=True))
-        handle.write("\n")
+    _append_json_line(path, summary)
 
 
 def load_consolidation_summary_records(path: Path) -> list[dict[str, Any]]:
@@ -1207,8 +1231,27 @@ def consolidation_audit_report(
     job_ledger_path: Path,
     summary_ledger_path: Path,
 ) -> dict[str, Any]:
-    latest_jobs = latest_consolidation_jobs(job_ledger_path)
-    latest_summaries = latest_consolidation_summaries(summary_ledger_path)
+    job_history = load_consolidation_job_records(job_ledger_path)
+    summary_history = load_consolidation_summary_records(summary_ledger_path)
+    latest_jobs: dict[str, ConsolidationJobRecord] = {}
+    job_records_by_id: dict[str, list[ConsolidationJobRecord]] = {}
+    for job in job_history:
+        latest_jobs[job.job_id] = job
+        job_records_by_id.setdefault(job.job_id, []).append(job)
+    latest_summaries: dict[str, dict[str, Any]] = {}
+    summary_record_counts: dict[str, int] = {}
+    for summary in summary_history:
+        latest_summaries[summary["summary_id"]] = summary
+        summary_record_counts[summary["summary_id"]] = summary_record_counts.get(summary["summary_id"], 0) + 1
+    duplicate_summary_ids = sorted(
+        summary_id for summary_id, count in summary_record_counts.items() if count > 1
+    )
+    orphan_summaries = [summary for summary in summary_history if summary["job_id"] not in latest_jobs]
+    invalid_job_history_ids = sorted(
+        job_id
+        for job_id, records in job_records_by_id.items()
+        if not _valid_consolidation_job_history(records)
+    )
     summaries_by_job: dict[str, list[dict[str, Any]]] = {}
     for summary in latest_summaries.values():
         summaries_by_job.setdefault(summary["job_id"], []).append(deepcopy(summary))
@@ -1225,21 +1268,79 @@ def consolidation_audit_report(
                 continue
             job_summaries.append(deepcopy(summary))
             seen_summary_ids.add(summary_id)
-        records.append(_consolidation_audit_record(job, job_summaries))
+        records.append(
+            _consolidation_audit_record(
+                job,
+                job_summaries,
+                duplicate_summary_ids={
+                    summary_id
+                    for summary_id in duplicate_summary_ids
+                    if summary_id in seen_summary_ids
+                    and job.summarizer.get("kind") == "deterministic-live-ledger-v1"
+                },
+                invalid_job_history=job.job_id in invalid_job_history_ids,
+            )
+        )
         if records[-1]["audit_status"] == "verified":
             verified_record_count += 1
-        elif records[-1]["audit_status"] != "not-materialized":
+        else:
             incomplete_record_count += 1
+
+    incomplete_record_count += len(orphan_summaries)
 
     return {
         "schema": CONSOLIDATION_AUDIT_REPORT_SCHEMA,
         "job_count": len(latest_jobs),
         "completed_job_count": sum(1 for job in latest_jobs.values() if job.status == "completed"),
         "summary_record_count": len(latest_summaries),
+        "summary_history_record_count": len(summary_history),
+        "duplicate_summary_record_count": len(summary_history) - len(latest_summaries),
+        "duplicate_summary_ids": duplicate_summary_ids,
+        "orphan_summary_count": len(orphan_summaries),
+        "orphan_summary_ids": sorted(summary["summary_id"] for summary in orphan_summaries),
+        "invalid_job_history_count": len(invalid_job_history_ids),
+        "invalid_job_history_ids": invalid_job_history_ids,
         "verified_record_count": verified_record_count,
         "incomplete_record_count": incomplete_record_count,
         "records": records,
     }
+
+
+def _valid_consolidation_job_history(records: list[ConsolidationJobRecord]) -> bool:
+    if not records or records[0].status != "pending":
+        return False
+    statuses = [record.status for record in records]
+    if len(statuses) != len(set(statuses)):
+        return False
+    allowed_transitions = {
+        "pending": {"running", "completed", "failed", "cancelled"},
+        "running": {"completed", "failed", "cancelled"},
+        "completed": set(),
+        "failed": set(),
+        "cancelled": set(),
+    }
+    if any(
+        current.status not in allowed_transitions[previous.status]
+        for previous, current in zip(records, records[1:])
+    ):
+        return False
+    immutable = _consolidation_job_immutable_fields(records[0])
+    return all(_consolidation_job_immutable_fields(record) == immutable for record in records[1:])
+
+
+def _consolidation_job_immutable_fields(job: ConsolidationJobRecord) -> tuple[Any, ...]:
+    return (
+        job.job_id,
+        job.scope,
+        job.summary_level,
+        job.source_level,
+        job.source_child_ids,
+        job.non_blocking,
+        job.reversible,
+        job.lineage_kind,
+        json.dumps(job.summarizer, sort_keys=True, separators=(",", ":")),
+        job.created_at,
+    )
 
 
 def consolidation_summary_lineage_report(
@@ -1578,12 +1679,21 @@ def _validate_summary_record(job: ConsolidationJobRecord, summary: dict[str, Any
         raise ValueError("consolidation summary record requires summary_text")
     if not isinstance(summary.get("content_digest"), str) or not summary["content_digest"].startswith("sha256:"):
         raise ValueError("consolidation summary record requires sha256 content_digest")
+    live_binding_mismatches = _live_summary_binding_mismatch_reasons(summary, job)
+    if live_binding_mismatches:
+        raise ValueError(
+            "consolidation summary live binding mismatch: " + ", ".join(live_binding_mismatches)
+        )
 
 
 def _consolidation_audit_record(
     job: ConsolidationJobRecord,
     summaries: list[dict[str, Any]],
+    *,
+    duplicate_summary_ids: set[str] | None = None,
+    invalid_job_history: bool = False,
 ) -> dict[str, Any]:
+    duplicate_summary_ids = duplicate_summary_ids or set()
     expected_output_summary_ids = list(job.output_summary_ids)
     ordered_summaries = sorted(summaries, key=lambda summary: summary["summary_id"])
     materialized_summary_ids = [summary["summary_id"] for summary in ordered_summaries]
@@ -1597,6 +1707,8 @@ def _consolidation_audit_record(
     summary_mismatch_reasons: dict[str, list[str]] = {}
     for summary in ordered_summaries:
         mismatch_reasons = _summary_mismatch_reasons(summary, job)
+        if summary["summary_id"] in duplicate_summary_ids:
+            mismatch_reasons.append("duplicate-summary-record")
         if not mismatch_reasons:
             continue
         summary_scope_mismatches.append(summary["summary_id"])
@@ -1606,7 +1718,7 @@ def _consolidation_audit_record(
         audit_status = "not-materialized" if not materialized_summary_ids else "unexpected-summary"
     elif missing_output_summary_ids:
         audit_status = "missing-summary"
-    elif unexpected_output_summary_ids or summary_scope_mismatches:
+    elif unexpected_output_summary_ids or summary_scope_mismatches or invalid_job_history:
         audit_status = "mismatch"
     else:
         audit_status = "verified"
@@ -1626,6 +1738,7 @@ def _consolidation_audit_record(
         "unexpected_output_summary_ids": unexpected_output_summary_ids,
         "summary_scope_mismatches": summary_scope_mismatches,
         "summary_mismatch_reasons": summary_mismatch_reasons,
+        "invalid_job_history": invalid_job_history,
         "non_blocking": job.non_blocking,
         "reversible": job.reversible,
         "lineage_kind": job.lineage_kind,
@@ -1675,7 +1788,64 @@ def _summary_mismatch_reasons(summary: dict[str, Any], job: ConsolidationJobReco
         mismatch_reasons.append("reversible-required")
     if summary.get("summarizer", {}).get("hosted_llm"):
         mismatch_reasons.append("hosted-llm-disallowed")
+    mismatch_reasons.extend(_live_summary_binding_mismatch_reasons(summary, job))
     return mismatch_reasons
+
+
+def _live_summary_binding_mismatch_reasons(
+    summary: Mapping[str, Any],
+    job: ConsolidationJobRecord,
+) -> list[str]:
+    summarizer = job.summarizer
+    is_live = summarizer.get("kind") == "deterministic-live-ledger-v1" or any(
+        key in summary for key in ("source_preview", "admission", "review", "canonical_memory_written")
+    )
+    if not is_live:
+        return []
+    mismatches: list[str] = []
+    preview_binding = summarizer.get("preview_binding")
+    admission = summarizer.get("admission")
+    review = summarizer.get("review")
+    if summarizer.get("kind") != "deterministic-live-ledger-v1" or summarizer.get("hosted_llm") is not False:
+        mismatches.append("live-summarizer-contract-mismatch")
+    expected_content_digest = summarizer.get("output_summary_content_digest")
+    if (
+        not isinstance(expected_content_digest, str)
+        or not expected_content_digest.startswith("sha256:")
+        or summary.get("content_digest") != expected_content_digest
+    ):
+        mismatches.append("summary-content-commitment-mismatch")
+    if not isinstance(preview_binding, dict) or summary.get("source_preview") != preview_binding:
+        mismatches.append("source-preview-binding-mismatch")
+    if not isinstance(admission, dict) or summary.get("admission") != admission:
+        mismatches.append("admission-contract-mismatch")
+    if not isinstance(review, dict) or summary.get("review") != review:
+        mismatches.append("review-binding-mismatch")
+    if summary.get("canonical_memory_written") is not False:
+        mismatches.append("canonical-memory-boundary-mismatch")
+    if isinstance(preview_binding, dict) and summary.get("source_child_digests") != preview_binding.get(
+        "source_content_digests"
+    ):
+        mismatches.append("source-preview-digests-mismatch")
+    summary_admission = summary.get("admission")
+    admission_contracts = [
+        contract for contract in (admission, summary_admission) if isinstance(contract, dict)
+    ]
+    if len(admission_contracts) != 2 or any(
+        any(
+            (
+                contract.get("status") != "quarantined",
+                contract.get("trust") != 0.0,
+                contract.get("authority") != "none",
+                contract.get("canonical_memory_write_allowed") is not False,
+                contract.get("non_blocking") is not True,
+                contract.get("reversible") is not True,
+            )
+        )
+        for contract in admission_contracts
+    ):
+        mismatches.append("admission-safety-boundary-mismatch")
+    return mismatches
 
 
 def _summary_has_valid_source_child_digests(

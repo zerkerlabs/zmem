@@ -2,7 +2,15 @@ import Card from '@/components/Card';
 
 const updates = [
   {
-    title: 'Next: read-only memory health',
+    title: 'Next: review-gated consolidation',
+    detail: 'Inspect a receipt-verified source set, confirm one candidate, materialize a reversible quarantined summary, and audit its exact source and content commitments without changing canonical agent memory.',
+  },
+  {
+    title: 'Reviewable lifecycle maintenance',
+    detail: 'Preview, apply, and verify one objective expiry transition from a hash-bound plan. Semantic findings remain review-only, and every applied change stays receipted and reversible through retained history.',
+  },
+  {
+    title: 'Read-only memory health',
     detail: 'A new audit command reports observable expiry, stale lineage, lexical conflicts, exact duplicates, weak provenance, and explicit high-risk active use without changing memory state or claiming semantic truth.',
   },
   {

@@ -136,7 +136,7 @@ Percentages are practical launch-grade alpha estimates, not benchmark scores.
 | L1 Temporal KG | Current/history/superseded temporal memory | 70% | `query_at`, supersession, omitted-memory envelopes, runtime temporal context, and receipt-visible contradiction abstention | Add richer filters and decide when a concrete consumer justifies a true bi-temporal graph schema |
 | L2 Lifecycle Compaction | Sessions, checkpoints, snapshots, retention | 82% | Session lifecycle, handoff/restore, cold-start gap audit, governed scheduled run, typed failure memory, and one-action receipted expiry maintenance are implemented | Add revalidation, decay, tombstone, and failed-claim reopen contracts without automating semantic judgment |
 | L3 Retrieval Baseline | FTS/BM25, local dense candidates, RRF, packing | 97% | Offline FastEmbed plus adaptive FTS passes the frozen gate and full LoCoMo/LongMemEval comparisons with 43/347/91 gains, zero losses, lexical recall preservation, and receipt-visible model/fusion evidence | Tune candidate/context cost, then profile whether ANN or `sqlite-vec` is warranted before exposing server-controlled MCP dense retrieval |
-| L4 Consolidation | Hierarchical summaries and job ledger | 47% | Deterministic hierarchy, reversible job/summary ledgers, lineage/unwind reports, and a read-only verified live-source preview | Materialize one explicitly selected live candidate into the existing ledgers without writing canonical memory |
+| L4 Consolidation | Hierarchical summaries and job ledger | 60% | Verified live-source preview plus explicit, locked, recoverable materialization into private reversible ledgers; summaries remain quarantined and outside canonical memory | Add inspection plus explicit admit/discard UX for quarantined summaries before scheduling or higher-level rollups |
 | L5 Identity / Workspaces | Multi-agent source lineage and conflicts | 50% | Source reports, claim conflicts, resolution basis, exact-tie abstention summaries | Add handoff ownership/lease metadata and a dry-run import preview, then persist merge decisions |
 | L6 Benchmark Harness | LoCoMo/LongMemEval/BEAM evidence | 100% for local harness and sampled scale | Verified LoCoMo/LongMemEval evidence plus official-layout BEAM 100K, 500K, 1M, and 10M runs exist; compact artifacts verify | Add broader evidence and an official model-judged path; do not report unjudged LLM answers as incorrect |
 | Launch Oversight | Release pack, proof evidence, public release | 100% for v0.1.8 | Public verify `6/6`, assets `8/8`, return packet ready, release assets published, and production canaries pass | Keep automation paused until the next bounded release candidate exists |
@@ -271,7 +271,7 @@ Built:
 
 Left:
 
-- [ ] Review-gated materialization of one selected live candidate into the existing job and summary ledgers.
+- [x] Review-gated materialization of one selected live candidate into private job and summary ledgers with locked revalidation, replay safety, and audit.
 - [ ] Runtime summary writer beyond the deterministic local materializer.
 - [ ] Periodic daemon/scheduler.
 - [ ] Hierarchical consolidation levels in normal memory use.
@@ -437,8 +437,8 @@ Every release tag should include:
 
 ## Current Highest-Leverage Next Move
 
-1. Land and package the read-only live consolidation source preview after full local review.
-2. Add review-gated materialization into the existing reversible ledgers; do not promote summaries into canonical truth.
-3. Add handoff ownership/import preview and governed tool-contract state while keeping effect/capability enforcement in Treeship/Guard.
+1. Land and package review-gated live consolidation after full local and CI review; do not promote summaries into canonical truth.
+2. Add handoff ownership/import preview and governed tool-contract state while keeping effect/capability enforcement in Treeship/Guard.
+3. Design explicit inspect/admit/discard UX for quarantined summaries before any periodic consolidation scheduler.
 4. Sweep dense candidate depth and context packing before recommending dense as a default or exposing server-controlled MCP dense retrieval.
 5. Keep broader lifecycle transitions, Merkle `v2`, BEAM quality, and official model-judged scoring as separate reviewed projects.

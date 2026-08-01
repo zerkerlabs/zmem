@@ -358,6 +358,42 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
         action="store_true",
         help="Print only a compact human-readable consolidation preview",
     )
+    consolidation_materialize = consolidation_sub.add_parser(
+        "materialize",
+        help="Materialize one confirmed live candidate into reversible local ledgers",
+    )
+    consolidation_materialize.add_argument("preview", type=expand_user_path, help="Preview JSON path")
+    consolidation_materialize.add_argument("--select", required=True, help="Exact candidate id to materialize")
+    consolidation_materialize.add_argument("--actor-id", required=True, help="Operator identity to record")
+    consolidation_materialize.add_argument(
+        "--confirm-preview",
+        required=True,
+        help="Exact confirmation id from the reviewed preview",
+    )
+    consolidation_materialize.add_argument(
+        "--completed-at",
+        help="Materialization timestamp in ISO 8601 UTC form; defaults to now",
+    )
+    consolidation_materialize.add_argument("--job-ledger", type=expand_user_path)
+    consolidation_materialize.add_argument("--summary-ledger", type=expand_user_path)
+    consolidation_materialize.add_argument("--out", type=expand_user_path, help="Write the result here")
+    consolidation_materialize.add_argument("--force", action="store_true", help="Replace an existing result")
+    consolidation_materialize.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Print only a compact human-readable materialization result",
+    )
+    consolidation_audit = consolidation_sub.add_parser(
+        "audit",
+        help="Audit the append-only consolidation job and summary ledgers",
+    )
+    consolidation_audit.add_argument("--job-ledger", type=expand_user_path)
+    consolidation_audit.add_argument("--summary-ledger", type=expand_user_path)
+    consolidation_audit.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Print only a compact human-readable ledger audit",
+    )
 
     workspace = sub.add_parser("workspace", aliases=["ws"], help="Manage Zerker Memory workspaces and active project profiles")
     workspace_sub = workspace.add_subparsers(dest="workspace_command", required=True)
@@ -1217,27 +1253,119 @@ def main(argv: list[str] | None = None) -> int:
             print_json({"ok": False, "error": str(exc)})
             return 1
     if args.command == "consolidation":
+        from .consolidation import consolidation_audit_report
         from .consolidation_live import (
             build_live_consolidation_preview,
             render_live_consolidation_preview_summary,
             write_live_consolidation_preview,
         )
+        from .consolidation_materialize import (
+            default_job_ledger_path,
+            default_materialization_result_path,
+            default_summary_ledger_path,
+            database_protected_paths,
+            load_consolidation_artifact,
+            materialize_live_consolidation_candidate,
+            render_consolidation_audit_summary,
+            render_live_consolidation_materialization_summary,
+            validate_consolidation_artifact_destination,
+            write_consolidation_artifact,
+        )
 
         try:
-            result = build_live_consolidation_preview(
-                args.db,
-                scope=args.scope,
-                min_source_children=args.min_sources,
-                evaluated_at=args.evaluated_at,
-            )
-            artifact_path = None
-            if args.out is not None:
-                artifact_path = write_live_consolidation_preview(args.out, result, force=args.force)
-            if args.summary_only:
-                print(render_live_consolidation_preview_summary(result, artifact_path=artifact_path), end="")
-            else:
-                print_json(result)
-            return 0 if result["ok"] else 1
+            if args.consolidation_command == "preview":
+                result = build_live_consolidation_preview(
+                    args.db,
+                    scope=args.scope,
+                    min_source_children=args.min_sources,
+                    evaluated_at=args.evaluated_at,
+                )
+                artifact_path = None
+                if args.out is not None:
+                    artifact_path = write_live_consolidation_preview(args.out, result, force=args.force)
+                if args.summary_only:
+                    print(render_live_consolidation_preview_summary(result, artifact_path=artifact_path), end="")
+                else:
+                    print_json(result)
+                return 0 if result["ok"] else 1
+            if args.consolidation_command == "materialize":
+                job_ledger = args.job_ledger or default_job_ledger_path(args.db)
+                summary_ledger = args.summary_ledger or default_summary_ledger_path(args.db)
+                protected_paths = (
+                    *database_protected_paths(args.db),
+                    args.preview,
+                    job_ledger,
+                    summary_ledger,
+                )
+                if args.out is not None:
+                    validate_consolidation_artifact_destination(
+                        args.out,
+                        protected_paths=protected_paths,
+                        force=args.force,
+                    )
+                preview = load_consolidation_artifact(args.preview)
+                result = materialize_live_consolidation_candidate(
+                    args.db,
+                    preview,
+                    candidate_id=args.select,
+                    actor_id=args.actor_id,
+                    confirmed_preview_id=args.confirm_preview,
+                    job_ledger_path=job_ledger,
+                    summary_ledger_path=summary_ledger,
+                    completed_at=args.completed_at,
+                )
+                artifact_path = args.out or default_materialization_result_path(args.db, result)
+                try:
+                    write_consolidation_artifact(
+                        artifact_path,
+                        result,
+                        force=args.force,
+                        protected_paths=protected_paths,
+                    )
+                except (FileExistsError, OSError) as exc:
+                    if args.summary_only:
+                        print(render_live_consolidation_materialization_summary(result), end="")
+                        print(f"Result file: not written ({exc})")
+                        print("Recovery: rerun the same confirmed candidate with a writable --out path.")
+                    else:
+                        print_json(
+                            {
+                                "ok": False,
+                                "artifact_error": str(exc),
+                                "recovery": "rerun the same confirmed candidate with a writable --out path",
+                                "result": result,
+                            }
+                        )
+                    return 1
+                if args.summary_only:
+                    print(
+                        render_live_consolidation_materialization_summary(
+                            result,
+                            artifact_path=artifact_path,
+                        ),
+                        end="",
+                    )
+                else:
+                    print_json(result)
+                return 0
+            if args.consolidation_command == "audit":
+                job_ledger = args.job_ledger or default_job_ledger_path(args.db)
+                summary_ledger = args.summary_ledger or default_summary_ledger_path(args.db)
+                result = consolidation_audit_report(job_ledger, summary_ledger)
+                if args.summary_only:
+                    print(render_consolidation_audit_summary(result), end="")
+                else:
+                    print_json(result)
+                audit_issue_count = sum(
+                    int(result.get(key, 0))
+                    for key in (
+                        "incomplete_record_count",
+                        "duplicate_summary_record_count",
+                        "orphan_summary_count",
+                        "invalid_job_history_count",
+                    )
+                )
+                return 0 if audit_issue_count == 0 else 1
         except (FileExistsError, OSError, ValueError) as exc:
             print_json({"ok": False, "error": str(exc)})
             return 1

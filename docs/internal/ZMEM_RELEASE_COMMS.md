@@ -1,5 +1,17 @@
 # ZMem Release Comms
 
+## 2026-08-01 - Review-gated live consolidation candidate
+
+Audience: internal Zerker product, engineering, security review, and release coordination.
+
+PR `#14` merged the read-only source preview with every CI check green. The next isolated candidate completes one deliberately narrow transition: an operator reviews the content-free source report, confirms its artifact-specific id, selects one candidate, and materializes one deterministic local summary into private append-only ledgers.
+
+The summary is not trusted memory. It starts quarantined at trust zero and authority none, remains non-blocking and reversible, and cannot influence retrieval because no canonical memory row is created. The compact result carries hashes and bindings rather than source or summary text; the private `0600` summary ledger retains the local summary content.
+
+The correctness boundary was independently reviewed and hardened before landing. The commit holds a SQLite writer lock while exposing a query-only source snapshot, serializes ledger writers, resumes verified partial appends, binds the completed job to the original summary content digest, rejects database/sidecar or symlink destination aliases, and makes audit fail on incomplete, orphan, duplicate, reordered, content-changed, or binding-broken histories. Operator identity remains asserted metadata, not authenticated identity, and no semantic-truth claim is made.
+
+Focused consolidation acceptance passes `109/109`; the full repository passes `1,354` tests with two expected optional skips. Eval `11/11`, docs typecheck/build (`17` static pages), site lint/build, fresh-workspace release smoke with the packaged-path requirement, strict publish readiness, public proof `6/6`, launch assets `8/8`, and return-packet verification all pass. No release tag or production deployment has been made for this candidate.
+
 ## 2026-08-01 - Live consolidation source preview candidate
 
 Audience: internal Zerker product, engineering, security review, and release coordination.

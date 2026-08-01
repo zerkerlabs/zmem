@@ -12,6 +12,7 @@ from zerker_memory.cli import main
 from zerker_memory.consolidation_live import (
     LIVE_CONSOLIDATION_PREVIEW_SCHEMA,
     build_live_consolidation_preview,
+    validate_live_consolidation_preview,
 )
 from zerker_memory.store import MemoryStore
 
@@ -353,6 +354,31 @@ class LiveConsolidationPreviewTests(unittest.TestCase):
         self.assertNotEqual(first["evaluated_at"], second["evaluated_at"])
         self.assertEqual(first["preview_hash"], second["preview_hash"])
         self.assertEqual(first["preview_id"], second["preview_id"])
+        self.assertNotEqual(first["confirmation_hash"], second["confirmation_hash"])
+        self.assertNotEqual(first["confirmation_id"], second["confirmation_id"])
+
+    def test_preview_validation_rejects_tampered_candidate_binding(self):
+        self._remember("Source one.", memory_id="mem_1", memory_type="episodic")
+        self._remember("Source two.", memory_id="mem_2", memory_type="semantic")
+        preview = build_live_consolidation_preview(
+            self.db_path,
+            scope="project",
+            min_source_children=2,
+            evaluated_at=EVALUATED_AT,
+        )
+
+        validated = validate_live_consolidation_preview(preview)
+        tampered = json.loads(json.dumps(preview))
+        tampered["candidates"][0]["source_memory_ids"].reverse()
+
+        self.assertEqual(validated, preview)
+        with self.assertRaisesRegex(ValueError, "preview hash mismatch"):
+            validate_live_consolidation_preview(tampered)
+
+        retimed = json.loads(json.dumps(preview))
+        retimed["evaluated_at"] = "2026-08-01T01:00:00Z"
+        with self.assertRaisesRegex(ValueError, "confirmation hash mismatch"):
+            validate_live_consolidation_preview(retimed)
 
     def test_missing_database_is_not_created(self):
         missing_path = self.root / "missing.sqlite"
@@ -439,6 +465,32 @@ class LiveConsolidationPreviewTests(unittest.TestCase):
         self.assertEqual(exit_code, 1)
         self.assertEqual(output_path.read_text(encoding="utf-8"), "occupied")
         self.assertIn("already exists", output.getvalue())
+        self.store = MemoryStore(self.db_path)
+
+    def test_cli_force_cannot_replace_database_with_preview_artifact(self):
+        self._remember("Source one.", memory_id="mem_1", memory_type="episodic")
+        self.store.conn.close()
+        before = self.db_path.read_bytes()
+        output = io.StringIO()
+
+        with redirect_stdout(output):
+            exit_code = main(
+                [
+                    "--db",
+                    str(self.db_path),
+                    "consolidation",
+                    "preview",
+                    "--scope",
+                    "project",
+                    "--out",
+                    str(self.db_path),
+                    "--force",
+                ]
+            )
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn("cannot replace protected path", output.getvalue())
+        self.assertEqual(self.db_path.read_bytes(), before)
         self.store = MemoryStore(self.db_path)
 
     def _remember(

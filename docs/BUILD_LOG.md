@@ -1,3 +1,13 @@
+## 2026-08-01 - Review-gated live consolidation materialization candidate
+
+- Merged the read-only source-preview prerequisite through PR `#14` at `5e4729bf662f4069866fe3a402a6543d60b90bf7` with every CI job green.
+- Added `zmem consolidation materialize` for one explicitly selected candidate and exact artifact-specific confirmation id. Source rows, receipt chains, event root, candidate identity, and content digests are revalidated under a SQLite writer lock with a query-only snapshot.
+- Writes one deterministic local summary to private append-only job/summary ledgers, quarantined at trust `0` and authority `none`. It never writes canonical memory, changes retrieval, promotes source state, or requires a hosted LLM.
+- Added local serialization, exact replay idempotency, resumable pending/summary interruptions, immutable summary-content commitment, secure no-follow append, database/sidecar alias protection, and private artifact permissions.
+- Expanded `zmem consolidation audit` to report pending/incomplete jobs, orphan and duplicate summaries, invalid job histories, changed summary content, and broken preview, admission, review, or source-digest bindings.
+- Focused consolidation tests pass `109/109`. Adversarial coverage includes simultaneous operators, whole-record and hard-exit interruption recovery, durable recovery evidence after later source failure, dual-ledger lock ordering, an attempted source write during commit, forged replacement content with a recomputed self-digest, incomplete or binding-drifted job histories, symlinked database sidecars, preview/result database aliases, compact-result privacy, and no canonical-memory write.
+- Full repository acceptance passes `1,354` tests with two expected optional skips. Eval passes `11/11`; docs typecheck/build produces `17` static pages; site lint/build, fresh-workspace release smoke with the packaged-path requirement, strict publish readiness, public proof `6/6`, launch assets `8/8`, and return-packet verification all pass.
+
 ## 2026-08-01 - Read-only live consolidation preview candidate
 
 - Merged reviewable lifecycle maintenance through PR `#13` at `71729bd54c6f082f810ca1368c57b0ac19e65129` with all seven CI jobs green.

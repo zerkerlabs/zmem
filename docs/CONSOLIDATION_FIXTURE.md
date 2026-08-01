@@ -151,6 +151,18 @@ The fixture now also exposes the matching child-to-summary impact view over the 
 
 This keeps the L4 surface reversible in both directions without widening into `store.py`, a daemon, or hosted summarization: operators can now ask not only "what evidence supports this summary?" but also "which summaries depend on this child?"
 
+## Live Review-Gated Materialization
+
+The live CLI now connects the fixture contracts to one exact verified source set:
+
+- `zmem consolidation preview` produces a content-free source report plus a stable source identity and an artifact-specific confirmation identity.
+- `zmem consolidation materialize` requires that confirmation identity and one candidate id, revalidates the source set under a locked query-only SQLite snapshot, and writes one deterministic summary to private job and summary ledgers.
+- The completed job commits the summary content digest plus the exact preview, source digests, review assertion, and quarantined admission contract.
+- Local writers serialize, exact replay appends nothing, and verified pending or summary-only interruption states resume to one completed transition.
+- `zmem consolidation audit` fails on pending or malformed job history, missing/orphan/duplicate summaries, changed content, or broken source, preview, review, and admission bindings.
+
+The summary ledger contains local summary text and is private. The result artifact does not. No canonical memory row is created, so materialization does not change retrieval or make the summary trusted, authoritative, or semantically true.
+
 ## Current Boundary
 
-The fixture in [`/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/consolidation.py`](/Users/zzo/Documents/Codex/2026-05-25/files-mentioned-by-the-user-trusted/zerker_memory/consolidation.py) now exposes ordered levels, reversible lineage, the local job ledger, the recall-planner contract plus its explicit decision report and ledger-backed lower-level summary verification gate, a profile/project aggregation fixture for scattered week-level facts, an idempotent merge path from ready profile candidates into the existing recall planner, a joined profile aggregation plus planner outcome report, dependency-detailed ledger-backed source-summary gating, a deterministic local summary materializer, an append-only summary ledger, a read-only ledger audit report, a transitive summary-lineage report, and a reverse child-to-summary lineage report, still with `hosted_llm: false`, `model_id: null`, and non-blocking local-summary enforcement during audit. Those lineage views now keep each persisted summary row's producer `job_id`, `created_at`, `summarizer`, `non_blocking`, and `reversible` contract visible alongside its reversible child lineage. The next implementation slice should expose the existing audit/report surface through a read-only store or CLI path, or source the same profile-project candidate flow from persisted store state, without adding hosted summarization as a hard dependency.
+The L4 surface now reaches from verified live-source discovery through one explicitly confirmed, reversible private materialization and ledger audit. It still does not admit summaries into canonical memory, schedule periodic consolidation, or claim semantic fidelity. The next implementation slice is operator UX to inspect and explicitly admit or discard quarantined summaries before any scheduler or higher-level live rollup is considered.
