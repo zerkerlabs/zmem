@@ -92,6 +92,7 @@ const docsMap = [
     items: [
       { label: 'Builders', href: `${docsBase}/builders` },
       { label: 'Memory lifecycle', href: `${docsBase}/memory-lifecycle` },
+      { label: 'Consolidation review', href: `${docsBase}/consolidation-preview` },
       { label: 'Handoff', href: `${docsBase}/handoff` },
     ],
   },

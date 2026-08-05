@@ -91,6 +91,29 @@ zmem reject <memory-id> --reason "unverified"
 zmem revoke <memory-id> --reason "stale"
 ```
 
+### Consolidation Review
+
+What it does:
+
+- Finds verified episodic and semantic source sets without copying raw text into the preview.
+- Materializes a deterministic private summary without changing canonical memory.
+- Recomputes the summary from current receipt-verified sources before review.
+- Requires one exact confirmation to admit or discard the summary.
+- Admits at the weakest source trust and authority ceilings, with source parents and labels committed into the write receipt.
+- Records admission or discard as a terminal Merkle event and keeps source evidence intact.
+
+Try it:
+
+```bash
+zmem consolidation preview --scope project --min-sources 3 --out preview.json --summary-only
+zmem consolidation materialize preview.json --select <candidate-id> --actor-id <operator-id> --confirm-preview <confirmation-id> --summary-only
+zmem consolidation inspect --summary-only
+zmem consolidation inspect <summary-id> --out inspection.json --summary-only
+zmem consolidation admit inspection.json --actor-id <operator-id> --confirm-inspection <confirmation-id> --summary-only
+```
+
+Use `zmem consolidation discard ... --reason <reason>` instead of `admit` when the private summary should never enter canonical memory. Operator ids are asserted metadata, Treeship anchoring is separate, and no receipt claims semantic truth.
+
 ### Proof Layer
 
 What it does:
@@ -234,8 +257,6 @@ zmem queue --scope project
 - Fully signed public Treeship publish/verify workflow.
 - Production vector/graph replacement.
 - Memory strength, decay, reinforcement scoring, and curation policy templates.
-- Optional semantic indexing layered on top of the structured local store.
-- Public alpha completion evidence: live GitHub/raw installer proof, clean-shell packaged install logs, and final launch screenshots/GIFs.
 
 ## Product Signal
 

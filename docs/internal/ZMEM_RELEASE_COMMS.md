@@ -1,5 +1,17 @@
 # ZMem Release Comms
 
+## 2026-08-05 - Explicit consolidation decision candidate
+
+Audience: internal Zerker product, engineering, security review, and release coordination.
+
+The post-`v0.1.8` consolidation path is now end to end. Materialization still creates only a private review copy. A separate inspection re-audits its ledgers, verifies current source receipt heads, and recomputes the deterministic summary from live sources before exposing an exact confirmation.
+
+Admission is the only operation that crosses into canonical memory. It writes one deterministic semantic memory at exactly the weakest source trust and authority ceilings, with source ids as parents and parent/label lineage committed in the write receipt. Discard writes no canonical memory and deletes no evidence. Both are terminal, mutually exclusive events in the local Merkle chain.
+
+The canonical write, receipt, and admission event commit atomically. Exact replay and concurrent operators are idempotent; stale source or inspection state fails closed. Operator ids remain asserted metadata, Treeship anchoring is separate, and neither the summary nor its proof is a semantic-truth claim.
+
+Focused acceptance is green across the new `16`-test adversarial suite, `117` consolidation tests, the `411`-test consolidation/store gate, and adjacent Treeship/trust, runner, and policy suites. Independent re-review reproduced and cleared the event/receipt-head, trust-ceiling, canonical-content, and unreceipted-source integrity findings. Full local acceptance now also passes `1,370` tests with two expected optional skips, eval `11/11`, site lint/build, docs typecheck/build, compilation, strict release smoke, and a clean staged-source `0.1.9` package install. Remote CI and exact merged-commit artifact rebuilding remain required before `v0.1.9` is tagged or deployed.
+
 ## 2026-08-01 - Review-gated live consolidation candidate
 
 Audience: internal Zerker product, engineering, security review, and release coordination.

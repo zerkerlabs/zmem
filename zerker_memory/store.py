@@ -9134,8 +9134,11 @@ class MemoryStore:
         environment_hash: str | None = None,
         memory_id: str | None = None,
         created_at: str | None = None,
+        _initialize: bool = True,
+        _commit: bool = True,
     ) -> MemoryRecord:
-        self.init()
+        if _initialize:
+            self.init()
         if memory_type not in MEMORY_TYPES:
             raise ValueError(f"unsupported memory type: {memory_type}")
         parents = parents or []
@@ -9158,6 +9161,8 @@ class MemoryStore:
         elif not isinstance(created_at, str) or not re.match(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$", created_at):
             raise ValueError("created_at must be in ISO 8601 UTC form like 2024-01-01T00:00:00Z")
         content_hash = sha256_text(content)
+        parents_digest = digest_uri(stable_json(parents))
+        labels_digest = digest_uri(stable_json(labels))
         self.conn.execute(
             """
             INSERT INTO memories (
@@ -9199,6 +9204,10 @@ class MemoryStore:
                 "authority": authority,
                 "status": status,
                 "content_hash": content_hash,
+                "parents": list(parents),
+                "labels": list(labels),
+                "parents_digest": parents_digest,
+                "labels_digest": labels_digest,
                 "source_uri": source_uri,
                 "caused_by_event": caused_by_event,
                 "parent_action_id": parent_action_id,
@@ -9224,10 +9233,15 @@ class MemoryStore:
                 "trust": trust,
                 "authority": authority,
                 "status": status,
+                "parents": list(parents),
+                "labels": list(labels),
+                "parents_digest": parents_digest,
+                "labels_digest": labels_digest,
                 "semantic_truth_guaranteed": False,
             },
         )
-        self.conn.commit()
+        if _commit:
+            self.conn.commit()
         return self.get(memory_id)
 
     def import_external(
@@ -12531,6 +12545,10 @@ class MemoryStore:
     def promote(self, memory_id: str, *, actor_id: str = "human") -> MemoryRecord:
         self.init()
         memory = self.get(memory_id)
+        if memory.source_kind == "consolidation":
+            raise ValueError(
+                "consolidation memory cannot use generic promotion because its source trust and authority ceilings are immutable"
+            )
         prior_receipts = self.memory_write_receipts(memory_id)
         prior_receipt = prior_receipts[-1] if prior_receipts else None
         prior_merkle_root = self.current_merkle_root()
@@ -14035,6 +14053,9 @@ class MemoryStore:
                     expected_event_type = "PROPOSED" if status in {"proposed", "quarantined"} else "OBSERVED"
                     if source_event.get("event_type") != expected_event_type:
                         raise ValueError("write receipt source event type mismatch")
+                for key in ("parents", "labels", "parents_digest", "labels_digest"):
+                    if key in statement_object and statement_object.get(key) != source_event_payload.get(key):
+                        raise ValueError(f"write receipt source event {key} mismatch")
             elif kind == "zerker.memory.mutation_receipt":
                 expected_mutation_by_event_type = {
                     "FORGOTTEN": ("forget", "forgotten"),
@@ -14267,6 +14288,32 @@ class MemoryStore:
                 if prior_receipt is not None:
                     result["verified_transition_count"] += 1
                 prior_receipt = receipt
+
+            memory_id = result.get("memory_id")
+            if isinstance(memory_id, str) and memory_id:
+                row = self.conn.execute(
+                    "SELECT content, content_hash, parents_json, labels_json FROM memories WHERE id = ?",
+                    (memory_id,),
+                ).fetchone()
+                initial_statement = receipts[0].get("treeship_statement") or {}
+                initial_object = initial_statement.get("object") or {}
+                if row is not None and isinstance(initial_object, dict):
+                    current_content = str(row["content"])
+                    current_content_hash = sha256_text(current_content)
+                    if row["content_hash"] != current_content_hash:
+                        raise ValueError("memory content_hash diverged from current content")
+                    if initial_object.get("content_digest") != digest_uri(current_content):
+                        raise ValueError("memory content diverged from write receipt")
+                    for row_field, receipt_field in (("parents_json", "parents"), ("labels_json", "labels")):
+                        if receipt_field not in initial_object:
+                            continue
+                        current_value = json.loads(str(row[row_field]))
+                        if current_value != initial_object.get(receipt_field):
+                            raise ValueError(f"memory {receipt_field} diverged from write receipt")
+                        digest_field = f"{receipt_field}_digest"
+                        expected_digest = digest_uri(stable_json(current_value))
+                        if initial_object.get(digest_field) != expected_digest:
+                            raise ValueError(f"memory {digest_field} diverged from write receipt")
         except Exception as exc:
             result["ok"] = False
             result["error"] = str(exc)

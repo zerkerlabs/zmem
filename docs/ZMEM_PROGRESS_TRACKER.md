@@ -1,6 +1,6 @@
 # ZMem Progress Tracker
 
-Last updated: 2026-08-01
+Last updated: 2026-08-05
 
 This is the shared progress board for ZMem release and frontier work. It turns the
 continuous-build lanes into a checkpointable product plan: what is built, what is
@@ -136,7 +136,7 @@ Percentages are practical launch-grade alpha estimates, not benchmark scores.
 | L1 Temporal KG | Current/history/superseded temporal memory | 70% | `query_at`, supersession, omitted-memory envelopes, runtime temporal context, and receipt-visible contradiction abstention | Add richer filters and decide when a concrete consumer justifies a true bi-temporal graph schema |
 | L2 Lifecycle Compaction | Sessions, checkpoints, snapshots, retention | 82% | Session lifecycle, handoff/restore, cold-start gap audit, governed scheduled run, typed failure memory, and one-action receipted expiry maintenance are implemented | Add revalidation, decay, tombstone, and failed-claim reopen contracts without automating semantic judgment |
 | L3 Retrieval Baseline | FTS/BM25, local dense candidates, RRF, packing | 97% | Offline FastEmbed plus adaptive FTS passes the frozen gate and full LoCoMo/LongMemEval comparisons with 43/347/91 gains, zero losses, lexical recall preservation, and receipt-visible model/fusion evidence | Tune candidate/context cost, then profile whether ANN or `sqlite-vec` is warranted before exposing server-controlled MCP dense retrieval |
-| L4 Consolidation | Hierarchical summaries and job ledger | 60% | Verified live-source preview plus explicit, locked, recoverable materialization into private reversible ledgers; summaries remain quarantined and outside canonical memory | Add inspection plus explicit admit/discard UX for quarantined summaries before scheduling or higher-level rollups |
+| L4 Consolidation | Hierarchical summaries and job ledger | 75% | Verified live-source preview, private recoverable materialization, independent live-source inspection, and terminal admit/discard decisions with ceiling-bound lineage receipts | Extend the reviewed path to live day/week/profile rollups before designing any scheduler |
 | L5 Identity / Workspaces | Multi-agent source lineage and conflicts | 50% | Source reports, claim conflicts, resolution basis, exact-tie abstention summaries | Add handoff ownership/lease metadata and a dry-run import preview, then persist merge decisions |
 | L6 Benchmark Harness | LoCoMo/LongMemEval/BEAM evidence | 100% for local harness and sampled scale | Verified LoCoMo/LongMemEval evidence plus official-layout BEAM 100K, 500K, 1M, and 10M runs exist; compact artifacts verify | Add broader evidence and an official model-judged path; do not report unjudged LLM answers as incorrect |
 | Launch Oversight | Release pack, proof evidence, public release | 100% for v0.1.8 | Public verify `6/6`, assets `8/8`, return packet ready, release assets published, and production canaries pass | Keep automation paused until the next bounded release candidate exists |
@@ -268,14 +268,19 @@ Built:
 - [x] Source child ids and content digests.
 - [x] Read-only real-store source discovery grouped by verified origin actor, environment, and session provenance.
 - [x] Explicit included/omitted source coverage and weakest-source trust/authority ceilings.
+- [x] Private inspection artifact with exact source-head, summary, audit, target, and confirmation binding.
+- [x] Independent deterministic summary recomputation from current receipt-verified sources.
+- [x] Explicit canonical admission at exactly the weakest source trust and authority ceilings.
+- [x] Terminal, mutually exclusive, idempotent admit/discard events that preserve source evidence.
+- [x] Parent and label lineage committed into new write receipts and checked against current rows.
 
 Left:
 
 - [x] Review-gated materialization of one selected live candidate into private job and summary ledgers with locked revalidation, replay safety, and audit.
+- [x] UX for inspecting and explicitly admitting or discarding one private summary.
 - [ ] Runtime summary writer beyond the deterministic local materializer.
 - [ ] Periodic daemon/scheduler.
 - [ ] Hierarchical consolidation levels in normal memory use.
-- [ ] UX for inspecting consolidated summaries.
 
 ### L5 Identity / Workspaces
 
@@ -437,8 +442,8 @@ Every release tag should include:
 
 ## Current Highest-Leverage Next Move
 
-1. Land and package review-gated live consolidation after full local and CI review; do not promote summaries into canonical truth.
+1. Land and package the explicit consolidation review loop after full local and CI review; admission is governed memory, not a semantic-truth claim.
 2. Add handoff ownership/import preview and governed tool-contract state while keeping effect/capability enforcement in Treeship/Guard.
-3. Design explicit inspect/admit/discard UX for quarantined summaries before any periodic consolidation scheduler.
+3. Extend consolidation to reviewed live day/week/profile rollups before considering any periodic scheduler.
 4. Sweep dense candidate depth and context packing before recommending dense as a default or exposing server-controlled MCP dense retrieval.
 5. Keep broader lifecycle transitions, Merkle `v2`, BEAM quality, and official model-judged scoring as separate reviewed projects.

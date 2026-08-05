@@ -219,9 +219,24 @@ zmem consolidation materialize preview.json \
   --summary-only
 
 zmem consolidation audit --summary-only
+
+zmem consolidation inspect --summary-only
+zmem consolidation inspect <summary-id> --out inspection.json --summary-only
+
+zmem consolidation admit inspection.json \
+  --actor-id <operator-id> \
+  --confirm-inspection <confirmation-id> \
+  --summary-only
+
+# Or keep it out of canonical memory without deleting the evidence.
+zmem consolidation discard inspection.json \
+  --actor-id <operator-id> \
+  --confirm-inspection <confirmation-id> \
+  --reason "Not useful for future recall" \
+  --summary-only
 ```
 
-Preview verifies the global event chain and each source write-receipt chain, groups active episodic/semantic memories by origin actor, environment, and session provenance, and lists every omission without raw memory text. Materialize requires the exact candidate and confirmation ids, revalidates under a locked query-only snapshot, and writes one deterministic summary to private reversible ledgers. It does not write canonical memory, change retrieval, or elevate trust or authority. See [Consolidation Review](docs/content/docs/consolidation-preview.mdx).
+Preview verifies the global event chain and each source write-receipt chain, groups active episodic/semantic memories by origin actor, environment, and session provenance, and lists every omission without raw memory text. Materialize requires the exact candidate and confirmation ids, revalidates under a locked query-only snapshot, and writes one deterministic summary to private reversible ledgers. Inspect independently recomputes that summary from current verified sources. Only an exact `admit` confirmation creates canonical memory, at the weakest source trust and authority ceilings; `discard` records a terminal Merkle event without deleting evidence. Operator identity remains asserted metadata, Treeship anchoring is separate, and no step claims semantic truth. See [Consolidation Review](docs/content/docs/consolidation-preview.mdx).
 
 For day-1 agent setup:
 

@@ -64,7 +64,11 @@ export ZMEM_TREESHIP_CONFIG=/path/to/treeship/config.json
 
 Each memory write still stores the local ZMem receipt and Merkle lineage. When signing is enabled, ZMem asks Treeship to attest only the compact `sha256:<receipt_hash>` digest as `system://zmem` / `kind=memory.write`, then stores the returned artifact id and signed timestamp with the write receipt. Raw memory content is not duplicated into the Treeship attestation.
 
+New write receipts also commit the memory's exact parent ids, labels, and canonical digests for both lists into the source event and Treeship statement. Receipt-chain verification compares those fields with the current memory row, so out-of-band lineage edits fail verification. Older receipts remain verifiable under their original contract when those additive fields are absent.
+
 Set `ZMEM_TREESHIP_STRICT=1` when an environment should fail the write if Treeship signing fails.
+
+The consolidation review loop deliberately commits its local admission and discard decision before any external work. Treeship anchoring is therefore separate rather than automatic for that loop; the local decision result reports `treeship_anchor_status: not_requested`.
 
 ## Provenance Direction
 

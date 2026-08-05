@@ -1,9 +1,9 @@
 ---
 title: Consolidation Review
-description: Inspect verified source sets, confirm one candidate, and materialize a reversible private summary.
+description: Build a private summary, inspect its live lineage, then explicitly admit or discard it.
 ---
 
-ZMem can turn a reviewed live-memory source set into a deterministic, reversible summary without admitting that summary into agent memory. The flow is explicit: preview, confirm one candidate, materialize it into private ledgers, then audit the result.
+ZMem can turn a reviewed live-memory source set into a deterministic summary without silently changing agent memory. The complete flow is explicit: preview a source set, materialize a private review copy, inspect it against live receipts, then admit or discard it.
 
 ## Run A Preview
 
@@ -78,17 +78,68 @@ zmem consolidation audit --summary-only
 
 Audit fails on pending or incomplete jobs, missing or orphan summaries, duplicate summary records, invalid job histories, changed content, broken preview/admission/review bindings, or a summary that no longer matches the content digest committed by its job.
 
+## Inspect The Review Queue
+
+List summaries without printing their private text:
+
+```bash
+zmem consolidation inspect --summary-only
+```
+
+Inspect one exact summary and retain its mode-`0600` review artifact:
+
+```bash
+zmem consolidation inspect <summary-id> \
+  --out inspection.json \
+  --summary-only
+```
+
+Inspection audits the ledgers, verifies every current source receipt chain, checks that each source is still active and unchanged, and independently recomputes the deterministic summary from live source text. The resulting `zerker.consolidation_inspection.v1` artifact binds the database, job and summary records, source heads, content digest, weakest-source ceilings, and deterministic canonical target. It contains the private summary text, so keep it private.
+
+The reported operator identity is not authenticated. The confirmation proves which local artifact was reviewed, not who controlled the terminal.
+
+## Admit Or Discard
+
+To make the reviewed summary available as canonical memory:
+
+```bash
+zmem consolidation admit inspection.json \
+  --actor-id <operator-id> \
+  --confirm-inspection <confirmation-id> \
+  --summary-only
+```
+
+Admission is the only command in this flow that writes canonical memory. It creates one deterministic active semantic memory, keeps the exact source ids as parents, binds parents and labels into its write receipt, and uses the recorded weakest-source trust and authority ceilings. It does not call the generic promotion path or raise either ceiling. Normal policy still decides whether the admitted memory may enter a later agent context.
+
+To reject the private summary without deleting its evidence:
+
+```bash
+zmem consolidation discard inspection.json \
+  --actor-id <operator-id> \
+  --confirm-inspection <confirmation-id> \
+  --reason "Not useful for future recall" \
+  --summary-only
+```
+
+Admission and discard are terminal, mutually exclusive decisions recorded in the local Merkle event chain. Exact replay is idempotent. A changed summary, source receipt head, source status, audit record, target, database binding, or confirmation fails before mutation. Discard writes no canonical memory and deletes no source, ledger, or summary evidence.
+
+After admission, use the normal receipted lifecycle to remove the canonical memory:
+
+```bash
+zmem revoke <canonical-memory-id> --reason "No longer valid"
+```
+
 ## Safety Boundary
 
-The preview writes nothing. Materialization writes only the private consolidation ledgers and a compact result artifact. Neither command writes a canonical memory row, changes retrieval, promotes trust, grants authority, or injects the summary into an agent context. Policy and procedural memories are excluded because lossy summarization must not silently rewrite instructions or authority.
+The preview and inspection are read-only. Materialization writes only private consolidation ledgers and a compact result artifact. None of those commands writes a canonical memory row, changes retrieval, promotes trust, grants authority, or injects the summary into an agent context. Only an exact `admit` confirmation crosses that boundary. Policy and procedural memories are excluded because lossy summarization must not silently rewrite instructions or authority.
 
 A materialized summary uses this output contract:
 
 - non-blocking and reversible;
 - initially quarantined with trust `0` and authority `none`;
-- no canonical-memory write without a separate reviewed action;
+- no canonical-memory write without a separate confirmed `admit` action;
 - trust and authority no higher than the weakest source.
 
 This is source admissibility and transition integrity, not a semantic-truth judgment. A verified source or deterministic summary may still be wrong.
 
-The ledgers and recovery receipts are private, self-hashed local artifacts. They detect ordinary corruption and inconsistent transitions; they do not defend against a principal who can replace local files and recompute every hash. That stronger boundary requires an external signature or Treeship anchor.
+The ledgers, inspections, receipts, and decision events are private local proof. They detect ordinary corruption and inconsistent transitions; they do not defend against a principal who can replace the database and every local artifact, then recompute every hash. That stronger boundary requires an external signature or Treeship anchor. Treeship anchoring is not automatic in this review loop, and neither local nor external proof establishes semantic truth.

@@ -1,5 +1,14 @@
 # Consolidation Lane Log
 
+## 2026-08-05 - explicit inspect, admit, and discard
+
+- Scope: close the review lifecycle after private materialization without adding a daemon, hosted summarizer, batch approval, editable summaries, or automatic source deletion.
+- Behavior: `zmem consolidation inspect` lists the content-free queue or recomputes one exact summary from current receipt-verified sources. `admit` writes one deterministic semantic memory at the weakest source ceilings; `discard` records a terminal decision and writes no canonical memory.
+- Safety: exact inspection confirmation binds database, job, summary, source heads, audit, and target. Canonical write, lineage receipt, and admission event share one SQLite transaction. Decisions are mutually exclusive and idempotent under replay and concurrent operators.
+- Proof boundary: new write receipts bind exact parents and labels. Operator identity remains asserted metadata, Treeship anchoring is separate, coordinated replacement of every local artifact remains outside local-hash protection, and semantic truth is never claimed.
+- Tests: dedicated review `16/16`; all consolidation `117/117`; combined consolidation/store `411/411`; Treeship/trust `58/58`; runner/policy `183/183`. Independent re-review reproduced and cleared all four integrity findings. Full local acceptance passes `1,370` tests with two expected optional skips, eval `11/11`, both public builds, strict release smoke, and a clean staged-source `0.1.9` package install. Remote CI and exact merged-commit artifacts remain pending.
+- Next safe slice: land and package this bounded candidate, then move to handoff ownership/import preview or reviewed multi-level live rollups. Keep periodic scheduling separate.
+
 ## 2026-08-01 - review-gated live materialization
 
 - Scope: materialize one explicitly confirmed live candidate into the existing private reversible ledgers without creating canonical memory, changing retrieval, scheduling a daemon, or requiring a hosted LLM.

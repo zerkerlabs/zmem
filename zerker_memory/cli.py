@@ -394,6 +394,64 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
         action="store_true",
         help="Print only a compact human-readable ledger audit",
     )
+    consolidation_inspect = consolidation_sub.add_parser(
+        "inspect",
+        help="List private consolidation summaries or inspect one for an explicit decision",
+    )
+    consolidation_inspect.add_argument(
+        "summary_id",
+        nargs="?",
+        help="Exact summary id; omit to list the review queue without summary content",
+    )
+    consolidation_inspect.add_argument("--inspected-at", help="Inspection timestamp; defaults to now")
+    consolidation_inspect.add_argument("--job-ledger", type=expand_user_path)
+    consolidation_inspect.add_argument("--summary-ledger", type=expand_user_path)
+    consolidation_inspect.add_argument("--out", type=expand_user_path, help="Write the inspection here")
+    consolidation_inspect.add_argument("--force", action="store_true", help="Replace an existing artifact")
+    consolidation_inspect.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Print only a compact human-readable review summary",
+    )
+    consolidation_admit = consolidation_sub.add_parser(
+        "admit",
+        help="Admit one inspected private summary into canonical memory",
+    )
+    consolidation_admit.add_argument("inspection", type=expand_user_path, help="Inspection JSON path")
+    consolidation_admit.add_argument("--actor-id", required=True, help="Operator identity to record")
+    consolidation_admit.add_argument(
+        "--confirm-inspection",
+        required=True,
+        help="Exact confirmation id from the reviewed inspection",
+    )
+    consolidation_admit.add_argument("--decided-at", help="Decision timestamp; defaults to now")
+    consolidation_admit.add_argument("--out", type=expand_user_path, help="Write the decision result here")
+    consolidation_admit.add_argument("--force", action="store_true", help="Replace an existing result")
+    consolidation_admit.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Print only a compact human-readable decision result",
+    )
+    consolidation_discard = consolidation_sub.add_parser(
+        "discard",
+        help="Discard one inspected private summary without deleting its evidence",
+    )
+    consolidation_discard.add_argument("inspection", type=expand_user_path, help="Inspection JSON path")
+    consolidation_discard.add_argument("--actor-id", required=True, help="Operator identity to record")
+    consolidation_discard.add_argument(
+        "--confirm-inspection",
+        required=True,
+        help="Exact confirmation id from the reviewed inspection",
+    )
+    consolidation_discard.add_argument("--reason", required=True, help="Reason recorded in the decision event")
+    consolidation_discard.add_argument("--decided-at", help="Decision timestamp; defaults to now")
+    consolidation_discard.add_argument("--out", type=expand_user_path, help="Write the decision result here")
+    consolidation_discard.add_argument("--force", action="store_true", help="Replace an existing result")
+    consolidation_discard.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Print only a compact human-readable decision result",
+    )
 
     workspace = sub.add_parser("workspace", aliases=["ws"], help="Manage Zerker Memory workspaces and active project profiles")
     workspace_sub = workspace.add_subparsers(dest="workspace_command", required=True)
@@ -1271,6 +1329,17 @@ def main(argv: list[str] | None = None) -> int:
             validate_consolidation_artifact_destination,
             write_consolidation_artifact,
         )
+        from .consolidation_review import (
+            admit_consolidation_summary,
+            build_consolidation_summary_inspection,
+            default_decision_result_path,
+            default_inspection_path,
+            discard_consolidation_summary,
+            list_consolidation_summaries,
+            render_consolidation_decision_summary,
+            render_consolidation_inspection_list_summary,
+            render_consolidation_inspection_summary,
+        )
 
         try:
             if args.consolidation_command == "preview":
@@ -1366,7 +1435,114 @@ def main(argv: list[str] | None = None) -> int:
                     )
                 )
                 return 0 if audit_issue_count == 0 else 1
-        except (FileExistsError, OSError, ValueError) as exc:
+            if args.consolidation_command == "inspect":
+                job_ledger = args.job_ledger or default_job_ledger_path(args.db)
+                summary_ledger = args.summary_ledger or default_summary_ledger_path(args.db)
+                protected_paths = (*database_protected_paths(args.db), job_ledger, summary_ledger)
+                if args.summary_id is None:
+                    result = list_consolidation_summaries(
+                        args.db,
+                        job_ledger_path=job_ledger,
+                        summary_ledger_path=summary_ledger,
+                    )
+                    artifact_path = None
+                    if args.out is not None:
+                        artifact_path = write_consolidation_artifact(
+                            args.out,
+                            result,
+                            force=args.force,
+                            protected_paths=protected_paths,
+                        )
+                    if args.summary_only:
+                        print(render_consolidation_inspection_list_summary(result), end="")
+                        if artifact_path is not None:
+                            print(f"Queue file: {artifact_path}")
+                    else:
+                        print_json(result)
+                    return 0 if result["ok"] else 1
+
+                result = build_consolidation_summary_inspection(
+                    args.db,
+                    args.summary_id,
+                    job_ledger_path=job_ledger,
+                    summary_ledger_path=summary_ledger,
+                    inspected_at=args.inspected_at,
+                )
+                artifact_path = args.out or default_inspection_path(args.db, result)
+                write_consolidation_artifact(
+                    artifact_path,
+                    result,
+                    force=args.force,
+                    protected_paths=protected_paths,
+                )
+                if args.summary_only:
+                    print(render_consolidation_inspection_summary(result, artifact_path=artifact_path), end="")
+                else:
+                    print_json(result)
+                return 0
+            if args.consolidation_command in {"admit", "discard"}:
+                inspection = load_consolidation_artifact(args.inspection)
+                embedded_job_ledger = expand_user_path(Path(str(inspection.get("job_ledger_path") or "")))
+                embedded_summary_ledger = expand_user_path(Path(str(inspection.get("summary_ledger_path") or "")))
+                protected_paths = (
+                    *database_protected_paths(args.db),
+                    args.inspection,
+                    embedded_job_ledger,
+                    embedded_summary_ledger,
+                )
+                if args.out is not None:
+                    validate_consolidation_artifact_destination(
+                        args.out,
+                        protected_paths=protected_paths,
+                        force=args.force,
+                    )
+                if args.consolidation_command == "admit":
+                    result = admit_consolidation_summary(
+                        args.db,
+                        inspection,
+                        actor_id=args.actor_id,
+                        confirmed_inspection_id=args.confirm_inspection,
+                        decided_at=args.decided_at,
+                    )
+                else:
+                    result = discard_consolidation_summary(
+                        args.db,
+                        inspection,
+                        actor_id=args.actor_id,
+                        confirmed_inspection_id=args.confirm_inspection,
+                        reason=args.reason,
+                        decided_at=args.decided_at,
+                    )
+                artifact_path = args.out or default_decision_result_path(args.db, result)
+                try:
+                    write_consolidation_artifact(
+                        artifact_path,
+                        result,
+                        force=args.force,
+                        protected_paths=protected_paths,
+                    )
+                except (FileExistsError, OSError) as exc:
+                    if args.summary_only:
+                        print(render_consolidation_decision_summary(result), end="")
+                        print(f"Result file: not written ({exc})")
+                        print("Recovery: rerun the same confirmed decision with a writable --out path.")
+                    else:
+                        print_json(
+                            {
+                                "ok": False,
+                                "artifact_error": str(exc),
+                                "database_transition": result["status"],
+                                "recovery": "rerun the same confirmed decision with a writable --out path",
+                                "result": result,
+                            }
+                        )
+                    return 1
+                if args.summary_only:
+                    print(render_consolidation_decision_summary(result, artifact_path=artifact_path), end="")
+                else:
+                    print_json(result)
+                return 0
+        except (FileExistsError, KeyError, OSError, ValueError) as exc:
             print_json({"ok": False, "error": str(exc)})
             return 1
     store = MemoryStore(args.db, policy_path=args.policy)
