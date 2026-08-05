@@ -1,5 +1,14 @@
 # Launch Lane Log
 
+## 2026-08-05 - v0.1.9 publication
+
+- Scope: merged PR `#16`, tagged the exact merge commit, published the GitHub release assets, deployed the production site/docs, and verified the live release surfaces.
+- Release: `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.9` from `a2a469f3502bfdfafc13158db6e9ceea3c5769bf`.
+- CI: PR run `31030969173`, main run `31031384904`, and tag run `31031802061` passed every Python, ActiveGraph, site, docs, and release-smoke job.
+- Artifacts: GitHub reports wheel `sha256:3c47550aa264f12af5cbb8e62ec98140340e24cde9252dc9bff49b79016099b2` and source distribution `sha256:f801c7fdd132992ee948f689dde064bfb653ac634d0fccdee524e8823cc1c4a9`.
+- Production: site deployment `dpl_CNM18v355owTr8LLku7C9XGnaumo` and docs deployment `dpl_FbCUAPhahyfz5YjYw9L6yG89XwSh` are live at `https://www.zmem.sh` and `https://docs.zmem.sh` with the `0.1.9` release state.
+- Next safe slice: keep launch oversight paused and continue one isolated reviewed multi-level consolidation slice.
+
 ## 2026-07-30 - v0.1.8 publication
 
 - Scope: merged PR `#9`, tagged the exact merge commit, published the GitHub release assets, deployed the production site/docs, and ran public canaries.

@@ -21,12 +21,19 @@ Primary mission brief:
 - Lane progress and release tracker: `docs/ZMEM_PROGRESS_TRACKER.md`
 - Lane logs: `docs/CONTINUOUS_BUILD/`
 
+Coordinator update `2026-08-05` (`v0.1.9` published):
+
+- Broad recurring swarms and launch oversight remain paused. PR `#16` merged at `a2a469f3502bfdfafc13158db6e9ceea3c5769bf`; that exact commit is tagged and published as `v0.1.9`.
+- PR, main, and tag CI passed every Python, ActiveGraph, site, docs, and release-smoke job. Exact merged-source assets match wheel `3c47550a...` and source distribution `f801c7fd...`.
+- Production site and docs deployments are live with the `0.1.9` release state. The shipped consolidation flow now reaches explicit, ceiling-bound admit/discard after independent live-source inspection.
+- L4 remains `75%`: the next isolated target is reviewed live day/week/profile rollups. Do not restart broad swarms or add a scheduler before that path is reversible, idempotent, and independently inspectable.
+
 Coordinator update `2026-08-05` (explicit consolidation review loop):
 
 - Broad recurring swarms remain paused. The isolated `codex/consolidation-review-loop` candidate starts from merged `main` at `d4c2c15` and closes the previously tracked inspect/admit/discard boundary.
 - `inspect` independently recomputes one private summary from current receipt-verified source memory; `admit` creates one deterministic canonical memory at the weakest source trust/authority ceilings; `discard` records a terminal decision without canonical state or evidence deletion.
 - The SQLite event chain is the terminal decision ledger. Canonical write, lineage-bound receipt, and admission event are atomic; concurrent exact replay produces one memory and one decision event.
-- Dedicated adversarial review tests pass `16/16`; consolidation passes `117/117`, the combined consolidation/store gate passes `411/411`, and adjacent proof, policy, and runner suites pass. Independent re-review cleared all four reproduced integrity findings. Full local acceptance passes `1,370` tests with two expected optional skips, eval `11/11`, both public builds, strict release smoke, and a clean staged-source `0.1.9` wheel install. Remote CI and an exact merged-commit package rebuild remain required before publication.
+- Dedicated adversarial review tests pass `16/16`; consolidation passes `117/117`, the combined consolidation/store gate passes `411/411`, and adjacent proof, policy, and runner suites pass. Independent re-review cleared all four reproduced integrity findings. Full local acceptance passes `1,370` tests with two expected optional skips, eval `11/11`, both public builds, strict release smoke, and a clean staged-source `0.1.9` wheel install. The publication update above records the completed remote CI and exact merged-commit package rebuild.
 - L4 advances from `60%` to `75%`. The next L4 work is reviewed live day/week/profile rollups; no scheduler should start before those rollups remain reversible and idempotent.
 
 Coordinator update `2026-08-01` (review-gated live consolidation):

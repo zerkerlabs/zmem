@@ -14,13 +14,12 @@ Use this language precisely:
 
 ## Current Product Truth
 
-As of 2026-08-05, the product has a published `v0.1.8` release and a lane-by-lane progress board:
+As of 2026-08-05, the product has a published `v0.1.9` release and a lane-by-lane progress board:
 
 - Progress tracker: [`ZMEM_PROGRESS_TRACKER.md`](ZMEM_PROGRESS_TRACKER.md)
-- Current public release: `v0.1.8` at `969a943a987ac9528e4781702b8cb14ed59a9387`.
-- Current `main`: `d4c2c15`, including memory health, explicit expiry maintenance, live consolidation preview, and private materialization/audit.
-- Current release candidate: `codex/consolidation-review-loop`, adding explicit inspect/admit/discard review and lineage-bound writes for a future `v0.1.9`.
-- Broad swarms and launch oversight remain paused while this bounded candidate is verified and landed.
+- Current public release and `main`: `v0.1.9` at `a2a469f3502bfdfafc13158db6e9ceea3c5769bf`.
+- The release includes memory health, explicit expiry maintenance, verified live consolidation preview, private materialization/audit, independent inspection, and terminal ceiling-bound admit/discard decisions.
+- There is no active broad release candidate. Broad swarms and launch oversight remain paused while the next bounded slice is selected.
 
 The product already has meaningful working surface:
 
@@ -78,18 +77,10 @@ Score projections, competitor comparisons, and "official benchmark" language sta
 
 ## Current Diff Review
 
-Recommended next commit scope:
-
-- Keep: this orchestrator, `docs/CONTINUOUS_BUILD/`, the trust-ledger snapshot test, the temporal current-vs-history identity test, the consolidation fixture module/tests/docs, and the workspace source-lineage CLI/tests.
-- Keep if intentionally batching benchmark work: `zerker_memory/bench.py` plus any matching `scripts/bench/` converters and benchmark tests. Otherwise split these into a separate benchmark PR because they are L6, not orchestration/L0/L1/L4/L5.
-- Exclude from this commit unless explicitly reviewed: `.treeship/`, `data/`, `docs-site/`, generated `.zerker/launch-proof/` artifacts, and any launch addendum that came from the older launch automation rather than this pass.
-- Preserve pre-existing dirty docs. Do not normalize historical launch-status contradictions in the same commit as feature tests.
-
-Coordinator decision for this pass:
-
-- The clean PR shape is `continuous-build-orchestrator-plus-first-frontier-contracts`.
-- It should not include large downloaded benchmark datasets or generated docs-site build output.
-- If benchmark trace/answerer work is kept, it should be reviewed as a separate `benchmark-adapters-and-trace` slice.
+- `main` and `v0.1.9` point to the same shipped feature commit.
+- The publication bookkeeping pass is docs-only and must not alter package behavior or move the release tag.
+- Two pre-existing untracked duplicate files remain outside the release and must not be added or deleted by this pass.
+- The next implementation branch should contain one reviewed L4 slice only: live day/week/profile rollups through the shipped preview, materialize, inspect, and admit/discard boundary. Scheduling stays separate.
 
 ## Live Session Protocol
 
@@ -110,9 +101,9 @@ Use this when the user is present and actively working with Codex. Do not wait h
 
 Current live-session stance:
 
-- Keep broad recurring swarms paused after `v0.1.6` publication.
-- Start one bounded dense-retrieval implementation lane. Keep proof-format work read-only until the Merkle `v2` compatibility design is reviewed; do not let the two lanes edit the same files concurrently.
-- Use the stable cohort as a safety gate and LoCoMo/LongMemEval as the quality gate for the hybrid retrieval change.
+- Keep broad recurring swarms and launch oversight paused after `v0.1.9` publication.
+- Start at most one bounded reviewed multi-level consolidation lane after this publication record lands.
+- Keep periodic scheduling, Merkle `v2`, and unrelated retrieval work on separate branches with separate acceptance evidence.
 
 ## Final Acceptance Gates
 
@@ -136,7 +127,7 @@ These gates define when the recurring build automations can be paused or deleted
 | L1 temporal-kg | Current/history/superseded behavior is explicit; deterministic conflict assembly exists for current, historical, and timeline queries; `query_at(timestamp)` exists or is consciously deferred; identity disambiguation fixture passes | Pause after conflict resolver, point-in-time query, and identity tests pass |
 | L2 lifecycle-compaction | Session lifecycle commands/APIs exist or are documented as deferred; checkpoint/snapshot roots are receipt-visible; context packing records injected/withheld/budget-dropped | Pause after lifecycle tests and agent handoff docs agree |
 | L3 hybrid-retrieval | FTS/BM25, local provider config, retrieval depth tuning, context expansion, direct/parallel/chain query routing, graph/temporal candidates, RRF/fusion, and context-budget receipts have reproducible tests/benchmarks | Pause after benchmark matrix compares local modes with receipt hashes |
-| L4 consolidation | Consolidation levels, lineage fixtures, durable jobs, verified live-source preview, private materialization, independent inspection, and explicit ceiling-bound admit/discard exist without hosted LLM dependency | Keep broad automation paused; after the review candidate lands, target store-backed multi-level rollups and scheduling as separate reviewed slices |
+| L4 consolidation | Consolidation levels, lineage fixtures, durable jobs, verified live-source preview, private materialization, independent inspection, and explicit ceiling-bound admit/discard exist without hosted LLM dependency | Keep broad automation paused; target store-backed multi-level rollups next and treat scheduling as a later separate reviewed slice |
 | L5 identity-workspaces | CLI/dashboard can show connected agents, chat/session ids, workspace ids, source URI, trust status, and proof lineage; conflict fixture exists | Pause after source report plus first conflict-resolution test pass |
 | L6 benchmarks | LongMemEval/LoCoMo adapters, conflict/temporal fixture candidates, isolated DBs, metrics, receipt bundles, and public-readable reports are reproducible | Pause after local matrix report can be regenerated from documented commands |
 | L7 DX-dashboard-site | Setup, MCP, dashboard, landing, feature matrix, and proof page are public-ready and mobile/desktop checked | Pause after launch QA checklist is complete |

@@ -1,5 +1,17 @@
 # ZMem Release Comms
 
+## 2026-08-05 - v0.1.9 publication
+
+Audience: internal Zerker product, engineering, security review, and release coordination.
+
+`v0.1.9` is published from PR `#16` merge commit `a2a469f3502bfdfafc13158db6e9ceea3c5769bf` at `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.9`. PR, main, and tag CI passed every Python 3.10/3.11/3.12, ActiveGraph, site, docs, and release-smoke job. GitHub assets match wheel `sha256:3c47550a...` and source distribution `sha256:f801c7fd...`.
+
+The release completes the bounded consolidation review lifecycle. Live source evidence is verified before private materialization, inspection independently recomputes the deterministic summary, and an operator must explicitly admit or discard it. Admission is the only canonical-memory write and cannot exceed the weakest source trust or authority. Discard retains evidence and creates no canonical memory.
+
+The proof boundary remains unchanged: receipts establish integrity, provenance, lineage, and the recorded decision path, not semantic truth. CLI actor ids are asserted rather than authenticated, and optional Treeship anchoring remains a separate proof step.
+
+The production site and docs are live at `https://www.zmem.sh` and `https://docs.zmem.sh`. The next product slice is reviewed live day/week/profile rollups, still without a scheduler or automatic semantic promotion.
+
 ## 2026-08-05 - Explicit consolidation decision candidate
 
 Audience: internal Zerker product, engineering, security review, and release coordination.
@@ -10,7 +22,7 @@ Admission is the only operation that crosses into canonical memory. It writes on
 
 The canonical write, receipt, and admission event commit atomically. Exact replay and concurrent operators are idempotent; stale source or inspection state fails closed. Operator ids remain asserted metadata, Treeship anchoring is separate, and neither the summary nor its proof is a semantic-truth claim.
 
-Focused acceptance is green across the new `16`-test adversarial suite, `117` consolidation tests, the `411`-test consolidation/store gate, and adjacent Treeship/trust, runner, and policy suites. Independent re-review reproduced and cleared the event/receipt-head, trust-ceiling, canonical-content, and unreceipted-source integrity findings. Full local acceptance now also passes `1,370` tests with two expected optional skips, eval `11/11`, site lint/build, docs typecheck/build, compilation, strict release smoke, and a clean staged-source `0.1.9` package install. Remote CI and exact merged-commit artifact rebuilding remain required before `v0.1.9` is tagged or deployed.
+Focused acceptance is green across the new `16`-test adversarial suite, `117` consolidation tests, the `411`-test consolidation/store gate, and adjacent Treeship/trust, runner, and policy suites. Independent re-review reproduced and cleared the event/receipt-head, trust-ceiling, canonical-content, and unreceipted-source integrity findings. Full local acceptance also passes `1,370` tests with two expected optional skips, eval `11/11`, site lint/build, docs typecheck/build, compilation, strict release smoke, and a clean staged-source `0.1.9` package install. The publication record above supersedes this pre-release checkpoint.
 
 ## 2026-08-01 - Review-gated live consolidation candidate
 
