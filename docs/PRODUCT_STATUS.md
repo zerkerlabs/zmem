@@ -4,11 +4,9 @@
 
 Zerker Memory is a functional open-source, local-first alpha with a public site, tagged releases, and a verified local proof path.
 
-Current published release: `v0.1.8` at `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.8`.
+Current published release: `v0.1.9` at `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.9`.
 
-The release adds a digest-bound `zerker.memory_context.v1` artifact, scheduled-agent cold-start continuity, typed failure memory, and opt-in local dense/FTS retrieval. Inject receipts commit to the admitted, withheld, and budget-dropped context plus the policy and memory roots behind the decision. Scheduled runs restore, audit the wall-clock gap, expose stale or unknown state, execute, checkpoint, and prove the handoff. Dense candidates remain governed by the same policy and receipt boundary.
-
-Current `main` adds read-only memory-health inspection, reviewable lifecycle maintenance, verified live consolidation source discovery, and private reversible materialization. The isolated `v0.1.9` candidate completes that review loop with independent live-source inspection plus explicit admit/discard decisions. Only admission creates canonical memory, at exactly the weakest source trust and authority ceilings, with lineage-bound write evidence and one terminal Merkle event.
+The release completes a review-gated consolidation path over the existing governed memory system. Operators can verify live sources, materialize a private deterministic summary, independently inspect it, and explicitly admit or discard it. Only admission creates canonical memory, at exactly the weakest source trust and authority ceilings, with lineage-bound write evidence and one terminal Merkle event. The release also includes the previously shipped digest-bound context proof, scheduled-agent continuity, typed failure memory, and opt-in local dense/FTS retrieval.
 
 It is ready for:
 
@@ -46,9 +44,8 @@ Product signal note: the current wedge is validated by builder demand for local,
 
 - CLI.
 - Read-only `zmem audit health` JSON and terminal summaries for observable memory-state findings, with no semantic-truth claim.
-- Review-gated consolidation with verified source preview, private deterministic materialization, live recomputation, and explicit ceiling-bound admit/discard decisions. CLI actor ids are asserted rather than authenticated, and Treeship anchoring remains separate.
-- Post-release candidate: `zmem maintain preview`, `apply`, and `verify` for one state-bound, non-cascading, receipt-backed explicit-expiry transition.
-- Current candidate: `zmem consolidation preview`, `materialize`, and `audit` with exact-scope source coverage, receipt and row-coherence checks, artifact-bound operator confirmation, private reversible ledgers, interruption recovery, and no canonical-memory write.
+- Review-gated consolidation through `preview`, `materialize`, `audit`, `inspect`, `admit`, and `discard`, with verified source coverage, private deterministic materialization, live recomputation, interruption recovery, and explicit ceiling-bound terminal decisions. CLI actor ids are asserted rather than authenticated, and Treeship anchoring remains separate.
+- `zmem maintain preview`, `apply`, and `verify` for one state-bound, non-cascading, receipt-backed explicit-expiry transition.
 - Deterministic adaptive retrieval with receipt-visible routing, packing, semantic rescue, conservative regular-inflection evidence, bounded completion support, and exact-event-head transcript-neighbor support.
 - Opt-in FastEmbed local dense candidates, SQLite vector cache, exact cosine search, FTS RRF fusion, stale-vector rejection, and receipt-visible model/config/vector identity.
 - Verified local LoCoMo and LongMemEval matrices with explicit provisional claim boundaries.

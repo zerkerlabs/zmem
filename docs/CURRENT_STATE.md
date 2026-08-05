@@ -5,6 +5,10 @@ This is the short orchestration dashboard for Zerker Memory. Every autonomous bu
 ## Release Coordination
 `2026-08-05`
 
+- Published `v0.1.9` from PR `#16` merge commit `a2a469f3502bfdfafc13158db6e9ceea3c5769bf` at `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.9`.
+- PR CI run `31030969173`, main CI run `31031384904`, and tag CI run `31031802061` passed every Python 3.10/3.11/3.12, ActiveGraph, site, docs, and release-smoke job.
+- Exact merged-source release assets verify against GitHub: wheel `sha256:3c47550aa264f12af5cbb8e62ec98140340e24cde9252dc9bff49b79016099b2`; source distribution `sha256:f801c7fdd132992ee948f689dde064bfb653ac634d0fccdee524e8823cc1c4a9`.
+- Production site deployment `dpl_CNM18v355owTr8LLku7C9XGnaumo` and docs deployment `dpl_FbCUAPhahyfz5YjYw9L6yG89XwSh` are live at `https://www.zmem.sh` and `https://docs.zmem.sh`. The production site bundle includes the `v0.1.9` changelog entry, docs show the current ActiveGraph version, and the site production-dependency audit reports zero vulnerabilities.
 - Started isolated `codex/consolidation-review-loop` from merged `main` at `d4c2c15` for the final review boundary after private consolidation materialization.
 - Added `zmem consolidation inspect`, `admit`, and `discard`. Inspection audits the private ledgers, verifies current source receipt heads, and independently recomputes summary text before producing an exact confirmation-bound artifact.
 - Admission is the only canonical-memory write in the flow. It creates one deterministic active semantic memory, keeps source ids as parents, and uses exactly the weakest source trust and authority ceilings. Discard creates no canonical memory and deletes no evidence.
@@ -12,7 +16,7 @@ This is the short orchestration dashboard for Zerker Memory. Every autonomous bu
 - New writes commit parents, labels, and their digests into the event and receipt statement. Receipt-chain verification now detects out-of-band lineage edits while older receipts retain their prior compatibility path.
 - The claim boundary remains explicit: operator ids are asserted metadata, Treeship anchoring is separate, local hashes do not resist coordinated replacement of every local artifact, and no proof establishes semantic truth.
 - Dedicated review coverage passes `16/16`; consolidation coverage passes `117/117`; the combined consolidation/store gate passes `411/411`, Treeship/trust `58/58`, and runner/policy `183/183` pass. Independent re-review reproduced and cleared the event/receipt-head, trust-ceiling, canonical-content, and unreceipted-source integrity findings.
-- Full local acceptance passes `1,370` tests with two expected optional skips, eval `11/11`, site lint/build, docs typecheck/build (`17` static pages), compilation, strict release smoke, and staged-diff checks. A clean staged-source wheel reports `zmem 0.1.9`, imports the review module, exposes inspect/admit/discard, excludes local untracked duplicates, and has candidate SHA-256 `6783d971...`; the source distribution candidate is `94d598b2...`. Remote CI, merge, and exact merged-commit artifact rebuilding remain required before a tag or deployment.
+- Full local acceptance passes `1,370` tests with two expected optional skips, eval `11/11`, site lint/build, docs typecheck/build (`17` static pages), compilation, strict release smoke, and staged-diff checks. The earlier staged-source candidates excluded local untracked duplicates; publication used exact merged-source artifacts with the verified hashes above.
 
 `2026-08-01`
 
