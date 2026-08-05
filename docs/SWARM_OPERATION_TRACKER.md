@@ -21,6 +21,14 @@ Primary mission brief:
 - Lane progress and release tracker: `docs/ZMEM_PROGRESS_TRACKER.md`
 - Lane logs: `docs/CONTINUOUS_BUILD/`
 
+Coordinator update `2026-08-05` (explicit consolidation review loop):
+
+- Broad recurring swarms remain paused. The isolated `codex/consolidation-review-loop` candidate starts from merged `main` at `d4c2c15` and closes the previously tracked inspect/admit/discard boundary.
+- `inspect` independently recomputes one private summary from current receipt-verified source memory; `admit` creates one deterministic canonical memory at the weakest source trust/authority ceilings; `discard` records a terminal decision without canonical state or evidence deletion.
+- The SQLite event chain is the terminal decision ledger. Canonical write, lineage-bound receipt, and admission event are atomic; concurrent exact replay produces one memory and one decision event.
+- Dedicated adversarial review tests pass `16/16`; consolidation passes `117/117`, the combined consolidation/store gate passes `411/411`, and adjacent proof, policy, and runner suites pass. Independent re-review cleared all four reproduced integrity findings. Full local acceptance passes `1,370` tests with two expected optional skips, eval `11/11`, both public builds, strict release smoke, and a clean staged-source `0.1.9` wheel install. Remote CI and an exact merged-commit package rebuild remain required before publication.
+- L4 advances from `60%` to `75%`. The next L4 work is reviewed live day/week/profile rollups; no scheduler should start before those rollups remain reversible and idempotent.
+
 Coordinator update `2026-08-01` (review-gated live consolidation):
 
 - PR `#14` merged the verified read-only preview at `5e4729bf662f4069866fe3a402a6543d60b90bf7`; all seven CI checks passed. Broad recurring swarms remain paused.

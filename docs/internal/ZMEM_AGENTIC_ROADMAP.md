@@ -273,21 +273,22 @@ Primary inputs:
 
 Current evidence:
 
-- Deterministic fixtures, append-only job lifecycle, source-child ids, duplicate suppression, and reversible summary payloads exist.
+- Deterministic fixtures, append-only jobs, verified live-source discovery, private materialization, independent source-backed inspection, terminal admit/discard decisions, lineage-bound canonical writes, duplicate suppression, and reversible summary payloads exist.
 
 Next queue:
 
-- Source consolidation candidates from the live store.
-- Add the runtime summary writer and a read-only status/report surface.
+- Extend the live path from session summaries to reviewed day/week/profile candidates without bypassing lower-level audit gates.
+- Design an opt-in scheduler only after the multi-level live rollup remains reversible and idempotent under concurrent runs.
+- Add external Treeship anchoring for retained review decisions without moving the local commit boundary into an external dependency.
 - Keep summaries reversible and linked to source children; consolidation must not mask weak retrieval.
 
 Fast checks:
 
-- `python3 -m unittest tests.test_consolidation -q`
+- `python3 -m unittest tests.test_consolidation tests.test_consolidation_live tests.test_consolidation_materialize tests.test_consolidation_review -q`
 
 Final evidence gate:
 
-- Consolidation creates reversible, auditable summaries without requiring hosted LLMs.
+- Consolidation creates reversible, auditable summaries and admits only an explicitly confirmed, source-ceiling-bound result without requiring hosted LLMs.
 
 Blocked conditions:
 

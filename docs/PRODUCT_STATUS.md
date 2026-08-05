@@ -8,7 +8,7 @@ Current published release: `v0.1.8` at `https://github.com/zerkerlabs/zmem/relea
 
 The release adds a digest-bound `zerker.memory_context.v1` artifact, scheduled-agent cold-start continuity, typed failure memory, and opt-in local dense/FTS retrieval. Inject receipts commit to the admitted, withheld, and budget-dropped context plus the policy and memory roots behind the decision. Scheduled runs restore, audit the wall-clock gap, expose stale or unknown state, execute, checkpoint, and prove the handoff. Dense candidates remain governed by the same policy and receipt boundary.
 
-Current `main` adds read-only memory-health inspection, reviewable lifecycle maintenance, and verified live consolidation source discovery. The next isolated candidate completes the review step: one exact preview confirmation and candidate can be materialized into private reversible ledgers under a locked source snapshot, while canonical memory, retrieval, trust, and authority remain unchanged.
+Current `main` adds read-only memory-health inspection, reviewable lifecycle maintenance, verified live consolidation source discovery, and private reversible materialization. The isolated `v0.1.9` candidate completes that review loop with independent live-source inspection plus explicit admit/discard decisions. Only admission creates canonical memory, at exactly the weakest source trust and authority ceilings, with lineage-bound write evidence and one terminal Merkle event.
 
 It is ready for:
 
@@ -33,7 +33,7 @@ Product signal note: the current wedge is validated by builder demand for local,
 ## Not Built Yet, In Priority Order
 
 1. Handoff ownership/lease metadata plus a provenance-preserving dry-run import preview.
-2. UX for inspecting, comparing, and explicitly admitting or discarding quarantined consolidation summaries; current materialization never creates canonical memory.
+2. Reviewed live day/week/profile consolidation rollups before any periodic scheduler is considered.
 3. Efficiency tuning for the opt-in local dense/FTS candidate. Full local LoCoMo and LongMemEval comparisons completed with 347 and 91 gains, zero losses, and materially higher token and latency cost.
 4. Broader lifecycle maintenance for revalidation deadlines, decay, retention tombstones, and failed-claim reopen conditions. The first explicit-expiry transition is implemented in the post-release candidate.
 5. True bi-temporal graph storage and richer temporal filters when a concrete consumer requires them. Current contradiction-driven withholding and abstention are already receipt-visible.
@@ -46,6 +46,7 @@ Product signal note: the current wedge is validated by builder demand for local,
 
 - CLI.
 - Read-only `zmem audit health` JSON and terminal summaries for observable memory-state findings, with no semantic-truth claim.
+- Review-gated consolidation with verified source preview, private deterministic materialization, live recomputation, and explicit ceiling-bound admit/discard decisions. CLI actor ids are asserted rather than authenticated, and Treeship anchoring remains separate.
 - Post-release candidate: `zmem maintain preview`, `apply`, and `verify` for one state-bound, non-cascading, receipt-backed explicit-expiry transition.
 - Current candidate: `zmem consolidation preview`, `materialize`, and `audit` with exact-scope source coverage, receipt and row-coherence checks, artifact-bound operator confirmation, private reversible ledgers, interruption recovery, and no canonical-memory write.
 - Deterministic adaptive retrieval with receipt-visible routing, packing, semantic rescue, conservative regular-inflection evidence, bounded completion support, and exact-event-head transcript-neighbor support.

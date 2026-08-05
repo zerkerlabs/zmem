@@ -2,7 +2,7 @@
 
 All notable Zerker Memory alpha changes are summarized here.
 
-## Unreleased
+## 0.1.9 - 2026-08-05
 
 ### Review-Gated Live Consolidation
 
@@ -15,6 +15,11 @@ All notable Zerker Memory alpha changes are summarized here.
 - Keeps every materialized summary quarantined at trust `0` and authority `none`, reversible, non-blocking, and below the weakest source ceilings. No canonical memory is written, retrieval is unchanged, and the compact result excludes source and summary text.
 - Serializes both job and summary ledgers, makes exact replay idempotent, and repairs verified append interruptions. Abrupt trailing fragments use newline commit markers and leave a durable, hash-bound local recovery receipt before materialization continues. Custom ledgers and result paths cannot alias the database or use a symlinked final destination.
 - Added `zmem consolidation audit` with content-commitment, preview, admission, review, job-history, duplicate-summary, orphan-summary, and incomplete-transition checks. A changed summary cannot pass by merely recomputing its own digest.
+- Added `zmem consolidation inspect` to list the content-free review queue or produce one private `zerker.consolidation_inspection.v1` artifact. Inspection audits the ledgers, verifies current source receipt heads, and independently recomputes the deterministic summary from live source text.
+- Added explicit `zmem consolidation admit` and `discard` decisions. Admission is the only canonical write in the flow, uses exactly the weakest source trust and authority ceilings, and records the source ids as parents. Discard writes no canonical memory and deletes no evidence.
+- Records admission and discard as terminal, mutually exclusive events in the SQLite Merkle chain. Exact replay is idempotent; stale source, summary, audit, target, database, or confirmation bindings fail before mutation.
+- New write receipts bind exact parents, labels, and their digests into both the source event and Treeship statement. Receipt-chain verification rejects out-of-band lineage edits while older receipts retain their prior compatibility contract.
+- Keeps the proof boundary explicit: CLI actor ids are asserted metadata, Treeship anchoring is separate from the local review transaction, and neither local nor external proof establishes semantic truth.
 
 ### Reviewable Memory Maintenance
 

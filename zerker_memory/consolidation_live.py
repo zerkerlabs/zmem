@@ -68,7 +68,7 @@ def build_live_consolidation_preview(
         rows = store.conn.execute(
             """
             SELECT id, type, content, scope, source_kind, trust, authority, status,
-                   created_at, updated_at, content_hash
+                   parents_json, labels_json, created_at, updated_at, content_hash
             FROM memories
             WHERE scope = ?
             ORDER BY created_at ASC, id ASC
@@ -125,7 +125,7 @@ def build_live_consolidation_preview(
             try:
                 row_receipt_mismatch_fields = (
                     _row_receipt_mismatch_fields(row, receipts)
-                    if receipts and verification["ok"]
+                    if receipts
                     else []
                 )
             except (KeyError, TypeError, ValueError) as exc:
@@ -468,6 +468,19 @@ def _row_receipt_mismatch_fields(row: Mapping[str, Any], receipts: list[dict[str
         mismatches.append("status")
     if row["authority"] != expected_authority:
         mismatches.append("authority")
+    for row_field, receipt_field in (("parents_json", "parents"), ("labels_json", "labels")):
+        if receipt_field not in initial_object:
+            continue
+        try:
+            row_value = json.loads(str(row[row_field]))
+        except (json.JSONDecodeError, TypeError):
+            mismatches.append(receipt_field)
+            continue
+        if row_value != initial_object.get(receipt_field):
+            mismatches.append(receipt_field)
+        digest_field = f"{receipt_field}_digest"
+        if initial_object.get(digest_field) != f"sha256:{sha256_text(stable_json(row_value))}":
+            mismatches.append(digest_field)
     return sorted(set(mismatches))
 
 

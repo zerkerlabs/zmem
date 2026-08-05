@@ -161,8 +161,16 @@ The live CLI now connects the fixture contracts to one exact verified source set
 - Local writers serialize, exact replay appends nothing, and verified pending or summary-only interruption states resume to one completed transition.
 - `zmem consolidation audit` fails on pending or malformed job history, missing/orphan/duplicate summaries, changed content, or broken source, preview, review, and admission bindings.
 
-The summary ledger contains local summary text and is private. The result artifact does not. No canonical memory row is created, so materialization does not change retrieval or make the summary trusted, authoritative, or semantically true.
+The summary ledger contains local summary text and is private. The materialization result artifact does not. Materialization creates no canonical memory row, so it does not change retrieval or make the summary trusted, authoritative, or semantically true.
+
+The explicit review loop now continues from those ledgers:
+
+- `zmem consolidation inspect` lists the queue without summary text or produces one private confirmation-bound inspection.
+- Inspection reruns ledger audit, verifies current source receipt heads, and independently recomputes the deterministic summary from live sources.
+- `zmem consolidation admit` creates one deterministic semantic memory at exactly the weakest source trust and authority ceilings. The source ids become parents, and parents plus labels are committed into the write receipt.
+- `zmem consolidation discard` creates no canonical memory and deletes no evidence.
+- Admission and discard are terminal, mutually exclusive events in the SQLite Merkle chain. Replays are idempotent.
 
 ## Current Boundary
 
-The L4 surface now reaches from verified live-source discovery through one explicitly confirmed, reversible private materialization and ledger audit. It still does not admit summaries into canonical memory, schedule periodic consolidation, or claim semantic fidelity. The next implementation slice is operator UX to inspect and explicitly admit or discard quarantined summaries before any scheduler or higher-level live rollup is considered.
+The L4 surface now reaches from verified live-source discovery through private materialization, independent inspection, and explicit admission or discard. It still does not schedule periodic consolidation, run live day/week/profile rollups, authenticate CLI actor ids, automatically anchor review decisions to Treeship, or claim semantic fidelity. Those remain separate boundaries rather than hidden side effects of review.

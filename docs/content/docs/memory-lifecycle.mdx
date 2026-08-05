@@ -26,6 +26,8 @@ The local console makes memory status visible: proposed, quarantined, active, ex
 
 An explicit `expires_at` boundary does not silently delete a memory. [Memory Maintenance](/docs/memory-maintenance) can move one eligible active memory to the non-cascading `expired` state and produce a mutation receipt.
 
+A private consolidation summary can be discarded only before admission. Once admitted, it is canonical memory with source parents and a write receipt; remove it through the normal `zmem revoke <memory-id>` lifecycle so descendants and history remain visible.
+
 ## Snapshots
 
 Export a portable memory-state snapshot:

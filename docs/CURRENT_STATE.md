@@ -3,6 +3,17 @@
 This is the short orchestration dashboard for Zerker Memory. Every autonomous build run should update this file after it updates `docs/BUILD_LOG.md`.
 
 ## Release Coordination
+`2026-08-05`
+
+- Started isolated `codex/consolidation-review-loop` from merged `main` at `d4c2c15` for the final review boundary after private consolidation materialization.
+- Added `zmem consolidation inspect`, `admit`, and `discard`. Inspection audits the private ledgers, verifies current source receipt heads, and independently recomputes summary text before producing an exact confirmation-bound artifact.
+- Admission is the only canonical-memory write in the flow. It creates one deterministic active semantic memory, keeps source ids as parents, and uses exactly the weakest source trust and authority ceilings. Discard creates no canonical memory and deletes no evidence.
+- Admission and discard are terminal, mutually exclusive SQLite Merkle events. The canonical write, lineage-bound receipt, and admission event commit in one transaction; exact replay is idempotent and result-file failure has an explicit committed-state recovery path.
+- New writes commit parents, labels, and their digests into the event and receipt statement. Receipt-chain verification now detects out-of-band lineage edits while older receipts retain their prior compatibility path.
+- The claim boundary remains explicit: operator ids are asserted metadata, Treeship anchoring is separate, local hashes do not resist coordinated replacement of every local artifact, and no proof establishes semantic truth.
+- Dedicated review coverage passes `16/16`; consolidation coverage passes `117/117`; the combined consolidation/store gate passes `411/411`, Treeship/trust `58/58`, and runner/policy `183/183` pass. Independent re-review reproduced and cleared the event/receipt-head, trust-ceiling, canonical-content, and unreceipted-source integrity findings.
+- Full local acceptance passes `1,370` tests with two expected optional skips, eval `11/11`, site lint/build, docs typecheck/build (`17` static pages), compilation, strict release smoke, and staged-diff checks. A clean staged-source wheel reports `zmem 0.1.9`, imports the review module, exposes inspect/admit/discard, excludes local untracked duplicates, and has candidate SHA-256 `6783d971...`; the source distribution candidate is `94d598b2...`. Remote CI, merge, and exact merged-commit artifact rebuilding remain required before a tag or deployment.
+
 `2026-08-01`
 
 - Merged read-only live consolidation preview through PR `#14` at `5e4729bf662f4069866fe3a402a6543d60b90bf7`; all seven CI checks passed.

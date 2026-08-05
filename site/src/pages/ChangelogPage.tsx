@@ -2,8 +2,8 @@ import Card from '@/components/Card';
 
 const updates = [
   {
-    title: 'Next: review-gated consolidation',
-    detail: 'Inspect a receipt-verified source set, confirm one candidate, materialize a reversible quarantined summary, and audit its exact source and content commitments without changing canonical agent memory.',
+    title: 'v0.1.9 review-gated consolidation',
+    detail: 'Build a private deterministic summary, recompute it from current receipt-verified sources, then explicitly admit it at the weakest source trust and authority ceilings or discard it without deleting evidence.',
   },
   {
     title: 'Reviewable lifecycle maintenance',
