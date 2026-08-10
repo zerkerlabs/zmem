@@ -69,6 +69,17 @@ ZMem is a product with multiple interfaces:
 - Python package: embed the local memory store and policy gate.
 - Local console: review, audit, and explain memory.
 
+## Zerker Rooms Integration Preview
+
+The current Rooms candidate adds a tenant-local HTTP service for governed shared memory. It keeps one isolated SQLite store per room, separates room-shared from member-private memory, persists accepted state across restarts, quarantines agent proposals, and returns explicit `ready`, `partial`, `empty`, `blocked`, `abstained`, or `budget_exhausted` context states.
+
+```bash
+export ZMEM_SERVICE_TOKEN="$(openssl rand -hex 32)"
+zmem --db .zerker/control.sqlite serve --tenant-id tnt_local --storage-root .zerker/rooms
+```
+
+See [Zerker Rooms](docs/content/docs/rooms.mdx) for the local adapter and [the internal Gateway contract](docs/internal/ZERKER_ROOMS_MEMORY_CONTRACT.md) for the exact ownership, API, security, and handoff decisions. The service ships as an integration preview in `v0.1.10`; the existing local CLI, MCP, and SQLite product remain the default.
+
 The compatibility command `zerker` is still available, but launch docs use `zerker-memory` and `zmem` so the product stands on its own.
 
 ## Who It Is For

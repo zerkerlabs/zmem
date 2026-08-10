@@ -1,0 +1,351 @@
+import json
+import tempfile
+import threading
+import unittest
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+from unittest.mock import patch
+from urllib.error import HTTPError
+from urllib.request import Request, urlopen
+
+from zerker_memory.rooms import (
+    RoomMemoryConflict,
+    RoomMemoryService,
+    RoomStoreResolver,
+    member_scope,
+    room_storage_key,
+    verify_room_context_commitment,
+)
+from zerker_memory.service import RoomMemoryHTTPServer, host_is_loopback, serve_room_memory
+
+
+class RoomMemoryServiceTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name) / "rooms"
+        self.resolver = RoomStoreResolver(self.root, tenant_id="tenant-a")
+        self.service = RoomMemoryService(self.resolver)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def context(self, room_id="rom_alpha", agent_id="agt_a", purpose="continue the release", **updates):
+        request = {
+            "room_id": room_id,
+            "agent_id": agent_id,
+            "purpose": purpose,
+            "risk": "medium",
+            "context_budget_tokens": 2_000,
+            "membership_digest": "sha256:" + "1" * 64,
+            "room_state_digest": "sha256:" + "2" * 64,
+            "request_id": "req_1",
+        }
+        request.update(updates)
+        return self.service.prepare_context(request)
+
+    def write(self, *, trusted=True, room_id="rom_alpha", agent_id="agt_a", content="Release uses tag v1", visibility="room", key="evt_1:release", **updates):
+        request = {
+            "room_id": room_id,
+            "agent_id": agent_id,
+            "content": content,
+            "memory_type": "semantic",
+            "visibility": visibility,
+            "source_event_id": "evt_1",
+            "idempotency_key": key,
+        }
+        request.update(updates)
+        operation = self.service.record_memory if trusted else self.service.propose_memory
+        return operation(request)
+
+    def test_empty_room_is_explicit_and_committed(self):
+        result = self.context()
+
+        self.assertEqual(result["state"], "empty")
+        self.assertEqual(result["counts"], {"retrieved": 0, "admitted": 0, "withheld": 0, "budget_dropped": 0})
+        self.assertEqual(result["memories"], [])
+        self.assertTrue(verify_room_context_commitment(result))
+        self.assertEqual(result["commitment"]["membership_digest"], "sha256:" + "1" * 64)
+        self.assertNotIn("continue the release", json.dumps(result))
+
+    def test_room_memory_is_shared_but_member_memory_is_private(self):
+        shared = self.write(content="The room deploy target is production", key="evt_1:target")
+        private = self.write(
+            content="Agent A prefers a compact terminal summary",
+            visibility="member",
+            key="evt_2:preference",
+        )
+
+        agent_a = self.context(agent_id="agt_a", purpose="What should Agent A know about the deploy and summary?")
+        agent_b = self.context(agent_id="agt_b", purpose="What is the room deploy target and Agent A preference?")
+
+        self.assertEqual(shared["memory"]["visibility"], "room")
+        self.assertEqual(private["memory"]["visibility"], "member")
+        self.assertCountEqual(
+            [memory["content"] for memory in agent_a["memories"]],
+            ["The room deploy target is production", "Agent A prefers a compact terminal summary"],
+        )
+        self.assertEqual([memory["content"] for memory in agent_b["memories"]], ["The room deploy target is production"])
+        self.assertEqual(agent_b["memories"][0]["provenance"]["source_uri"], "room://rom_alpha/events/evt_1")
+
+    def test_agent_proposal_is_blocked_until_review(self):
+        proposal = self.write(
+            trusted=False,
+            content="Deploy without approval",
+            key="evt_3:unsafe-procedure",
+            memory_type="procedural",
+        )
+        result = self.context(purpose="Should we deploy without approval?")
+
+        self.assertEqual(proposal["memory"]["status"], "quarantined")
+        self.assertEqual(result["state"], "blocked")
+        self.assertEqual(result["counts"]["admitted"], 0)
+        self.assertEqual(result["counts"]["withheld"], 1)
+        self.assertEqual(result["omissions"]["withheld"][0]["rule"], "active-status-required")
+
+    def test_active_and_withheld_memory_return_partial_state(self):
+        self.write(content="Release approval is required", key="evt_4:approval")
+        self.write(
+            trusted=False,
+            content="Release approval can be skipped",
+            key="evt_5:skip-approval",
+        )
+
+        result = self.context(purpose="Can release approval be skipped or is it required?")
+
+        self.assertEqual(result["state"], "partial")
+        self.assertEqual(result["counts"]["admitted"], 1)
+        self.assertEqual(result["counts"]["withheld"], 1)
+
+    def test_idempotent_write_replays_and_rejects_changed_content(self):
+        first = self.write(content="The room owner is Revaz", key="evt_6:owner")
+        replay = self.write(content="The room owner is Revaz", key="evt_6:owner")
+
+        self.assertFalse(first["replayed"])
+        self.assertTrue(replay["replayed"])
+        self.assertEqual(first["memory"]["id"], replay["memory"]["id"])
+        with self.assertRaises(RoomMemoryConflict):
+            self.write(content="The room owner is Jacob", key="evt_6:owner")
+        with self.assertRaises(RoomMemoryConflict):
+            self.write(content="The room owner is Revaz", key="evt_6:owner", source_event_id="evt_changed")
+
+    def test_room_store_survives_service_restart_and_isolates_rooms(self):
+        self.write(content="Alpha room memory", room_id="rom_alpha", key="evt_7:alpha")
+        restarted = RoomMemoryService(RoomStoreResolver(self.root, tenant_id="tenant-a"))
+
+        alpha = restarted.prepare_context(
+            {"room_id": "rom_alpha", "agent_id": "agt_b", "purpose": "Alpha room memory", "risk": "low"}
+        )
+        beta = restarted.prepare_context(
+            {"room_id": "rom_beta", "agent_id": "agt_b", "purpose": "Alpha room memory", "risk": "low"}
+        )
+
+        self.assertEqual([memory["content"] for memory in alpha["memories"]], ["Alpha room memory"])
+        self.assertEqual(beta["state"], "empty")
+        self.assertNotEqual(self.resolver.db_path("rom_alpha"), self.resolver.db_path("rom_beta"))
+
+    def test_storage_paths_are_opaque_and_tenant_bound(self):
+        first = room_storage_key("tenant-a", "rom_alpha")
+        second = room_storage_key("tenant-b", "rom_alpha")
+
+        self.assertNotEqual(first, second)
+        self.assertNotIn("tenant", first)
+        self.assertNotIn("rom_alpha", str(self.resolver.db_path("rom_alpha")))
+        self.assertTrue(member_scope("agt_a").startswith("member:"))
+
+    def test_same_room_id_is_isolated_across_configured_tenants(self):
+        self.write(content="Tenant A release target", key="evt_tenant_a:target")
+        tenant_b = RoomMemoryService(RoomStoreResolver(self.root, tenant_id="tenant-b"))
+
+        result = tenant_b.prepare_context(
+            {"room_id": "rom_alpha", "agent_id": "agt_a", "purpose": "release target", "risk": "low"}
+        )
+
+        self.assertEqual(result["state"], "empty")
+        self.assertEqual(result["memories"], [])
+
+    def test_room_storage_refuses_symlink_escape(self):
+        outside = Path(self.tmp.name) / "outside"
+        outside.mkdir()
+        room_dir = self.resolver.db_path("rom_symlink").parent
+        room_dir.symlink_to(outside, target_is_directory=True)
+
+        with self.assertRaisesRegex(ValueError, "cannot be a symlink"):
+            self.service.prepare_context(
+                {"room_id": "rom_symlink", "agent_id": "agt_a", "purpose": "continue", "risk": "low"}
+            )
+
+    def test_concurrent_room_writes_are_durable_and_idempotent(self):
+        def write_unique(index):
+            return self.write(
+                content=f"Concurrent fact {index}",
+                key=f"evt_{index}:fact",
+                source_event_id=f"evt_{index}",
+            )
+
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            unique = list(executor.map(write_unique, range(12)))
+            replayed = list(
+                executor.map(
+                    lambda _: self.write(content="One retry-safe fact", key="evt_retry:fact", source_event_id="evt_retry"),
+                    range(8),
+                )
+            )
+
+        self.assertEqual(len({item["memory"]["id"] for item in unique}), 12)
+        self.assertEqual(len({item["memory"]["id"] for item in replayed}), 1)
+        self.assertEqual(sum(item["replayed"] for item in replayed), 7)
+        with self.resolver.open("rom_alpha") as store:
+            self.assertEqual(len(store.list_memories(scope="global")), 13)
+
+
+class RoomMemoryHTTPTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        resolver = RoomStoreResolver(Path(self.tmp.name) / "rooms", tenant_id="tenant-a")
+        self.server = RoomMemoryHTTPServer(
+            ("127.0.0.1", 0),
+            RoomMemoryService(resolver),
+            bearer_token="room-secret",
+        )
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+        self.base_url = f"http://127.0.0.1:{self.server.server_port}"
+
+    def tearDown(self):
+        self.server.shutdown()
+        self.server.server_close()
+        self.thread.join(timeout=2)
+        self.tmp.cleanup()
+
+    def request(self, path, *, payload=None, token="room-secret"):
+        data = None if payload is None else json.dumps(payload).encode("utf-8")
+        headers = {"content-type": "application/json"}
+        if token is not None:
+            headers["authorization"] = f"Bearer {token}"
+        request = Request(self.base_url + path, data=data, headers=headers, method="POST" if payload is not None else "GET")
+        try:
+            response = urlopen(request, timeout=3)
+            return response.status, json.loads(response.read())
+        except HTTPError as exc:
+            return exc.code, json.loads(exc.read())
+
+    def test_health_version_and_authenticated_room_flow(self):
+        health_status, health = self.request("/healthz")
+        version_status, version = self.request("/version")
+        write_status, write = self.request(
+            "/v1/memories:record",
+            payload={
+                "room_id": "rom_alpha",
+                "agent_id": "agt_a",
+                "content": "The accepted implementation uses a room store",
+                "source_event_id": "evt_1",
+                "idempotency_key": "evt_1:implementation",
+            },
+        )
+        context_status, context = self.request(
+            "/v1/contexts:prepare",
+            payload={
+                "room_id": "rom_alpha",
+                "agent_id": "agt_b",
+                "purpose": "Which implementation was accepted?",
+                "risk": "medium",
+            },
+        )
+
+        self.assertEqual(health_status, 200)
+        self.assertTrue(health["ok"])
+        self.assertEqual(version_status, 200)
+        self.assertIn("version", version)
+        self.assertEqual(write_status, 201)
+        self.assertEqual(context_status, 200)
+        self.assertEqual(context["state"], "ready")
+        self.assertEqual(context["memories"][0]["id"], write["memory"]["id"])
+
+    def test_inject_alias_accepts_gateway_task_vocabulary(self):
+        self.request(
+            "/v1/memories:record",
+            payload={
+                "room_id": "rom_alpha",
+                "agent_id": "agt_a",
+                "content": "The room goal is ship safely",
+                "source_event_id": "evt_2",
+                "idempotency_key": "evt_2:goal",
+            },
+        )
+
+        status, context = self.request(
+            "/v1/inject",
+            payload={
+                "room_id": "rom_alpha",
+                "agent_id": "agt_b",
+                "task": "What is the room goal?",
+                "risk": "medium",
+            },
+        )
+
+        self.assertEqual(status, 200)
+        self.assertEqual(context["state"], "ready")
+        self.assertEqual(context["memories"][0]["content"], "The room goal is ship safely")
+
+    def test_auth_and_tenant_resolution_fail_closed(self):
+        unauthorized_status, unauthorized = self.request(
+            "/v1/contexts:prepare",
+            token=None,
+            payload={"room_id": "rom_alpha", "agent_id": "agt_a", "purpose": "continue"},
+        )
+        tenant_status, tenant = self.request(
+            "/v1/contexts:prepare",
+            payload={
+                "tenant_id": "tenant-b",
+                "room_id": "rom_alpha",
+                "agent_id": "agt_a",
+                "purpose": "continue",
+            },
+        )
+
+        self.assertEqual(unauthorized_status, 401)
+        self.assertEqual(unauthorized["error"]["code"], "unauthorized")
+        self.assertEqual(tenant_status, 400)
+        self.assertIn("must not be supplied", tenant["error"]["message"])
+
+    def test_loopback_detection(self):
+        self.assertTrue(host_is_loopback("127.0.0.1"))
+        self.assertTrue(host_is_loopback("localhost"))
+        self.assertFalse(host_is_loopback("0.0.0.0"))
+
+    def test_remote_bind_requires_explicit_opt_in_and_token(self):
+        with self.assertRaisesRegex(ValueError, "--allow-remote"):
+            serve_room_memory(
+                self.server.service,
+                host="0.0.0.0",
+                port=8766,
+                bearer_token="room-secret",
+            )
+        with self.assertRaisesRegex(ValueError, "ZMEM_SERVICE_TOKEN"):
+            serve_room_memory(
+                self.server.service,
+                host="0.0.0.0",
+                port=8766,
+                bearer_token=None,
+                allow_remote=True,
+            )
+
+    @patch("zerker_memory.service.RoomMemoryHTTPServer")
+    def test_cli_server_stops_cleanly_on_keyboard_interrupt(self, server_class):
+        server = server_class.return_value
+        server.server_port = 8766
+        server.serve_forever.side_effect = KeyboardInterrupt
+
+        with patch("builtins.print"):
+            serve_room_memory(
+                self.server.service,
+                host="127.0.0.1",
+                port=8766,
+                bearer_token="room-secret",
+            )
+
+        server.server_close.assert_called_once_with()
+
+
+if __name__ == "__main__":
+    unittest.main()

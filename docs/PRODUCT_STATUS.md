@@ -17,6 +17,7 @@ It is ready for:
 - GitHub open-source use as an alpha,
 - receipt-backed local LoCoMo, LongMemEval, and BEAM development evidence,
 - ActiveGraph 1.9+ pack experiments, a runnable two-run host, and compact causal traces.
+- tenant-local Zerker Rooms integration experiments with durable shared/private room memory and explicit context state.
 
 It is not yet:
 
@@ -25,6 +26,7 @@ It is not yet:
 - a semantic-truth oracle; receipts prove integrity, provenance, and influence rather than truth,
 - a full vector/graph memory replacement,
 - a fully polished hosted review workflow.
+- a deployed zerker.ai Rooms backend; the ZMem service candidate exists, but the Gateway Go client and Rooms persistence still need to land.
 
 Product signal note: the current wedge is validated by builder demand for local, inspectable, structured, curated, and verifiable agent memory. See `docs/MOLTBOOK_ZMEM_PRODUCT_SIGNAL.md`.
 
@@ -38,11 +40,12 @@ Product signal note: the current wedge is validated by builder demand for local,
 6. Governed tool and interface-contract trust records linked to Treeship canary proof without moving install/run authority into ZMem.
 7. A server-controlled MCP dense-retrieval mode after the CLI/library candidate is accepted; existing MCP tool schemas intentionally retain stable FTS behavior.
 8. An official model-judged BEAM submission path plus broader multi-conversation 1M and 10M coverage; the first isolated runs are complete.
-9. Shared memory and enterprise hardening: team-scoped stores, conflict policy, permissions, collective receipts, tenant isolation, customer-managed keys, policy packs, SSO, audit retention, and VPC/on-prem guides.
+9. Graduate the tenant-local Rooms adapter into production: Gateway Go client, durable Rooms state, load/timeout gates, separately authorized remote review, hosted tenant routing, collective receipts, customer-managed keys, SSO, audit retention, and VPC/on-prem guides.
 
 ## Functional Today
 
 - CLI.
+- `v0.1.10` Zerker Rooms integration preview with room-scoped shared/private memory, authenticated context/record/propose endpoints, explicit withheld/abstention state, retry-safe event writes, and hard tenant-room storage isolation.
 - Read-only `zmem audit health` JSON and terminal summaries for observable memory-state findings, with no semantic-truth claim.
 - Review-gated consolidation through `preview`, `materialize`, `audit`, `inspect`, `admit`, and `discard`, with verified source coverage, private deterministic materialization, live recomputation, interruption recovery, and explicit ceiling-bound terminal decisions. CLI actor ids are asserted rather than authenticated, and Treeship anchoring remains separate.
 - `zmem maintain preview`, `apply`, and `verify` for one state-bound, non-cascading, receipt-backed explicit-expiry transition.

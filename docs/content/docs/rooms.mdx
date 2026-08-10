@@ -1,0 +1,80 @@
+---
+title: Zerker Rooms
+description: Use ZMem as governed shared memory for agents collaborating inside a Zerker Gateway Room.
+---
+
+ZMem's Rooms adapter is an integration preview for Zerker Gateway. It gives each room durable shared memory, keeps member-private memory isolated, and returns an explicit context state instead of treating every successful read as safe to use.
+
+## Start The Local Service
+
+Run one tenant-local ZMem process beside Rooms:
+
+```bash
+export ZMEM_SERVICE_TOKEN="$(openssl rand -hex 32)"
+
+zmem \
+  --db .zerker/control.sqlite \
+  --policy .zerker/policy.json \
+  serve \
+  --tenant-id tnt_local \
+  --storage-root .zerker/rooms
+```
+
+The default bind is `127.0.0.1:8766`. Tenant identity comes from service configuration, not request JSON. Room database paths are derived from opaque tenant-and-room hashes.
+
+## Prepare Agent Context
+
+```bash
+curl -fsS http://127.0.0.1:8766/v1/contexts:prepare \
+  -H "Authorization: Bearer $ZMEM_SERVICE_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "room_id": "rom_alpha",
+    "agent_id": "agt_cursor",
+    "purpose": "Continue the room release",
+    "risk": "medium",
+    "context_budget_tokens": 2000
+  }'
+```
+
+The response preserves retrieval order and distinguishes:
+
+- `ready`: context is admitted;
+- `partial`: admitted context exists, with explicit omissions;
+- `empty`: the room has no relevant prior memory;
+- `blocked`: memory existed but policy admitted none;
+- `abstained`: conflicting evidence prevented a safe answer;
+- `budget_exhausted`: relevant memory did not fit the approved budget.
+
+It also includes selected memory provenance, withheld and budget-dropped counts, packing use, and a digest binding the room, agent, purpose, policy, memory roots, and exact selected IDs.
+
+`POST /v1/inject` is an equivalent compatibility route and accepts `task` as an alias for `purpose`.
+
+## Write Shared Memory
+
+The trusted Rooms service records accepted state:
+
+```bash
+curl -fsS http://127.0.0.1:8766/v1/memories:record \
+  -H "Authorization: Bearer $ZMEM_SERVICE_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "room_id": "rom_alpha",
+    "agent_id": "agt_cursor",
+    "content": "Release approval is required.",
+    "memory_type": "procedural",
+    "visibility": "room",
+    "source_event_id": "evt_policy_1",
+    "idempotency_key": "evt_policy_1:procedure"
+  }'
+```
+
+Agent-authored claims use `/v1/memories:propose` instead. They begin quarantined and cannot shape another agent's context until reviewed. `visibility: "member"` keeps a memory private to one member inside that room.
+
+Every write is bound to the Rooms source event and is retry-safe. Reusing an idempotency key for different content fails rather than silently changing history.
+
+## Integration Boundary
+
+Rooms owns membership, goals, messages, and the event log. ZMem owns memory state, review, retrieval, context packing, and memory receipts. Treeship can attest selected room transitions asynchronously; it is not required for local recall and does not become the primary room store.
+
+The initial adapter is deliberately tenant-local. A hosted shared service requires a separate Gateway authentication, tenant-routing, and isolation review.

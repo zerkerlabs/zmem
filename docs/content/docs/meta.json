@@ -5,6 +5,7 @@
     "install",
     "agents",
     "builders",
+    "rooms",
     "memory-lifecycle",
     "memory-health",
     "memory-maintenance",

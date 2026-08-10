@@ -1,6 +1,6 @@
 # Shared And Swarm Memory
 
-Zerker Memory is local-first, but it can already support shared-memory workflows when agents share a database or exchange verified snapshots.
+Zerker Memory is local-first, but it can support shared-memory workflows when agents share a database, exchange verified snapshots, or collaborate through the Zerker Rooms integration preview.
 
 The shortest handoff path now is:
 
@@ -82,6 +82,25 @@ Still needed:
 - team/VPC sync,
 - signed Treeship publish by default,
 - hosted review workflow.
+
+## Zerker Rooms Integration Preview
+
+The Rooms candidate adds a narrow HTTP adapter around the existing ZMem store and policy gate:
+
+- one opaque SQLite store per tenant-and-room pair;
+- room-shared and member-private visibility;
+- policy-ranked context preparation with explicit withheld and abstention state;
+- retry-safe accepted-state records and quarantined agent proposals;
+- room-event provenance and a commitment over the exact context returned.
+
+Start it locally with:
+
+```bash
+export ZMEM_SERVICE_TOKEN="$(openssl rand -hex 32)"
+zmem --db .zerker/control.sqlite serve --tenant-id tnt_local --storage-root .zerker/rooms
+```
+
+See [docs/content/docs/rooms.mdx](content/docs/rooms.mdx) for usage and [docs/internal/ZERKER_ROOMS_MEMORY_CONTRACT.md](internal/ZERKER_ROOMS_MEMORY_CONTRACT.md) for the Gateway contract. The first deployment is a tenant-local sidecar; it is not yet a general hosted multi-tenant ZMem service.
 
 ## Recommended Swarm Pattern
 

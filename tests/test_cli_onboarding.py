@@ -138,6 +138,16 @@ class CliOnboardingTest(unittest.TestCase):
         self.assertTrue(inject.summary_only)
         self.assertTrue(why.summary)
 
+    def test_room_service_parser_uses_local_secure_defaults(self):
+        args = build_parser().parse_args(["serve", "--tenant-id", "tenant-a"])
+
+        self.assertEqual(args.host, "127.0.0.1")
+        self.assertEqual(args.port, 8766)
+        self.assertEqual(args.tenant_id, "tenant-a")
+        self.assertEqual(args.token_env, "ZMEM_SERVICE_TOKEN")
+        self.assertFalse(args.allow_remote)
+        self.assertEqual(args.retrieval_mode, "fts")
+
     def test_compact_memory_summaries_are_bounded_and_explain_governance(self):
         receipt = {
             "action_id": "act_123",

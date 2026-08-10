@@ -178,6 +178,26 @@ zmem agent mcp-smoke --agent codex
 zmem mcp
 ```
 
+### Zerker Rooms Integration Preview
+
+What it does:
+
+- Runs a tenant-local HTTP service beside Zerker Gateway Rooms.
+- Keeps each room in an opaque isolated SQLite store.
+- Shares accepted room memory while keeping member-private memory private.
+- Returns ranked admitted memory plus explicit withheld, budget, and abstention state.
+- Separates trusted room-event records from quarantined agent proposals.
+- Makes retries idempotent and preserves the originating Rooms event in memory provenance.
+
+Try it:
+
+```bash
+export ZMEM_SERVICE_TOKEN="$(openssl rand -hex 32)"
+zmem --db .zerker/control.sqlite serve --tenant-id tnt_local --storage-root .zerker/rooms
+```
+
+Then follow [the Rooms guide](content/docs/rooms.mdx). The ZMem candidate is implemented; the Gateway Go client, Rooms event-store persistence, and hosted multi-tenant deployment remain separate integration work.
+
 ### Local Console
 
 What it does:
