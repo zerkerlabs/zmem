@@ -12,6 +12,7 @@ from zerker_memory.store import MemoryStore
 from zerker_memory.workspaces import (
     current_workspace,
     list_workspaces,
+    prune_missing_workspaces,
     register_workspace,
     use_workspace,
     workspace_source_report,
@@ -43,6 +44,45 @@ class WorkspaceRegistryTest(unittest.TestCase):
             switched = use_workspace(beta_result["workspace"]["id"], registry_path=registry_path)
             self.assertTrue(switched["ok"])
             self.assertEqual(switched["workspace"]["name"], "Beta")
+
+    def test_prune_missing_workspaces_previews_then_removes_without_touching_current(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            registry_path = tmp_path / "workspaces.json"
+            current_root = tmp_path / "current"
+            stale_root = tmp_path / "stale"
+            current_root.mkdir()
+            stale_root.mkdir()
+            current = register_workspace(name="Current", root=current_root, registry_path=registry_path)
+            stale = register_workspace(
+                name="Stale",
+                root=stale_root,
+                registry_path=registry_path,
+                make_current=False,
+            )
+            registry = json.loads(registry_path.read_text(encoding="utf-8"))
+            empty_root_id = "ws_empty_root"
+            registry["workspaces"][empty_root_id] = {
+                "id": empty_root_id,
+                "name": "Empty root",
+                "root": "",
+            }
+            registry_path.write_text(json.dumps(registry), encoding="utf-8")
+            stale_root.rmdir()
+
+            preview = prune_missing_workspaces(registry_path=registry_path)
+            self.assertFalse(preview["applied"])
+            self.assertEqual(
+                {item["id"] for item in preview["candidates"]},
+                {empty_root_id, stale["workspace"]["id"]},
+            )
+            self.assertEqual(len(list_workspaces(registry_path=registry_path)["items"]), 3)
+
+            applied = prune_missing_workspaces(registry_path=registry_path, apply=True)
+            self.assertEqual(applied["removed_count"], 2)
+            listed = list_workspaces(registry_path=registry_path)
+            self.assertEqual([item["id"] for item in listed["items"]], [current["workspace"]["id"]])
+            self.assertEqual(listed["current"], current["workspace"]["id"])
 
     def test_workspace_status_matches_current_db_path(self):
         with tempfile.TemporaryDirectory() as tmp:

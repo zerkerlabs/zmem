@@ -853,6 +853,12 @@ def repo_python_env(repo: Path) -> dict[str, str]:
     return env
 
 
+def release_script_env(executable_dir: Path) -> dict[str, str]:
+    env = os.environ.copy()
+    env["PATH"] = str(executable_dir) + os.pathsep + env.get("PATH", "")
+    return env
+
+
 def run_release_smoke_summary(repo: Path) -> int:
     python = sys.executable
     env = repo_python_env(repo)
@@ -1070,6 +1076,8 @@ def main(argv: list[str] | None = None) -> int:
         return run_release_smoke_summary(repo)
 
     root = Path(tempfile.mkdtemp(prefix="zmem-release-smoke-"))
+    previous_workspace_registry = os.environ.get("ZMEM_WORKSPACE_REGISTRY")
+    os.environ["ZMEM_WORKSPACE_REGISTRY"] = str(root / "state" / "workspaces.json")
     try:
         venv_dir = root / ".venv"
         work = root / "work"
@@ -1199,8 +1207,8 @@ def main(argv: list[str] | None = None) -> int:
             snippet = parse_json(run([str(zmem), "agent", "snippet", preset], cwd=work))
             if snippet["server"]["command"] != "zmem":
                 raise SystemExit(f"{preset} agent snippet missing zmem command")
-            if snippet["server"]["args"][-3:] != ["mcp", "--profile", "agent"]:
-                raise SystemExit(f"{preset} agent snippet missing safe agent-profile command tail")
+            if snippet["server"]["args"][-5:] != ["mcp", "--profile", "agent", "--agent-id", preset]:
+                raise SystemExit(f"{preset} agent snippet missing safe bound agent-profile command tail")
             run([str(zmem), "agent", "checklist", preset], cwd=work)
             if not checklist_path.exists():
                 raise SystemExit(f"{preset} agent checklist did not write artifact")
@@ -1416,15 +1424,17 @@ def main(argv: list[str] | None = None) -> int:
             run(
                 ["bash", str(repo / "scripts" / "launch_proof.sh")],
                 cwd=work,
-                env={"PATH": str(zmem.parent) + os.pathsep + os.environ.get("PATH", "")},
+                env=release_script_env(zmem.parent),
             )
         )
         if not launch_proof_script["ok"]:
             raise SystemExit("launch_proof.sh wrapper failed")
+        first_run_env = release_script_env(zmem.parent)
+        first_run_env["ZERKER_FIRST_RUN_ROOT"] = str(root / "first-run")
         first_run_output = run(
             ["bash", str(repo / "examples" / "first_run.sh")],
             cwd=work,
-            env={"PATH": str(zmem.parent) + os.pathsep + os.environ.get("PATH", "")},
+            env=first_run_env,
         )
         ensure_status_summary(first_run_output, source="examples/first_run.sh")
 
@@ -1466,6 +1476,10 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 0
     finally:
+        if previous_workspace_registry is None:
+            os.environ.pop("ZMEM_WORKSPACE_REGISTRY", None)
+        else:
+            os.environ["ZMEM_WORKSPACE_REGISTRY"] = previous_workspace_registry
         if args.keep:
             print(f"kept smoke directory: {root}")
         else:

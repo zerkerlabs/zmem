@@ -29,6 +29,7 @@ from .store import MemoryStore, default_db_path, default_policy_path
 from .workspaces import (
     current_workspace,
     list_workspaces,
+    prune_missing_workspaces,
     register_workspace,
     use_workspace,
     workspace_restore_continuity_path,
@@ -146,6 +147,25 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
     init.add_argument("--with-agent-prompt", action="store_true", help="Also write a starter agent prompt")
     init.add_argument("--with-mcp-config", action="store_true", help="Also write a starter MCP config")
     init.add_argument("--with-provider-config", action="store_true", help="Also write a starter provider config")
+
+    setup = sub.add_parser("setup", help="Initialize this workspace and connect selected agent clients")
+    setup.add_argument(
+        "agents",
+        nargs="*",
+        type=parse_agent_preset,
+        metavar="AGENT",
+        help="Agent clients to connect; when omitted, locally detected clients are used",
+    )
+    setup.add_argument(
+        "--force",
+        action="store_true",
+        help="Rebind an existing zerker-memory entry that points at another workspace",
+    )
+    setup.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Print only the concise setup result and next steps",
+    )
 
     sub.add_parser("eval", help="Run the built-in Zerker Memory evaluation harness")
     sub.add_parser("cto-smoke", help="Run the fast CTO quality smoke across the canonical audit rows")
@@ -467,6 +487,13 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
     workspace_use = workspace_sub.add_parser("use", help="Switch the active Zerker Memory workspace")
     workspace_use.add_argument("identifier", help="Workspace id, exact name, or root path")
     workspace_sub.add_parser("status", help="Show whether this CLI DB path matches the active workspace")
+    workspace_prune = workspace_sub.add_parser("prune", help="Preview or remove registry entries whose project root is gone")
+    workspace_prune.add_argument("--apply", action="store_true", help="Remove the previewed missing-root entries")
+    workspace_prune.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Print only a compact prune preview or result",
+    )
     workspace_sources = workspace_sub.add_parser("sources", help="Show connected agents and memory source lineage for this workspace")
     workspace_sources.add_argument("--limit", type=int, default=50, help="Maximum write receipts to inspect")
     workspace_sources.add_argument(
@@ -1205,6 +1232,10 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
         help="Capability profile (default: agent)",
     )
     mcp.add_argument(
+        "--agent-id",
+        help="Bind this MCP process to one agent host identity (normally set by `zmem setup`)",
+    )
+    mcp.add_argument(
         "--io-root",
         type=expand_user_path,
         help="Root directory allowed for operator snapshot and restore paths (default: database directory)",
@@ -1219,7 +1250,7 @@ RUNTIME_REEXEC_ENV = "ZERKER_MEMORY_RUNTIME_REEXEC"
 
 
 def command_supports_runtime_reexec(command: str) -> bool:
-    return command in {"doctor", "status"}
+    return command in {"doctor", "setup", "status"}
 
 
 def maybe_reexec_with_supported_python(command: str, argv: list[str]) -> int | None:
@@ -1652,6 +1683,19 @@ def main(argv: list[str] | None = None) -> int:
                 }
             )
             return 0
+        if args.command == "setup":
+            result = run_guided_setup(
+                store,
+                providers_path=args.providers,
+                presets=args.agents,
+                force=args.force,
+            )
+            if args.summary_only:
+                print(render_setup_summary(result), end="")
+            else:
+                print(render_setup_summary(result), end="")
+                print_json(result)
+            return 0 if result["ok"] else 1
         if args.command == "demo":
             print_json(run_demo(store, scope=args.scope, agent_id=args.agent))
             return 0
@@ -1791,6 +1835,7 @@ def main(argv: list[str] | None = None) -> int:
 
             result = run_doctor(
                 args.db,
+                policy_path=args.policy,
                 run_eval_check=not args.skip_eval,
                 agent_presets=args.agent,
                 agent_config_paths=parse_agent_config_specs(args.agent_config),
@@ -1834,6 +1879,13 @@ def main(argv: list[str] | None = None) -> int:
                 return 0 if result["ok"] else 1
             if args.workspace_command == "status":
                 print_json(workspace_status_for_paths(db_path=args.db, policy_path=args.policy))
+                return 0
+            if args.workspace_command == "prune":
+                result = prune_missing_workspaces(apply=args.apply)
+                if args.summary_only:
+                    print(render_workspace_prune_summary(result), end="")
+                else:
+                    print_json(result)
                 return 0
             if args.workspace_command == "sources":
                 result = workspace_source_report(
@@ -2707,6 +2759,7 @@ def main(argv: list[str] | None = None) -> int:
                 McpServer(
                     store,
                     profile=args.profile,
+                    agent_id=args.agent_id,
                     io_root=args.io_root,
                     provider_config_path=args.providers,
                 )
@@ -3633,6 +3686,14 @@ def agent_presets() -> tuple[str, ...]:
     return ("codex", "claude-code", "cursor", "openclaw", "hermes", "generic")
 
 
+def parse_agent_preset(value: str) -> str:
+    if value not in agent_presets():
+        raise argparse.ArgumentTypeError(
+            f"unsupported agent: {value}; choose from {', '.join(agent_presets())}"
+        )
+    return value
+
+
 def manual_agent_presets() -> tuple[str, ...]:
     return ("cursor", "openclaw", "hermes", "generic")
 
@@ -3712,6 +3773,7 @@ def build_agent_config_preset(
     if preset not in agent_presets():
         raise ValueError(f"unsupported agent preset: {preset}")
     config = build_mcp_config(name=name, command=command, db_path=db_path, policy_path=policy_path)
+    config["mcpServers"][name]["args"].extend(["--agent-id", preset])
     manual_import = agent_manual_import_guide(preset)
     return {
         "ok": True,
@@ -3791,6 +3853,8 @@ def install_agent_preset(
         preset,
         config_path=target,
         prompt_path=Path(prompt_result["path"]),
+        db_path=db_path,
+        policy_path=policy_path,
     )
     manual_import = agent_manual_import_guide(preset, config_path=target)
     checklist_result = None
@@ -3841,6 +3905,192 @@ def install_agent_preset(
     }
 
 
+def detect_agent_presets() -> tuple[str, ...]:
+    checks = (
+        ("codex", Path.home() / ".codex", "codex"),
+        ("claude-code", Path.home() / ".claude", "claude"),
+        ("cursor", Path.home() / ".cursor", "cursor"),
+        ("openclaw", Path.home() / ".openclaw", "openclaw"),
+        ("hermes", Path.home() / ".hermes", "hermes"),
+    )
+    return tuple(
+        preset
+        for preset, config_dir, executable in checks
+        if config_dir.exists() or shutil.which(executable) is not None
+    )
+
+
+def run_guided_setup(
+    store: MemoryStore,
+    *,
+    providers_path: Path,
+    presets: list[str] | tuple[str, ...],
+    force: bool,
+    cwd: Path | None = None,
+) -> dict[str, Any]:
+    from .doctor import inspect_agent_connection
+
+    root = (cwd or Path.cwd()).resolve()
+    store.init()
+    policy_result = write_policy_template(store.policy_path, force=False)
+    prompt_path = workspace_prompt_path(cwd=root)
+    prompt_result = write_agent_prompt_template(prompt_path, force=False)
+    workspace_config_path = workspace_mcp_config_path(cwd=root)
+    workspace_config_result = write_json_file(
+        workspace_config_path,
+        build_mcp_config(
+            name="zerker-memory",
+            command="zmem",
+            db_path=store.db_path.resolve(),
+            policy_path=store.policy_path.resolve(),
+        ),
+        force=False,
+    )
+    provider_result = write_provider_config_template(providers_path, force=False)
+    workspace_result = register_workspace(
+        name=root.name,
+        root=root,
+        db_path=store.db_path,
+        policy_path=store.policy_path,
+        prompt_path=prompt_path,
+    )
+
+    selected = list(dict.fromkeys(presets or detect_agent_presets()))
+    connections: list[dict[str, Any]] = []
+    for preset in selected:
+        install = install_agent_preset(
+            preset,
+            name="zerker-memory",
+            command="zmem",
+            db_path=store.db_path,
+            policy_path=store.policy_path,
+            force=force,
+        )
+        config_path = Path(install["config_path"])
+        inspection = inspect_agent_connection(
+            preset,
+            config_path=config_path,
+            db_path=store.db_path,
+            policy_path=store.policy_path,
+            working_dir=root,
+        )
+        connections.append(
+            {
+                **inspection,
+                "config_written": bool(install["config_written"]),
+                "agent_prompt_path": install["agent_prompt_path"],
+                **(
+                    {"checklist_path": install["checklist_path"]}
+                    if install.get("checklist_path")
+                    else {}
+                ),
+                **(
+                    {"manual_import": install["manual_import"]}
+                    if install.get("manual_import")
+                    else {}
+                ),
+            }
+        )
+
+    next_steps: list[str] = []
+    mismatched = [connection["preset"] for connection in connections if not connection["ok"]]
+    if mismatched and not force:
+        next_steps.append(f"zmem setup {' '.join(mismatched)} --force")
+    native_ready = [
+        connection["preset"]
+        for connection in connections
+        if connection["state"] == "ready_after_reload"
+    ]
+    if native_ready:
+        next_steps.append(f"Restart or reload {', '.join(agent_display_name(preset) for preset in native_ready)}.")
+    for connection in connections:
+        if connection["state"] == "exported_awaiting_import":
+            next_steps.append(
+                f"Import {connection['config_path']} into {agent_display_name(connection['preset'])}, then reload it."
+            )
+    if selected:
+        next_steps.append(
+            'In a new or reloaded chat, say: "Use the zerker-memory tools for this project. Request relevant memory before work."'
+        )
+        next_steps.append(f"zmem agent mcp-smoke --agent {selected[0]}")
+    else:
+        next_steps.append("zmem setup codex claude-code")
+    next_steps.append("zmem status --summary-only")
+
+    return {
+        "schema": "zerker.setup.v1",
+        "ok": all(connection["ok"] for connection in connections),
+        "workspace": {
+            "root": str(root),
+            "db_path": str(store.db_path.resolve()),
+            "policy_path": str(store.policy_path.resolve()),
+            "prompt_path": str(prompt_path),
+            "mcp_config_path": str(workspace_config_path),
+            "providers_path": str(providers_path),
+            "profile": workspace_result,
+        },
+        "artifacts": {
+            "policy_written": bool(policy_result["written"]),
+            "prompt_written": bool(prompt_result["written"]),
+            "mcp_config_written": bool(workspace_config_result["written"]),
+            "providers_written": bool(provider_result["written"]),
+        },
+        "selection": "explicit" if presets else "detected",
+        "selected_agents": selected,
+        "connections": connections,
+        "shared_memory_configured": bool(connections) and all(connection["ok"] for connection in connections),
+        "connection_scope": (
+            "Each configured MCP process is bound to its agent host and this workspace. "
+            "A connection id records the MCP process; it is not a guaranteed UI chat id."
+        ),
+        "next_steps": next_steps,
+    }
+
+
+def agent_display_name(preset: str) -> str:
+    return {
+        "codex": "Codex",
+        "claude-code": "Claude Code",
+        "cursor": "Cursor",
+        "openclaw": "OpenClaw",
+        "hermes": "Hermes",
+        "generic": "Generic MCP Agent",
+    }[preset]
+
+
+def render_setup_summary(result: dict[str, Any]) -> str:
+    workspace = result["workspace"]
+    lines = [
+        "ZMem setup",
+        "",
+        f"Workspace: {workspace['root']}",
+        f"Shared DB: {workspace['db_path']}",
+        f"Policy: {workspace['policy_path']}",
+        "",
+        "Agent connections:",
+    ]
+    if not result["connections"]:
+        lines.append("  No supported clients detected. Choose them explicitly, for example `zmem setup codex claude-code`.")
+    for connection in result["connections"]:
+        state = str(connection["state"]).replace("_", " ")
+        lines.append(
+            f"  {agent_display_name(connection['preset'])}: {state} ({connection['config_path']})"
+        )
+        if not connection["ok"]:
+            lines.append(f"    {connection['details']}")
+    lines.extend(
+        [
+            "",
+            f"Shared memory configured: {'yes' if result['shared_memory_configured'] else 'no'}",
+            "Identity: the connector binds the agent host; its per-process connection id is provenance, not a promised UI chat id.",
+            "",
+            "Next:",
+        ]
+    )
+    lines.extend(f"  {step}" for step in result["next_steps"])
+    return "\n".join(lines).rstrip() + "\n"
+
+
 def agent_install_hint(preset: str) -> str:
     hints = {
         "codex": "Install into ~/.codex/config.toml and include .zerker/AGENT_PROMPT.md in the agent instructions.",
@@ -3853,7 +4103,14 @@ def agent_install_hint(preset: str) -> str:
     return hints[preset]
 
 
-def build_install_doctor_checks(preset: str, *, config_path: Path, prompt_path: Path) -> dict:
+def build_install_doctor_checks(
+    preset: str,
+    *,
+    config_path: Path,
+    prompt_path: Path,
+    db_path: Path,
+    policy_path: Path | None,
+) -> dict:
     from .doctor import check_agent_install, check_agent_prompt
 
     cwd = Path.cwd()
@@ -3862,7 +4119,12 @@ def build_install_doctor_checks(preset: str, *, config_path: Path, prompt_path: 
         if prompt_path == cwd / ".zerker" / "AGENT_PROMPT.md"
         else check_agent_prompt_path(prompt_path)
     )
-    install_check = check_agent_install(preset, config_path=config_path)
+    install_check = check_agent_install(
+        preset,
+        config_path=config_path,
+        db_path=db_path,
+        policy_path=policy_path,
+    )
     checks = [prompt_check.to_dict(), install_check.to_dict()]
     return {
         "ok": all(check["ok"] for check in checks),
@@ -4324,14 +4586,18 @@ def build_status_report(
     include_eval: bool,
     cwd: Path | None = None,
 ) -> dict:
-    from .doctor import run_doctor, check_agent_install
+    from .doctor import inspect_agent_connection, run_doctor
 
     root = cwd or Path.cwd()
     store.init()
     stats = store.stats()
     latest_receipts = store.list_receipts(limit=1)
     latest_receipt = latest_receipts[0] if latest_receipts else None
-    doctor = run_doctor(store.db_path, run_eval_check=include_eval)
+    doctor = run_doctor(
+        store.db_path,
+        policy_path=store.policy_path,
+        run_eval_check=include_eval,
+    )
     prompt_path = workspace_prompt_path(cwd=root)
     mcp_config_path = workspace_mcp_config_path(cwd=root)
     manual_pack = agent_pack_path(cwd=root)
@@ -4339,11 +4605,23 @@ def build_status_report(
     agents = {}
     for preset in agent_presets():
         config_path = agent_default_config_path(preset) or agent_export_config_path(preset, cwd=root)
-        doctor_check = check_agent_install(preset, config_path=config_path) if config_path is not None else None
+        inspection = (
+            inspect_agent_connection(
+                preset,
+                config_path=config_path,
+                db_path=store.db_path,
+                policy_path=store.policy_path,
+                working_dir=root,
+            )
+            if config_path is not None
+            else None
+        )
         entry = {
             "config_path": str(config_path) if config_path is not None else None,
-            "configured": bool(doctor_check and doctor_check.ok),
-            "details": doctor_check.details if doctor_check is not None else "no config path available",
+            "configured": bool(inspection and inspection["ok"]),
+            "state": inspection["state"] if inspection is not None else "not_configured",
+            "details": inspection["details"] if inspection is not None else "no config path available",
+            "configured_db_path": inspection.get("configured_db_path") if inspection is not None else None,
         }
         checklist_path = agent_checklist_path(preset, cwd=root)
         if checklist_path is not None:
@@ -4501,9 +4779,12 @@ def build_status_next_steps(
         append_step(f"zmem agent smoke --agent {configured_agent}")
         append_step(f"zmem agent mcp-smoke --agent {configured_agent}")
     if not steps:
-        append_step("zmem ui")
-        append_step(f"zmem agent smoke --agent {configured_agent or 'codex'}")
-        append_step(f"zmem agent mcp-smoke --agent {configured_agent or 'codex'}")
+        if configured_agent:
+            append_step("zmem ui")
+            append_step(f"zmem agent smoke --agent {configured_agent}")
+            append_step(f"zmem agent mcp-smoke --agent {configured_agent}")
+        else:
+            append_step("zmem setup codex claude-code")
     return steps
 
 
@@ -4615,7 +4896,7 @@ def render_status_summary(result: dict) -> str:
         if any(check["name"] == "python_version" for check in blockers):
             lines.append("  Suggested fix: bash install.sh")
         lines.append("")
-    lines.append("Agent handoff:")
+    lines.append("Agent connections:")
     for preset in agent_presets():
         entry = result["agents"].get(
             preset,
@@ -4632,7 +4913,15 @@ def render_status_summary(result: dict) -> str:
             "hermes": "Hermes",
             "generic": "Generic MCP Agent",
         }[preset]
-        lines.append(f"  {title}: {'ok' if entry['configured'] else 'missing'} ({entry['config_path']})")
+        state = entry.get("state") or ("configured" if entry["configured"] else "not_configured")
+        lines.append(f"  {title}: {str(state).replace('_', ' ')} ({entry['config_path']})")
+        if state in {
+            "configured_for_another_workspace",
+            "configured_without_bound_identity",
+            "configured_for_another_agent",
+            "invalid_config",
+        }:
+            lines.append(f"    {entry.get('details', 'Rebind this client to the current workspace.')}")
         if "checklist_path" in entry:
             lines.append(
                 f"    Checklist: {'ok' if entry['checklist_present'] else 'missing'} ({entry['checklist_path']})"
@@ -9431,6 +9720,28 @@ def render_session_timeline_summary(report: dict[str, Any]) -> str:
         lines.append("    semantic truth: not guaranteed")
         if entry.get("summary"):
             lines.append(f"    summary: {entry['summary']}")
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def render_workspace_prune_summary(result: dict[str, Any]) -> str:
+    action = "removed" if result["applied"] else "found"
+    lines = [
+        "ZMem workspace prune",
+        "",
+        f"Registry: {result['registry_path']}",
+        f"Missing-root entries {action}: {result['removed_count'] if result['applied'] else result['candidate_count']}",
+        f"Current workspace preserved: {result.get('current_id') or 'none'}",
+    ]
+    if result["candidates"]:
+        lines.extend(["", "Entries:"])
+        visible = result["candidates"][:10]
+        for workspace in visible:
+            lines.append(f"  {workspace['id']}: {workspace.get('name') or 'unnamed'} ({workspace.get('root') or 'missing root'})")
+        omitted = len(result["candidates"]) - len(visible)
+        if omitted:
+            lines.append(f"  ... {omitted} more")
+    if not result["applied"] and result["candidate_count"]:
+        lines.extend(["", "Apply: zmem workspace prune --apply --summary-only"])
     return "\n".join(lines).rstrip() + "\n"
 
 

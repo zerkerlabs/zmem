@@ -252,6 +252,13 @@ Preview verifies the global event chain and each source write-receipt chain, gro
 For day-1 agent setup:
 
 ```bash
+zmem setup codex claude-code hermes --summary-only
+zmem status --summary-only
+```
+
+This binds supported clients to the same absolute workspace database. Codex and Claude Code are ready after reload; Hermes and other manual clients receive a project-local import file. A connector identifies the agent host and MCP process, not necessarily a visible UI chat. In a new or reloaded chat, say: `Use the zerker-memory tools for this project. Request relevant memory before work.` For low-level or custom config paths:
+
+```bash
 zmem agent install codex
 zmem agent install claude-code
 zmem agent install cursor --summary-only

@@ -2,6 +2,16 @@
 
 All notable Zerker Memory alpha changes are summarized here.
 
+## Unreleased
+
+### Guided Agent Connections
+
+- Added `zmem setup [agents...]` to initialize one project and bind selected Codex, Claude Code, Cursor, OpenClaw, Hermes, or generic MCP clients to the same absolute memory database and policy.
+- Added exact workspace-binding checks to `doctor` and `status`, so a client configured for another project is no longer reported as ready.
+- Bound generated MCP configs to an agent-host identity and added per-process connection provenance. Bound agents can omit their own id from `memory.inject`, cannot spoof another configured identity, and automatically attach connector provenance to proposals.
+- Kept the identity boundary explicit: the MCP connection identifies the host process, not necessarily a visible UI chat. Manual-client exports are reported as awaiting import rather than live.
+- Isolated unit and release-smoke workspace registries from the user's real `~/.zmem/workspaces.json`, and added `zmem workspace prune` as a preview-first cleanup for entries whose project roots no longer exist.
+
 ## 0.1.11 - 2026-08-10
 
 ### Concurrent Room Initialization

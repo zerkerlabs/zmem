@@ -109,17 +109,21 @@ bash examples/first_run.sh
 
 `bash examples/first_run.sh` also refreshes the manual-agent pack before printing `zmem status --summary-only`, so the final summary reports `Manual pack ready: yes`.
 
-Generate MCP config:
+Connect agent clients to this project:
 
 ```bash
-zmem agent config codex --include-policy
-zmem agent config claude-code --include-policy
-zmem agent install codex
-zmem agent install claude-code
-zmem agent install openclaw --summary-only
-zmem agent pack --summary-only
+zmem setup codex claude-code hermes --summary-only
 zmem status --summary-only
 zmem doctor --agent codex --agent claude-code
+```
+
+Codex and Claude Code use directly written MCP entries. Hermes and other manual clients get a project-local export to import. Every generated entry points to the same absolute workspace database and carries its agent-host identity. The per-process connection id is provenance, not a guaranteed UI chat id.
+
+For individual or manual config work:
+
+```bash
+zmem agent install openclaw --summary-only
+zmem agent pack --summary-only
 zmem agent checklist openclaw
 zmem agent checklist generic
 zmem agent smoke --agent codex
