@@ -2,6 +2,10 @@ import Card from '@/components/Card';
 
 const updates = [
   {
+    title: 'v0.1.11 concurrent room initialization',
+    detail: 'Simultaneous first access to one room now serializes only SQLite WAL and schema initialization, eliminating a transient database-lock race while preserving normal concurrent writes.',
+  },
+  {
     title: 'v0.1.10 room-native shared memory',
     detail: 'ZMem now runs as a tenant-local Rooms memory service with isolated room stores, shared and member-private memory, governed context preparation, quarantined agent proposals, retry-safe writes, and exact context commitments.',
   },

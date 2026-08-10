@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import re
 import sqlite3
+import threading
 import time
 from contextlib import contextmanager
 from pathlib import Path
@@ -74,6 +75,8 @@ class RoomStoreResolver:
         self.storage_root = Path(storage_root).expanduser().resolve(strict=False)
         self.tenant_id = _required_text(tenant_id, "tenant_id", max_chars=256)
         self.policy_path = Path(policy_path).expanduser().resolve(strict=False) if policy_path is not None else None
+        self._initialization_locks: dict[str, threading.Lock] = {}
+        self._initialization_locks_guard = threading.Lock()
         self.storage_root.mkdir(parents=True, exist_ok=True)
         try:
             self.storage_root.chmod(0o700)
@@ -93,6 +96,11 @@ class RoomStoreResolver:
             "storage_id": "rms_" + room_storage_key(self.tenant_id, room),
         }
 
+    def _initialization_lock(self, room_id: str) -> threading.Lock:
+        storage_key = room_storage_key(self.tenant_id, room_id)
+        with self._initialization_locks_guard:
+            return self._initialization_locks.setdefault(storage_key, threading.Lock())
+
     @contextmanager
     def open(self, room_id: str) -> Iterator[MemoryStore]:
         path = self.db_path(room_id)
@@ -107,9 +115,14 @@ class RoomStoreResolver:
             path.parent.chmod(0o700)
         except OSError:
             pass
-        store = MemoryStore(path, policy_path=self.policy_path)
+        with self._initialization_lock(room_id):
+            store = MemoryStore(path, policy_path=self.policy_path)
+            try:
+                store.init()
+            except BaseException:
+                store.conn.close()
+                raise
         try:
-            store.init()
             yield store
         finally:
             store.conn.close()

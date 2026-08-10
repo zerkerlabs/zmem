@@ -1,3 +1,10 @@
+## 2026-08-10 - Concurrent Rooms initialization patch candidate
+
+- Post-publication `main` CI run `31400461028` exposed a same-room first-open race that the preceding PR, main, and tag runs had not reproduced: concurrent `MemoryStore` constructors could collide while enabling SQLite WAL and raise `database is locked`.
+- Added one process-local initialization lock per opaque tenant-room storage key. The lock covers only database construction and schema initialization; it is released before normal reads and writes.
+- Added a barrier to force eight concurrent first opens in the existing durability/idempotency test. The focused test passed `100/100` stress iterations, all `16` Rooms tests pass, and the adjacent Rooms/store/runner/policy gate passes `554/554`.
+- Prepared patch version `0.1.11`; remote CI, exact merged-source packaging, tagging, release assets, and production deployment remain required.
+
 ## 2026-08-10 - v0.1.10 published
 
 - Merged PR `#18` at `a48219337abf5b70373a59d2b1ed420378d7d8c3`, tagged that exact commit as `v0.1.10`, and published `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.10`.

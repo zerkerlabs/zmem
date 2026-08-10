@@ -2,6 +2,13 @@
 
 All notable Zerker Memory alpha changes are summarized here.
 
+## 0.1.11 - 2026-08-10
+
+### Concurrent Room Initialization
+
+- Serialized only the WAL/schema initialization step for concurrent first access to one room, preventing a transient SQLite `database is locked` failure without serializing normal room writes.
+- Strengthened the room concurrency test with a barrier that forces eight simultaneous first opens, then verified durable unique writes and idempotent retries.
+
 ## 0.1.10 - 2026-08-10
 
 ### Zerker Rooms Memory Service

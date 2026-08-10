@@ -5,6 +5,10 @@ This is the short orchestration dashboard for Zerker Memory. Every autonomous bu
 ## Release Coordination
 `2026-08-10`
 
+- Post-publication `main` CI reproduced a same-room concurrent first-open race in Python 3.12: SQLite WAL initialization could fail with `database is locked` even though the exact feature commit had passed PR, main, and tag CI.
+- The `v0.1.11` patch candidate adds a per-room initialization lock around database construction and schema setup only. The focused race now passes `100/100` forced iterations; Rooms pass `16/16` and the adjacent gate passes `554/554`.
+- Remote CI, merged-source packaging, tag publication, and production deployment remain required for `v0.1.11`.
+
 - Published `v0.1.10` from PR `#18` merge commit `a48219337abf5b70373a59d2b1ed420378d7d8c3` at `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.10`.
 - PR CI run `31397381005`, main CI run `31397884766`, and tag CI run `31398430868` passed every Python 3.10/3.11/3.12, ActiveGraph, site, docs, and release-smoke job.
 - Exact merged-source release assets verify against GitHub: wheel `sha256:dbaa5f3438f85f004c7b3e89b9f258b7f3f48ac2f5b7510665e2f928fafe4ed0`; source distribution `sha256:17f2eaeffefdebb2b8a24d00da860b351e1c911b50a3845641445d428cfe2786`.

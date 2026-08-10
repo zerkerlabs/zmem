@@ -175,7 +175,11 @@ class RoomMemoryServiceTest(unittest.TestCase):
             )
 
     def test_concurrent_room_writes_are_durable_and_idempotent(self):
+        first_open = threading.Barrier(8)
+
         def write_unique(index):
+            if index < first_open.parties:
+                first_open.wait()
             return self.write(
                 content=f"Concurrent fact {index}",
                 key=f"evt_{index}:fact",
