@@ -1,5 +1,17 @@
 # ZMem Release Comms
 
+## 2026-08-10 - v0.1.11 publication
+
+Audience: internal Zerker product, engineering, security review, Gateway integration, and release coordination.
+
+`v0.1.11` is published from PR `#20` merge commit `ca427692cab8cb71c5f95c7d48c9a33499f01f7b` at `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.11`. PR, post-merge main, and tag CI passed every Python 3.10/3.11/3.12, ActiveGraph, site, docs, and release-smoke job. GitHub assets match wheel `sha256:cd19b739...` and source distribution `sha256:11bc45f4...`.
+
+The patch closes a real race found only by the later `v0.1.10` main run. Multiple workers could first-open the same room database and collide while enabling SQLite WAL. ZMem now serializes database construction and schema initialization per opaque tenant-room key, then releases the lock before normal reads and writes. The regression forces eight simultaneous first opens and verifies durable unique writes plus retry idempotency.
+
+The product boundary is unchanged. ZMem now provides a stronger tenant-local shared-memory service, but the Gateway Go client, durable Rooms event persistence, hosted tenant routing, remote review authorization, production load evidence, and asynchronous Treeship publication remain separate integration work.
+
+Production site and docs are live at `https://www.zmem.sh` and `https://docs.zmem.sh`; the public changelog, `/docs/rooms`, and ActiveGraph `0.1.11` example match the shipped package. The next integration slice is the Gateway adapter and persistence boundary.
+
 ## 2026-08-10 - v0.1.10 publication
 
 Audience: internal Zerker product, engineering, security review, Gateway integration, and release coordination.

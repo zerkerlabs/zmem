@@ -30,10 +30,11 @@ Every push or meaningful automation drop should update this file alongside:
 | `v0.1.8` | Published | `969a943` / `v0.1.8` | Digest-bound memory context, scheduled-agent continuity, typed failure memory, and opt-in local dense/FTS retrieval. |
 | `v0.1.9` | Published | `a2a469f` / `v0.1.9` | Review-gated consolidation with verified live sources, private materialization, independent inspection, and ceiling-bound admit/discard decisions. |
 | `v0.1.10` | Published | `a482193` / `v0.1.10` | Tenant-local Zerker Rooms service with isolated shared/private memory, governed context preparation, idempotent writes, and exact context commitments. |
+| `v0.1.11` | Published | `ca42769` / `v0.1.11` | Concurrent first-open hardening for tenant-room SQLite initialization without serializing normal room writes. |
 
 Current public release:
 
-- GitHub: `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.10`
+- GitHub: `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.11`
 - Site: `https://www.zmem.sh`
 - Raw installer: `https://raw.githubusercontent.com/zerkerlabs/zmem/main/install.sh`
 
@@ -112,6 +113,14 @@ Published `v0.1.10` checkpoint:
 - GitHub assets match wheel `sha256:dbaa5f3438f85f004c7b3e89b9f258b7f3f48ac2f5b7510665e2f928fafe4ed0` and source distribution `sha256:17f2eaeffefdebb2b8a24d00da860b351e1c911b50a3845641445d428cfe2786`.
 - Production site deployment `dpl_7GERfN3Z5ASaYreQUiSatB9ggh61` and docs deployment `dpl_ErsKm4tjtZVb16XuxPpFcc9qpmTt` are live at `https://www.zmem.sh` and `https://docs.zmem.sh`.
 
+Published `v0.1.11` checkpoint:
+
+- PR `#20` merged at `ca427692cab8cb71c5f95c7d48c9a33499f01f7b`; that exact commit is tagged and published at `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.11`.
+- The Rooms resolver now serializes only first-open WAL/schema initialization per opaque tenant-room storage key. A forced eight-thread regression proves unique writes remain durable and same-event retries remain idempotent.
+- PR CI run `31402007077`, post-merge main run `31402550305`, and tag run `31403219715` passed every Python 3.10/3.11/3.12, ActiveGraph, site, docs, and release-smoke job.
+- GitHub assets match wheel `sha256:cd19b739eb820fe4b8caf0df53c0c9d413ccd80fab2d9aa7f64d9554f3e68210` and source distribution `sha256:11bc45f468c6525501d4c8d39dac888e16f49b9571d4bae44e6663c3941a4d84`.
+- Production site deployment `dpl_FXQHCHkG4tuL2zkWkfUS74qC3hrm` and docs deployment `dpl_7DWvVkUjtZxV6udwN93mrimtFAKp` are live at `https://www.zmem.sh` and `https://docs.zmem.sh`; public canaries confirm the changelog, Rooms guide, and ActiveGraph `0.1.11` example.
+
 Included `v0.1.6` L3 checkpoint:
 
 - Bounded transcript-neighbor onset support passes the stable gate at `160/227` versus `159/227`, with one gain, zero losses, one changed retrieval context, and `+17` query tokens.
@@ -159,9 +168,9 @@ Percentages are practical launch-grade alpha estimates, not benchmark scores.
 | L4 Consolidation | Hierarchical summaries and job ledger | 75% | Verified live-source preview, private recoverable materialization, independent live-source inspection, and terminal admit/discard decisions with ceiling-bound lineage receipts | Extend the reviewed path to live day/week/profile rollups before designing any scheduler |
 | L5 Identity / Workspaces | Multi-agent source lineage and conflicts | 50% | Source reports, claim conflicts, resolution basis, exact-tie abstention summaries | Add handoff ownership/lease metadata and a dry-run import preview, then persist merge decisions |
 | L6 Benchmark Harness | LoCoMo/LongMemEval/BEAM evidence | 100% for local harness and sampled scale | Verified LoCoMo/LongMemEval evidence plus official-layout BEAM 100K, 500K, 1M, and 10M runs exist; compact artifacts verify | Add broader evidence and an official model-judged path; do not report unjudged LLM answers as incorrect |
-| Launch Oversight | Release pack, proof evidence, public release | 100% for v0.1.10 | Public verify `6/6`, assets `8/8`, return packet ready, release assets published, and production canaries pass | Keep automation paused until the next bounded release candidate exists |
-| Website / Docs | Landing, proof page, docs, changelog | 100% for v0.1.10 | Release copy, Rooms guide, consolidation workflow, benchmark boundary, and ActiveGraph pack version are synchronized and live on the production domains | Keep release facts synchronized with the next shipped product change |
-| Rooms / Gateway | Multi-agent shared memory integration | 50% | Tenant-local service, hard tenant/room isolation, shared/member-private memory, governed context, commitments, auth, and idempotency are published | Land the Gateway Go client, durable Rooms event state, load/timeout gates, and separately authorized remote review |
+| Launch Oversight | Release pack, proof evidence, public release | 100% for v0.1.11 | Public verify `6/6`, assets `8/8`, return packet ready, release assets published, and production canaries pass | Keep automation paused until the next bounded release candidate exists |
+| Website / Docs | Landing, proof page, docs, changelog | 100% for v0.1.11 | Release copy, Rooms guide, consolidation workflow, benchmark boundary, and ActiveGraph pack version are synchronized and live on the production domains | Keep release facts synchronized with the next shipped product change |
+| Rooms / Gateway | Multi-agent shared memory integration | 55% | Tenant-local service, hard tenant/room isolation, shared/member-private memory, governed context, commitments, auth, idempotency, and concurrent first-open hardening are published | Land the Gateway Go client, durable Rooms event state, load/timeout gates, and separately authorized remote review |
 | ActiveGraph Integration | Event substrate and compact traces | 100% | The real pack loads, persists events, batches traces, and ships a runnable two-run host with recorded/sent prompt equality | Keep larger selected-mode traces and aggregate Treeship artifacts as optional follow-ups |
 
 ## Lane Checklists

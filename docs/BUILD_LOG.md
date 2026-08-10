@@ -1,9 +1,12 @@
-## 2026-08-10 - Concurrent Rooms initialization patch candidate
+## 2026-08-10 - v0.1.11 published
 
-- Post-publication `main` CI run `31400461028` exposed a same-room first-open race that the preceding PR, main, and tag runs had not reproduced: concurrent `MemoryStore` constructors could collide while enabling SQLite WAL and raise `database is locked`.
-- Added one process-local initialization lock per opaque tenant-room storage key. The lock covers only database construction and schema initialization; it is released before normal reads and writes.
-- Added a barrier to force eight concurrent first opens in the existing durability/idempotency test. The focused test passed `100/100` stress iterations, all `16` Rooms tests pass, and the adjacent Rooms/store/runner/policy gate passes `554/554`.
-- Prepared patch version `0.1.11`; remote CI, exact merged-source packaging, tagging, release assets, and production deployment remain required.
+- Post-publication `v0.1.10` main CI run `31400461028` exposed a same-room first-open race: concurrent `MemoryStore` constructors could collide while enabling SQLite WAL and raise `database is locked`.
+- Added one process-local initialization lock per opaque tenant-room storage key. It covers database construction and schema initialization only, then releases before normal reads and writes. A barrier now forces eight simultaneous first opens in the durability/idempotency regression.
+- Merged PR `#20` at `ca427692cab8cb71c5f95c7d48c9a33499f01f7b`, tagged that exact commit as `v0.1.11`, and published `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.11`.
+- PR CI run `31402007077`, post-merge main run `31402550305`, and tag run `31403219715` passed Python 3.10/3.11/3.12, ActiveGraph, site, docs, and release smoke.
+- Built, clean-installed, and forced the concurrent first-open smoke against the exact merged wheel. GitHub asset digests match wheel `sha256:cd19b739eb820fe4b8caf0df53c0c9d413ccd80fab2d9aa7f64d9554f3e68210` and source distribution `sha256:11bc45f468c6525501d4c8d39dac888e16f49b9571d4bae44e6663c3941a4d84`.
+- Deployed site `dpl_FXQHCHkG4tuL2zkWkfUS74qC3hrm` and docs `dpl_7DWvVkUjtZxV6udwN93mrimtFAKp` to `https://www.zmem.sh` and `https://docs.zmem.sh`. Public canaries confirm the `v0.1.11` changelog bundle, Rooms guide, and ActiveGraph `0.1.11` example.
+- Broad recurring swarms and launch oversight remain paused. The next bounded integration work is the Gateway Go client, durable Rooms event persistence, and realistic Gateway-to-ZMem load/timeout gates.
 
 ## 2026-08-10 - v0.1.10 published
 
