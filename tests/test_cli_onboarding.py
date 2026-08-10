@@ -9,6 +9,13 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
+try:
+    from ._environment import ensure_test_environment
+except ImportError:
+    from _environment import ensure_test_environment
+
+ensure_test_environment()
+
 from zerker_memory.cli import (
     PUBLIC_VERIFY_COMMAND_SEQUENCE,
     PUBLIC_VERIFY_LOG_FILENAMES,
@@ -85,6 +92,7 @@ from zerker_memory.cli import (
     render_prelaunch_summary,
     render_retrieval_provider_readiness_summary,
     render_restore_summary,
+    render_setup_summary,
     render_status_summary,
     render_why_summary,
     prelaunch_next_steps,
@@ -98,6 +106,7 @@ from zerker_memory.cli import (
     run_agent_smoke,
     run_launch_proof,
     run_release_pack,
+    run_guided_setup,
     run_prelaunch_check,
     restore_handoff_package,
     write_agent_prompt_template,
@@ -376,7 +385,15 @@ class CliOnboardingTest(unittest.TestCase):
         self.assertEqual(server["command"], "zmem")
         self.assertEqual(
             server["args"],
-            ["--db", ".zerker/memory.sqlite", "--policy", ".zerker/policy.json", "mcp", "--profile", "agent"],
+            [
+                "--db",
+                ".zerker/memory.sqlite",
+                "--policy",
+                ".zerker/policy.json",
+                "mcp",
+                "--profile",
+                "agent",
+            ],
         )
 
     def test_agent_presets_include_launch_targets(self):
@@ -1382,7 +1399,17 @@ class CliOnboardingTest(unittest.TestCase):
         self.assertIn("Claude Code", result["install_hint"])
         self.assertEqual(
             server["args"],
-            ["--db", ".zerker/memory.sqlite", "--policy", ".zerker/policy.json", "mcp", "--profile", "agent"],
+            [
+                "--db",
+                ".zerker/memory.sqlite",
+                "--policy",
+                ".zerker/policy.json",
+                "mcp",
+                "--profile",
+                "agent",
+                "--agent-id",
+                "claude-code",
+            ],
         )
 
     def test_build_agent_server_snippet_returns_single_server_entry(self):
@@ -1399,7 +1426,17 @@ class CliOnboardingTest(unittest.TestCase):
         self.assertEqual(result["server"]["command"], "zmem")
         self.assertEqual(
             result["server"]["args"],
-            ["--db", ".zerker/memory.sqlite", "--policy", ".zerker/policy.json", "mcp", "--profile", "agent"],
+            [
+                "--db",
+                ".zerker/memory.sqlite",
+                "--policy",
+                ".zerker/policy.json",
+                "mcp",
+                "--profile",
+                "agent",
+                "--agent-id",
+                "openclaw",
+            ],
         )
 
     def test_agent_config_parser(self):
@@ -1430,6 +1467,49 @@ class CliOnboardingTest(unittest.TestCase):
         self.assertEqual(args.preset, "generic")
         self.assertTrue(args.summary_only)
         self.assertFalse(args.summary)
+
+    def test_setup_parser_accepts_multiple_agents(self):
+        args = build_parser().parse_args(["setup", "codex", "claude-code", "hermes", "--force", "--summary-only"])
+
+        self.assertEqual(args.command, "setup")
+        self.assertEqual(args.agents, ["codex", "claude-code", "hermes"])
+        self.assertTrue(args.force)
+        self.assertTrue(args.summary_only)
+
+    def test_guided_setup_binds_agents_to_one_workspace_and_marks_manual_import(self):
+        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as home:
+            root = Path(tmp)
+            store = MemoryStore(root / ".zerker" / "memory.sqlite", policy_path=root / ".zerker" / "policy.json")
+            previous_cwd = Path.cwd()
+            try:
+                os.chdir(root)
+                with patch.dict(os.environ, {"HOME": home}, clear=False):
+                    result = run_guided_setup(
+                        store,
+                        providers_path=root / ".zerker" / "providers.json",
+                        presets=["codex", "claude-code", "hermes"],
+                        force=False,
+                        cwd=root,
+                    )
+            finally:
+                os.chdir(previous_cwd)
+
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["shared_memory_configured"])
+        states = {connection["preset"]: connection["state"] for connection in result["connections"]}
+        self.assertEqual(states["codex"], "ready_after_reload")
+        self.assertEqual(states["claude-code"], "ready_after_reload")
+        self.assertEqual(states["hermes"], "exported_awaiting_import")
+        expected_db = str((root / ".zerker" / "memory.sqlite").resolve())
+        self.assertEqual(
+            {connection["configured_db_path"] for connection in result["connections"]},
+            {expected_db},
+        )
+        summary = render_setup_summary(result)
+        self.assertIn("Shared memory configured: yes", summary)
+        self.assertIn("Hermes: exported awaiting import", summary)
+        self.assertIn("not a promised UI chat id", summary)
+        self.assertIn("Use the zerker-memory tools for this project", summary)
 
     def test_agent_guide_parser(self):
         args = build_parser().parse_args(["agent", "guide", "openclaw", "--config-path", "/tmp/openclaw-mcp.json"])
@@ -8947,7 +9027,8 @@ class CliOnboardingTest(unittest.TestCase):
 
         self.assertTrue(result["doctor"]["ok"])
         checks = {check["name"]: check for check in result["doctor"]["checks"]}
-        self.assertEqual(checks["agent_openclaw"]["details"], result["config_path"])
+        self.assertIn(result["config_path"], checks["agent_openclaw"]["details"])
+        self.assertIn("exported awaiting import", checks["agent_openclaw"]["details"])
         self.assertEqual(checks["agent_prompt"]["details"], result["agent_prompt_path"])
 
     def test_render_agent_install_summary_includes_post_install_doctor(self):
@@ -9006,7 +9087,10 @@ class CliOnboardingTest(unittest.TestCase):
             self.assertTrue((root / ".zerker" / "AGENT_PROMPT.md").exists())
             payload = json.loads(config_path.read_text())
             self.assertIn("zerker-memory", payload["mcpServers"])
-            self.assertEqual(payload["mcpServers"]["zerker-memory"]["args"][-3:], ["mcp", "--profile", "agent"])
+            self.assertEqual(
+                payload["mcpServers"]["zerker-memory"]["args"][-5:],
+                ["mcp", "--profile", "agent", "--agent-id", "claude-code"],
+            )
 
     def test_install_agent_preset_writes_openclaw_json_when_target_is_explicit(self):
         with tempfile.TemporaryDirectory() as tmp:

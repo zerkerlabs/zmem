@@ -165,6 +165,47 @@ def use_workspace(identifier: str, *, registry_path: Path | None = None) -> dict
     }
 
 
+def prune_missing_workspaces(
+    *,
+    registry_path: Path | None = None,
+    apply: bool = False,
+) -> dict[str, Any]:
+    registry_file = registry_path or default_workspace_registry_path()
+    registry = load_workspace_registry(registry_file)
+    current_id = registry.get("current")
+    candidates = [
+        workspace
+        for workspace_id, workspace in registry.get("workspaces", {}).items()
+        if workspace_id != current_id
+        and (
+            not str(workspace.get("root") or "").strip()
+            or not Path(str(workspace["root"])).expanduser().exists()
+        )
+    ]
+    candidates.sort(key=lambda item: (str(item.get("name") or ""), str(item.get("root") or "")))
+    if apply:
+        for workspace in candidates:
+            registry["workspaces"].pop(workspace["id"], None)
+        save_workspace_registry(registry, registry_file)
+    return {
+        "schema": "zerker.workspace_prune.v1",
+        "ok": True,
+        "applied": apply,
+        "registry_path": str(registry_file),
+        "current_id": current_id,
+        "candidate_count": len(candidates),
+        "removed_count": len(candidates) if apply else 0,
+        "candidates": [
+            {
+                "id": workspace.get("id"),
+                "name": workspace.get("name"),
+                "root": workspace.get("root"),
+            }
+            for workspace in candidates
+        ],
+    }
+
+
 def workspace_status_for_paths(
     *,
     db_path: Path,

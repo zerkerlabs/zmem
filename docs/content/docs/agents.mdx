@@ -3,19 +3,37 @@ title: Agents
 description: Connect ZMem to Codex, Claude Code, Cursor, OpenClaw, Hermes, and generic MCP clients.
 ---
 
-Agents should use memory through a narrow, auditable interface. ZMem provides MCP config, prompt guidance, manual packs, checklists, and smoke commands for common clients.
+Agents should use memory through a narrow, auditable interface. ZMem can bind several agent clients to one project memory store without copying chat transcripts between them.
 
-## Generate Config
+## Connect This Project
 
 ```bash
-zmem agent config codex --include-policy
-zmem agent config claude-code --include-policy
-zmem agent install codex
-zmem agent install claude-code
+cd your-project
+zmem setup codex claude-code hermes --summary-only
 zmem status --summary-only
 ```
 
-## Manual Pack
+`zmem setup` initializes the project memory files and writes workspace-bound MCP entries for clients ZMem can configure directly. Codex and Claude Code need a restart or reload after setup. For Hermes, Cursor, OpenClaw, and generic MCP clients, setup writes a project-local export and tells you exactly what still needs to be imported.
+
+All selected clients point to the same absolute `.zerker/memory.sqlite` path. They share approved project memory, review state, and receipts. They do not share raw transcripts, hidden reasoning, or every message by default.
+
+## Activate a Chat
+
+Setup configures the agent host, not a chat that is already running. Reload Codex or Claude Code, open a new chat if the current one does not refresh its tools, then say:
+
+> Use the zerker-memory tools for this project. Request relevant memory before work.
+
+The MCP server supplies the operating instructions after it connects. `.zerker/AGENT_PROMPT.md` contains the same durable guidance for clients that need it added to project instructions manually.
+
+## What ZMem Knows
+
+Generated MCP entries bind a host identity such as `codex` or `claude-code`. Each running MCP process also gets a connection provenance id. That lets ZMem reject another agent name supplied in a tool call and trace proposals back to a connector process.
+
+A connection id is not guaranteed to be the visible chat id. Agent hosts decide whether an MCP process belongs to one chat, one window, or a longer-lived application session. When a workflow needs a durable named session, use the session lifecycle commands or pass the host's stable session id with the memory proposal.
+
+`zmem doctor --agent codex --agent claude-code` verifies that each entry points to this project's exact database and policy. It no longer treats an entry for another workspace as ready.
+
+## Manual Clients
 
 For clients that do not accept direct config writes:
 
@@ -27,13 +45,15 @@ zmem agent checklist generic
 
 The pack includes the exact export path, doctor command, prompt path, snippet fallback, embedded server JSON, and proof smoke.
 
+Use `zmem agent install <preset>` when you need the low-level single-client command or a custom `--config-path`.
+
 ## MCP Server
 
 ```bash
 zmem --db .zerker/memory.sqlite mcp --profile agent
 ```
 
-Generated configs use this narrow `agent` profile. It exposes only `memory.propose`, `memory.inject`, `memory.why`, and `memory.verify`, so an agent cannot write trusted memory, approve its own proposal, inspect quarantine, or restore state.
+Generated configs use this narrow `agent` profile and bind the selected agent identity. It exposes only `memory.propose`, `memory.inject`, `memory.why`, and `memory.verify`, so an agent cannot write trusted memory, approve its own proposal, inspect quarantine, or restore state.
 
 Use `examples/mcp_config.example.json` as the reference shape for MCP-capable clients. Review and maintenance belong in the local CLI or UI:
 

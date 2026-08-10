@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import sqlite3
 import subprocess
@@ -11,7 +12,7 @@ from typing import Any
 
 from .eval import run_eval
 from .providers import provider_doctor
-from .store import MemoryStore, default_db_path
+from .store import MemoryStore, default_db_path, default_policy_path
 from .cli import agent_export_config_path
 
 
@@ -28,11 +29,13 @@ class DoctorCheck:
 def run_doctor(
     db_path: Path | None = None,
     *,
+    policy_path: Path | None = None,
     run_eval_check: bool = True,
     agent_presets: list[str] | tuple[str, ...] | None = None,
     agent_config_paths: dict[str, Path] | None = None,
 ) -> dict[str, Any]:
     db_path = db_path or default_db_path()
+    policy_path = policy_path or default_policy_path()
     checks = [
         check_python_version(),
         check_sqlite_fts5(),
@@ -42,11 +45,26 @@ def run_doctor(
     ]
     if agent_presets:
         checks.append(check_agent_prompt())
-        checks.extend(check_agent_install(preset) for preset in agent_presets)
+        checks.extend(
+            check_agent_install(
+                preset,
+                db_path=db_path,
+                policy_path=policy_path,
+            )
+            for preset in agent_presets
+        )
     if agent_config_paths:
         if not agent_presets:
             checks.append(check_agent_prompt())
-        checks.extend(check_agent_install(preset, config_path=path) for preset, path in agent_config_paths.items())
+        checks.extend(
+            check_agent_install(
+                preset,
+                config_path=path,
+                db_path=db_path,
+                policy_path=policy_path,
+            )
+            for preset, path in agent_config_paths.items()
+        )
     if run_eval_check:
         checks.append(check_eval())
     return {
@@ -145,46 +163,239 @@ def check_agent_prompt() -> DoctorCheck:
     return DoctorCheck("agent_prompt", False, f"{path} missing; run `zmem init --with-agent-prompt`")
 
 
-def check_agent_install(preset: str, *, server_name: str = "zerker-memory", config_path: Path | None = None) -> DoctorCheck:
+def check_agent_install(
+    preset: str,
+    *,
+    server_name: str = "zerker-memory",
+    config_path: Path | None = None,
+    db_path: Path | None = None,
+    policy_path: Path | None = None,
+    working_dir: Path | None = None,
+) -> DoctorCheck:
+    inspection = inspect_agent_connection(
+        preset,
+        server_name=server_name,
+        config_path=config_path,
+        db_path=db_path,
+        policy_path=policy_path,
+        working_dir=working_dir,
+    )
+    return DoctorCheck(
+        f"agent_{preset}",
+        bool(inspection["ok"]),
+        str(inspection["details"]),
+    )
+
+
+def inspect_agent_connection(
+    preset: str,
+    *,
+    server_name: str = "zerker-memory",
+    config_path: Path | None = None,
+    db_path: Path | None = None,
+    policy_path: Path | None = None,
+    working_dir: Path | None = None,
+) -> dict[str, Any]:
+    root = (working_dir or Path.cwd()).resolve()
     if preset == "codex":
         path = config_path or Path.home() / ".codex" / "config.toml"
         if not path.exists():
-            return DoctorCheck(f"agent_{preset}", False, f"{path} missing; run `zmem agent install {preset}`")
-        marker = f"[mcp_servers.{server_name}]"
-        if marker in path.read_text(encoding="utf-8"):
-            return DoctorCheck(f"agent_{preset}", True, str(path))
-        command = f"zmem agent install {preset} --force"
-        if config_path is not None:
-            command += f" --config-path {path}"
-        return DoctorCheck(f"agent_{preset}", False, f"{path} missing {marker}; run `{command}`")
-    if preset in {"claude-code", "cursor", "openclaw", "hermes", "generic"}:
+            return _missing_agent_connection(preset, path, config_path=config_path)
+        try:
+            server = _read_codex_mcp_server(path, server_name)
+        except ValueError as exc:
+            return _invalid_agent_connection(preset, path, str(exc))
+        if server is None:
+            marker = f"[mcp_servers.{server_name}]"
+            return _missing_agent_connection(preset, path, config_path=config_path, missing=marker)
+    elif preset in {"claude-code", "cursor", "openclaw", "hermes", "generic"}:
         path = config_path or (Path.home() / ".claude" / "mcp.json" if preset == "claude-code" else agent_export_config_path(preset))
         if path is None:
-            return DoctorCheck(
-                f"agent_{preset}",
-                False,
-                f"{preset} requires an explicit config path; run `zmem doctor --agent-config {preset}=/path/to/config.json`",
-            )
+            return {
+                "ok": False,
+                "state": "not_configured",
+                "preset": preset,
+                "config_path": None,
+                "details": (
+                    f"{preset} requires an explicit config path; "
+                    f"run `zmem doctor --agent-config {preset}=/path/to/config.json`"
+                ),
+            }
         if not path.exists():
-            command = f"zmem agent install {preset}"
-            if config_path is not None:
-                command += f" --config-path {path}"
-            return DoctorCheck(f"agent_{preset}", False, f"{path} missing; run `{command}`")
+            return _missing_agent_connection(preset, path, config_path=config_path)
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
         except json.JSONDecodeError as exc:
-            return DoctorCheck(f"agent_{preset}", False, f"{path} is not valid JSON: {exc}")
-        if server_name in payload.get("mcpServers", {}):
-            return DoctorCheck(f"agent_{preset}", True, str(path))
-        command = f"zmem agent install {preset} --force"
-        if config_path is not None:
-            command += f" --config-path {path}"
-        return DoctorCheck(
-            f"agent_{preset}",
-            False,
-            f"{path} missing mcpServers.{server_name}; run `{command}`",
+            return _invalid_agent_connection(preset, path, f"not valid JSON: {exc}")
+        server = payload.get("mcpServers", {}).get(server_name)
+        if not isinstance(server, dict):
+            return _missing_agent_connection(
+                preset,
+                path,
+                config_path=config_path,
+                missing=f"mcpServers.{server_name}",
+            )
+    else:
+        return {
+            "ok": False,
+            "state": "unsupported",
+            "preset": preset,
+            "config_path": str(config_path) if config_path is not None else None,
+            "details": f"{preset} does not have a supported default doctor check",
+        }
+
+    command = server.get("command")
+    args = server.get("args")
+    if not isinstance(command, str) or not command or not isinstance(args, list) or not all(
+        isinstance(arg, str) for arg in args
+    ):
+        return _invalid_agent_connection(preset, path, "MCP server command or args are invalid")
+    configured_profile = _configured_value(args, "--profile")
+    if "mcp" not in args or configured_profile not in {None, "agent"}:
+        return _invalid_agent_connection(
+            preset,
+            path,
+            "must launch the MCP agent profile",
         )
-    return DoctorCheck(f"agent_{preset}", False, f"{preset} does not have a supported default doctor check")
+
+    configured_db = _configured_path(args, "--db", working_dir=root)
+    configured_policy = _configured_path(args, "--policy", working_dir=root)
+    configured_agent_id = _configured_value(args, "--agent-id")
+    expected_db = db_path.expanduser().resolve() if db_path is not None else None
+    expected_policy = policy_path.expanduser().resolve() if policy_path is not None else None
+    mismatches: list[str] = []
+    if expected_db is not None and configured_db != expected_db:
+        mismatches.append(f"db={configured_db or 'unbound'} expected={expected_db}")
+    if expected_policy is not None and configured_policy != expected_policy:
+        mismatches.append(f"policy={configured_policy or 'unbound'} expected={expected_policy}")
+    if mismatches:
+        command_hint = _agent_rebind_command(preset, path, config_path=config_path)
+        return {
+            "ok": False,
+            "state": "configured_for_another_workspace",
+            "preset": preset,
+            "config_path": str(path),
+            "command": command,
+            "args": args,
+            "configured_db_path": str(configured_db) if configured_db is not None else None,
+            "configured_policy_path": str(configured_policy) if configured_policy is not None else None,
+            "configured_agent_id": configured_agent_id,
+            "expected_db_path": str(expected_db) if expected_db is not None else None,
+            "expected_policy_path": str(expected_policy) if expected_policy is not None else None,
+            "details": f"configured for another workspace ({'; '.join(mismatches)}); run `{command_hint}`",
+        }
+
+    if configured_agent_id != preset:
+        command_hint = _agent_rebind_command(preset, path, config_path=config_path)
+        state = "configured_without_bound_identity" if configured_agent_id is None else "configured_for_another_agent"
+        identity = configured_agent_id or "unbound"
+        return {
+            "ok": False,
+            "state": state,
+            "preset": preset,
+            "config_path": str(path),
+            "command": command,
+            "args": args,
+            "configured_db_path": str(configured_db) if configured_db is not None else None,
+            "configured_policy_path": str(configured_policy) if configured_policy is not None else None,
+            "configured_agent_id": configured_agent_id,
+            "expected_agent_id": preset,
+            "details": f"agent identity is {identity}; expected {preset}; run `{command_hint}`",
+        }
+
+    state = "exported_awaiting_import" if preset in {"cursor", "openclaw", "hermes", "generic"} else "ready_after_reload"
+    detail = f"{state.replace('_', ' ')}: {path}"
+    if configured_db is not None:
+        detail += f" -> {configured_db}"
+    return {
+        "ok": True,
+        "state": state,
+        "preset": preset,
+        "config_path": str(path),
+        "command": command,
+        "args": args,
+        "configured_db_path": str(configured_db) if configured_db is not None else None,
+        "configured_policy_path": str(configured_policy) if configured_policy is not None else None,
+        "configured_agent_id": configured_agent_id,
+        "expected_db_path": str(expected_db) if expected_db is not None else None,
+        "expected_policy_path": str(expected_policy) if expected_policy is not None else None,
+        "details": detail,
+    }
+
+
+def _missing_agent_connection(
+    preset: str,
+    path: Path,
+    *,
+    config_path: Path | None,
+    missing: str | None = None,
+) -> dict[str, Any]:
+    command = f"zmem agent install {preset}"
+    if config_path is not None:
+        command += f" --config-path {path}"
+    detail = f"{path} missing"
+    if missing:
+        detail = f"{path} missing {missing}"
+    return {
+        "ok": False,
+        "state": "not_configured",
+        "preset": preset,
+        "config_path": str(path),
+        "details": f"{detail}; run `{command}`",
+    }
+
+
+def _invalid_agent_connection(preset: str, path: Path, details: str) -> dict[str, Any]:
+    return {
+        "ok": False,
+        "state": "invalid_config",
+        "preset": preset,
+        "config_path": str(path),
+        "details": f"{path} {details}",
+    }
+
+
+def _agent_rebind_command(preset: str, path: Path, *, config_path: Path | None) -> str:
+    command = f"zmem agent install {preset} --force"
+    if config_path is not None:
+        command += f" --config-path {path}"
+    return command
+
+
+def _read_codex_mcp_server(path: Path, server_name: str) -> dict[str, Any] | None:
+    text = path.read_text(encoding="utf-8")
+    marker = re.escape(f"mcp_servers.{server_name}")
+    match = re.search(rf"(?ms)^\[{marker}\]\s*\n(?P<body>.*?)(?=^\[|\Z)", text)
+    if match is None:
+        return None
+    body = match.group("body")
+    command_match = re.search(r"(?m)^command\s*=\s*(.+?)\s*$", body)
+    args_match = re.search(r"(?m)^args\s*=\s*(\[.*\])\s*$", body)
+    if command_match is None or args_match is None:
+        raise ValueError(f"[{marker}] is missing command or args")
+    try:
+        command = json.loads(command_match.group(1))
+        args = json.loads(args_match.group(1))
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"[{marker}] has unsupported command or args syntax: {exc}") from exc
+    return {"command": command, "args": args}
+
+
+def _configured_path(args: list[str], option: str, *, working_dir: Path) -> Path | None:
+    raw = _configured_value(args, option)
+    if raw is None:
+        return None
+    path = Path(raw).expanduser()
+    if not path.is_absolute():
+        path = working_dir / path
+    return path.resolve()
+
+
+def _configured_value(args: list[str], option: str) -> str | None:
+    try:
+        return args[args.index(option) + 1]
+    except (ValueError, IndexError):
+        return None
 
 
 def check_eval() -> DoctorCheck:

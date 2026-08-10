@@ -9,6 +9,13 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
+try:
+    from ._environment import ensure_test_environment
+except ImportError:
+    from _environment import ensure_test_environment
+
+ensure_test_environment()
+
 from scripts.release_smoke import (
     build_live_provider_doctor_command,
     copy_release_surface,
@@ -36,6 +43,7 @@ from scripts.release_smoke import (
     pick_supported_python,
     python_supports_version,
     repo_python_env,
+    release_script_env,
     reexec_with_supported_python,
     run_release_smoke_summary,
     run_python_module_entrypoint_smoke,
@@ -356,6 +364,17 @@ class ReleaseSmokeTest(unittest.TestCase):
             env = repo_python_env(repo)
 
         self.assertEqual(env["PYTHONPATH"], f"{repo}{os.pathsep}/tmp/existing")
+
+    def test_release_script_env_preserves_workspace_registry(self):
+        with patch.dict(
+            os.environ,
+            {"PATH": "/usr/bin", "ZMEM_WORKSPACE_REGISTRY": "/tmp/zmem-test-workspaces.json"},
+            clear=False,
+        ):
+            env = release_script_env(Path("/tmp/zmem-bin"))
+
+        self.assertEqual(env["PATH"], f"/tmp/zmem-bin{os.pathsep}/usr/bin")
+        self.assertEqual(env["ZMEM_WORKSPACE_REGISTRY"], "/tmp/zmem-test-workspaces.json")
 
     def test_run_release_smoke_summary_prints_phase_one_preflight(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -908,21 +927,25 @@ class ReleaseSmokeTest(unittest.TestCase):
             self.assertIn('  "command": "zmem"', checklist)
             self.assertIn('  "args": [', checklist)
             stdout = io.StringIO()
-            with redirect_stdout(stdout):
-                self.assertEqual(
-                    cli_main(
-                        [
-                            "--db",
-                            str(db_path),
-                            "--policy",
-                            str(policy_path),
-                            "agent",
-                            "install",
-                            "generic",
-                        ]
-                    ),
-                    0,
-                )
+            try:
+                os.chdir(work)
+                with redirect_stdout(stdout):
+                    self.assertEqual(
+                        cli_main(
+                            [
+                                "--db",
+                                str(db_path),
+                                "--policy",
+                                str(policy_path),
+                                "agent",
+                                "install",
+                                "generic",
+                            ]
+                        ),
+                        0,
+                    )
+            finally:
+                os.chdir(cwd)
             install_output = json.loads(stdout.getvalue()[stdout.getvalue().find("{") :])
             self.assertTrue(install_output["doctor"]["ok"])
             doctor_checks = {check["name"]: check for check in install_output["doctor"]["checks"]}

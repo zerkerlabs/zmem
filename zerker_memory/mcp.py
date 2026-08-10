@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import os
 import sys
+import uuid
 from pathlib import Path
 from typing import Any, Callable
 
@@ -252,13 +254,20 @@ class McpServer:
         store: MemoryStore,
         *,
         profile: str = "agent",
+        agent_id: str | None = None,
+        connection_id: str | None = None,
         io_root: Path | None = None,
         provider_config_path: Path | None = None,
     ):
         if profile not in MCP_PROFILES:
             raise ValueError(f"unknown MCP profile: {profile}")
+        normalized_agent_id = agent_id.strip() if agent_id is not None else None
+        if normalized_agent_id == "" or (normalized_agent_id is not None and "/" in normalized_agent_id):
+            raise ValueError("MCP agent id must be a non-empty URI path segment")
         self.store = store
         self.profile = profile
+        self.agent_id = normalized_agent_id
+        self.connection_id = connection_id or f"mcp_{uuid.uuid4().hex}"
         self.io_root = (io_root or store.db_path.parent).expanduser().resolve()
         self.provider_config_path = provider_config_path or default_provider_config_path()
         self.allowed_tools = (
@@ -277,6 +286,7 @@ class McpServer:
                         "protocolVersion": "2024-11-05",
                         "capabilities": {"tools": {}},
                         "serverInfo": {"name": "zerker-memory", "version": __version__},
+                        "instructions": self._instructions(),
                     },
                 )
             if method == "notifications/initialized":
@@ -284,7 +294,7 @@ class McpServer:
             if method == "tools/list":
                 return self._result(
                     request_id,
-                    {"tools": [tool for tool in TOOL_SCHEMAS if tool["name"] in self.allowed_tools]},
+                    {"tools": self._visible_tools()},
                 )
             if method == "tools/call":
                 params = request.get("params") or {}
@@ -348,6 +358,14 @@ class McpServer:
         if source_kind not in PROPOSAL_SOURCE_KINDS:
             allowed = ", ".join(sorted(PROPOSAL_SOURCE_KINDS))
             raise ValueError(f"memory.propose source must be one of: {allowed}")
+        actor_uri = args.get("actor_uri")
+        session_id = args.get("session_id")
+        if self.agent_id:
+            bound_actor_uri = f"agent://{self.agent_id}/{self.connection_id}"
+            if actor_uri and actor_uri != bound_actor_uri:
+                raise ValueError(f"memory.propose actor is bound to {bound_actor_uri}")
+            actor_uri = bound_actor_uri
+            session_id = session_id or f"mcp://{self.agent_id}/{self.connection_id}"
         record = self.store.remember(
             required_str(args, "content"),
             memory_type=args.get("type", "semantic"),
@@ -355,8 +373,8 @@ class McpServer:
             source_kind=source_kind,
             labels=args.get("labels", []),
             source_uri=args.get("source_uri"),
-            actor_uri=args.get("actor_uri"),
-            session_id=args.get("session_id"),
+            actor_uri=actor_uri,
+            session_id=session_id,
             parent_action_id=args.get("parent_action_id"),
             environment_hash=args.get("environment_hash"),
         )
@@ -373,9 +391,16 @@ class McpServer:
         ]
 
     def _inject(self, args: JSON) -> JSON:
+        supplied_agent = args.get("agent")
+        if self.agent_id:
+            if supplied_agent and supplied_agent != self.agent_id:
+                raise ValueError(f"memory.inject agent is bound to {self.agent_id}")
+            agent_id = self.agent_id
+        else:
+            agent_id = required_str(args, "agent")
         return self.store.inject(
             required_str(args, "task"),
-            agent_id=required_str(args, "agent"),
+            agent_id=agent_id,
             risk=args.get("risk", "medium"),
             scope=args.get("scope"),
         )
@@ -469,6 +494,28 @@ class McpServer:
         except ValueError as exc:
             raise PermissionError(f"{label} is outside MCP I/O root: {self.io_root}") from exc
         return candidate
+
+    def _visible_tools(self) -> list[JSON]:
+        tools = [copy.deepcopy(tool) for tool in TOOL_SCHEMAS if tool["name"] in self.allowed_tools]
+        if not self.agent_id:
+            return tools
+        for tool in tools:
+            if tool["name"] != "memory.inject":
+                continue
+            schema = tool["inputSchema"]
+            schema["required"] = [name for name in schema.get("required", []) if name != "agent"]
+            schema["properties"]["agent"]["description"] = (
+                f"Optional; this connector is already bound to {self.agent_id}."
+            )
+        return tools
+
+    def _instructions(self) -> str:
+        identity = self.agent_id or "an unbound agent"
+        return (
+            f"ZMem is connected to this workspace as {identity}. Request memory with memory.inject before acting; "
+            "use only returned memories; propose durable learnings with memory.propose. "
+            f"Connection provenance id: {self.connection_id}. This identifies the MCP process, not necessarily a UI chat."
+        )
 
     @staticmethod
     def _tool_result(value: Any) -> JSON:
@@ -587,6 +634,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=os.environ.get("ZMEM_MCP_PROFILE", "agent"),
         help="Capability profile (default: agent)",
     )
+    parser.add_argument("--agent-id", help="Bind this MCP process to one agent host identity")
     return parser
 
 
@@ -596,6 +644,7 @@ def main(argv: list[str] | None = None) -> int:
         McpServer(
             MemoryStore(args.db, policy_path=args.policy),
             profile=args.profile,
+            agent_id=args.agent_id,
             io_root=args.io_root,
             provider_config_path=args.providers,
         )

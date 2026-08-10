@@ -43,6 +43,64 @@ class McpServerTest(unittest.TestCase):
         self.assertNotIn("memory.promote", names)
         self.assertNotIn("memory.restore", names)
 
+    def test_bound_agent_identity_is_injected_and_cannot_be_spoofed(self):
+        server = McpServer(
+            self.store,
+            agent_id="claude-code",
+            connection_id="conn_123",
+        )
+        initialize = self.request("initialize", server=server)
+        self.assertIn("connected to this workspace as claude-code", initialize["result"]["instructions"])
+        self.assertIn("not necessarily a UI chat", initialize["result"]["instructions"])
+
+        tools = self.request("tools/list", server=server)["result"]["tools"]
+        inject_schema = next(tool for tool in tools if tool["name"] == "memory.inject")["inputSchema"]
+        self.assertNotIn("agent", inject_schema["required"])
+
+        self.operator_server.call_tool(
+            "memory.remember",
+            {"content": "Use the release checklist", "scope": "project"},
+        )
+        response = self.call_tool(
+            "memory.inject",
+            {"task": "prepare release", "scope": "project"},
+            server=server,
+        )
+        self.assertNotIn("error", response)
+        receipt = self.store.conn.execute("SELECT agent_id FROM receipts LIMIT 1").fetchone()
+        self.assertEqual(receipt["agent_id"], "claude-code")
+
+        spoofed = self.call_tool(
+            "memory.inject",
+            {"task": "prepare release", "agent": "codex", "scope": "project"},
+            server=server,
+        )
+        self.assertEqual(spoofed["error"]["message"], "memory.inject agent is bound to claude-code")
+
+    def test_bound_agent_proposal_records_connection_provenance(self):
+        server = McpServer(
+            self.store,
+            agent_id="codex",
+            connection_id="conn_456",
+        )
+
+        response = self.call_tool(
+            "memory.propose",
+            {"content": "The release uses a clean-shell smoke"},
+            server=server,
+        )
+
+        self.assertNotIn("error", response)
+        receipt = self.store.conn.execute(
+            "SELECT actor_uri, session_id FROM memory_write_receipts LIMIT 1"
+        ).fetchone()
+        self.assertEqual(receipt["actor_uri"], "agent://codex/conn_456")
+        self.assertEqual(receipt["session_id"], "mcp://codex/conn_456")
+
+    def test_bound_agent_identity_rejects_invalid_uri_segment(self):
+        with self.assertRaisesRegex(ValueError, "URI path segment"):
+            McpServer(self.store, agent_id="team/codex")
+
     def test_operator_profile_lists_full_memory_surface(self):
         response = self.request("tools/list", server=self.operator_server)
         tools = response["result"]["tools"]
