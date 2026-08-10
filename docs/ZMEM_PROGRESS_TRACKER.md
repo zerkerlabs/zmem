@@ -31,10 +31,11 @@ Every push or meaningful automation drop should update this file alongside:
 | `v0.1.9` | Published | `a2a469f` / `v0.1.9` | Review-gated consolidation with verified live sources, private materialization, independent inspection, and ceiling-bound admit/discard decisions. |
 | `v0.1.10` | Published | `a482193` / `v0.1.10` | Tenant-local Zerker Rooms service with isolated shared/private memory, governed context preparation, idempotent writes, and exact context commitments. |
 | `v0.1.11` | Published | `ca42769` / `v0.1.11` | Concurrent first-open hardening for tenant-room SQLite initialization without serializing normal room writes. |
+| `v0.1.12` | Published | `25b1c7a` / `v0.1.12` | Guided multi-agent setup, exact connection diagnostics, bound host identity, connection provenance, and registry-safe test/release tooling. |
 
 Current public release:
 
-- GitHub: `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.11`
+- GitHub: `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.12`
 - Site: `https://www.zmem.sh`
 - Raw installer: `https://raw.githubusercontent.com/zerkerlabs/zmem/main/install.sh`
 
@@ -121,6 +122,16 @@ Published `v0.1.11` checkpoint:
 - GitHub assets match wheel `sha256:cd19b739eb820fe4b8caf0df53c0c9d413ccd80fab2d9aa7f64d9554f3e68210` and source distribution `sha256:11bc45f468c6525501d4c8d39dac888e16f49b9571d4bae44e6663c3941a4d84`.
 - Production site deployment `dpl_FXQHCHkG4tuL2zkWkfUS74qC3hrm` and docs deployment `dpl_7DWvVkUjtZxV6udwN93mrimtFAKp` are live at `https://www.zmem.sh` and `https://docs.zmem.sh`; public canaries confirm the changelog, Rooms guide, and ActiveGraph `0.1.11` example.
 
+Published `v0.1.12` checkpoint:
+
+- Feature PR `#23` merged at `1f6b3001d4ccd3b99c0130657a24b92ded718fcb`; release PR `#24` merged at `25b1c7a1f125f4e42f43053e0de99fef2538a0f7`. The latter exact commit is tagged and published at `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.12`.
+- One guided command now binds selected Codex, Claude Code, Hermes, Cursor, OpenClaw, and generic MCP clients to one exact project store and policy while reporting direct reload and manual import states honestly.
+- MCP host identity is bound, per-process connection provenance is retained, and no UI chat identity is fabricated. Doctor/status verify the exact database, policy, agent, and profile.
+- Local acceptance passes `1,397` tests with two expected skips, eval `11/11`, both public builds, ActiveGraph, full release smoke, published-wheel install, and real Codex/Claude Code MCP smokes.
+- Feature PR CI run `31432939904`, release PR run `31434139805`, post-merge main run `31434577823`, and tag run `31434606728` passed every job.
+- GitHub assets match wheel `sha256:ae75cb6e6018cd86edc247384e43c99d5c07a5968db674bfd62948b97b61dbe2` and source distribution `sha256:cca4fed79b0733d7277221d27877806955b31abbc84a0585936a0aeb24b1d378`.
+- Production site deployment `dpl_CdJ1H7itTgKTJux5WW9t2YC8NiGZ` and docs deployment `dpl_4RTEdAbaUFN9DmL7MbVBWTyXTgGc` are live at `https://www.zmem.sh` and `https://docs.zmem.sh`.
+
 Included `v0.1.6` L3 checkpoint:
 
 - Bounded transcript-neighbor onset support passes the stable gate at `160/227` versus `159/227`, with one gain, zero losses, one changed retrieval context, and `+17` query tokens.
@@ -166,10 +177,10 @@ Percentages are practical launch-grade alpha estimates, not benchmark scores.
 | L2 Lifecycle Compaction | Sessions, checkpoints, snapshots, retention | 82% | Session lifecycle, handoff/restore, cold-start gap audit, governed scheduled run, typed failure memory, and one-action receipted expiry maintenance are implemented | Add revalidation, decay, tombstone, and failed-claim reopen contracts without automating semantic judgment |
 | L3 Retrieval Baseline | FTS/BM25, local dense candidates, RRF, packing | 97% | Offline FastEmbed plus adaptive FTS passes the frozen gate and full LoCoMo/LongMemEval comparisons with 43/347/91 gains, zero losses, lexical recall preservation, and receipt-visible model/fusion evidence | Tune candidate/context cost, then profile whether ANN or `sqlite-vec` is warranted before exposing server-controlled MCP dense retrieval |
 | L4 Consolidation | Hierarchical summaries and job ledger | 75% | Verified live-source preview, private recoverable materialization, independent live-source inspection, and terminal admit/discard decisions with ceiling-bound lineage receipts | Extend the reviewed path to live day/week/profile rollups before designing any scheduler |
-| L5 Identity / Workspaces | Multi-agent source lineage and conflicts | 50% | Source reports, claim conflicts, resolution basis, exact-tie abstention summaries | Add handoff ownership/lease metadata and a dry-run import preview, then persist merge decisions |
+| L5 Identity / Workspaces | Multi-agent source lineage and conflicts | 60% | Source reports, claim conflicts, resolution basis, exact-tie abstention, guided shared-store setup, bound agent-host identity, and per-process connection provenance | Add handoff ownership/lease metadata and a dry-run import preview, then persist merge decisions and expose real host-provided chat ids only when available |
 | L6 Benchmark Harness | LoCoMo/LongMemEval/BEAM evidence | 100% for local harness and sampled scale | Verified LoCoMo/LongMemEval evidence plus official-layout BEAM 100K, 500K, 1M, and 10M runs exist; compact artifacts verify | Add broader evidence and an official model-judged path; do not report unjudged LLM answers as incorrect |
-| Launch Oversight | Release pack, proof evidence, public release | 100% for v0.1.11 | Public verify `6/6`, assets `8/8`, return packet ready, release assets published, and production canaries pass | Keep automation paused until the next bounded release candidate exists |
-| Website / Docs | Landing, proof page, docs, changelog | 100% for v0.1.11 | Release copy, Rooms guide, consolidation workflow, benchmark boundary, and ActiveGraph pack version are synchronized and live on the production domains | Keep release facts synchronized with the next shipped product change |
+| Launch Oversight | Release pack, proof evidence, public release | 100% for v0.1.12 | Public verify `6/6`, assets `8/8`, return packet ready, release assets published, exact package digests verified, and production canaries pass | Keep automation paused until the next bounded release candidate exists |
+| Website / Docs | Landing, proof page, docs, changelog | 100% for v0.1.12 | Release copy, guided agent setup, Rooms guide, consolidation workflow, benchmark boundary, and ActiveGraph pack version are synchronized and live on the production domains | Keep release facts synchronized with the next shipped product change |
 | Rooms / Gateway | Multi-agent shared memory integration | 55% | Tenant-local service, hard tenant/room isolation, shared/member-private memory, governed context, commitments, auth, idempotency, and concurrent first-open hardening are published | Land the Gateway Go client, durable Rooms event state, load/timeout gates, and separately authorized remote review |
 | ActiveGraph Integration | Event substrate and compact traces | 100% | The real pack loads, persists events, batches traces, and ships a runnable two-run host with recorded/sent prompt equality | Keep larger selected-mode traces and aggregate Treeship artifacts as optional follow-ups |
 

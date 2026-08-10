@@ -1,5 +1,15 @@
 # Launch Lane Log
 
+## 2026-08-10 - v0.1.12 publication
+
+- Scope: shipped guided multi-agent setup, merged feature PR `#23` and release PR `#24`, tagged the exact release merge, published clean distributions, deployed production site/docs, and dogfooded the same wheel against real local agent configs.
+- Release: `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.12` from `25b1c7a1f125f4e42f43053e0de99fef2538a0f7`.
+- CI: feature PR run `31432939904`, release PR run `31434139805`, main run `31434577823`, and tag run `31434606728` passed every Python, ActiveGraph, site, docs, and release-smoke job.
+- Artifacts: GitHub reports wheel `sha256:ae75cb6e6018cd86edc247384e43c99d5c07a5968db674bfd62948b97b61dbe2` and source distribution `sha256:cca4fed79b0733d7277221d27877806955b31abbc84a0585936a0aeb24b1d378`.
+- Production: site deployment `dpl_CdJ1H7itTgKTJux5WW9t2YC8NiGZ` and docs deployment `dpl_4RTEdAbaUFN9DmL7MbVBWTyXTgGc` are live at `https://www.zmem.sh` and `https://docs.zmem.sh` with the `0.1.12` changelog and guided setup guide.
+- Dogfood: the exact wheel is installed locally; Codex and Claude Code are reload-ready and pass MCP read/write/proof smokes; Hermes, Cursor, OpenClaw, and generic exports verify and await one client-side import.
+- Next safe slice: keep broad swarms paused and treat Gateway Rooms client/persistence work as a separate accepted cross-repo integration.
+
 ## 2026-08-10 - v0.1.11 publication
 
 - Scope: fixed the concurrent first-open Rooms race, merged PR `#20`, tagged the exact merge commit, published both distributions, deployed production site/docs, and verified the live release surfaces.

@@ -1,3 +1,16 @@
+## 2026-08-10 - v0.1.12 guided multi-agent setup published
+
+- Added `zmem setup [agents...]` as the daily-use connection path for Codex, Claude Code, Hermes, Cursor, OpenClaw, and generic MCP clients. Every selected client receives the same absolute project database and policy; directly managed configs and export-only configs report distinct activation states.
+- Bound agent host identity into generated MCP commands, added per-process connection provenance, and kept the claim boundary explicit: ZMem knows the connector identity and process connection, not the editor's private UI chat identifier.
+- Added exact doctor/status diagnostics for reload-ready, awaiting-import, wrong-workspace, missing-identity, wrong-agent, and invalid-config states. Added `zmem workspace prune` for read-only stale-entry reporting plus explicit cleanup.
+- Isolated all test and release-smoke workspace registry writes. The full local suite and release smoke leave the real `~/.zmem/workspaces.json` unchanged; the final local gate passed `1,397` tests with two expected skips plus eval `11/11`.
+- Merged feature PR `#23` at `1f6b3001d4ccd3b99c0130657a24b92ded718fcb`, then merged the mechanical release PR `#24` at `25b1c7a1f125f4e42f43053e0de99fef2538a0f7`. The latter exact commit is tagged and published at `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.12`.
+- Feature PR CI run `31432939904`, release PR run `31434139805`, post-merge main run `31434577823`, and tag run `31434606728` passed Python 3.10/3.11/3.12, ActiveGraph, site, docs, and release smoke.
+- Built from a clean detached checkout of the tag, clean-installed the published wheel under Python 3.11, and passed eval `11/11` plus guided setup/doctor verification. GitHub asset digests match wheel `sha256:ae75cb6e6018cd86edc247384e43c99d5c07a5968db674bfd62948b97b61dbe2` and source distribution `sha256:cca4fed79b0733d7277221d27877806955b31abbc84a0585936a0aeb24b1d378`.
+- Replaced this machine's stale editable `0.1.0` package metadata with the exact published `0.1.12` wheel. Real setup configured all supported presets against the same project memory; doctor passed every exact binding, and Codex plus Claude Code MCP read/write/proof smokes passed against server version `0.1.12`.
+- Deployed site `dpl_CdJ1H7itTgKTJux5WW9t2YC8NiGZ` and docs `dpl_4RTEdAbaUFN9DmL7MbVBWTyXTgGc` to `https://www.zmem.sh` and `https://docs.zmem.sh`. Public canaries confirm the `v0.1.12` changelog and guided setup agent guide.
+- Broad recurring swarms and launch oversight remain paused. The next bounded product work should preserve this connection contract while advancing the Gateway Rooms client/persistence boundary or a separately accepted frontier lane.
+
 ## 2026-08-10 - Scheduled-swarm reconciliation and direct restore proof UX
 
 - Reconciled all eight paused automation lanes against current `main`. Their substantive July 6 output was already consolidated in commit `91c792f` and published in `v0.1.2`; later releases supersede most recorded follow-up suggestions.
