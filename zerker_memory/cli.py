@@ -6807,8 +6807,20 @@ def run_release_pack(
 def render_restore_summary(result: dict) -> str:
     restore_receipt = result["restore"]["receipt"]
     restore_verify = result.get("restore_verify") or {}
+    snapshot_verify = result.get("snapshot_verify") or {}
     restore_evidence = ((restore_receipt.get("treeship_statement") or {}).get("evidence") or {})
     restore_schema = str(result.get("schema") or "")
+    snapshot_attestation_artifacts = [
+        str(item.get("artifact_id"))
+        for item in snapshot_verify.get("attestation_artifacts", [])
+        if isinstance(item, dict) and str(item.get("artifact_id") or "")
+    ]
+    snapshot_write_receipt_count = int(snapshot_verify.get("write_receipt_count") or 0)
+    snapshot_verified_write_receipt_count = int(snapshot_verify.get("verified_write_receipt_count") or 0)
+    snapshot_provenance_receipt_count = int(snapshot_verify.get("provenance_receipt_count") or 0)
+    snapshot_verified_provenance_receipt_count = int(
+        snapshot_verify.get("verified_provenance_receipt_count") or 0
+    )
     session_lifecycle_rollup = (
         result.get("session_lifecycle_rollup") if isinstance(result.get("session_lifecycle_rollup"), dict) else None
     )
@@ -6825,7 +6837,31 @@ def render_restore_summary(result: dict) -> str:
         f"Source: {result['source']}",
         f"Target DB: {result['db_path']}",
         f"Snapshot: {result['snapshot_path']}",
-        f"Snapshot verify: {'ok' if result['snapshot_verify']['ok'] else 'failed'}",
+        f"Snapshot verify: {'ok' if snapshot_verify.get('ok') else 'failed'}",
+        f"Snapshot write receipts: {snapshot_write_receipt_count}",
+        f"Snapshot write receipt chains: {int(snapshot_verify.get('write_receipt_chain_count') or 0)}",
+        (
+            "Snapshot write receipt verify: "
+            f"{'ok' if snapshot_verify.get('ok') else 'failed'} "
+            f"({snapshot_verified_write_receipt_count}/{snapshot_write_receipt_count} verified)"
+        ),
+        (
+            "Snapshot verified write transitions: "
+            f"{int(snapshot_verify.get('verified_write_receipt_transition_count') or 0)}"
+        ),
+        (
+            f"Snapshot provenance anchors: {snapshot_verified_provenance_receipt_count} verified"
+            if snapshot_provenance_receipt_count == snapshot_verified_provenance_receipt_count
+            else (
+                "Snapshot provenance anchors: "
+                f"{snapshot_verified_provenance_receipt_count}/{snapshot_provenance_receipt_count} verified"
+            )
+        ),
+        (
+            "Snapshot Treeship artifacts: "
+            f"{', '.join(snapshot_attestation_artifacts) if snapshot_attestation_artifacts else 'none'}"
+        ),
+        f"Snapshot trusted provenance: {'verified' if snapshot_verify.get('ok') else 'not verified'}",
     ]
     if result.get("bundle_path"):
         lines.extend(

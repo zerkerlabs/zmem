@@ -1,5 +1,14 @@
 # Trust Ledger Lane Log
 
+## 2026-08-10 - L0 direct snapshot restore proof summary - Codex
+
+- Scope: reconciled the paused L0 worker backlog and closed one real operator-facing gap without changing snapshot, receipt, Merkle, restore, or Treeship schemas.
+- Behavior changed: direct `zmem restore <snapshot> --summary-only` now surfaces verified snapshot write-receipt and chain counts, transition count, provenance-anchor verification, linked Treeship artifacts, and trusted-provenance status before reporting the separate restore receipt.
+- Reconciliation: `zmem lineage <memory-id> --summary-only` already provides ordered mutation-chain UX, so that stale tracker item is now marked shipped instead of reimplemented.
+- Tests: focused restore, CLI onboarding (`224/224`), snapshot (`43/43`), supported-runtime full suite (`1,387` with two expected skips), eval (`11/11`), strict release smoke, and diff checks pass.
+- Proof boundary: the summary exposes verification already performed by `verify_snapshot`; it does not claim semantic truth or add a new trust source.
+- Automation state: broad swarms remain paused. Any future L0 run needs a fresh bounded acceptance target against current `main`.
+
 ## 2026-07-20 - L0 digest-bound memory context - Codex
 
 - Scope: added one canonical commitment for the exact `zerker.memory_context.v1` artifact supplied to an agent, without changing retrieval, SQLite schema, Merkle v1, or agent authority.

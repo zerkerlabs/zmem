@@ -5,6 +5,10 @@ This is the short orchestration dashboard for Zerker Memory. Every autonomous bu
 ## Release Coordination
 `2026-08-10`
 
+- Reconciled the paused trust, temporal, lifecycle, retrieval, consolidation, identity, benchmark, and launch automations against current `main`. Their substantive worker output was already landed by `91c792f` in `v0.1.2`, while v0.1.8-v0.1.11 supersede most remaining recommendations.
+- Direct snapshot restore now exposes the verified snapshot write chains, transitions, provenance anchors, and Treeship artifacts that were already checked internally. The progress tracker also reflects that ordered per-memory mutation-chain summaries were previously shipped.
+- Keep all broad swarms paused. The next automation should be a newly scoped lane with a current acceptance test, not a replay of the July worker queues.
+
 - Published `v0.1.11` from PR `#20` merge commit `ca427692cab8cb71c5f95c7d48c9a33499f01f7b` at `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.11`.
 - The patch serializes only first-open WAL/schema initialization for one tenant-room store. Normal room reads and writes remain concurrent, and the regression forces eight simultaneous first opens before checking durable unique writes and idempotent retries.
 - PR CI run `31402007077`, post-merge main run `31402550305`, and tag run `31403219715` passed every Python 3.10/3.11/3.12, ActiveGraph, site, docs, and release-smoke job.

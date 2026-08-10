@@ -1,3 +1,11 @@
+## 2026-08-10 - Scheduled-swarm reconciliation and direct restore proof UX
+
+- Reconciled all eight paused automation lanes against current `main`. Their substantive July 6 output was already consolidated in commit `91c792f` and published in `v0.1.2`; later releases supersede most recorded follow-up suggestions.
+- Corrected two stale tracker items: ordered per-memory mutation chains already have `zmem lineage <memory-id> --summary-only`, and connected-agent reports already expose latest proof lineage.
+- Extended direct snapshot restore summaries with verified write-receipt counts, ordered chain counts, verified transitions, provenance anchors, linked Treeship artifacts, and the explicit trusted-provenance boundary already returned by snapshot verification.
+- Verification passes the focused restore regression, all `224` CLI onboarding tests, all `43` snapshot tests, the supported-runtime full suite at `1,387` tests with two expected skips, eval `11/11`, strict release smoke, and diff checks.
+- Broad recurring swarms remain paused. Reopening them would duplicate shipped work; future automation should start only from a bounded acceptance target against current `main`.
+
 ## 2026-08-10 - v0.1.11 published
 
 - Post-publication `v0.1.10` main CI run `31400461028` exposed a same-room first-open race: concurrent `MemoryStore` constructors could collide while enabling SQLite WAL and raise `database is locked`.

@@ -21,6 +21,13 @@ Primary mission brief:
 - Lane progress and release tracker: `docs/ZMEM_PROGRESS_TRACKER.md`
 - Lane logs: `docs/CONTINUOUS_BUILD/`
 
+Coordinator update `2026-08-10` (scheduled-swarm reconciliation):
+
+- Audited every paused automation definition, worker memory, and latest lane result against current `main`. The substantive trust, temporal, lifecycle, retrieval, consolidation, identity, and benchmark work was already consolidated in `91c792f` and published in `v0.1.2`; subsequent releases supersede most queued next-slice notes.
+- Rejected duplicate follow-ups for mutation-chain CLI output and connected-agent proof lineage because both are already implemented and tested.
+- Kept one real L0 usability gap: direct snapshot restore now prints compact verified write-chain, transition, provenance, and Treeship proof details from the existing verification result without changing proof schemas or restore behavior.
+- All broad swarms and launch oversight remain paused. Resume only a newly bounded lane with current acceptance criteria and isolated artifacts.
+
 Coordinator update `2026-08-10` (`v0.1.11` published):
 
 - Broad recurring swarms and launch oversight remain paused. PR `#20` merged at `ca427692cab8cb71c5f95c7d48c9a33499f01f7b`; that exact commit is tagged and published as `v0.1.11`.
