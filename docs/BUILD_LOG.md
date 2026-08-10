@@ -1,3 +1,11 @@
+## 2026-08-10 - v0.1.10 published
+
+- Merged PR `#18` at `a48219337abf5b70373a59d2b1ed420378d7d8c3`, tagged that exact commit as `v0.1.10`, and published `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.10`.
+- PR CI run `31397381005`, main CI run `31397884766`, and tag CI run `31398430868` passed Python 3.10/3.11/3.12, ActiveGraph, site, docs, and release smoke.
+- Built, clean-installed, and verified artifacts from the exact merged commit. GitHub asset digests match wheel `sha256:dbaa5f3438f85f004c7b3e89b9f258b7f3f48ac2f5b7510665e2f928fafe4ed0` and source distribution `sha256:17f2eaeffefdebb2b8a24d00da860b351e1c911b50a3845641445d428cfe2786`.
+- Deployed site `dpl_7GERfN3Z5ASaYreQUiSatB9ggh61` and docs `dpl_ErsKm4tjtZVb16XuxPpFcc9qpmTt` to `https://www.zmem.sh` and `https://docs.zmem.sh`; public canaries confirm the `v0.1.10` changelog bundle and `/docs/rooms` guide.
+- Broad recurring swarms and launch oversight remain paused. The next bounded integration work is the Gateway Go client plus durable Rooms event persistence and realistic Gateway-to-ZMem load/timeout gates.
+
 ## 2026-08-09 - Zerker Rooms memory service candidate
 
 - Added `zerker_memory/rooms.py` as a narrow room-native adapter over the real `MemoryStore`: one opaque SQLite database per tenant-and-room pair, room-shared plus member-private visibility, governed context preparation, accepted-state recording, and quarantined proposals.

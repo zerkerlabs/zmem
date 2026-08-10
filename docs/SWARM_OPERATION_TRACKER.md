@@ -21,6 +21,13 @@ Primary mission brief:
 - Lane progress and release tracker: `docs/ZMEM_PROGRESS_TRACKER.md`
 - Lane logs: `docs/CONTINUOUS_BUILD/`
 
+Coordinator update `2026-08-10` (`v0.1.10` published):
+
+- Broad recurring swarms and launch oversight remain paused. PR `#18` merged at `a48219337abf5b70373a59d2b1ed420378d7d8c3`; that exact commit is tagged and published as `v0.1.10`.
+- PR, main, and tag CI passed every Python, ActiveGraph, site, docs, and release-smoke job. Exact merged-source assets match wheel `dbaa5f34...` and source distribution `17f2eaef...`.
+- Production site and docs deployments are live with the `0.1.10` release state. ZMem now ships the tenant-local Rooms service, isolated room/member memory, governed context preparation, retry-safe writes, and the public Rooms integration contract.
+- Do not restart broad swarms for this integration. The next bounded work is cross-repo: Gateway Go client, durable Rooms event persistence, then realistic load/timeout gates before hosted traffic.
+
 Coordinator update `2026-08-05` (`v0.1.9` published):
 
 - Broad recurring swarms and launch oversight remain paused. PR `#16` merged at `a2a469f3502bfdfafc13158db6e9ceea3c5769bf`; that exact commit is tagged and published as `v0.1.9`.

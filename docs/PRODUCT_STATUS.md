@@ -4,9 +4,9 @@
 
 Zerker Memory is a functional open-source, local-first alpha with a public site, tagged releases, and a verified local proof path.
 
-Current published release: `v0.1.9` at `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.9`.
+Current published release: `v0.1.10` at `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.10`.
 
-The release completes a review-gated consolidation path over the existing governed memory system. Operators can verify live sources, materialize a private deterministic summary, independently inspect it, and explicitly admit or discard it. Only admission creates canonical memory, at exactly the weakest source trust and authority ceilings, with lineage-bound write evidence and one terminal Merkle event. The release also includes the previously shipped digest-bound context proof, scheduled-agent continuity, typed failure memory, and opt-in local dense/FTS retrieval.
+The release adds a tenant-local Zerker Rooms memory service over the existing governed memory system. Each tenant-and-room pair gets an isolated SQLite store with room-shared and member-private memory, policy-ranked context preparation, explicit empty/blocked/abstained state, quarantined agent proposals, retry-safe event writes, and a digest binding the exact selected memory state. The previously shipped review-gated consolidation, digest-bound context proof, scheduled-agent continuity, typed failure memory, and opt-in local dense/FTS retrieval remain available.
 
 It is ready for:
 
@@ -26,7 +26,7 @@ It is not yet:
 - a semantic-truth oracle; receipts prove integrity, provenance, and influence rather than truth,
 - a full vector/graph memory replacement,
 - a fully polished hosted review workflow.
-- a deployed zerker.ai Rooms backend; the ZMem service candidate exists, but the Gateway Go client and Rooms persistence still need to land.
+- a deployed zerker.ai Rooms backend; the ZMem service is published, but the Gateway Go client and durable Rooms event persistence still need to land.
 
 Product signal note: the current wedge is validated by builder demand for local, inspectable, structured, curated, and verifiable agent memory. See `docs/MOLTBOOK_ZMEM_PRODUCT_SIGNAL.md`.
 
@@ -40,7 +40,7 @@ Product signal note: the current wedge is validated by builder demand for local,
 6. Governed tool and interface-contract trust records linked to Treeship canary proof without moving install/run authority into ZMem.
 7. A server-controlled MCP dense-retrieval mode after the CLI/library candidate is accepted; existing MCP tool schemas intentionally retain stable FTS behavior.
 8. An official model-judged BEAM submission path plus broader multi-conversation 1M and 10M coverage; the first isolated runs are complete.
-9. Graduate the tenant-local Rooms adapter into production: Gateway Go client, durable Rooms state, load/timeout gates, separately authorized remote review, hosted tenant routing, collective receipts, customer-managed keys, SSO, audit retention, and VPC/on-prem guides.
+9. Graduate the published tenant-local Rooms adapter into production: Gateway Go client, durable Rooms state, load/timeout gates, separately authorized remote review, hosted tenant routing, collective receipts, customer-managed keys, SSO, audit retention, and VPC/on-prem guides.
 
 ## Functional Today
 
