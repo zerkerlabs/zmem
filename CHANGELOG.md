@@ -2,7 +2,7 @@
 
 All notable Zerker Memory alpha changes are summarized here.
 
-## Unreleased
+## 0.1.12 - 2026-08-10
 
 ### Guided Agent Connections
 
