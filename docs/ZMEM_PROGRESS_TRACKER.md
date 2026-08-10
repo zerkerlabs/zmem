@@ -161,7 +161,7 @@ Percentages are practical launch-grade alpha estimates, not benchmark scores.
 
 | Lane | Focus | Alpha completion | Shipped state | Next acceptance target |
 | --- | --- | ---: | --- | --- |
-| L0 Trust Ledger | Receipts, Merkle lineage, context and restore/export proof | 90% | Mutation/lifecycle/restore receipts, compact v2 event witnesses, serialized event appends, digest-bound memory context, and linked cold-start proof exist; default MCP agents cannot claim trusted write/review authority | Add direct mutation-chain UX, then design a backward-compatible Merkle successor |
+| L0 Trust Ledger | Receipts, Merkle lineage, context and restore/export proof | 92% | Mutation/lifecycle/restore receipts, compact v2 event witnesses, serialized event appends, digest-bound memory context, linked cold-start proof, mutation-chain summaries, and direct snapshot proof summaries exist; default MCP agents cannot claim trusted write/review authority | Add typed predicate validation when the Treeship registry is available, then design a backward-compatible Merkle successor |
 | L1 Temporal KG | Current/history/superseded temporal memory | 70% | `query_at`, supersession, omitted-memory envelopes, runtime temporal context, and receipt-visible contradiction abstention | Add richer filters and decide when a concrete consumer justifies a true bi-temporal graph schema |
 | L2 Lifecycle Compaction | Sessions, checkpoints, snapshots, retention | 82% | Session lifecycle, handoff/restore, cold-start gap audit, governed scheduled run, typed failure memory, and one-action receipted expiry maintenance are implemented | Add revalidation, decay, tombstone, and failed-claim reopen contracts without automating semantic judgment |
 | L3 Retrieval Baseline | FTS/BM25, local dense candidates, RRF, packing | 97% | Offline FastEmbed plus adaptive FTS passes the frozen gate and full LoCoMo/LongMemEval comparisons with 43/347/91 gains, zero losses, lexical recall preservation, and receipt-visible model/fusion evidence | Tune candidate/context cost, then profile whether ANN or `sqlite-vec` is warranted before exposing server-controlled MCP dense retrieval |
@@ -194,8 +194,8 @@ Built:
 
 Left:
 
-- [ ] Direct CLI summary for ordered per-memory mutation chains.
-- [ ] Direct snapshot restore should show the same compact receipt summary as handoff restore.
+- [x] Direct CLI summary for ordered per-memory mutation chains.
+- [x] Direct snapshot restore shows compact write-chain, provenance, and Treeship proof details.
 - [ ] Typed predicate/schema validation once the Treeship registry work lands.
 - [ ] Local key/signature story beyond Merkle proof.
 
