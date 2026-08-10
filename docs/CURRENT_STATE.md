@@ -5,7 +5,15 @@ This is the short orchestration dashboard for Zerker Memory. Every autonomous bu
 ## Release Coordination
 `2026-08-10`
 
-- Reconciled the paused trust, temporal, lifecycle, retrieval, consolidation, identity, benchmark, and launch automations against current `main`. Their substantive worker output was already landed by `91c792f` in `v0.1.2`, while v0.1.8-v0.1.11 supersede most remaining recommendations.
+- Published `v0.1.12` from release PR `#24` merge commit `25b1c7a1f125f4e42f43053e0de99fef2538a0f7` at `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.12`. Feature PR `#23` merged the guided setup implementation at `1f6b3001d4ccd3b99c0130657a24b92ded718fcb`.
+- `zmem setup [agents...]` now initializes one project and connects selected Codex, Claude Code, Hermes, Cursor, OpenClaw, or generic MCP clients to the same absolute database and policy. Doctor/status distinguish reload-ready direct configs from export-only configs awaiting import and fail on wrong workspace, agent, profile, or malformed configuration.
+- MCP commands bind the selected host identity and generate per-process connection provenance. That provenance is explicitly not represented as a UI chat id. Agent proposals carry the bound agent/connection source without widening the default agent capability profile.
+- Feature PR CI run `31432939904`, release PR run `31434139805`, post-merge main run `31434577823`, and tag run `31434606728` passed every Python 3.10/3.11/3.12, ActiveGraph, site, docs, and release-smoke job.
+- Exact clean-source assets verify against GitHub: wheel `sha256:ae75cb6e6018cd86edc247384e43c99d5c07a5968db674bfd62948b97b61dbe2`; source distribution `sha256:cca4fed79b0733d7277221d27877806955b31abbc84a0585936a0aeb24b1d378`.
+- Production site deployment `dpl_CdJ1H7itTgKTJux5WW9t2YC8NiGZ` and docs deployment `dpl_4RTEdAbaUFN9DmL7MbVBWTyXTgGc` are live at `https://www.zmem.sh` and `https://docs.zmem.sh`. Public canaries expose the `v0.1.12` changelog and the guided setup agent guide.
+- Real-machine dogfooding installed the exact release wheel, configured all six supported client presets against this workspace, verified every binding with doctor, and passed live Codex plus Claude Code MCP read/write/proof smokes. Existing Codex and Claude Code sessions still require reload; Hermes, Cursor, OpenClaw, and generic clients require one import of their generated export.
+
+- Reconciled the paused trust, temporal, lifecycle, retrieval, consolidation, identity, benchmark, and launch automations against current `main`. Their substantive worker output was already landed by `91c792f` in `v0.1.2`, while v0.1.8-v0.1.12 supersede most remaining recommendations.
 - Direct snapshot restore now exposes the verified snapshot write chains, transitions, provenance anchors, and Treeship artifacts that were already checked internally. The progress tracker also reflects that ordered per-memory mutation-chain summaries were previously shipped.
 - Keep all broad swarms paused. The next automation should be a newly scoped lane with a current acceptance test, not a replay of the July worker queues.
 

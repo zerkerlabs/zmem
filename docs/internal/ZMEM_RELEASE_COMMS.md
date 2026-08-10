@@ -1,5 +1,19 @@
 # ZMem Release Comms
 
+## 2026-08-10 - v0.1.12 publication
+
+Audience: internal Zerker product, engineering, developer experience, security review, Gateway integration, and release coordination.
+
+`v0.1.12` is published from release PR `#24` merge commit `25b1c7a1f125f4e42f43053e0de99fef2538a0f7` at `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.12`; feature PR `#23` supplied the implementation. Feature PR, release PR, post-merge main, and tag CI passed every Python 3.10/3.11/3.12, ActiveGraph, site, docs, and release-smoke job. GitHub assets match wheel `sha256:ae75cb6e...` and source distribution `sha256:cca4fed7...`.
+
+The release replaces the ambiguous idea of `zmem connect codex claude-code hermes` with a real builder workflow. Run `zmem setup codex claude-code hermes` inside a project. ZMem initializes the local workspace, points every selected client at the same absolute database and policy, configures Codex and Claude Code directly, exports exact entries for manual clients, and tells the operator whether each client is reload-ready or still awaiting import.
+
+The identity boundary is deliberately narrow. The generated MCP command binds the agent host, and each server process contributes a connection id for provenance. ZMem does not claim that process id is the editor's private UI chat id. The default agent profile remains proposal/read/explain/verify only; setup does not grant agents operator review authority.
+
+Real-machine dogfooding installed the exact published wheel, configured all six supported presets, verified every exact binding with doctor, and passed live Codex plus Claude Code MCP read/write/proof smokes. Existing direct-client sessions need reload. Hermes, Cursor, OpenClaw, and generic MCP clients require one explicit import of the generated project-local export.
+
+Production site and docs are live at `https://www.zmem.sh` and `https://docs.zmem.sh`. The next product integration remains the Gateway Rooms client and durable persistence boundary; guided setup should be reused as the local developer entry point rather than replaced with a second connection model.
+
 ## 2026-08-10 - v0.1.11 publication
 
 Audience: internal Zerker product, engineering, security review, Gateway integration, and release coordination.

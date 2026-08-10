@@ -4,9 +4,9 @@
 
 Zerker Memory is a functional open-source, local-first alpha with a public site, tagged releases, and a verified local proof path.
 
-Current published release: `v0.1.11` at `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.11`.
+Current published release: `v0.1.12` at `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.12`.
 
-The release hardens the tenant-local Zerker Rooms memory service for simultaneous first access. Each tenant-and-room pair keeps its isolated SQLite store with room-shared and member-private memory, policy-ranked context preparation, explicit empty/blocked/abstained state, quarantined agent proposals, retry-safe event writes, and a digest binding the exact selected memory state. The previously shipped review-gated consolidation, digest-bound context proof, scheduled-agent continuity, typed failure memory, and opt-in local dense/FTS retrieval remain available.
+The release adds guided multi-agent setup over the existing local memory system. One `zmem setup` command can initialize a project and bind Codex, Claude Code, Hermes, Cursor, OpenClaw, and generic MCP clients to the same absolute database and policy. Direct clients report ready only after reload; export-only clients remain visibly awaiting import. Agent-host identity is bound in the MCP command, per-process connection provenance is recorded, and the product does not pretend that a process id is a UI chat id. The previously shipped tenant-local Rooms service, review-gated consolidation, digest-bound context proof, scheduled-agent continuity, typed failure memory, and opt-in local dense/FTS retrieval remain available.
 
 It is ready for:
 
@@ -45,6 +45,7 @@ Product signal note: the current wedge is validated by builder demand for local,
 ## Functional Today
 
 - CLI.
+- `v0.1.12` guided setup with `zmem setup [agents...]`, exact database/policy/agent/profile verification, bound MCP host identity, per-process connection provenance, explicit reload/import states, and `zmem workspace prune` for stale registry entries.
 - `v0.1.11` Zerker Rooms integration preview with room-scoped shared/private memory, authenticated context/record/propose endpoints, explicit withheld/abstention state, retry-safe event writes, hard tenant-room storage isolation, and concurrent first-open hardening.
 - Read-only `zmem audit health` JSON and terminal summaries for observable memory-state findings, with no semantic-truth claim.
 - Review-gated consolidation through `preview`, `materialize`, `audit`, `inspect`, `admit`, and `discard`, with verified source coverage, private deterministic materialization, live recomputation, interruption recovery, and explicit ceiling-bound terminal decisions. CLI actor ids are asserted rather than authenticated, and Treeship anchoring remains separate.

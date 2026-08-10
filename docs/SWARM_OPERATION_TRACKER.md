@@ -21,6 +21,14 @@ Primary mission brief:
 - Lane progress and release tracker: `docs/ZMEM_PROGRESS_TRACKER.md`
 - Lane logs: `docs/CONTINUOUS_BUILD/`
 
+Coordinator update `2026-08-10` (`v0.1.12` published and dogfooded):
+
+- Broad recurring swarms and launch oversight remain paused. Feature PR `#23` merged at `1f6b3001d4ccd3b99c0130657a24b92ded718fcb`; release PR `#24` merged at `25b1c7a1f125f4e42f43053e0de99fef2538a0f7`, which is tagged and published as `v0.1.12`.
+- `zmem setup` now gives the six supported client presets one shared project database and policy, exact activation state, bound agent-host identity, and honest per-process provenance without inventing UI chat identity.
+- Every local and remote gate passed. GitHub assets match wheel `ae75cb6e...` and source distribution `cca4fed7...`; production site/docs expose the matching release and agent guide.
+- Real-machine dogfooding installed the exact wheel, configured all six presets, verified every binding, and passed live Codex plus Claude Code MCP read/write/proof smokes. Direct clients need reload; export-only clients still need one explicit import.
+- Do not restart the broad July swarms. The next accepted lane should be either the cross-repo Gateway Rooms client/persistence boundary or a separately scoped frontier target with a current acceptance test.
+
 Coordinator update `2026-08-10` (scheduled-swarm reconciliation):
 
 - Audited every paused automation definition, worker memory, and latest lane result against current `main`. The substantive trust, temporal, lifecycle, retrieval, consolidation, identity, and benchmark work was already consolidated in `91c792f` and published in `v0.1.2`; subsequent releases supersede most queued next-slice notes.
