@@ -2,6 +2,10 @@ import Card from '@/components/Card';
 
 const updates = [
   {
+    title: 'v0.1.10 room-native shared memory',
+    detail: 'ZMem now runs as a tenant-local Rooms memory service with isolated room stores, shared and member-private memory, governed context preparation, quarantined agent proposals, retry-safe writes, and exact context commitments.',
+  },
+  {
     title: 'v0.1.9 review-gated consolidation',
     detail: 'Build a private deterministic summary, recompute it from current receipt-verified sources, then explicitly admit it at the weakest source trust and authority ceilings or discard it without deleting evidence.',
   },

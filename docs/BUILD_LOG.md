@@ -1,3 +1,30 @@
+## 2026-08-09 - Zerker Rooms memory service candidate
+
+- Added `zerker_memory/rooms.py` as a narrow room-native adapter over the real `MemoryStore`: one opaque SQLite database per tenant-and-room pair, room-shared plus member-private visibility, governed context preparation, accepted-state recording, and quarantined proposals.
+- Added `zerker_memory/service.py` and `zmem serve` with authenticated JSON endpoints for context, record, and propose; loopback-only defaults; explicit non-loopback protection; health/readiness/version probes; bounded requests; generic error envelopes; and clean Ctrl-C shutdown.
+- Preserved ZMem's policy-ranked order and governance metadata instead of adapting to the current Rooms string-only chronological list. Context responses make admitted, withheld, budget-dropped, and abstained state actionable and bind the exact selection into `zerker.room_memory_context_commitment.v1`.
+- Made room writes retry-safe under actual concurrency. The deterministic id binds tenant, room, operation, and idempotency key; replay also verifies content, memory state, actor/session, source URI, source event, and parent action. Changed reuse returns a conflict.
+- Added `/v1/inject` and `task` aliases so the open Gateway spec can call the candidate while the Go seam is widened to carry room, purpose, risk, budget, state, omissions, ranked memories, provenance, and commitment.
+- Added public Rooms preview docs plus `docs/internal/ZERKER_ROOMS_MEMORY_CONTRACT.md`, including product ownership, exact curl commands, Gateway state handling, accepted versus proposed writes, first deployment posture, performance observations, and remaining production gates.
+
+Evidence:
+
+- `python3.11 -m unittest tests.test_rooms -q`: `16/16` passed.
+- `python3.11 -m unittest tests.test_rooms tests.test_store tests.test_runner tests.test_policy -q`: `554/554` passed after final hardening.
+- `python3 -m unittest tests.test_cli_onboarding -q`: `224/224` passed; supported-runtime full discovery passed `1,387` tests with two expected optional skips.
+- `python3.11 -m zerker_memory eval`: `11/11` passed.
+- Docs typecheck and production build passed with `18` static pages; compilation and `git diff --check` passed.
+- Strict release smoke passed with public proof `6/6`, launch assets `8/8`, and the return packet ready.
+- Real `zmem serve` plus curl smoke recorded a room-shared fact and recovered it for another agent through `/v1/inject` with state `ready` and a room-context commitment.
+- An exact staged-tree wheel built successfully, includes `rooms.py` and `service.py`, excludes the two unrelated untracked duplicate files, clean-installs into Python 3.11, exposes `zmem serve --help`, serves a packaged context request, and stops cleanly on Ctrl-C.
+
+Remaining before zerker.ai production traffic:
+
+- Land the Gateway Go client and replace the current lossy `Read` / `Append` interface.
+- Persist Rooms' own room and event store.
+- Run realistic Gateway-to-ZMem load/timeout tests and keep Treeship publication asynchronous.
+- Add a separately authorized remote review surface before exposing proposal decisions through Gateway.
+
 ## 2026-08-05 - v0.1.9 published
 
 - Merged PR `#16` at `a2a469f3502bfdfafc13158db6e9ceea3c5769bf`, tagged that exact commit as `v0.1.9`, and published `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.9`.

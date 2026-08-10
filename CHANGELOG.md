@@ -2,6 +2,18 @@
 
 All notable Zerker Memory alpha changes are summarized here.
 
+## 0.1.10 - 2026-08-10
+
+### Zerker Rooms Memory Service
+
+- Added `zmem serve`, a tenant-local authenticated HTTP adapter for Zerker Gateway Rooms with loopback-only defaults and explicit remote-bind protection.
+- Added isolated SQLite storage per tenant-and-room pair, room-shared and member-private visibility, restart persistence, and source-event provenance without changing the existing local CLI, MCP, or single-store defaults.
+- Added policy-ranked context preparation through `/v1/contexts:prepare` plus the Gateway-compatible `/v1/inject` alias. Responses preserve selected order and distinguish `ready`, `partial`, `empty`, `blocked`, `abstained`, and `budget_exhausted` instead of treating every HTTP success as usable memory.
+- Added trusted accepted-state recording and quarantined agent proposals as separate operations. Every write requires a room event and idempotency key; concurrent retries replay safely, while changed content or source events fail with a conflict.
+- Added compact room-context commitments over tenant, room, agent, purpose, risk, budget, optional membership/room-state digests, ZMem context and policy digests, memory roots, exact selected IDs, and state.
+- Added adversarial coverage for cross-room, cross-member, and cross-tenant isolation, symlink refusal, authentication, caller-supplied tenant rejection, restart durability, concurrent writes, and remote-bind safety.
+- Added a public preview guide and an internal Gateway contract. The candidate does not claim that the Gateway Go client, Rooms persistence, hosted multi-tenant routing, or asynchronous Treeship publication is complete.
+
 ## 0.1.9 - 2026-08-05
 
 ### Review-Gated Live Consolidation

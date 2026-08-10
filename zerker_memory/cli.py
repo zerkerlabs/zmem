@@ -1070,6 +1070,28 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
     ui.add_argument("--host", default="127.0.0.1")
     ui.add_argument("--port", type=int, default=8765)
 
+    serve = sub.add_parser("serve", help="Run the room-scoped ZMem service for Zerker Gateway Rooms")
+    serve.add_argument("--host", default="127.0.0.1")
+    serve.add_argument("--port", type=int, default=8766)
+    serve.add_argument("--tenant-id", default=os.environ.get("ZMEM_TENANT_ID", "local"))
+    serve.add_argument(
+        "--storage-root",
+        type=expand_user_path,
+        help="Room-store root; defaults to a rooms directory beside --db",
+    )
+    serve.add_argument(
+        "--token-env",
+        default="ZMEM_SERVICE_TOKEN",
+        help="Environment variable containing the optional service bearer token",
+    )
+    serve.add_argument(
+        "--allow-remote",
+        action="store_true",
+        help="Allow a non-loopback bind; requires a bearer token",
+    )
+    serve.add_argument("--retrieval-mode", choices=["fts", "dense-hybrid"], default="fts")
+    serve.add_argument("--retrieval-provider-config", type=expand_user_path)
+
     launch_proof = sub.add_parser("launch-proof", help="Generate launch-ready proof artifacts in one command")
     launch_proof.add_argument("--out-dir", type=expand_user_path)
     launch_proof.add_argument("--agent", default="codex")
@@ -1228,6 +1250,32 @@ def main(argv: list[str] | None = None) -> int:
     reexec_code = maybe_reexec_with_supported_python(args.command, argv)
     if reexec_code is not None:
         return reexec_code
+    if args.command == "serve":
+        from .rooms import RoomMemoryService, RoomStoreResolver
+        from .service import serve_room_memory
+
+        try:
+            retrieval_config, retrieval_provider_config = dense_runtime_configs(
+                args.retrieval_mode,
+                config_path=args.retrieval_provider_config,
+            )
+            storage_root = args.storage_root or (args.db.parent / "rooms")
+            service = RoomMemoryService(
+                RoomStoreResolver(storage_root, tenant_id=args.tenant_id, policy_path=args.policy),
+                retrieval_config=retrieval_config,
+                retrieval_provider_config=retrieval_provider_config,
+            )
+            serve_room_memory(
+                service,
+                host=args.host,
+                port=args.port,
+                bearer_token=os.environ.get(args.token_env) or None,
+                allow_remote=args.allow_remote,
+            )
+            return 0
+        except (OSError, ValueError) as exc:
+            print_json({"ok": False, "error": str(exc)})
+            return 1
     if args.command == "audit":
         from .health import build_memory_health_report, render_memory_health_summary
 
