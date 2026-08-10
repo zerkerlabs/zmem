@@ -78,7 +78,7 @@ export ZMEM_SERVICE_TOKEN="$(openssl rand -hex 32)"
 zmem --db .zerker/control.sqlite serve --tenant-id tnt_local --storage-root .zerker/rooms
 ```
 
-See [Zerker Rooms](docs/content/docs/rooms.mdx) for the local adapter and [the internal Gateway contract](docs/internal/ZERKER_ROOMS_MEMORY_CONTRACT.md) for the exact ownership, API, security, and handoff decisions. The service ships as an integration preview in `v0.1.10`; the existing local CLI, MCP, and SQLite product remain the default.
+See [Zerker Rooms](docs/content/docs/rooms.mdx) for the local adapter and [the internal Gateway contract](docs/internal/ZERKER_ROOMS_MEMORY_CONTRACT.md) for the exact ownership, API, security, and handoff decisions. The service was introduced as an integration preview in `v0.1.10`; `v0.1.11` hardens concurrent first access to one room. The existing local CLI, MCP, and SQLite product remain the default.
 
 The compatibility command `zerker` is still available, but launch docs use `zerker-memory` and `zmem` so the product stands on its own.
 
