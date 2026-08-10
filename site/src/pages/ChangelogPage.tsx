@@ -2,6 +2,10 @@ import Card from '@/components/Card';
 
 const updates = [
   {
+    title: 'v0.1.12 guided multi-agent setup',
+    detail: 'One setup command now binds Codex, Claude Code, Hermes, Cursor, OpenClaw, and generic MCP clients to the same exact project memory, with truthful reload/import states and connector provenance.',
+  },
+  {
     title: 'v0.1.11 concurrent room initialization',
     detail: 'Simultaneous first access to one room now serializes only SQLite WAL and schema initialization, eliminating a transient database-lock race while preserving normal concurrent writes.',
   },
