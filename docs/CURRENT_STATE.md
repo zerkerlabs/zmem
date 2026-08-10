@@ -5,9 +5,11 @@ This is the short orchestration dashboard for Zerker Memory. Every autonomous bu
 ## Release Coordination
 `2026-08-10`
 
-- Post-publication `main` CI reproduced a same-room concurrent first-open race in Python 3.12: SQLite WAL initialization could fail with `database is locked` even though the exact feature commit had passed PR, main, and tag CI.
-- The `v0.1.11` patch candidate adds a per-room initialization lock around database construction and schema setup only. The focused race now passes `100/100` forced iterations; Rooms pass `16/16` and the adjacent gate passes `554/554`.
-- Remote CI, merged-source packaging, tag publication, and production deployment remain required for `v0.1.11`.
+- Published `v0.1.11` from PR `#20` merge commit `ca427692cab8cb71c5f95c7d48c9a33499f01f7b` at `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.11`.
+- The patch serializes only first-open WAL/schema initialization for one tenant-room store. Normal room reads and writes remain concurrent, and the regression forces eight simultaneous first opens before checking durable unique writes and idempotent retries.
+- PR CI run `31402007077`, post-merge main run `31402550305`, and tag run `31403219715` passed every Python 3.10/3.11/3.12, ActiveGraph, site, docs, and release-smoke job.
+- Exact merged-source assets verify against GitHub: wheel `sha256:cd19b739eb820fe4b8caf0df53c0c9d413ccd80fab2d9aa7f64d9554f3e68210`; source distribution `sha256:11bc45f468c6525501d4c8d39dac888e16f49b9571d4bae44e6663c3941a4d84`.
+- Production site deployment `dpl_FXQHCHkG4tuL2zkWkfUS74qC3hrm` and docs deployment `dpl_7DWvVkUjtZxV6udwN93mrimtFAKp` are live at `https://www.zmem.sh` and `https://docs.zmem.sh`. Public canaries expose the `v0.1.11` changelog entry, `/docs/rooms`, and the ActiveGraph `0.1.11` example.
 
 - Published `v0.1.10` from PR `#18` merge commit `a48219337abf5b70373a59d2b1ed420378d7d8c3` at `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.10`.
 - PR CI run `31397381005`, main CI run `31397884766`, and tag CI run `31398430868` passed every Python 3.10/3.11/3.12, ActiveGraph, site, docs, and release-smoke job.

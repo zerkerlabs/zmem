@@ -21,6 +21,13 @@ Primary mission brief:
 - Lane progress and release tracker: `docs/ZMEM_PROGRESS_TRACKER.md`
 - Lane logs: `docs/CONTINUOUS_BUILD/`
 
+Coordinator update `2026-08-10` (`v0.1.11` published):
+
+- Broad recurring swarms and launch oversight remain paused. PR `#20` merged at `ca427692cab8cb71c5f95c7d48c9a33499f01f7b`; that exact commit is tagged and published as `v0.1.11`.
+- PR, post-merge main, and tag CI passed every Python, ActiveGraph, site, docs, and release-smoke job. Exact merged-source assets match wheel `cd19b739...` and source distribution `11bc45f4...`.
+- Production site and docs deployments are live with the `0.1.11` release state. Simultaneous first access to one Room now serializes WAL/schema initialization without serializing normal room writes.
+- Do not restart broad swarms for this integration. The next bounded work remains cross-repo: Gateway Go client, durable Rooms event persistence, then realistic load/timeout gates before hosted traffic.
+
 Coordinator update `2026-08-10` (`v0.1.10` published):
 
 - Broad recurring swarms and launch oversight remain paused. PR `#18` merged at `a48219337abf5b70373a59d2b1ed420378d7d8c3`; that exact commit is tagged and published as `v0.1.10`.
