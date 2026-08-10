@@ -1,5 +1,14 @@
 # Launch Lane Log
 
+## 2026-08-10 - v0.1.10 publication
+
+- Scope: merged PR `#18`, tagged the exact merge commit, published the GitHub release assets, deployed the production site/docs, and verified the live Rooms release surfaces.
+- Release: `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.10` from `a48219337abf5b70373a59d2b1ed420378d7d8c3`.
+- CI: PR run `31397381005`, main run `31397884766`, and tag run `31398430868` passed every Python, ActiveGraph, site, docs, and release-smoke job.
+- Artifacts: GitHub reports wheel `sha256:dbaa5f3438f85f004c7b3e89b9f258b7f3f48ac2f5b7510665e2f928fafe4ed0` and source distribution `sha256:17f2eaeffefdebb2b8a24d00da860b351e1c911b50a3845641445d428cfe2786`.
+- Production: site deployment `dpl_7GERfN3Z5ASaYreQUiSatB9ggh61` and docs deployment `dpl_ErsKm4tjtZVb16XuxPpFcc9qpmTt` are live at `https://www.zmem.sh` and `https://docs.zmem.sh` with the `0.1.10` release state and Rooms guide.
+- Next safe slice: keep launch oversight paused and land the Gateway client/persistence work as a separate cross-repo integration.
+
 ## 2026-08-05 - v0.1.9 publication
 
 - Scope: merged PR `#16`, tagged the exact merge commit, published the GitHub release assets, deployed the production site/docs, and verified the live release surfaces.

@@ -1,5 +1,17 @@
 # ZMem Release Comms
 
+## 2026-08-10 - v0.1.10 publication
+
+Audience: internal Zerker product, engineering, security review, Gateway integration, and release coordination.
+
+`v0.1.10` is published from PR `#18` merge commit `a48219337abf5b70373a59d2b1ed420378d7d8c3` at `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.10`. PR, main, and tag CI passed every Python 3.10/3.11/3.12, ActiveGraph, site, docs, and release-smoke job. GitHub assets match wheel `sha256:dbaa5f34...` and source distribution `sha256:17f2eaef...`.
+
+The release turns the proposed Zerker Rooms memory boundary into a runnable tenant-local service. Room-shared and member-private state are physically isolated per tenant and room, accepted events and agent proposals have distinct write paths, retries are idempotent, and context preparation preserves policy order plus admitted, withheld, budget-dropped, and abstained state. A compact commitment binds the exact memory selection without copying raw memory into the proof layer.
+
+The security and ownership boundary remains explicit. Rooms owns membership, goals, messages, and the room event log; ZMem owns memory state, review, retrieval, context packing, and memory receipts. This release does not yet include the Gateway Go client, durable Rooms event persistence, hosted tenant routing, remote review authorization, production load evidence, or asynchronous Treeship room publication.
+
+Production site and docs are live at `https://www.zmem.sh` and `https://docs.zmem.sh`; the public changelog and `/docs/rooms` guide match the shipped package. The next integration slice is the Gateway adapter and persistence boundary, not another memory-store rewrite.
+
 ## 2026-08-05 - v0.1.9 publication
 
 Audience: internal Zerker product, engineering, security review, and release coordination.

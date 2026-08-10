@@ -1,6 +1,6 @@
 # ZMem Progress Tracker
 
-Last updated: 2026-08-05
+Last updated: 2026-08-10
 
 This is the shared progress board for ZMem release and frontier work. It turns the
 continuous-build lanes into a checkpointable product plan: what is built, what is
@@ -29,10 +29,11 @@ Every push or meaningful automation drop should update this file alongside:
 | `v0.1.7` | Published | `5b1cf0f` / `v0.1.7` | Private ephemeral run context, bounded MCP/operator/provider boundaries, finite governance values, and honest pending-judge benchmark state. |
 | `v0.1.8` | Published | `969a943` / `v0.1.8` | Digest-bound memory context, scheduled-agent continuity, typed failure memory, and opt-in local dense/FTS retrieval. |
 | `v0.1.9` | Published | `a2a469f` / `v0.1.9` | Review-gated consolidation with verified live sources, private materialization, independent inspection, and ceiling-bound admit/discard decisions. |
+| `v0.1.10` | Published | `a482193` / `v0.1.10` | Tenant-local Zerker Rooms service with isolated shared/private memory, governed context preparation, idempotent writes, and exact context commitments. |
 
 Current public release:
 
-- GitHub: `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.9`
+- GitHub: `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.10`
 - Site: `https://www.zmem.sh`
 - Raw installer: `https://raw.githubusercontent.com/zerkerlabs/zmem/main/install.sh`
 
@@ -102,6 +103,15 @@ Published `v0.1.9` checkpoint:
 - GitHub assets match wheel `sha256:3c47550aa264f12af5cbb8e62ec98140340e24cde9252dc9bff49b79016099b2` and source distribution `sha256:f801c7fdd132992ee948f689dde064bfb653ac634d0fccdee524e8823cc1c4a9`.
 - Production site deployment `dpl_CNM18v355owTr8LLku7C9XGnaumo` and docs deployment `dpl_FbCUAPhahyfz5YjYw9L6yG89XwSh` are live at `https://www.zmem.sh` and `https://docs.zmem.sh`.
 
+Published `v0.1.10` checkpoint:
+
+- PR `#18` merged at `a48219337abf5b70373a59d2b1ed420378d7d8c3`; that exact commit is tagged and published at `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.10`.
+- The package now exposes `zmem serve` for one tenant-local ZMem process beside Rooms, with isolated room databases, shared/member-private visibility, accepted versus quarantined writes, explicit context states, provenance, and exact room-context commitments.
+- Local acceptance passes `1,387` tests with two expected optional skips, eval `11/11`, site lint/build, docs typecheck/build with `18` static pages, strict release smoke, a real CLI/curl smoke, and a clean merged-source package install.
+- PR CI run `31397381005`, main CI run `31397884766`, and tag CI run `31398430868` passed every Python 3.10/3.11/3.12, ActiveGraph, site, docs, and release-smoke job.
+- GitHub assets match wheel `sha256:dbaa5f3438f85f004c7b3e89b9f258b7f3f48ac2f5b7510665e2f928fafe4ed0` and source distribution `sha256:17f2eaeffefdebb2b8a24d00da860b351e1c911b50a3845641445d428cfe2786`.
+- Production site deployment `dpl_7GERfN3Z5ASaYreQUiSatB9ggh61` and docs deployment `dpl_ErsKm4tjtZVb16XuxPpFcc9qpmTt` are live at `https://www.zmem.sh` and `https://docs.zmem.sh`.
+
 Included `v0.1.6` L3 checkpoint:
 
 - Bounded transcript-neighbor onset support passes the stable gate at `160/227` versus `159/227`, with one gain, zero losses, one changed retrieval context, and `+17` query tokens.
@@ -149,8 +159,9 @@ Percentages are practical launch-grade alpha estimates, not benchmark scores.
 | L4 Consolidation | Hierarchical summaries and job ledger | 75% | Verified live-source preview, private recoverable materialization, independent live-source inspection, and terminal admit/discard decisions with ceiling-bound lineage receipts | Extend the reviewed path to live day/week/profile rollups before designing any scheduler |
 | L5 Identity / Workspaces | Multi-agent source lineage and conflicts | 50% | Source reports, claim conflicts, resolution basis, exact-tie abstention summaries | Add handoff ownership/lease metadata and a dry-run import preview, then persist merge decisions |
 | L6 Benchmark Harness | LoCoMo/LongMemEval/BEAM evidence | 100% for local harness and sampled scale | Verified LoCoMo/LongMemEval evidence plus official-layout BEAM 100K, 500K, 1M, and 10M runs exist; compact artifacts verify | Add broader evidence and an official model-judged path; do not report unjudged LLM answers as incorrect |
-| Launch Oversight | Release pack, proof evidence, public release | 100% for v0.1.9 | Public verify `6/6`, assets `8/8`, return packet ready, release assets published, and production canaries pass | Keep automation paused until the next bounded release candidate exists |
-| Website / Docs | Landing, proof page, docs, changelog | 100% for v0.1.9 | Release copy, consolidation workflow, benchmark boundary, and ActiveGraph pack version are synchronized and live on the production domains | Keep release facts synchronized with the next shipped product change |
+| Launch Oversight | Release pack, proof evidence, public release | 100% for v0.1.10 | Public verify `6/6`, assets `8/8`, return packet ready, release assets published, and production canaries pass | Keep automation paused until the next bounded release candidate exists |
+| Website / Docs | Landing, proof page, docs, changelog | 100% for v0.1.10 | Release copy, Rooms guide, consolidation workflow, benchmark boundary, and ActiveGraph pack version are synchronized and live on the production domains | Keep release facts synchronized with the next shipped product change |
+| Rooms / Gateway | Multi-agent shared memory integration | 50% | Tenant-local service, hard tenant/room isolation, shared/member-private memory, governed context, commitments, auth, and idempotency are published | Land the Gateway Go client, durable Rooms event state, load/timeout gates, and separately authorized remote review |
 | ActiveGraph Integration | Event substrate and compact traces | 100% | The real pack loads, persists events, batches traces, and ships a runnable two-run host with recorded/sent prompt equality | Keep larger selected-mode traces and aggregate Treeship artifacts as optional follow-ups |
 
 ## Lane Checklists

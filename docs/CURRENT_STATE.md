@@ -3,7 +3,12 @@
 This is the short orchestration dashboard for Zerker Memory. Every autonomous build run should update this file after it updates `docs/BUILD_LOG.md`.
 
 ## Release Coordination
-`2026-08-09`
+`2026-08-10`
+
+- Published `v0.1.10` from PR `#18` merge commit `a48219337abf5b70373a59d2b1ed420378d7d8c3` at `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.10`.
+- PR CI run `31397381005`, main CI run `31397884766`, and tag CI run `31398430868` passed every Python 3.10/3.11/3.12, ActiveGraph, site, docs, and release-smoke job.
+- Exact merged-source release assets verify against GitHub: wheel `sha256:dbaa5f3438f85f004c7b3e89b9f258b7f3f48ac2f5b7510665e2f928fafe4ed0`; source distribution `sha256:17f2eaeffefdebb2b8a24d00da860b351e1c911b50a3845641445d428cfe2786`.
+- Production site deployment `dpl_7GERfN3Z5ASaYreQUiSatB9ggh61` and docs deployment `dpl_ErsKm4tjtZVb16XuxPpFcc9qpmTt` are live at `https://www.zmem.sh` and `https://docs.zmem.sh`. Public canaries expose the `v0.1.10` changelog entry and the Zerker Rooms guide at `/docs/rooms`.
 
 - Started isolated `codex/rooms-memory-service` from published `v0.1.9` main for the first real Zerker Gateway Rooms memory boundary.
 - Added `zmem serve` with a stdlib threaded HTTP service, loopback-only defaults, bearer-token auth, explicit remote opt-in, health/readiness/version probes, bounded JSON requests, and server-configured tenant identity.
@@ -13,7 +18,7 @@ This is the short orchestration dashboard for Zerker Memory. Every autonomous bu
 - Added `/v1/inject` and `task` compatibility aliases for the open Gateway scoping draft while documenting the required Gateway seam change away from lossy `Read() []Entry` / `Append` CRUD.
 - Security coverage includes caller-supplied tenant rejection, opaque paths, symlink refusal, constant-time token checks, cross-tenant data isolation, member privacy, and non-loopback refusal without both explicit opt-in and a token.
 - Verification passes `16/16` Rooms tests, the post-hardening `554`-test Rooms/store/runner/policy gate, all `224` CLI onboarding tests, the supported-runtime full suite at `1,387` tests with two expected skips, eval `11/11`, Python compilation, docs typecheck/build (`18` static pages), strict release smoke, and a real CLI/curl write-then-recall smoke. Local warm empty-context observation was about `7 ms` mean and `9 ms` p95; this is not yet a production SLO.
-- Still external to this candidate: the Gateway Go client and interface migration, durable Rooms room/event persistence, a separate remote operator review capability, realistic Gateway load testing, hosted multi-tenant routing, and asynchronous Treeship room proof publication.
+- Still external to this release: the Gateway Go client and interface migration, durable Rooms room/event persistence, a separate remote operator review capability, realistic Gateway load testing, hosted multi-tenant routing, and asynchronous Treeship room proof publication.
 
 `2026-08-05`
 
