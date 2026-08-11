@@ -9,6 +9,7 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from zerker_memory.rooms import (
+    MAX_ABSTENTION_IDS,
     RoomMemoryConflict,
     RoomMemoryService,
     RoomStoreResolver,
@@ -17,6 +18,7 @@ from zerker_memory.rooms import (
     verify_room_context_commitment,
 )
 from zerker_memory.service import RoomMemoryHTTPServer, host_is_loopback, serve_room_memory
+from zerker_memory.store import sha256_text, stable_json
 
 
 class RoomMemoryServiceTest(unittest.TestCase):
@@ -66,6 +68,60 @@ class RoomMemoryServiceTest(unittest.TestCase):
         self.assertTrue(verify_room_context_commitment(result))
         self.assertEqual(result["commitment"]["membership_digest"], "sha256:" + "1" * 64)
         self.assertNotIn("continue the release", json.dumps(result))
+
+    @patch("zerker_memory.rooms.MemoryStore.inject")
+    def test_abstention_omission_is_bounded_to_known_fields(self, inject):
+        abstained_ids = [f"mem_{index}" for index in range(MAX_ABSTENTION_IDS + 3)]
+        inject.return_value = {
+            "action_id": "act_abstain",
+            "created_at": "2026-08-10T20:45:26Z",
+            "memories": [],
+            "retrieved_memory_ids": abstained_ids,
+            "withheld": [],
+            "merkle_root": "sha256:" + "7" * 64,
+            "memory_context": {
+                "context_digest": "sha256:" + "4" * 64,
+                "policy_digest": "sha256:" + "5" * 64,
+                "memory_tree_root": "sha256:" + "6" * 64,
+            },
+            "retrieval": {
+                "packing": {"budget_dropped": []},
+                "temporal": {
+                    "abstention": {
+                        "applied": True,
+                        "reason": "unresolved-current-conflict",
+                        "abstained_ids": abstained_ids,
+                        "conflict_reasons": ["lexical-current-conflict"],
+                        "raw_context": "must not cross the service boundary",
+                    }
+                },
+            },
+        }
+
+        result = self.context()
+        abstention = result["omissions"]["abstention"]
+
+        self.assertEqual(result["state"], "abstained")
+        self.assertEqual(
+            set(abstention),
+            {"applied", "reason", "abstained_ids", "abstained_count", "conflict_reasons"},
+        )
+        self.assertEqual(len(abstention["abstained_ids"]), MAX_ABSTENTION_IDS)
+        self.assertEqual(abstention["abstained_count"], MAX_ABSTENTION_IDS + 3)
+        self.assertNotIn("raw_context", json.dumps(result))
+
+    def test_room_context_commitment_matches_cross_language_golden_vector(self):
+        fixture_path = Path(__file__).parent / "fixtures" / "room_context_commitment_v1.json"
+        fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
+        commitment = dict(fixture["material"])
+        commitment["room_context_digest"] = fixture["room_context_digest"]
+
+        self.assertEqual(stable_json(fixture["material"]), fixture["canonical_json"])
+        self.assertEqual(
+            "sha256:" + sha256_text(fixture["canonical_json"]),
+            fixture["room_context_digest"],
+        )
+        self.assertTrue(verify_room_context_commitment({"commitment": commitment}))
 
     def test_room_memory_is_shared_but_member_memory_is_private(self):
         shared = self.write(content="The room deploy target is production", key="evt_1:target")

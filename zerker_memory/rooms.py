@@ -28,6 +28,9 @@ MAX_CONTENT_CHARS = 256_000
 MAX_PURPOSE_CHARS = 32_000
 MAX_LABELS = 64
 MAX_LABEL_CHARS = 128
+MAX_ABSTENTION_IDS = 64
+MAX_ABSTENTION_REASONS = 16
+MAX_ABSTENTION_TEXT_CHARS = 128
 
 _ROOM_ID_RE = re.compile(r"^rom_[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")
 _DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
@@ -169,7 +172,7 @@ class RoomMemoryService:
         withheld = receipt.get("withheld") if isinstance(receipt.get("withheld"), list) else []
         temporal = receipt.get("retrieval", {}).get("temporal", {})
         abstention = temporal.get("abstention") if isinstance(temporal, Mapping) else None
-        abstained = bool(isinstance(abstention, Mapping) and abstention.get("applied"))
+        abstained = bool(isinstance(abstention, Mapping) and abstention.get("applied") is True)
         memories = receipt.get("memories") if isinstance(receipt.get("memories"), list) else []
         state = _context_state(
             injected_count=len(memories),
@@ -228,7 +231,7 @@ class RoomMemoryService:
             "omissions": {
                 "withheld": [_compact_withheld(item) for item in withheld if isinstance(item, Mapping)],
                 "budget_dropped": [_compact_budget_drop(item) for item in budget_dropped if isinstance(item, Mapping)],
-                "abstention": dict(abstention) if isinstance(abstention, Mapping) else None,
+                "abstention": _compact_abstention(abstention) if isinstance(abstention, Mapping) else None,
             },
             "packing": {
                 "max_tokens": packing.get("max_tokens"),
@@ -436,6 +439,29 @@ def _compact_budget_drop(item: Mapping[str, Any]) -> dict[str, Any]:
         "rank": item.get("rank"),
         "packing_rank": item.get("packing_rank"),
         "packing_rank_basis": item.get("packing_rank_basis"),
+    }
+
+
+def _compact_abstention(item: Mapping[str, Any]) -> dict[str, Any]:
+    abstained_ids = item.get("abstained_ids") if isinstance(item.get("abstained_ids"), list) else []
+    conflict_reasons = item.get("conflict_reasons") if isinstance(item.get("conflict_reasons"), list) else []
+    valid_abstained_ids = [value for value in abstained_ids if isinstance(value, str)]
+    public_ids = [
+        value[:MAX_ABSTENTION_TEXT_CHARS]
+        for value in valid_abstained_ids
+    ][:MAX_ABSTENTION_IDS]
+    public_reasons = [
+        value[:MAX_ABSTENTION_TEXT_CHARS]
+        for value in conflict_reasons
+        if isinstance(value, str)
+    ][:MAX_ABSTENTION_REASONS]
+    reason = item.get("reason")
+    return {
+        "applied": item.get("applied") is True,
+        "reason": reason[:MAX_ABSTENTION_TEXT_CHARS] if isinstance(reason, str) else None,
+        "abstained_ids": public_ids,
+        "abstained_count": len(valid_abstained_ids),
+        "conflict_reasons": public_reasons,
     }
 
 

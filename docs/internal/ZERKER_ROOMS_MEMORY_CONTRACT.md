@@ -1,7 +1,7 @@
 # Zerker Rooms Memory Contract
 
-- Status: ZMem implementation candidate
-- Branch: `codex/rooms-memory-service`
+- Status: Shipped in ZMem v0.1.10; concurrency-hardened in v0.1.11
+- Source: `main`
 - Contract: `zerker.room_memory_context.v1`
 - Transport: authenticated JSON over HTTP
 - Initial deployment: one tenant-local ZMem service beside Rooms
@@ -108,6 +108,13 @@ Context state is explicit:
 
 Transport errors and malformed commitments fail closed. Consumers can recompute the commitment with `verify_room_context_commitment(...)`.
 
+The byte-level commitment contract is pinned by
+`tests/fixtures/room_context_commitment_v1.json`. Implementations in other
+languages must reproduce its `canonical_json` and `room_context_digest`
+exactly. Abstention omissions expose only `applied`, `reason`, bounded
+`abstained_ids`, `abstained_count`, and bounded `conflict_reasons`; arbitrary
+retrieval metadata never crosses the HTTP boundary.
+
 ### Record Accepted Room State
 
 Only the trusted Rooms service should call `record`:
@@ -165,7 +172,6 @@ It loses `room_id`, purpose, risk, budget, ranked order, omitted memory, state, 
 
 ```go
 type PrepareRequest struct {
-    TenantID           string
     RoomID             string
     AgentID            string
     Purpose            string
@@ -193,11 +199,12 @@ type Store interface {
 The concrete Go client should:
 
 1. Resolve the room before the call and use `room.Goal` as `Purpose`.
-2. Apply a short explicit HTTP timeout and fail the join closed on transport or commitment failure.
-3. Preserve ZMem's returned order. Do not re-sort chronologically.
-4. Branch on `State`; do not treat every HTTP `200` as usable context.
-5. Keep caller-provided onboarding documents separate from governed memory. Do not silently append them to the admitted memory list. Trusted room events may call `record`; agent claims call `propose`.
-6. Keep the service token in Gateway configuration and never expose it to room members.
+2. Never send `tenant_id`; it is fixed by service configuration. Assert that the response tenant matches the client's configured expectation and fail closed on mismatch.
+3. Apply a short explicit HTTP timeout and fail the join closed on transport or commitment failure.
+4. Preserve ZMem's returned order. Do not re-sort chronologically.
+5. Branch on `State`; do not treat every HTTP `200` as usable context.
+6. Keep caller-provided onboarding documents separate from governed memory. Do not silently append them to the admitted memory list. Trusted room events may call `record`; agent claims call `propose`.
+7. Keep the service token in Gateway configuration and never expose it to room members.
 
 ## Performance And Reliability Gate
 
