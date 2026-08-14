@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sqlite3
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -53,8 +54,23 @@ INDEX_HTML = """<!doctype html>
       backdrop-filter: blur(12px);
     }
     h1 { margin: 0; font-size: 20px; letter-spacing: 0; }
-    main { padding: 24px 28px 40px; display: grid; gap: 22px; }
-    .topline { color: var(--muted); font-size: 13px; margin-top: 4px; }
+    main {
+      width: 100%;
+      min-width: 0;
+      padding: 24px 28px 40px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 22px;
+    }
+    main > *, .grid > *, .status-strip > *, .status-board > *, .hero-grid > *,
+    .quick-grid > *, .split-view > *, .proof-grid > *, .story-grid > *,
+    .workflow > *, .form-grid > * { min-width: 0; }
+    .topline {
+      color: var(--muted);
+      font-size: 13px;
+      margin-top: 4px;
+      overflow-wrap: anywhere;
+    }
     .grid { display: grid; grid-template-columns: 1.2fr .8fr; gap: 22px; align-items: start; }
     .hero {
       display: grid;
@@ -174,6 +190,7 @@ INDEX_HTML = """<!doctype html>
     .benchmark-table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 13px; }
     .benchmark-table th, .benchmark-table td { border-bottom: 1px solid var(--line); padding: 8px; text-align: left; vertical-align: top; }
     .benchmark-table th { color: var(--muted); font-size: 11px; text-transform: uppercase; }
+    .table-scroll { width: 100%; max-width: 100%; overflow-x: auto; }
     .num { text-align: right; white-space: nowrap; }
     .metric, section {
       background: var(--panel);
@@ -208,12 +225,22 @@ INDEX_HTML = """<!doctype html>
     }
     button.primary { background: var(--accent); color: white; border-color: var(--accent); }
     button.danger { color: var(--bad); border-color: #e4b9bd; }
-    .list { display: grid; gap: 10px; }
+    button:disabled { cursor: not-allowed; opacity: .48; }
+    .list {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 10px;
+      min-width: 0;
+    }
     .item {
+      width: 100%;
+      min-width: 0;
+      max-width: 100%;
       border: 1px solid var(--line);
       border-radius: 8px;
       padding: 12px;
       background: #fff;
+      overflow-wrap: anywhere;
     }
     .meta { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 8px; }
     .pill {
@@ -277,12 +304,15 @@ INDEX_HTML = """<!doctype html>
     }
     .story-card code {
       display: inline-block;
+      max-width: 100%;
       margin-top: 8px;
       padding: 4px 6px;
       border-radius: 6px;
       background: #17211a;
       color: #eef6ef;
       font-size: 11px;
+      overflow-wrap: anywhere;
+      white-space: normal;
     }
     .workflow {
       display: grid;
@@ -326,6 +356,8 @@ INDEX_HTML = """<!doctype html>
       margin: 10px 0;
     }
     pre {
+      min-width: 0;
+      max-width: 100%;
       overflow: auto;
       padding: 12px;
       border-radius: 8px;
@@ -333,6 +365,7 @@ INDEX_HTML = """<!doctype html>
       background: #fbfcfa;
       max-height: 360px;
     }
+    pre > code { display: block; width: 100%; }
     .empty { color: var(--muted); padding: 16px 0; }
     @media (max-width: 900px) {
       .grid { grid-template-columns: 1fr; }
@@ -369,7 +402,7 @@ INDEX_HTML = """<!doctype html>
       <div id="workspaceProfile" class="empty">Loading workspace profile...</div>
     </section>
     <section class="status-panel">
-      <h2>Connected Agents And Sources</h2>
+      <h2>Memory Provenance</h2>
       <p class="helper">Read-only source lineage for recent memory writes: connected agent, chat/session id, source URI, trust status, and proof root.</p>
       <div id="workspaceSources" class="empty">Loading workspace sources...</div>
     </section>
@@ -413,9 +446,14 @@ INDEX_HTML = """<!doctype html>
       </div>
     </section>
     <section>
-      <h2>Agent Continuity</h2>
-      <p class="helper">Connect builders through direct config or manual MCP import, attach the shared agent prompt, then prove the connection with smoke checks before handing memory to another agent or machine.</p>
-      <div id="continuity" class="empty">Agent continuity state will appear here.</div>
+      <h2>Agent Memory Network</h2>
+      <p class="helper">See which frameworks are configured for this exact store, which agents have actually written memory, and whether both facts line up. Configure an adapter once; ZMem records real use from provenance.</p>
+      <div id="continuity" class="empty">Connected-agent state will appear here.</div>
+    </section>
+    <section>
+      <h2>Shared Rooms</h2>
+      <p class="helper">Room-shared and member-private memory stay in isolated local stores. Contributors shown here come from memory provenance; Zerker Gateway remains authoritative for membership and access.</p>
+      <div id="roomInventory" class="empty">Local Room memory will appear here.</div>
     </section>
     <section>
       <h2>What Does ZMem Know?</h2>
@@ -470,13 +508,21 @@ INDEX_HTML = """<!doctype html>
       <div class="list" id="queue"></div>
     </section>
     <section>
-      <h2>Release Artifacts</h2>
-      <p class="helper">Run the one-command release pack, or create the launch-proof report, package a shared handoff, and restore that handoff into a fresh local import DB from the same console you use to review receipts.</p>
+      <h2>Context Transfer</h2>
+      <p class="helper">Package verified memory for another agent or machine, preview the exact snapshot and destination without writing, then restore only that reviewed artifact into a new local copy.</p>
+      <div class="toolbar" style="margin-bottom:12px">
+        <button class="primary" id="handoffBtn">Generate Handoff</button>
+        <button id="previewHandoffBtn">Preview Restore</button>
+        <button id="restoreHandoffBtn" disabled>Restore To New Copy</button>
+      </div>
+      <div id="handoffPreview" class="empty">Generate or select a handoff, then preview it before restore.</div>
+    </section>
+    <section>
+      <h2>Release Verification</h2>
+      <p class="helper">Optional maintainer tools for release proof, clean-shell verification, and launch assets.</p>
       <div class="toolbar" style="margin-bottom:12px">
         <button class="primary" id="releasePackBtn">Run Release Pack</button>
         <button id="launchProofBtn">Generate Launch Proof</button>
-        <button id="handoffBtn">Generate Handoff</button>
-        <button id="restoreHandoffBtn">Restore Handoff</button>
         <button id="verifyLaunchAssetsBtn">Verify Launch Assets</button>
         <button id="verifyReturnPacketBtn">Verify Return Packet</button>
       </div>
@@ -512,6 +558,7 @@ INDEX_HTML = """<!doctype html>
   </main>
   <script>
     const $ = (id) => document.getElementById(id);
+    let handoffPreviewId = null;
 
     async function api(path, options = {}) {
       const response = await fetch(path, {
@@ -640,10 +687,12 @@ INDEX_HTML = """<!doctype html>
           ${proofCell('Comparison hash', shortHash(benchmark.comparison_hash))}
           ${proofCell('Dashboard', benchmark.dashboard_path || 'not generated')}
         </div>
-        <table class="benchmark-table">
-          <thead><tr><th>Mode</th><th class="num">Accuracy</th><th class="num">Pass</th><th class="num">P95 ms</th><th class="num">Tokens</th></tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
+        <div class="table-scroll">
+          <table class="benchmark-table">
+            <thead><tr><th>Mode</th><th class="num">Accuracy</th><th class="num">Pass</th><th class="num">P95 ms</th><th class="num">Tokens</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
         <p class="helper"><a href="${escapeHtml(benchmark.public_url || 'http://127.0.0.1:8766/benchmarks.html')}" target="_blank" rel="noreferrer">Open public evidence</a></p>`;
     }
 
@@ -1019,27 +1068,78 @@ INDEX_HTML = """<!doctype html>
     function renderContinuity(state) {
       const continuity = state.agent_continuity || {};
       const agents = continuity.agents || [];
-      const agentCards = agents.map((agent) => `<div class="story-card">
-        <strong>${escapeHtml(agent.label)}</strong>
-        <p>${escapeHtml(agent.ready ? agent.ready_text : agent.next_step)}</p>
-        <p>${escapeHtml(agent.mode)}</p>
-        <code>${escapeHtml(agent.path)}</code>
-      </div>`).join('');
+      const agentCards = agents.map((agent) => {
+        const sessions = agent.chat_session_ids || [];
+        const connectionLabel = String(agent.connection_state || 'not connected').replaceAll('_', ' ');
+        const activity = agent.observed
+          ? `${agent.memory_count || 0} memories · ${sessions.length} sessions`
+          : 'No writes observed yet';
+        const source = agent.latest_origin_summary || agent.source_uri_preview || 'No source provenance yet';
+        return `<div class="story-card">
+          <div class="proof-status">${pill(connectionLabel)}${agent.shared_store_match ? pill('shared store') : ''}</div>
+          <strong>${escapeHtml(agent.label)}</strong>
+          <p>${escapeHtml(activity)}</p>
+          <p>${escapeHtml(source)}</p>
+          <code>${escapeHtml((agent.configured || agent.export_ready) ? (agent.path || 'configured') : agent.setup_command)}</code>
+        </div>`;
+      }).join('');
       const commands = (continuity.commands || []).map((command) => `<code>${escapeHtml(command)}</code>`).join('<br>');
       $('continuity').innerHTML = `
         <div class="proof-status">
-          ${pill(continuity.mcp_ready ? 'mcp ready' : 'mcp missing')}
-          ${pill(continuity.manual_pack_ready ? 'manual pack ready' : 'manual pack missing')}
+          ${pill(`configured ${continuity.configured_count || 0}`)}
+          ${pill(`exports ${continuity.export_ready_count || 0}`)}
+          ${pill(`observed ${continuity.observed_count || 0}`)}
+          ${pill(`active ${continuity.active_count || 0}`)}
+          ${pill(continuity.shared_memory_ready ? 'multi-agent ready' : 'connect another agent')}
           ${pill(continuity.handoff_ready ? 'handoff ready' : 'handoff pending')}
         </div>
         <div class="story-grid">${agentCards}</div>
         <div class="proof-grid">
-          ${proofCell('Memory DB', continuity.db_path || 'unknown')}
-          ${proofCell('Handoff', continuity.handoff_path || '.zerker/handoff')}
-          ${proofCell('Manual pack', continuity.manual_pack_path || '.zerker/agents/manual-agent-pack.md')}
+          ${proofCell('Shared memory DB', continuity.db_path || 'unknown')}
+          ${proofCell('Policy', continuity.policy_path || 'none')}
+          ${proofCell('Transfer package', continuity.handoff_path || '.zerker/handoff')}
         </div>
-        <p class="helper">Continue elsewhere:</p>
+        <p class="helper">Connect, verify, and transfer:</p>
         <pre>${commands}</pre>`;
+    }
+
+    function renderRoomInventory(state) {
+      const inventory = state.room_inventory || {};
+      const rooms = inventory.rooms || [];
+      if (!rooms.length) {
+        $('roomInventory').innerHTML = `<div class="empty">No local Rooms have written memory yet. Start the Rooms service with <code>zmem serve</code>; stores will appear after Gateway records or proposes the first memory.</div>`;
+        return;
+      }
+      const cards = rooms.map((room) => {
+        if (room.inventory_state === 'unreadable') {
+          return `<div class="story-card">
+            <div class="proof-status">${pill('unreadable')}</div>
+            <strong>${escapeHtml(room.room_id)}</strong>
+            <p>The local Room store could not be inspected. Other Rooms remain available.</p>
+            <code>${escapeHtml(room.storage_id)}</code>
+          </div>`;
+        }
+        const status = room.status_counts || {};
+        const semantic = room.semantic_index || {};
+        const contributors = (room.observed_contributor_ids || []).join(', ') || 'none observed';
+        return `<div class="story-card">
+          <div class="proof-status">${pill(`shared ${room.shared_memory_count || 0}`)}${pill(`private ${room.member_private_memory_count || 0}`)}</div>
+          <strong>${escapeHtml(room.room_id)}</strong>
+          <p>${escapeHtml(`contributors ${contributors}`)}</p>
+          <p>${escapeHtml(`active ${status.active || 0} · review ${Number(status.quarantined || 0) + Number(status.proposed || 0)} · semantic index ${Math.round(Number(semantic.coverage || 0) * 100)}%`)}</p>
+          <code>${escapeHtml(shortHash(room.latest_merkle_root) || room.storage_id)}</code>
+        </div>`;
+      }).join('');
+      $('roomInventory').innerHTML = `
+        <div class="proof-status">
+          ${pill(`rooms ${inventory.room_count || 0}`)}
+          ${pill(`memories ${inventory.memory_count || 0}`)}
+          ${pill(`contributors ${(inventory.observed_contributor_ids || []).length}`)}
+          ${inventory.unreadable_room_count ? pill(`unreadable ${inventory.unreadable_room_count}`) : ''}
+          ${pill(`tenant ${inventory.tenant_id || 'local'}`)}
+        </div>
+        <div class="story-grid">${cards}</div>
+        <p class="helper">${escapeHtml(inventory.membership_note || '')}</p>`;
     }
 
     function renderMemorySpotlight(state) {
@@ -1250,6 +1350,7 @@ INDEX_HTML = """<!doctype html>
       if (payload.schema === 'zerker.release_pack.v1') return renderReleasePackSummary(payload);
       if (payload.schema === 'zerker.launch_proof.v1') return renderLaunchProofSummary(payload);
       if (payload.schema === 'zerker.handoff.v1') return renderHandoffSummary(payload);
+      if (payload.schema === 'zerker.restore_preview.v1') return renderHandoffPreviewSummary(payload);
       if (payload.schema === 'zerker.restore_handoff.v1') return renderRestoreSummary(payload);
       if (payload.schema === 'zerker.launch_assets_verify.v1') return renderLaunchAssetsSummary(payload);
       if (payload.schema === 'zerker.return_packet_verify.v1') return renderReturnPacketSummary(payload);
@@ -1486,6 +1587,24 @@ INDEX_HTML = """<!doctype html>
         </div>`;
     }
 
+    function renderHandoffPreviewSummary(result) {
+      const effects = result.effects || {};
+      const blockers = (result.blockers || []).join(', ') || 'none';
+      return `<div class="proof-status">
+          ${pill('restore preview')}${pill(result.ready_to_restore ? 'ready' : 'blocked')}${pill('no writes')}
+        </div>
+        <div class="proof-grid">
+          ${proofCell('Preview', result.preview_id || 'none')}
+          ${proofCell('Target', result.db_path || 'not selected')}
+          ${proofCell('Snapshot', shortHash(result.snapshot_hash))}
+          ${proofCell('Manifest', shortHash(result.manifest_hash) || 'standalone snapshot')}
+          ${proofCell('New / unchanged', `${effects.new_memory_count || 0} / ${effects.unchanged_memory_count || 0}`)}
+          ${proofCell('Conflicts', String(effects.conflict_count || 0))}
+          ${proofCell('Deletes', effects.deletes_memory ? 'yes' : 'no')}
+        </div>
+        <div class="content">${escapeHtml(result.ready_to_restore ? 'Verified and bound to a new local import database.' : `Blocked: ${blockers}`)}</div>`;
+    }
+
     function renderRestoreSummary(result) {
       const restore = result.restore || {};
       return `<div class="proof-status">
@@ -1575,6 +1694,7 @@ INDEX_HTML = """<!doctype html>
       renderOnboarding(state);
       renderReleaseStatus(state);
       renderContinuity(state);
+      renderRoomInventory(state);
       renderMemorySpotlight(state);
       renderAgentBenchmarkSpotlight(state);
       renderWorkspaceProfile(state);
@@ -1705,11 +1825,30 @@ INDEX_HTML = """<!doctype html>
       await load();
     });
     $('handoffBtn').addEventListener('click', async () => {
-      renderOutput(await api('/api/release/handoff', {method: 'POST', body: '{}'}));
+      const result = await api('/api/release/handoff', {method: 'POST', body: '{}'});
+      handoffPreviewId = null;
+      $('restoreHandoffBtn').disabled = true;
+      $('handoffPreview').innerHTML = '<div class="empty">Handoff generated. Preview it before restore.</div>';
+      renderOutput(result);
       await load();
     });
+    $('previewHandoffBtn').addEventListener('click', async () => {
+      const result = await api('/api/release/preview-handoff', {method: 'POST', body: '{}'});
+      handoffPreviewId = result.ready_to_restore ? result.preview_id : null;
+      $('restoreHandoffBtn').disabled = !handoffPreviewId;
+      $('handoffPreview').innerHTML = renderHandoffPreviewSummary(result);
+      renderOutput(result);
+    });
     $('restoreHandoffBtn').addEventListener('click', async () => {
-      renderOutput(await api('/api/release/restore-handoff', {method: 'POST', body: '{}'}));
+      if (!handoffPreviewId) return;
+      const result = await api('/api/release/restore-handoff', {
+        method: 'POST',
+        body: JSON.stringify({preview_id: handoffPreviewId}),
+      });
+      handoffPreviewId = null;
+      $('restoreHandoffBtn').disabled = true;
+      $('handoffPreview').innerHTML = renderRestoreSummary(result);
+      renderOutput(result);
       await load();
     });
     $('verifyLaunchAssetsBtn').addEventListener('click', async () => {
@@ -1736,9 +1875,18 @@ INDEX_HTML = """<!doctype html>
 
 
 class DashboardServer(ThreadingHTTPServer):
-    def __init__(self, server_address: tuple[str, int], store: MemoryStore):
+    def __init__(
+        self,
+        server_address: tuple[str, int],
+        store: MemoryStore,
+        *,
+        rooms_root: Path | None = None,
+        tenant_id: str = "local",
+    ):
         self.db_path = store.db_path
         self.policy_path = store.policy_path
+        self.rooms_root = rooms_root or (store.db_path.parent / "rooms")
+        self.tenant_id = tenant_id
         super().__init__(server_address, DashboardHandler)
 
     def new_store(self) -> MemoryStore:
@@ -1756,6 +1904,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 self._send_html(INDEX_HTML)
                 return
             if parsed.path == "/api/state":
+                workspace_sources = build_workspace_sources_state(store)
                 self._send_json(
                     {
                         "stats": store.stats(),
@@ -1763,9 +1912,16 @@ class DashboardHandler(BaseHTTPRequestHandler):
                             db_path=store.db_path,
                             policy_path=store.policy_path,
                         ),
-                        "workspace_sources": build_workspace_sources_state(store),
+                        "workspace_sources": workspace_sources,
                         "onboarding": build_onboarding_state(store),
-                        "agent_continuity": build_agent_continuity_state(store),
+                        "agent_continuity": build_agent_continuity_state(
+                            store,
+                            source_report=workspace_sources,
+                        ),
+                        "room_inventory": build_room_inventory_state(
+                            storage_root=self.server.rooms_root,
+                            tenant_id=self.server.tenant_id,
+                        ),
                         "benchmark": build_benchmark_state(),
                         "release_readiness": build_release_readiness_state(store),
                         "queue": [memory.to_dict() for memory in store.queue()],
@@ -1839,8 +1995,16 @@ class DashboardHandler(BaseHTTPRequestHandler):
             if parsed.path == "/api/release/handoff":
                 self._send_json(create_dashboard_handoff(store))
                 return
+            if parsed.path == "/api/release/preview-handoff":
+                self._send_json(create_dashboard_handoff_preview(store))
+                return
             if parsed.path == "/api/release/restore-handoff":
-                self._send_json(create_dashboard_handoff_restore(store))
+                self._send_json(
+                    create_dashboard_handoff_restore(
+                        store,
+                        confirmed_preview_id=required_str(payload, "preview_id"),
+                    )
+                )
                 return
             if parsed.path == "/api/release/verify-launch-assets":
                 self._send_json(create_dashboard_launch_assets_verify(store))
@@ -1987,82 +2151,261 @@ def build_workspace_sources_state(store: MemoryStore, *, limit: int = 25) -> dic
     return report
 
 
-def build_agent_continuity_state(store: MemoryStore) -> dict[str, Any]:
-    root = Path.cwd()
+def build_agent_continuity_state(
+    store: MemoryStore,
+    *,
+    root: Path | None = None,
+    config_paths: dict[str, Path] | None = None,
+    source_report: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    from .cli import agent_default_config_path, agent_display_name, agent_export_config_path, agent_presets
+    from .doctor import inspect_agent_connection
+
+    root = (root or Path.cwd()).resolve(strict=False)
     zerker_dir = store.db_path.parent
     agents_dir = zerker_dir / "agents"
     handoff_dir = root / ".zerker" / "handoff"
-    codex_path = Path.home() / ".codex" / "config.toml"
-    claude_path = Path.home() / ".claude" / "mcp.json"
     manual_pack_path = agents_dir / "manual-agent-pack.md"
-    agents = [
-        {
-            "label": "Codex",
-            "path": str(codex_path),
-            "ready": codex_path.exists(),
-            "mode": "Direct config install",
-            "ready_text": "Config found; attach .zerker/AGENT_PROMPT.md and run smoke.",
-            "next_step": "Run zmem agent install codex.",
-        },
-        {
-            "label": "Claude Code",
-            "path": str(claude_path),
-            "ready": claude_path.exists(),
-            "mode": "Direct config install",
-            "ready_text": "Config found; attach .zerker/AGENT_PROMPT.md to project instructions.",
-            "next_step": "Run zmem agent install claude-code.",
-        },
-        {
-            "label": "Cursor",
-            "path": str(agents_dir / "cursor-mcp.json"),
-            "ready": (agents_dir / "cursor-mcp.json").exists(),
-            "mode": "Manual MCP import",
-            "ready_text": "Import the JSON or paste the snippet into Cursor MCP settings.",
-            "next_step": "Run zmem agent install cursor --summary-only.",
-        },
-        {
-            "label": "OpenClaw",
-            "path": str(agents_dir / "openclaw-mcp.json"),
-            "ready": (agents_dir / "openclaw-mcp.json").exists(),
-            "mode": "Manual MCP import",
-            "ready_text": "Import the JSON or paste the snippet into OpenClaw.",
-            "next_step": "Run zmem agent install openclaw --summary-only.",
-        },
-        {
-            "label": "Hermes",
-            "path": str(agents_dir / "hermes-mcp.json"),
-            "ready": (agents_dir / "hermes-mcp.json").exists(),
-            "mode": "Manual MCP import",
-            "ready_text": "Import the JSON or paste the snippet into Hermes.",
-            "next_step": "Run zmem agent install hermes --summary-only.",
-        },
-        {
-            "label": "Generic MCP",
-            "path": str(agents_dir / "generic-mcp.json"),
-            "ready": (agents_dir / "generic-mcp.json").exists(),
-            "mode": "Manual MCP import",
-            "ready_text": "Use this config for any stdio MCP client.",
-            "next_step": "Run zmem agent install generic --summary-only.",
-        },
-    ]
+    source_report = source_report or build_workspace_sources_state(store)
+    aliases = {"claude": "claude-code", "claude_code": "claude-code"}
+    observed: dict[str, dict[str, Any]] = {}
+    for item in source_report.get("connected_agents") or []:
+        actor_uri = str(item.get("actor_uri") or "")
+        if not actor_uri.startswith("agent://"):
+            continue
+        agent_id = str(item.get("agent_id") or "").strip()
+        if agent_id:
+            observed[aliases.get(agent_id, agent_id)] = item
+
+    agents: list[dict[str, Any]] = []
+    overrides = config_paths or {}
+    for preset in agent_presets():
+        config_path = overrides.get(preset) or agent_default_config_path(preset) or agent_export_config_path(preset, cwd=root)
+        inspection = inspect_agent_connection(
+            preset,
+            config_path=config_path,
+            db_path=store.db_path,
+            policy_path=store.policy_path,
+            working_dir=root,
+        )
+        provenance = observed.pop(preset, None)
+        inspection_state = str(inspection.get("state") or "not_connected")
+        export_ready = inspection_state == "exported_awaiting_import"
+        configured = bool(inspection.get("ok")) and not export_ready
+        was_observed = provenance is not None
+        if configured and was_observed:
+            connection_state = "active"
+        elif configured:
+            connection_state = "configured"
+        elif was_observed:
+            connection_state = "observed"
+        else:
+            connection_state = "export_ready" if export_ready else inspection_state
+        configured_db_path = inspection.get("configured_db_path")
+        shared_store_match = bool(
+            configured_db_path
+            and Path(str(configured_db_path)).expanduser().resolve(strict=False)
+            == store.db_path.expanduser().resolve(strict=False)
+        )
+        agents.append(
+            {
+                "agent_id": preset,
+                "label": agent_display_name(preset),
+                "path": str(config_path),
+                "ready": configured,
+                "configured": configured,
+                "export_ready": export_ready,
+                "observed": was_observed,
+                "active": configured and was_observed,
+                "connection_state": connection_state,
+                "mode": "Direct config install" if preset in {"codex", "claude-code"} else "Manual MCP import",
+                "details": inspection.get("details"),
+                "configured_db_path": configured_db_path,
+                "shared_store_match": shared_store_match,
+                "memory_count": int((provenance or {}).get("memory_count") or 0),
+                "chat_session_ids": list((provenance or {}).get("chat_session_ids") or []),
+                "source_uri_preview": (provenance or {}).get("source_uri_preview"),
+                "latest_origin_summary": (provenance or {}).get("latest_origin_summary"),
+                "latest_proof_lineage": (provenance or {}).get("latest_proof_lineage"),
+                "ready_text": "Configured for this shared store; observed writes appear after the agent uses ZMem.",
+                "next_step": (
+                    f"Import {config_path} into {agent_display_name(preset)}."
+                    if export_ready
+                    else f"Run zmem setup {preset}."
+                ),
+                "setup_command": f"zmem setup {preset}",
+            }
+        )
+
+    for agent_id, provenance in sorted(observed.items()):
+        agents.append(
+            {
+                "agent_id": agent_id,
+                "label": agent_id,
+                "path": None,
+                "ready": False,
+                "configured": False,
+                "export_ready": False,
+                "observed": True,
+                "active": False,
+                "connection_state": "observed",
+                "mode": "Observed through memory provenance",
+                "details": "This agent wrote memory here, but no local adapter config is registered for it.",
+                "configured_db_path": None,
+                "shared_store_match": False,
+                "memory_count": int(provenance.get("memory_count") or 0),
+                "chat_session_ids": list(provenance.get("chat_session_ids") or []),
+                "source_uri_preview": provenance.get("source_uri_preview"),
+                "latest_origin_summary": provenance.get("latest_origin_summary"),
+                "latest_proof_lineage": provenance.get("latest_proof_lineage"),
+                "ready_text": "Observed from provenance.",
+                "next_step": "Connect this framework with the generic MCP adapter.",
+                "setup_command": "zmem setup generic",
+            }
+        )
+
+    configured_count = sum(1 for agent in agents if agent["configured"])
+    export_ready_count = sum(1 for agent in agents if agent["export_ready"])
+    observed_count = sum(1 for agent in agents if agent["observed"])
+    active_count = sum(1 for agent in agents if agent["active"])
     return {
+        "schema": "zerker.agent_memory_network.v1",
         "db_path": str(store.db_path),
+        "policy_path": str(store.policy_path) if store.policy_path is not None else None,
         "mcp_ready": (zerker_dir / "mcp.json").exists(),
         "manual_pack_ready": manual_pack_path.exists(),
         "manual_pack_path": str(manual_pack_path),
         "handoff_ready": (handoff_dir / "handoff.json").exists(),
         "handoff_path": str(handoff_dir),
+        "configured_count": configured_count,
+        "export_ready_count": export_ready_count,
+        "observed_count": observed_count,
+        "active_count": active_count,
+        "shared_memory_ready": configured_count >= 2,
         "agents": agents,
         "commands": [
-            "zmem agent install codex",
-            "zmem agent install claude-code",
+            "zmem setup codex claude-code hermes",
             "zmem agent pack --summary-only",
-            "zmem agent prompt",
-            "zmem doctor --agent codex --agent claude-code --agent cursor",
+            "zmem status --summary-only",
             "zmem agent mcp-smoke --agent codex",
             "zmem handoff --summary-only",
-            "zmem --db .zerker/imported.sqlite restore --handoff-dir .zerker/handoff",
+            "zmem --db .zerker/imported.sqlite restore --handoff-dir .zerker/handoff --dry-run",
         ],
+    }
+
+
+def build_room_inventory_state(*, storage_root: Path, tenant_id: str) -> dict[str, Any]:
+    from .rooms import discover_room_stores
+
+    room_items: list[dict[str, Any]] = []
+    observed_agents: set[str] = set()
+    for descriptor in discover_room_stores(storage_root, tenant_id=tenant_id):
+        db_path = Path(descriptor["db_path"])
+        connection: sqlite3.Connection | None = None
+        try:
+            connection = sqlite3.connect(db_path.resolve().as_uri() + "?mode=ro", uri=True)
+            connection.row_factory = sqlite3.Row
+            memory_rows = connection.execute(
+                "SELECT id, status, scope, labels_json, updated_at FROM memories ORDER BY updated_at DESC, id"
+            ).fetchall()
+            latest_receipt = connection.execute(
+                "SELECT receipt_id, receipt_hash, merkle_root, created_at FROM memory_write_receipts ORDER BY created_at DESC, receipt_id DESC LIMIT 1"
+            ).fetchone()
+            indexed_count = 0
+            if connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'memory_embeddings'"
+            ).fetchone():
+                indexed_count = int(
+                    connection.execute(
+                        "SELECT COUNT(DISTINCT e.memory_id) FROM memory_embeddings e JOIN memories m ON m.id = e.memory_id AND m.content_hash = e.content_hash WHERE m.status IN ('active', 'quarantined', 'proposed')"
+                    ).fetchone()[0]
+                )
+        except sqlite3.Error:
+            room_items.append(
+                {
+                    **descriptor,
+                    "inventory_state": "unreadable",
+                    "memory_count": 0,
+                    "status_counts": {},
+                    "shared_memory_count": 0,
+                    "member_private_memory_count": 0,
+                    "observed_contributor_ids": [],
+                    "latest_activity": None,
+                    "latest_receipt_id": None,
+                    "latest_receipt_hash": None,
+                    "latest_merkle_root": None,
+                    "semantic_index": {
+                        "indexed_memory_count": 0,
+                        "eligible_memory_count": 0,
+                        "coverage": 0.0,
+                    },
+                }
+            )
+            continue
+        finally:
+            if connection is not None:
+                connection.close()
+
+        status_counts: dict[str, int] = {}
+        contributors: set[str] = set()
+        shared_count = 0
+        private_count = 0
+        latest_activity = None
+        for row in memory_rows:
+            status = str(row["status"])
+            status_counts[status] = status_counts.get(status, 0) + 1
+            scope = str(row["scope"])
+            if scope == "global":
+                shared_count += 1
+            elif scope.startswith("member:"):
+                private_count += 1
+            try:
+                labels = json.loads(row["labels_json"])
+            except (TypeError, json.JSONDecodeError):
+                labels = []
+            for label in labels if isinstance(labels, list) else []:
+                if isinstance(label, str) and label.startswith("contributor:"):
+                    agent_id = label.removeprefix("contributor:")
+                    if agent_id:
+                        contributors.add(agent_id)
+                        observed_agents.add(agent_id)
+            if latest_activity is None and row["updated_at"]:
+                latest_activity = str(row["updated_at"])
+        eligible_count = sum(status_counts.get(status, 0) for status in ("active", "quarantined", "proposed"))
+        room_items.append(
+            {
+                **descriptor,
+                "inventory_state": "ready",
+                "memory_count": len(memory_rows),
+                "status_counts": status_counts,
+                "shared_memory_count": shared_count,
+                "member_private_memory_count": private_count,
+                "observed_contributor_ids": sorted(contributors),
+                "latest_activity": latest_activity,
+                "latest_receipt_id": latest_receipt["receipt_id"] if latest_receipt is not None else None,
+                "latest_receipt_hash": latest_receipt["receipt_hash"] if latest_receipt is not None else None,
+                "latest_merkle_root": latest_receipt["merkle_root"] if latest_receipt is not None else None,
+                "semantic_index": {
+                    "indexed_memory_count": indexed_count,
+                    "eligible_memory_count": eligible_count,
+                    "coverage": round(indexed_count / eligible_count, 6) if eligible_count else 1.0,
+                },
+            }
+        )
+    room_items.sort(key=lambda item: (str(item.get("latest_activity") or ""), str(item["room_id"])), reverse=True)
+    return {
+        "schema": "zerker.room_inventory.v1",
+        "tenant_id": tenant_id,
+        "storage_root": str(Path(storage_root).expanduser().resolve(strict=False)),
+        "room_count": len(room_items),
+        "memory_count": sum(int(room["memory_count"]) for room in room_items),
+        "shared_memory_count": sum(int(room["shared_memory_count"]) for room in room_items),
+        "member_private_memory_count": sum(int(room["member_private_memory_count"]) for room in room_items),
+        "unreadable_room_count": sum(1 for room in room_items if room["inventory_state"] == "unreadable"),
+        "observed_contributor_ids": sorted(observed_agents),
+        "rooms": room_items,
+        "membership_authority": "gateway",
+        "membership_note": "Contributors are derived from memory provenance; Gateway remains authoritative for Room membership.",
     }
 
 
@@ -2297,18 +2640,42 @@ def create_dashboard_handoff(store: MemoryStore) -> dict[str, Any]:
     )
 
 
-def create_dashboard_handoff_restore(store: MemoryStore) -> dict[str, Any]:
-    from .cli import default_handoff_dir, restore_handoff_package
-
+def _next_dashboard_import_db(store: MemoryStore) -> Path:
     target_dir = store.db_path.parent / "imports"
-    target_dir.mkdir(parents=True, exist_ok=True)
     target_db = target_dir / "imported.sqlite"
     suffix = 2
     while target_db.exists():
         target_db = target_dir / f"imported-{suffix}.sqlite"
         suffix += 1
+    return target_db
+
+
+def create_dashboard_handoff_preview(store: MemoryStore) -> dict[str, Any]:
+    from .cli import default_handoff_dir, preview_handoff_package
+
+    target_db = _next_dashboard_import_db(store)
+    result = preview_handoff_package(
+        store,
+        handoff_dir=default_handoff_dir(cwd=Path.cwd()),
+        target_db_path=target_db,
+        assume_empty_target=True,
+    )
+    result["dashboard_target_is_new_copy"] = True
+    return result
+
+
+def create_dashboard_handoff_restore(store: MemoryStore, *, confirmed_preview_id: str | None = None) -> dict[str, Any]:
+    from .cli import default_handoff_dir, restore_handoff_package
+
+    target_db = _next_dashboard_import_db(store)
+    target_dir = target_db.parent
+    target_dir.mkdir(parents=True, exist_ok=True)
     target_store = MemoryStore(target_db, policy_path=store.policy_path)
-    return restore_handoff_package(target_store, handoff_dir=default_handoff_dir(cwd=Path.cwd()))
+    return restore_handoff_package(
+        target_store,
+        handoff_dir=default_handoff_dir(cwd=Path.cwd()),
+        confirmed_preview_id=confirmed_preview_id,
+    )
 
 
 def create_dashboard_return_packet_verify(store: MemoryStore) -> dict[str, Any]:
@@ -2331,9 +2698,21 @@ def required_str(payload: dict[str, Any], key: str) -> str:
     return value
 
 
-def serve(store: MemoryStore, *, host: str, port: int) -> None:
+def serve(
+    store: MemoryStore,
+    *,
+    host: str,
+    port: int,
+    rooms_root: Path | None = None,
+    tenant_id: str = "local",
+) -> None:
     store.init()
-    server = DashboardServer((host, port), store)
+    server = DashboardServer(
+        (host, port),
+        store,
+        rooms_root=rooms_root,
+        tenant_id=tenant_id,
+    )
     print(f"Zerker Memory Console running at http://{host}:{port}")
     server.serve_forever()
 
@@ -2344,12 +2723,20 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--policy", type=Path, default=default_policy_path(), help="Policy config JSON path")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
+    parser.add_argument("--rooms-root", type=Path, help="Room-store root to inspect; defaults beside --db")
+    parser.add_argument("--tenant-id", default="local", help="Tenant identity for the local Rooms inventory")
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    serve(MemoryStore(args.db, policy_path=args.policy), host=args.host, port=args.port)
+    serve(
+        MemoryStore(args.db, policy_path=args.policy),
+        host=args.host,
+        port=args.port,
+        rooms_root=args.rooms_root,
+        tenant_id=args.tenant_id,
+    )
     return 0
 
 

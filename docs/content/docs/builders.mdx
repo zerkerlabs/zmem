@@ -44,7 +44,8 @@ Create handoff artifacts at the end of meaningful work so another agent can resu
 
 ```bash
 zmem handoff --summary-only
-zmem --db .zerker/imported.sqlite restore --handoff-dir .zerker/handoff
+zmem --db .zerker/imported.sqlite restore --handoff-dir .zerker/handoff --dry-run --summary-only
+zmem --db .zerker/imported.sqlite restore --handoff-dir .zerker/handoff --confirm-preview <preview-id>
 ```
 
 ### Proof View

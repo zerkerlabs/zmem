@@ -13,11 +13,32 @@ zmem handoff --summary-only
 
 This writes a handoff directory under `.zerker/handoff`.
 
-## Restore A Handoff
+## Preview, Then Restore
+
+Verify the package, inspect its effect on the selected destination, and obtain a preview id without importing memory:
 
 ```bash
-zmem --db .zerker/imported.sqlite restore --handoff-dir .zerker/handoff
+zmem \
+  --db .zerker/imported.sqlite \
+  restore \
+  --handoff-dir .zerker/handoff \
+  --dry-run \
+  --summary-only
 ```
+
+The preview reports the snapshot and bundle verification state, incoming and conflicting memory ids, whether the destination is empty, and whether any memory would be deleted. It writes no memory, receipt, or continuity state.
+
+Apply the exact reviewed preview:
+
+```bash
+zmem \
+  --db .zerker/imported.sqlite \
+  restore \
+  --handoff-dir .zerker/handoff \
+  --confirm-preview <preview-id>
+```
+
+If the package or target state changes after preview, confirmation fails. The local `zmem ui` follows the same flow and restores into a fresh copy rather than replacing the current workspace database.
 
 Run status after restore:
 
@@ -31,5 +52,5 @@ zmem --db .zerker/imported.sqlite status --summary-only
 - receipts and event history needed for verification,
 - policy and agent prompt context,
 - clear restore commands,
+- a read-only, destination-bound restore preview,
 - enough provenance for the receiving agent to know what it is allowed to trust.
-

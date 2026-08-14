@@ -4,6 +4,14 @@ All notable Zerker Memory alpha changes are summarized here.
 
 ## Unreleased
 
+### Agent Memory Network And Safe Transfer
+
+- The local console now distinguishes configured clients from agents that have actually written memory, joins both states into one shared-store view, and keeps unknown generic-MCP frameworks visible through recorded provenance.
+- Added a read-only Rooms inventory with room-shared and member-private counts, review state, observed contributors, proof roots, and semantic-index coverage. Gateway remains authoritative for Room membership.
+- Room stores now keep a content-free local identity descriptor so isolated tenant-and-room databases can be discovered without exposing memory text.
+- Added `zmem restore --dry-run` and preview-id confirmation. Handoff and snapshot restores can be verified and diffed before import, then bound to the exact reviewed artifact and destination state.
+- The console now requires a successful preview before restoring a handoff into a fresh local copy.
+
 ### Semantic Recall For Shared Rooms
 
 - Dense-enabled Rooms now maintain each room's local semantic index after writes and catch up missing or stale vectors before context preparation. No context request downloads a model.
