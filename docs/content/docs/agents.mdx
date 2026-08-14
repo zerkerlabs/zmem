@@ -33,6 +33,20 @@ A connection id is not guaranteed to be the visible chat id. Agent hosts decide 
 
 `zmem doctor --agent codex --agent claude-code` verifies that each entry points to this project's exact database and policy. It no longer treats an entry for another workspace as ready.
 
+## See The Shared Memory Network
+
+```bash
+zmem ui
+```
+
+The local console separates three facts that are easy to conflate:
+
+- **configured:** the client points to this exact database and policy;
+- **observed:** ZMem has provenance from a real memory write by that agent;
+- **active:** both are true.
+
+This means a config file merely sitting on disk is not presented as proof that a chat used ZMem. The same view shows observed sessions, source provenance, shared-store alignment, and the latest transfer package. Unknown frameworks that write through generic MCP still appear by their recorded agent identity.
+
 ## Manual Clients
 
 For clients that do not accept direct config writes:

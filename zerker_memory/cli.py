@@ -25,7 +25,7 @@ from .providers import (
     provider_import_settings,
     write_provider_config_template,
 )
-from .store import MemoryStore, default_db_path, default_policy_path
+from .store import MemoryStore, default_db_path, default_policy_path, merkle_root, sha256_text, stable_json
 from .workspaces import (
     current_workspace,
     list_workspaces,
@@ -1088,6 +1088,15 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
     restore.add_argument("snapshot_path", nargs="?", type=expand_user_path)
     restore.add_argument("--handoff-dir", type=expand_user_path, help="Restore from a Zerker handoff package directory")
     restore.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Verify and preview the restore without writing memory, receipts, or continuity state",
+    )
+    restore.add_argument(
+        "--confirm-preview",
+        help="Bind the restore to the exact preview id produced by --dry-run",
+    )
+    restore.add_argument(
         "--summary-only",
         action="store_true",
         help="Print only the compact human-readable restore summary",
@@ -1096,6 +1105,12 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
     ui = sub.add_parser("ui", help="Run the local human review console")
     ui.add_argument("--host", default="127.0.0.1")
     ui.add_argument("--port", type=int, default=8765)
+    ui.add_argument(
+        "--rooms-root",
+        type=expand_user_path,
+        help="Room-store root to inspect; defaults to a rooms directory beside --db",
+    )
+    ui.add_argument("--tenant-id", default=os.environ.get("ZMEM_TENANT_ID", "local"))
 
     serve = sub.add_parser("serve", help="Run the room-scoped ZMem service for Zerker Gateway Rooms")
     serve.add_argument("--host", default="127.0.0.1")
@@ -2627,7 +2642,15 @@ def main(argv: list[str] | None = None) -> int:
                 return 0 if result["ok"] else 1
         if args.command == "restore":
             if args.handoff_dir is not None:
-                result = restore_handoff_package(store, handoff_dir=args.handoff_dir)
+                result = (
+                    preview_handoff_package(store, handoff_dir=args.handoff_dir)
+                    if args.dry_run
+                    else restore_handoff_package(
+                        store,
+                        handoff_dir=args.handoff_dir,
+                        confirmed_preview_id=args.confirm_preview,
+                    )
+                )
                 summary = render_restore_summary(result)
                 if args.summary_only:
                     print(summary, end="")
@@ -2637,7 +2660,15 @@ def main(argv: list[str] | None = None) -> int:
                 return 0 if result["ok"] else 1
             if args.snapshot_path is None:
                 raise ValueError("missing snapshot path")
-            result = restore_snapshot_file(store, snapshot_path=args.snapshot_path)
+            result = (
+                preview_snapshot_file(store, snapshot_path=args.snapshot_path)
+                if args.dry_run
+                else restore_snapshot_file(
+                    store,
+                    snapshot_path=args.snapshot_path,
+                    confirmed_preview_id=args.confirm_preview,
+                )
+            )
             summary = render_restore_summary(result)
             if args.summary_only:
                 print(summary, end="")
@@ -2648,7 +2679,13 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "ui":
             from .dashboard import serve
 
-            serve(store, host=args.host, port=args.port)
+            serve(
+                store,
+                host=args.host,
+                port=args.port,
+                rooms_root=args.rooms_root,
+                tenant_id=args.tenant_id,
+            )
             return 0
         if args.command == "launch-proof":
             result = run_launch_proof(
@@ -7094,6 +7131,35 @@ def run_release_pack(
 
 
 def render_restore_summary(result: dict) -> str:
+    if result.get("read_only_preview") is True:
+        effects = result.get("effects") or {}
+        lines = [
+            "Zerker Memory restore preview",
+            "",
+            f"Ready to restore: {'yes' if result.get('ready_to_restore') else 'no'}",
+            "Writes performed: no",
+            f"Preview id: {result.get('preview_id')}",
+            f"Source: {result.get('source')}",
+            f"Target DB: {result.get('db_path')}",
+            f"Target empty: {'yes' if result.get('target_empty') else 'no'}",
+            f"Snapshot: {result.get('snapshot_path')}",
+            f"Snapshot verify: {'ok' if (result.get('snapshot_verify') or {}).get('ok') else 'failed'}",
+            f"Bundle verify: {'ok' if result.get('bundle_verify') is None or result['bundle_verify'].get('ok') else 'failed'}",
+            f"Incoming memories: {effects.get('incoming_memory_count', 0)}",
+            f"New memories: {effects.get('new_memory_count', 0)}",
+            f"Unchanged memories: {effects.get('unchanged_memory_count', 0)}",
+            f"Conflicts: {effects.get('conflict_count', 0)}",
+            "Deletes memory: no",
+        ]
+        blockers = result.get("blockers") or []
+        if blockers:
+            lines.append(f"Blockers: {', '.join(str(blocker) for blocker in blockers)}")
+        if result.get("next_steps"):
+            lines.extend(["", "Next:"])
+            lines.extend(f"- {step}" for step in result["next_steps"])
+        lines.append("")
+        return "\n".join(lines)
+
     restore_receipt = result["restore"]["receipt"]
     restore_verify = result.get("restore_verify") or {}
     snapshot_verify = result.get("snapshot_verify") or {}
@@ -7446,9 +7512,210 @@ def render_treeship_publish_summary(result: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def restore_snapshot_file(store: MemoryStore, *, snapshot_path: Path) -> dict:
+_RESTORE_MEMORY_COMPARE_FIELDS = (
+    "type",
+    "content_hash",
+    "scope",
+    "status",
+    "trust",
+    "authority",
+    "parents",
+    "labels",
+    "expires_at",
+)
+
+
+def _restore_target_state(store: MemoryStore) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
+    snapshot = store.snapshot()
+    memories = {
+        str(memory["id"]): memory
+        for memory in snapshot.get("memories", [])
+        if isinstance(memory, dict) and memory.get("id")
+    }
+    state = {
+        "db_path": str(store.db_path.resolve(strict=False)),
+        "memory_count": int(snapshot.get("memory_count") or 0),
+        "event_count": int(snapshot.get("event_count") or 0),
+        "receipt_count": int(snapshot.get("receipt_count") or 0),
+        "write_receipt_count": int(snapshot.get("write_receipt_count") or 0),
+        "merkle_root": snapshot.get("merkle_root"),
+        "memories": [
+            {
+                "id": memory_id,
+                "content_hash": memory.get("content_hash"),
+                "status": memory.get("status"),
+            }
+            for memory_id, memory in sorted(memories.items())
+        ],
+    }
+    state["state_digest"] = "sha256:" + sha256_text(stable_json(state))
+    return state, memories
+
+
+def _empty_restore_target_state(db_path: Path) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
+    state = {
+        "db_path": str(db_path.expanduser().resolve(strict=False)),
+        "memory_count": 0,
+        "event_count": 0,
+        "receipt_count": 0,
+        "write_receipt_count": 0,
+        "merkle_root": merkle_root([]),
+        "memories": [],
+    }
+    state["state_digest"] = "sha256:" + sha256_text(stable_json(state))
+    return state, {}
+
+
+def _build_restore_preview(
+    store: MemoryStore,
+    *,
+    source: Path,
+    snapshot_path: Path,
+    snapshot_payload: dict[str, Any],
+    manifest_path: Path | None = None,
+    manifest_payload: dict[str, Any] | None = None,
+    bundle_path: Path | None = None,
+    bundle_payload: dict[str, Any] | None = None,
+    treeship_path: Path | None = None,
+    target_db_path: Path | None = None,
+    assume_empty_target: bool = False,
+) -> dict[str, Any]:
+    snapshot_verify = store.verify_snapshot(snapshot_payload)
+    bundle_verify = store.verify_bundle(bundle_payload) if bundle_payload is not None else None
+    if assume_empty_target:
+        if target_db_path is None:
+            raise ValueError("target_db_path is required when previewing a new empty target")
+        if target_db_path.exists():
+            raise ValueError("the preview target already exists")
+        target_state, target_memories = _empty_restore_target_state(target_db_path)
+    else:
+        target_state, target_memories = _restore_target_state(store)
+    incoming_memories = {
+        str(memory["id"]): memory
+        for memory in snapshot_payload.get("memories", [])
+        if isinstance(memory, dict) and memory.get("id")
+    }
+    new_ids: list[str] = []
+    unchanged_ids: list[str] = []
+    conflicts: list[dict[str, Any]] = []
+    for memory_id, incoming in sorted(incoming_memories.items()):
+        existing = target_memories.get(memory_id)
+        if existing is None:
+            new_ids.append(memory_id)
+            continue
+        differing_fields = [
+            field
+            for field in _RESTORE_MEMORY_COMPARE_FIELDS
+            if existing.get(field) != incoming.get(field)
+        ]
+        if differing_fields:
+            conflicts.append({"memory_id": memory_id, "differing_fields": differing_fields})
+        else:
+            unchanged_ids.append(memory_id)
+
+    target_empty = all(
+        int(target_state.get(field) or 0) == 0
+        for field in ("memory_count", "event_count", "receipt_count", "write_receipt_count")
+    )
+    package_verified = bool(snapshot_verify.get("ok")) and (
+        bundle_verify is None or bool(bundle_verify.get("ok"))
+    )
+    ready_to_restore = package_verified and target_empty and not conflicts
+    manifest_hash = (
+        "sha256:" + sha256_text(stable_json(manifest_payload))
+        if manifest_payload is not None
+        else None
+    )
+    preview_material = {
+        "source": str(source.resolve(strict=False)),
+        "target_db": target_state["db_path"],
+        "snapshot_hash": snapshot_payload.get("snapshot_hash"),
+        "target_state_digest": target_state["state_digest"],
+        "manifest_hash": manifest_hash,
+        "bundle_hash": bundle_payload.get("bundle_hash") if bundle_payload is not None else None,
+    }
+    preview_id = "rpv_" + sha256_text(stable_json(preview_material))[:24]
+    restore_command = (
+        f"zmem --db {target_state['db_path']} restore --handoff-dir {source} --confirm-preview {preview_id}"
+        if manifest_path is not None
+        else f"zmem --db {target_state['db_path']} restore {snapshot_path} --confirm-preview {preview_id}"
+    )
+    blockers: list[str] = []
+    if not snapshot_verify.get("ok"):
+        blockers.append("snapshot_verification_failed")
+    if bundle_verify is not None and not bundle_verify.get("ok"):
+        blockers.append("bundle_verification_failed")
+    if not target_empty:
+        blockers.append("target_store_not_empty")
+    if conflicts:
+        blockers.append("memory_id_conflicts")
+    return {
+        "ok": ready_to_restore,
+        "schema": "zerker.restore_preview.v1",
+        "read_only_preview": True,
+        "preview_id": preview_id,
+        "source": str(source.resolve(strict=False)),
+        "manifest_path": str(manifest_path) if manifest_path is not None else None,
+        "manifest_hash": manifest_hash,
+        "db_path": target_state["db_path"],
+        "snapshot_path": str(snapshot_path.resolve(strict=False)),
+        "snapshot_hash": snapshot_payload.get("snapshot_hash"),
+        "snapshot_verify": snapshot_verify,
+        "bundle_path": str(bundle_path) if bundle_path is not None else None,
+        "bundle_verify": bundle_verify,
+        "treeship_path": str(treeship_path) if treeship_path is not None else None,
+        "package_verified": package_verified,
+        "target_empty": target_empty,
+        "ready_to_restore": ready_to_restore,
+        "target_state": target_state,
+        "effects": {
+            "incoming_memory_count": len(incoming_memories),
+            "new_memory_count": len(new_ids),
+            "unchanged_memory_count": len(unchanged_ids),
+            "conflict_count": len(conflicts),
+            "incoming_receipt_count": int(snapshot_payload.get("receipt_count") or 0),
+            "incoming_event_count": int(snapshot_payload.get("event_count") or 0),
+            "deletes_memory": False,
+        },
+        "new_memory_ids": new_ids,
+        "unchanged_memory_ids": unchanged_ids,
+        "conflicts": conflicts,
+        "blockers": blockers,
+        "restore_command": restore_command,
+        "next_steps": [restore_command] if ready_to_restore else ["Choose an empty target database and preview again."],
+    }
+
+
+def preview_snapshot_file(store: MemoryStore, *, snapshot_path: Path) -> dict[str, Any]:
     resolved_snapshot_path = snapshot_path.resolve()
     snapshot_payload = json.loads(resolved_snapshot_path.read_text(encoding="utf-8"))
+    return _build_restore_preview(
+        store,
+        source=resolved_snapshot_path,
+        snapshot_path=resolved_snapshot_path,
+        snapshot_payload=snapshot_payload,
+    )
+
+
+def restore_snapshot_file(
+    store: MemoryStore,
+    *,
+    snapshot_path: Path,
+    confirmed_preview_id: str | None = None,
+) -> dict:
+    resolved_snapshot_path = snapshot_path.resolve()
+    snapshot_payload = json.loads(resolved_snapshot_path.read_text(encoding="utf-8"))
+    if confirmed_preview_id is not None:
+        preview = _build_restore_preview(
+            store,
+            source=resolved_snapshot_path,
+            snapshot_path=resolved_snapshot_path,
+            snapshot_payload=snapshot_payload,
+        )
+        if preview["preview_id"] != confirmed_preview_id:
+            raise ValueError("restore preview no longer matches the snapshot or target database")
+        if not preview["ready_to_restore"]:
+            raise ValueError("restore preview is not ready to apply")
     snapshot_verify = store.verify_snapshot(snapshot_payload)
     if not snapshot_verify["ok"]:
         raise ValueError(snapshot_verify.get("error", "snapshot verification failed"))
@@ -8594,12 +8861,70 @@ def create_handoff_package(
     }
 
 
-def restore_handoff_package(store: MemoryStore, *, handoff_dir: Path) -> dict:
+def _load_handoff_package(handoff_dir: Path) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any] | None]:
+    discovered = discover_handoff_paths(handoff_dir)
+    snapshot_payload = json.loads(discovered["snapshot_path"].read_text(encoding="utf-8"))
+    bundle_path = discovered.get("bundle_path")
+    bundle_payload = (
+        json.loads(bundle_path.read_text(encoding="utf-8"))
+        if bundle_path is not None
+        else None
+    )
+    return discovered, snapshot_payload, bundle_payload
+
+
+def preview_handoff_package(
+    store: MemoryStore,
+    *,
+    handoff_dir: Path,
+    target_db_path: Path | None = None,
+    assume_empty_target: bool = False,
+) -> dict[str, Any]:
     target_dir = handoff_dir.resolve()
-    discovered = discover_handoff_paths(target_dir)
+    discovered, snapshot_payload, bundle_payload = _load_handoff_package(target_dir)
+    snapshot_path = discovered["snapshot_path"]
+    bundle_path = discovered.get("bundle_path")
+    return _build_restore_preview(
+        store,
+        source=target_dir,
+        snapshot_path=snapshot_path,
+        snapshot_payload=snapshot_payload,
+        manifest_path=discovered.get("manifest_path"),
+        manifest_payload=discovered.get("manifest"),
+        bundle_path=bundle_path,
+        bundle_payload=bundle_payload,
+        treeship_path=discovered.get("treeship_path"),
+        target_db_path=target_db_path,
+        assume_empty_target=assume_empty_target,
+    )
+
+
+def restore_handoff_package(
+    store: MemoryStore,
+    *,
+    handoff_dir: Path,
+    confirmed_preview_id: str | None = None,
+) -> dict:
+    target_dir = handoff_dir.resolve()
+    discovered, snapshot_payload, bundle_payload = _load_handoff_package(target_dir)
+    if confirmed_preview_id is not None:
+        preview = _build_restore_preview(
+            store,
+            source=target_dir,
+            snapshot_path=discovered["snapshot_path"],
+            snapshot_payload=snapshot_payload,
+            manifest_path=discovered.get("manifest_path"),
+            manifest_payload=discovered.get("manifest"),
+            bundle_path=discovered.get("bundle_path"),
+            bundle_payload=bundle_payload,
+            treeship_path=discovered.get("treeship_path"),
+        )
+        if preview["preview_id"] != confirmed_preview_id:
+            raise ValueError("restore preview no longer matches the handoff or target database")
+        if not preview["ready_to_restore"]:
+            raise ValueError("restore preview is not ready to apply")
     manifest = discovered.get("manifest") if isinstance(discovered.get("manifest"), dict) else None
     snapshot_path = discovered["snapshot_path"]
-    snapshot_payload = json.loads(snapshot_path.read_text(encoding="utf-8"))
     snapshot_verify = store.verify_snapshot(snapshot_payload)
     if not snapshot_verify["ok"]:
         raise ValueError(snapshot_verify.get("error", "handoff snapshot verification failed"))
@@ -8607,7 +8932,8 @@ def restore_handoff_package(store: MemoryStore, *, handoff_dir: Path) -> dict:
     bundle_verify = None
     bundle_path = discovered.get("bundle_path")
     if bundle_path is not None:
-        bundle_payload = json.loads(bundle_path.read_text(encoding="utf-8"))
+        if bundle_payload is None:
+            raise ValueError("handoff bundle payload is missing")
         bundle_verify = store.verify_bundle(bundle_payload)
         if not bundle_verify["ok"]:
             raise ValueError(bundle_verify.get("error", "handoff bundle verification failed"))
@@ -8624,8 +8950,7 @@ def restore_handoff_package(store: MemoryStore, *, handoff_dir: Path) -> dict:
     action_id = None
     if manifest is not None:
         action_id = manifest.get("action_id")
-    elif bundle_path is not None:
-        bundle_payload = json.loads(bundle_path.read_text(encoding="utf-8"))
+    elif bundle_payload is not None:
         action_id = bundle_payload.get("action_id")
     if action_id:
         next_steps.insert(0, f"zmem --db {store.db_path} why {action_id}")

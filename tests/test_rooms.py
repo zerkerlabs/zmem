@@ -11,6 +11,7 @@ from urllib.request import Request, urlopen
 
 from zerker_memory.rooms import (
     MAX_ABSTENTION_IDS,
+    ROOM_STORAGE_DESCRIPTOR_SCHEMA,
     RoomMemoryConflict,
     RoomMemoryService,
     RoomStoreResolver,
@@ -90,6 +91,45 @@ class RoomMemoryServiceTest(unittest.TestCase):
         self.assertTrue(verify_room_context_commitment(result))
         self.assertEqual(result["commitment"]["membership_digest"], "sha256:" + "1" * 64)
         self.assertNotIn("continue the release", json.dumps(result))
+
+    def test_room_store_records_a_discoverable_local_identity(self):
+        self.write(content="Keep the release room durable")
+
+        descriptor_path = self.resolver.db_path("rom_alpha").parent / "room.json"
+        descriptor = json.loads(descriptor_path.read_text(encoding="utf-8"))
+        rooms = self.resolver.list_rooms()
+
+        self.assertEqual(descriptor["schema"], ROOM_STORAGE_DESCRIPTOR_SCHEMA)
+        self.assertEqual(descriptor["tenant_id"], "tenant-a")
+        self.assertEqual(descriptor["room_id"], "rom_alpha")
+        self.assertEqual(descriptor["database"], "memory.sqlite")
+        self.assertEqual(len(rooms), 1)
+        self.assertEqual(rooms[0]["room_id"], "rom_alpha")
+        self.assertEqual(rooms[0]["descriptor_state"], "recorded")
+        self.assertEqual(rooms[0]["db_path"], str(self.resolver.db_path("rom_alpha").resolve()))
+
+    def test_room_discovery_infers_identity_for_a_pre_descriptor_store(self):
+        self.write(content="This room predates local discovery descriptors")
+        descriptor_path = self.resolver.db_path("rom_alpha").parent / "room.json"
+        descriptor_path.unlink()
+
+        rooms = self.resolver.list_rooms()
+
+        self.assertEqual(len(rooms), 1)
+        self.assertEqual(rooms[0]["room_id"], "rom_alpha")
+        self.assertEqual(rooms[0]["descriptor_state"], "inferred")
+        self.assertFalse(descriptor_path.exists())
+
+    def test_room_open_refuses_to_overwrite_a_malformed_descriptor(self):
+        room_dir = self.resolver.db_path("rom_alpha").parent
+        room_dir.mkdir(parents=True)
+        descriptor_path = room_dir / "room.json"
+        descriptor_path.write_text('{"schema":"unknown"}\n', encoding="utf-8")
+
+        with self.assertRaisesRegex(ValueError, "descriptor is malformed"):
+            self.write(content="Do not overwrite local storage identity")
+
+        self.assertEqual(json.loads(descriptor_path.read_text(encoding="utf-8"))["schema"], "unknown")
 
     def test_nonempty_room_with_no_relevant_fts_match_abstains(self):
         self.write(

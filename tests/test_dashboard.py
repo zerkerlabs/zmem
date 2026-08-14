@@ -7,15 +7,24 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
-from zerker_memory.cli import create_handoff_package, main, restore_snapshot_file
+from zerker_memory.cli import (
+    create_handoff_package,
+    main,
+    preview_handoff_package,
+    restore_handoff_package,
+    restore_snapshot_file,
+)
 from zerker_memory.dashboard import (
     DashboardServer,
     INDEX_HTML,
+    build_agent_continuity_state,
     build_benchmark_state,
     build_onboarding_state,
     build_release_readiness_state,
+    build_room_inventory_state,
     build_workspace_sources_state,
     create_dashboard_handoff,
+    create_dashboard_handoff_preview,
     create_dashboard_handoff_restore,
     create_dashboard_launch_assets_verify,
     create_dashboard_launch_proof,
@@ -24,6 +33,7 @@ from zerker_memory.dashboard import (
     re_memory_action,
     re_receipt_action,
 )
+from zerker_memory.rooms import RoomMemoryService, RoomStoreResolver
 from zerker_memory.store import MemoryStore
 from zerker_memory.workspaces import register_workspace
 
@@ -33,7 +43,10 @@ class DashboardTest(unittest.TestCase):
         self.assertIn("Proof Inspector", INDEX_HTML)
         self.assertIn("Memory In Use", INDEX_HTML)
         self.assertIn("Workspace Profile", INDEX_HTML)
-        self.assertIn("Connected Agents And Sources", INDEX_HTML)
+        self.assertIn("Memory Provenance", INDEX_HTML)
+        self.assertIn("Agent Memory Network", INDEX_HTML)
+        self.assertIn("Shared Rooms", INDEX_HTML)
+        self.assertIn("Context Transfer", INDEX_HTML)
         self.assertIn("Claim Conflicts", INDEX_HTML)
         self.assertIn("Memory Status", INDEX_HTML)
         self.assertIn("Memory Clusters", INDEX_HTML)
@@ -68,7 +81,8 @@ class DashboardTest(unittest.TestCase):
         self.assertIn("Run Release Pack", INDEX_HTML)
         self.assertIn("Generate Launch Proof", INDEX_HTML)
         self.assertIn("Generate Handoff", INDEX_HTML)
-        self.assertIn("Restore Handoff", INDEX_HTML)
+        self.assertIn("Preview Restore", INDEX_HTML)
+        self.assertIn("Restore To New Copy", INDEX_HTML)
         self.assertIn("Verify Launch Assets", INDEX_HTML)
         self.assertIn("Verify Return Packet", INDEX_HTML)
         self.assertIn("renderReleasePackSummary", INDEX_HTML)
@@ -113,6 +127,154 @@ class DashboardTest(unittest.TestCase):
         self.assertIn("decision contrast ${losingContrast.summary || 'read-only merge preview'}", INDEX_HTML)
         self.assertIn("function losingClaimParentActionText(preview)", INDEX_HTML)
         self.assertIn("losing action ${losingAction.summary || 'read-only merge preview'}", INDEX_HTML)
+        self.assertIn("renderRoomInventory", INDEX_HTML)
+        self.assertIn("renderHandoffPreviewSummary", INDEX_HTML)
+
+    def test_agent_memory_network_distinguishes_configuration_from_observed_use(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            project = root / "project"
+            project.mkdir()
+            registry_path = root / "workspaces.json"
+            register_workspace(name="Project", root=project, registry_path=registry_path)
+            store = MemoryStore(project / ".zerker" / "memory.sqlite", policy_path=project / ".zerker" / "policy.json")
+            store.remember(
+                "Codex recorded the shared release decision",
+                memory_type="semantic",
+                scope="project",
+                source_kind="agent",
+                status="active",
+                actor_uri="agent://codex/task-7",
+                session_id="chat://codex/task-7",
+                source_uri="conversation://codex/task-7/message-4",
+            )
+            store.remember(
+                "A human-authored project note",
+                memory_type="semantic",
+                scope="project",
+                source_kind="human",
+            )
+            config_paths = {
+                preset: root / "configs" / f"{preset}.json"
+                for preset in ("codex", "claude-code", "cursor", "openclaw", "hermes", "generic")
+            }
+
+            def inspect(preset, **_kwargs):
+                configured = preset in {"codex", "claude-code"}
+                return {
+                    "ok": configured,
+                    "state": "ready" if configured else "not_configured",
+                    "details": "configured" if configured else "missing",
+                    "configured_db_path": str(store.db_path) if configured else None,
+                }
+
+            with patch.dict(os.environ, {"ZMEM_WORKSPACE_REGISTRY": str(registry_path)}), patch(
+                "zerker_memory.doctor.inspect_agent_connection",
+                side_effect=inspect,
+            ):
+                state = build_agent_continuity_state(store, root=project, config_paths=config_paths)
+
+        agents = {agent["agent_id"]: agent for agent in state["agents"]}
+        self.assertEqual(state["schema"], "zerker.agent_memory_network.v1")
+        self.assertEqual(state["configured_count"], 2)
+        self.assertEqual(state["observed_count"], 1)
+        self.assertEqual(state["active_count"], 1)
+        self.assertTrue(state["shared_memory_ready"])
+        self.assertEqual(agents["codex"]["connection_state"], "active")
+        self.assertEqual(agents["codex"]["memory_count"], 1)
+        self.assertTrue(agents["codex"]["shared_store_match"])
+        self.assertEqual(agents["claude-code"]["connection_state"], "configured")
+        self.assertFalse(agents["claude-code"]["observed"])
+        self.assertNotIn("actor://human", agents)
+
+    def test_agent_memory_network_reports_manual_exports_as_awaiting_import(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            store = MemoryStore(root / ".zerker" / "memory.sqlite")
+            config_paths = {
+                preset: root / "configs" / f"{preset}.json"
+                for preset in ("codex", "claude-code", "cursor", "openclaw", "hermes", "generic")
+            }
+
+            def inspect(preset, **_kwargs):
+                exported = preset in {"cursor", "openclaw", "hermes", "generic"}
+                return {
+                    "ok": exported,
+                    "state": "exported_awaiting_import" if exported else "not_configured",
+                    "details": "exported awaiting import" if exported else "missing",
+                    "configured_db_path": str(store.db_path) if exported else None,
+                }
+
+            with patch("zerker_memory.doctor.inspect_agent_connection", side_effect=inspect):
+                state = build_agent_continuity_state(
+                    store,
+                    root=root,
+                    config_paths=config_paths,
+                    source_report={"connected_agents": []},
+                )
+
+        agents = {agent["agent_id"]: agent for agent in state["agents"]}
+        self.assertEqual(state["configured_count"], 0)
+        self.assertEqual(state["export_ready_count"], 4)
+        self.assertEqual(agents["hermes"]["connection_state"], "export_ready")
+        self.assertTrue(agents["hermes"]["export_ready"])
+        self.assertFalse(agents["hermes"]["configured"])
+
+    def test_room_inventory_separates_shared_and_private_memory_without_claiming_membership(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            rooms_root = Path(tmp) / "rooms"
+            resolver = RoomStoreResolver(rooms_root, tenant_id="tenant-a")
+            service = RoomMemoryService(resolver)
+            service.record_memory(
+                {
+                    "room_id": "rom_release",
+                    "agent_id": "codex",
+                    "content": "The release room uses the reviewed checklist",
+                    "memory_type": "semantic",
+                    "visibility": "room",
+                    "source_event_id": "evt_shared",
+                    "idempotency_key": "evt_shared:memory",
+                }
+            )
+            service.propose_memory(
+                {
+                    "room_id": "rom_release",
+                    "agent_id": "claude-code",
+                    "content": "Private draft from Claude Code",
+                    "memory_type": "episodic",
+                    "visibility": "member",
+                    "source_event_id": "evt_private",
+                    "idempotency_key": "evt_private:memory",
+                }
+            )
+
+            state = build_room_inventory_state(storage_root=rooms_root, tenant_id="tenant-a")
+
+        self.assertEqual(state["schema"], "zerker.room_inventory.v1")
+        self.assertEqual(state["room_count"], 1)
+        self.assertEqual(state["shared_memory_count"], 1)
+        self.assertEqual(state["member_private_memory_count"], 1)
+        self.assertEqual(state["observed_contributor_ids"], ["claude-code", "codex"])
+        self.assertEqual(state["membership_authority"], "gateway")
+        self.assertEqual(state["rooms"][0]["status_counts"]["active"], 1)
+        self.assertEqual(state["rooms"][0]["status_counts"]["quarantined"], 1)
+        self.assertNotIn("Private draft from Claude Code", json.dumps(state))
+
+    def test_room_inventory_keeps_healthy_rooms_visible_when_one_store_is_unreadable(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            rooms_root = Path(tmp) / "rooms"
+            resolver = RoomStoreResolver(rooms_root, tenant_id="tenant-a")
+            with resolver.open("rom_broken"):
+                pass
+            resolver.db_path("rom_broken").write_text("not a sqlite database", encoding="utf-8")
+
+            state = build_room_inventory_state(storage_root=rooms_root, tenant_id="tenant-a")
+
+        self.assertEqual(state["room_count"], 1)
+        self.assertEqual(state["unreadable_room_count"], 1)
+        self.assertEqual(state["rooms"][0]["room_id"], "rom_broken")
+        self.assertEqual(state["rooms"][0]["inventory_state"], "unreadable")
+        self.assertNotIn("not a sqlite database", json.dumps(state))
 
     def test_build_workspace_sources_state_is_dashboard_ready(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -870,7 +1032,12 @@ class DashboardTest(unittest.TestCase):
                 os.chdir(root)
                 launch = create_dashboard_launch_proof(store)
                 handoff = create_dashboard_handoff(store)
-                restore = create_dashboard_handoff_restore(store)
+                preview = create_dashboard_handoff_preview(store)
+                self.assertFalse(Path(preview["db_path"]).exists())
+                restore = create_dashboard_handoff_restore(
+                    store,
+                    confirmed_preview_id=preview["preview_id"],
+                )
                 self.assertTrue(Path(launch["report_path"]).exists())
                 self.assertTrue(Path(handoff["manifest_path"]).exists())
                 self.assertTrue(Path(restore["db_path"]).exists())
@@ -881,6 +1048,8 @@ class DashboardTest(unittest.TestCase):
         self.assertEqual(launch["schema"], "zerker.launch_proof.v1")
         self.assertTrue(handoff["ok"])
         self.assertEqual(handoff["schema"], "zerker.handoff.v1")
+        self.assertTrue(preview["read_only_preview"])
+        self.assertTrue(preview["ready_to_restore"])
         self.assertTrue(restore["ok"])
         self.assertEqual(restore["schema"], "zerker.restore_handoff.v1")
         self.assertEqual(restore["restore"]["memory_count"], 1)
@@ -939,14 +1108,164 @@ class DashboardTest(unittest.TestCase):
             try:
                 os.chdir(root)
                 create_dashboard_handoff(store)
-                first = create_dashboard_handoff_restore(store)
-                second = create_dashboard_handoff_restore(store)
+                first_preview = create_dashboard_handoff_preview(store)
+                first = create_dashboard_handoff_restore(
+                    store,
+                    confirmed_preview_id=first_preview["preview_id"],
+                )
+                second_preview = create_dashboard_handoff_preview(store)
+                second = create_dashboard_handoff_restore(
+                    store,
+                    confirmed_preview_id=second_preview["preview_id"],
+                )
             finally:
                 os.chdir(cwd)
 
         self.assertNotEqual(first["db_path"], second["db_path"])
         self.assertTrue(first["db_path"].endswith("imported.sqlite"))
         self.assertTrue(second["db_path"].endswith("imported-2.sqlite"))
+
+    def test_handoff_restore_preview_is_read_only_and_binds_the_apply(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = MemoryStore(root / "source.sqlite")
+            source.remember(
+                "The shared agent context is reviewed before transfer",
+                memory_type="semantic",
+                scope="project",
+                source_kind="human",
+            )
+            handoff_dir = root / "handoff"
+            create_handoff_package(
+                source,
+                providers_path=root / "providers.json",
+                out_dir=handoff_dir,
+                action_id=None,
+            )
+            target = MemoryStore(root / "target.sqlite")
+
+            preview = preview_handoff_package(target, handoff_dir=handoff_dir)
+
+            self.assertTrue(preview["ok"])
+            self.assertTrue(preview["read_only_preview"])
+            self.assertTrue(preview["ready_to_restore"])
+            self.assertEqual(preview["effects"]["new_memory_count"], 1)
+            self.assertEqual(preview["effects"]["conflict_count"], 0)
+            self.assertFalse(preview["effects"]["deletes_memory"])
+            self.assertEqual(target.stats()["memory_count"], 0)
+
+            restored = restore_handoff_package(
+                target,
+                handoff_dir=handoff_dir,
+                confirmed_preview_id=preview["preview_id"],
+            )
+
+            self.assertTrue(restored["ok"])
+            self.assertEqual(restored["restore"]["memory_count"], 1)
+
+    def test_handoff_restore_rejects_a_stale_preview(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = MemoryStore(root / "source.sqlite")
+            source.remember(
+                "Transfer only the reviewed state",
+                memory_type="semantic",
+                scope="project",
+                source_kind="human",
+            )
+            handoff_dir = root / "handoff"
+            create_handoff_package(
+                source,
+                providers_path=root / "providers.json",
+                out_dir=handoff_dir,
+                action_id=None,
+            )
+            target = MemoryStore(root / "target.sqlite")
+            preview = preview_handoff_package(target, handoff_dir=handoff_dir)
+            target.remember(
+                "A different write arrived after preview",
+                memory_type="semantic",
+                scope="project",
+                source_kind="human",
+            )
+
+            with self.assertRaisesRegex(ValueError, "preview no longer matches"):
+                restore_handoff_package(
+                    target,
+                    handoff_dir=handoff_dir,
+                    confirmed_preview_id=preview["preview_id"],
+                )
+
+    def test_handoff_restore_rejects_manifest_changed_after_preview(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = MemoryStore(root / "source.sqlite")
+            source.remember(
+                "Transfer only the exact reviewed handoff",
+                memory_type="semantic",
+                scope="project",
+                source_kind="human",
+            )
+            handoff_dir = root / "handoff"
+            create_handoff_package(
+                source,
+                providers_path=root / "providers.json",
+                out_dir=handoff_dir,
+                action_id=None,
+            )
+            target = MemoryStore(root / "target.sqlite")
+            preview = preview_handoff_package(target, handoff_dir=handoff_dir)
+            manifest_path = handoff_dir / "handoff.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["status_summary"] = "changed after review"
+            manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "preview no longer matches"):
+                restore_handoff_package(
+                    target,
+                    handoff_dir=handoff_dir,
+                    confirmed_preview_id=preview["preview_id"],
+                )
+
+    def test_restore_cli_dry_run_prints_a_preview_without_importing_memory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = MemoryStore(root / "source.sqlite")
+            source.remember(
+                "Preview this state before another agent imports it",
+                memory_type="semantic",
+                scope="project",
+                source_kind="human",
+            )
+            handoff_dir = root / "handoff"
+            create_handoff_package(
+                source,
+                providers_path=root / "providers.json",
+                out_dir=handoff_dir,
+                action_id=None,
+            )
+            target_path = root / "target.sqlite"
+            output = io.StringIO()
+
+            with redirect_stdout(output):
+                exit_code = main(
+                    [
+                        "--db",
+                        str(target_path),
+                        "restore",
+                        "--handoff-dir",
+                        str(handoff_dir),
+                        "--dry-run",
+                        "--summary-only",
+                    ]
+                )
+
+            target = MemoryStore(target_path)
+            self.assertEqual(exit_code, 0)
+            self.assertIn("Zerker Memory restore preview", output.getvalue())
+            self.assertIn("Writes performed: no", output.getvalue())
+            self.assertIn("Ready to restore: yes", output.getvalue())
+            self.assertEqual(target.stats()["memory_count"], 0)
 
     def test_dashboard_return_packet_verify_uses_launch_proof_archive(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import json
 import re
 import sqlite3
 import threading
@@ -18,6 +19,7 @@ ROOM_CONTEXT_SCHEMA = "zerker.room_memory_context.v1"
 ROOM_CONTEXT_COMMITMENT_SCHEMA = "zerker.room_memory_context_commitment.v1"
 ROOM_MEMORY_WRITE_SCHEMA = "zerker.room_memory_write.v1"
 ROOM_STORAGE_SCHEMA = "zerker.room_memory_storage.v1"
+ROOM_STORAGE_DESCRIPTOR_SCHEMA = "zerker.room_memory_storage_descriptor.v1"
 ROOM_CONTEXT_STATES = frozenset({"ready", "partial", "empty", "blocked", "abstained", "budget_exhausted"})
 ROOM_MEMORY_VISIBILITIES = frozenset({"room", "member"})
 ROOM_MEMORY_TYPES = frozenset({"episodic", "semantic", "procedural", "policy"})
@@ -71,6 +73,78 @@ def verify_room_context_commitment(response: Mapping[str, Any]) -> bool:
     return hmac.compare_digest(recorded, expected)
 
 
+def discover_room_stores(storage_root: Path, *, tenant_id: str) -> list[dict[str, Any]]:
+    """Read existing room-store identities without opening or mutating their databases."""
+
+    root = Path(storage_root).expanduser().resolve(strict=False)
+    tenant = _required_text(tenant_id, "tenant_id", max_chars=256)
+    if not root.exists():
+        return []
+    discovered: list[dict[str, Any]] = []
+    for db_path in sorted(root.glob("*/memory.sqlite")):
+        if db_path.is_symlink() or db_path.parent.is_symlink() or not db_path.is_file():
+            continue
+        descriptor_path = db_path.parent / "room.json"
+        descriptor = _load_room_descriptor(descriptor_path)
+        descriptor_state = "recorded"
+        room_id = None
+        if descriptor is not None and descriptor.get("tenant_id") == tenant:
+            room_id = descriptor.get("room_id")
+        if not isinstance(room_id, str):
+            room_id = _infer_room_id(db_path)
+            descriptor_state = "inferred" if room_id else "missing"
+        if not room_id:
+            continue
+        try:
+            room = validate_room_id(room_id)
+        except ValueError:
+            continue
+        storage_key = room_storage_key(tenant, room)
+        if db_path.parent.name != storage_key:
+            continue
+        discovered.append(
+            {
+                "schema": ROOM_STORAGE_DESCRIPTOR_SCHEMA,
+                "tenant_id": tenant,
+                "room_id": room,
+                "storage_id": "rms_" + storage_key,
+                "db_path": str(db_path.resolve(strict=False)),
+                "descriptor_path": str(descriptor_path.resolve(strict=False)),
+                "descriptor_state": descriptor_state,
+            }
+        )
+    return discovered
+
+
+def _load_room_descriptor(path: Path) -> dict[str, Any] | None:
+    if not path.is_file() or path.is_symlink():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict) or payload.get("schema") != ROOM_STORAGE_DESCRIPTOR_SCHEMA:
+        return None
+    return payload
+
+
+def _infer_room_id(db_path: Path) -> str | None:
+    connection: sqlite3.Connection | None = None
+    try:
+        connection = sqlite3.connect(db_path.resolve().as_uri() + "?mode=ro", uri=True)
+        row = connection.execute(
+            "SELECT session_id FROM memory_write_receipts WHERE session_id LIKE 'room://rom_%' ORDER BY created_at DESC LIMIT 1"
+        ).fetchone()
+    except sqlite3.Error:
+        return None
+    finally:
+        if connection is not None:
+            connection.close()
+    if not row or not isinstance(row[0], str) or not row[0].startswith("room://"):
+        return None
+    return row[0].removeprefix("room://")
+
+
 class RoomStoreResolver:
     """Resolve one private SQLite store per room inside one configured tenant."""
 
@@ -99,6 +173,33 @@ class RoomStoreResolver:
             "storage_id": "rms_" + room_storage_key(self.tenant_id, room),
         }
 
+    def list_rooms(self) -> list[dict[str, Any]]:
+        return discover_room_stores(self.storage_root, tenant_id=self.tenant_id)
+
+    def _ensure_descriptor(self, room_id: str) -> None:
+        identity = self.storage_identity(room_id)
+        descriptor = {
+            "schema": ROOM_STORAGE_DESCRIPTOR_SCHEMA,
+            "tenant_id": identity["tenant_id"],
+            "room_id": identity["room_id"],
+            "storage_id": identity["storage_id"],
+            "database": "memory.sqlite",
+        }
+        descriptor_path = self.db_path(room_id).parent / "room.json"
+        existing = _load_room_descriptor(descriptor_path)
+        if existing is not None:
+            comparable = {key: existing.get(key) for key in descriptor}
+            if comparable != descriptor:
+                raise ValueError("room storage descriptor does not match the configured tenant and room")
+            return
+        if descriptor_path.exists():
+            raise ValueError("room storage descriptor is malformed or unsupported")
+        descriptor_path.write_text(json.dumps(descriptor, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        try:
+            descriptor_path.chmod(0o600)
+        except OSError:
+            pass
+
     def _initialization_lock(self, room_id: str) -> threading.Lock:
         storage_key = room_storage_key(self.tenant_id, room_id)
         with self._initialization_locks_guard:
@@ -119,6 +220,7 @@ class RoomStoreResolver:
         except OSError:
             pass
         with self._initialization_lock(room_id):
+            self._ensure_descriptor(room_id)
             store = MemoryStore(path, policy_path=self.policy_path)
             try:
                 store.init()

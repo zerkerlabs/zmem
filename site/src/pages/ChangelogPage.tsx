@@ -2,6 +2,14 @@ import Card from '@/components/Card';
 
 const updates = [
   {
+    title: 'Next: visible agent memory and safe transfer',
+    detail: 'The local console now separates configured clients from observed memory use, shows room-shared and member-private state without claiming membership authority, and binds restore to a read-only preview of the exact handoff and destination.',
+  },
+  {
+    title: 'Next: semantic recall for shared Rooms',
+    detail: 'Dense-enabled Rooms keep their local semantic index current after writes, expose index readiness without leaking vectors, and distinguish a new empty room from an established room with no relevant match.',
+  },
+  {
     title: 'v0.1.12 guided multi-agent setup',
     detail: 'One setup command now binds Codex, Claude Code, Hermes, Cursor, OpenClaw, and generic MCP clients to the same exact project memory, with truthful reload/import states and connector provenance.',
   },

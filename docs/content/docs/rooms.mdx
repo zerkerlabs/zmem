@@ -97,3 +97,17 @@ Every write is bound to the Rooms source event and is retry-safe. Reusing an ide
 Rooms owns membership, goals, messages, and the event log. ZMem owns memory state, review, retrieval, context packing, and memory receipts. Treeship can attest selected room transitions asynchronously; it is not required for local recall and does not become the primary room store.
 
 The initial adapter is deliberately tenant-local. A hosted shared service requires a separate Gateway authentication, tenant-routing, and isolation review.
+
+## Inspect Rooms Locally
+
+Each initialized Room store records a content-free local descriptor containing its configured tenant, opaque Room id, and derived storage id. This makes isolated stores discoverable without exposing memory text or making ZMem authoritative for membership.
+
+```bash
+zmem \
+  --db .zerker/control.sqlite \
+  ui \
+  --tenant-id tnt_local \
+  --rooms-root .zerker/rooms
+```
+
+The console reports room-shared versus member-private counts, review state, observed contributors, latest proof root, and semantic-index coverage. “Observed contributor” means the agent id appears in memory provenance. Gateway membership and authorization remain separate and authoritative.
