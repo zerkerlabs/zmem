@@ -1,3 +1,4 @@
+import hashlib
 import json
 import tempfile
 import threading
@@ -17,8 +18,28 @@ from zerker_memory.rooms import (
     room_storage_key,
     verify_room_context_commitment,
 )
+from zerker_memory.dense import dense_hybrid_retrieval_config
+from zerker_memory.retrieval_providers import EmbeddingProviderResult, local_dense_provider_config
 from zerker_memory.service import RoomMemoryHTTPServer, host_is_loopback, serve_room_memory
 from zerker_memory.store import sha256_text, stable_json
+
+
+def _fake_room_embed_texts(provider_entry, texts, *, input_type="document", allow_model_download=False, **_kwargs):
+    vectors = [[1.0, 0.0] for _text in texts]
+    return EmbeddingProviderResult(
+        provider_id=provider_entry.provider_id,
+        model_id=provider_entry.model_id or "BAAI/bge-small-en-v1.5",
+        dims=2,
+        normalized=True,
+        vectors=vectors,
+        latency_ms=0.1,
+        network_call=allow_model_download,
+        vector_hashes=[
+            "sha256:" + hashlib.sha256(repr(vector).encode("utf-8")).hexdigest()
+            for vector in vectors
+        ],
+        model_digest="sha256:test-room-model",
+    )
 
 
 class RoomMemoryServiceTest(unittest.TestCase):
@@ -65,9 +86,95 @@ class RoomMemoryServiceTest(unittest.TestCase):
         self.assertEqual(result["state"], "empty")
         self.assertEqual(result["counts"], {"retrieved": 0, "admitted": 0, "withheld": 0, "budget_dropped": 0})
         self.assertEqual(result["memories"], [])
+        self.assertEqual(result["retrieval_index"]["state"], "not-required")
         self.assertTrue(verify_room_context_commitment(result))
         self.assertEqual(result["commitment"]["membership_digest"], "sha256:" + "1" * 64)
         self.assertNotIn("continue the release", json.dumps(result))
+
+    def test_nonempty_room_with_no_relevant_fts_match_abstains(self):
+        self.write(
+            content="we agreed to ship on Friday after the security review passed",
+            key="evt_semantic:decision",
+        )
+
+        result = self.context(purpose="ship the product safely")
+
+        self.assertEqual(result["state"], "abstained")
+        self.assertEqual(result["counts"]["retrieved"], 0)
+        self.assertEqual(result["omissions"]["abstention"]["reason"], "no-relevant-memory")
+        self.assertTrue(verify_room_context_commitment(result))
+
+    @patch("zerker_memory.retrieval_providers.embed_texts", side_effect=_fake_room_embed_texts)
+    def test_dense_rooms_index_writes_and_recalls_semantic_goal(self, _embed):
+        provider_config = local_dense_provider_config(cache_dir=self.root / "models")
+        service = RoomMemoryService(
+            self.resolver,
+            retrieval_config=dense_hybrid_retrieval_config(min_score=0.5),
+            retrieval_provider_config=provider_config,
+        )
+        write = service.record_memory(
+            {
+                "room_id": "rom_alpha",
+                "agent_id": "agt_a",
+                "content": "we agreed to ship on Friday after the security review passed",
+                "memory_type": "semantic",
+                "visibility": "room",
+                "source_event_id": "evt_dense",
+                "idempotency_key": "evt_dense:decision",
+            }
+        )
+
+        result = service.prepare_context(
+            {
+                "room_id": "rom_alpha",
+                "agent_id": "agt_b",
+                "purpose": "ship the product safely",
+                "risk": "medium",
+            }
+        )
+
+        self.assertEqual(write["retrieval_index"]["state"], "ready")
+        self.assertEqual(write["retrieval_index"]["indexed_now"], 1)
+        self.assertEqual(result["state"], "ready")
+        self.assertEqual(
+            [memory["content"] for memory in result["memories"]],
+            ["we agreed to ship on Friday after the security review passed"],
+        )
+        self.assertEqual(result["retrieval_index"]["coverage"], 1.0)
+        self.assertFalse(result["retrieval_index"]["network_calls_enabled"])
+
+    @patch("zerker_memory.retrieval_providers.embed_texts", side_effect=ValueError("model unavailable"))
+    def test_dense_rooms_report_unavailable_index_without_losing_write(self, _embed):
+        service = RoomMemoryService(
+            self.resolver,
+            retrieval_config=dense_hybrid_retrieval_config(),
+            retrieval_provider_config=local_dense_provider_config(cache_dir=self.root / "models"),
+        )
+
+        write = service.record_memory(
+            {
+                "room_id": "rom_alpha",
+                "agent_id": "agt_a",
+                "content": "we agreed to ship on Friday after the security review passed",
+                "source_event_id": "evt_unavailable",
+                "idempotency_key": "evt_unavailable:decision",
+            }
+        )
+        result = service.prepare_context(
+            {
+                "room_id": "rom_alpha",
+                "agent_id": "agt_b",
+                "purpose": "ship the product safely",
+                "risk": "medium",
+            }
+        )
+
+        self.assertEqual(write["retrieval_index"]["state"], "unavailable")
+        self.assertEqual(write["retrieval_index"]["reason"], "dense-model-unavailable")
+        self.assertEqual(result["state"], "abstained")
+        self.assertEqual(result["retrieval_index"]["state"], "unavailable")
+        with self.resolver.open("rom_alpha") as store:
+            self.assertEqual(len(store.list_memories(scope="global", status="active")), 1)
 
     @patch("zerker_memory.rooms.MemoryStore.inject")
     def test_abstention_omission_is_bounded_to_known_fields(self, inject):

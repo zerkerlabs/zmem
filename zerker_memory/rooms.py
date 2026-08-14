@@ -156,16 +156,19 @@ class RoomMemoryService:
         room_state_digest = _optional_digest(request.get("room_state_digest"), "room_state_digest")
         request_id = _optional_text(request.get("request_id"), "request_id", max_chars=256)
 
+        scope = member_scope(agent_id)
         with self.resolver.open(room_id) as store:
+            retrieval_index = self._refresh_retrieval_index(store, scope=scope)
             receipt = store.inject(
                 purpose,
                 agent_id=agent_id,
                 risk=risk,
-                scope=member_scope(agent_id),
+                scope=scope,
                 context_budget_tokens=context_budget_tokens,
                 retrieval_config=self.retrieval_config,
                 retrieval_provider_config=self.retrieval_provider_config,
             )
+            has_active_memory = bool(store.list_memories(scope=scope, status="active", limit=1))
 
         packing = receipt.get("retrieval", {}).get("packing", {})
         budget_dropped = packing.get("budget_dropped") if isinstance(packing.get("budget_dropped"), list) else []
@@ -173,6 +176,14 @@ class RoomMemoryService:
         temporal = receipt.get("retrieval", {}).get("temporal", {})
         abstention = temporal.get("abstention") if isinstance(temporal, Mapping) else None
         abstained = bool(isinstance(abstention, Mapping) and abstention.get("applied") is True)
+        if not abstained and not receipt.get("retrieved_memory_ids") and has_active_memory:
+            abstention = {
+                "applied": True,
+                "reason": "no-relevant-memory",
+                "abstained_ids": [],
+                "conflict_reasons": [],
+            }
+            abstained = True
         memories = receipt.get("memories") if isinstance(receipt.get("memories"), list) else []
         state = _context_state(
             injected_count=len(memories),
@@ -239,6 +250,7 @@ class RoomMemoryService:
                 "available_tokens": packing.get("available_tokens"),
                 "strategy": packing.get("strategy"),
             },
+            "retrieval_index": retrieval_index,
             "commitment": commitment,
             "latency_ms": round((time.perf_counter() - started) * 1000, 3),
         }
@@ -330,6 +342,7 @@ class RoomMemoryService:
                 parent_action_id=parent_action_id,
             ):
                 raise RoomMemoryConflict("idempotency key was already used for a different room event")
+            retrieval_index = self._refresh_retrieval_index(store, scope=scope)
             event_root = store.current_merkle_root()
 
         return {
@@ -349,6 +362,47 @@ class RoomMemoryService:
                 "event_merkle_root": event_root,
                 "treeship_artifact_id": _treeship_artifact_id(write_receipt),
             },
+            "retrieval_index": retrieval_index,
+        }
+
+    def _refresh_retrieval_index(self, store: MemoryStore, *, scope: str) -> dict[str, Any]:
+        dense = self.retrieval_config.get("dense") if isinstance(self.retrieval_config, Mapping) else None
+        if not isinstance(dense, Mapping) or dense.get("enabled") is not True:
+            return {
+                "mode": "fts",
+                "state": "not-required",
+                "network_calls_enabled": False,
+            }
+        from .retrieval_providers import local_dense_provider_config
+
+        provider_id = str(dense.get("provider_id") or "local:fastembed")
+        provider_config = self.retrieval_provider_config or local_dense_provider_config()
+        try:
+            result = store.index_embeddings(
+                provider_config=provider_config,
+                provider_id=provider_id,
+                scope=scope,
+                allow_model_download=False,
+            )
+        except (KeyError, RuntimeError, ValueError) as exc:
+            return {
+                "mode": "dense-hybrid",
+                "state": "unavailable",
+                "provider_id": provider_id,
+                "reason": _retrieval_index_failure_reason(exc),
+                "network_calls_enabled": False,
+            }
+        return {
+            "mode": "dense-hybrid",
+            "state": "ready" if result.get("missing_or_stale_count") == 0 else "partial",
+            "provider_id": result.get("provider_id"),
+            "model_id": result.get("model_id"),
+            "model_digest": result.get("model_digest"),
+            "coverage": result.get("coverage"),
+            "indexed_now": result.get("indexed_count"),
+            "missing_or_stale": result.get("missing_or_stale_count"),
+            "index_hash": result.get("index_hash"),
+            "network_calls_enabled": False,
         }
 
 
@@ -371,6 +425,15 @@ def _context_state(
     if retrieved_count:
         return "blocked"
     return "empty"
+
+
+def _retrieval_index_failure_reason(exc: BaseException) -> str:
+    message = str(exc).lower()
+    if "install" in message or "fastembed" in message:
+        return "dense-runtime-unavailable"
+    if "model" in message or "cache" in message:
+        return "dense-model-unavailable"
+    return "dense-index-unavailable"
 
 
 def _public_memory(

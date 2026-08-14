@@ -22,6 +22,23 @@ zmem \
 
 The default bind is `127.0.0.1:8766`. Tenant identity comes from service configuration, not request JSON. Room database paths are derived from opaque tenant-and-room hashes.
 
+The dependency-light default uses FTS. For semantic room goals, install the local dense runtime, explicitly cache the model once, and start Rooms in dense-hybrid mode:
+
+```bash
+python3 -m pip install 'zerker-memory[dense]'
+zmem --db .zerker/control.sqlite embeddings index --download-model --summary-only
+
+zmem \
+  --db .zerker/control.sqlite \
+  --policy .zerker/policy.json \
+  serve \
+  --tenant-id tnt_local \
+  --storage-root .zerker/rooms \
+  --retrieval-mode dense-hybrid
+```
+
+No context request downloads a model. A dense-enabled Rooms service keeps each room's derived index current after writes and catches up missing or stale vectors before reads. The response reports compact `retrieval_index` readiness without exposing vectors or memory text.
+
 ## Prepare Agent Context
 
 ```bash
@@ -41,12 +58,14 @@ The response preserves retrieval order and distinguishes:
 
 - `ready`: context is admitted;
 - `partial`: admitted context exists, with explicit omissions;
-- `empty`: the room has no relevant prior memory;
+- `empty`: the room has no prior active memory;
 - `blocked`: memory existed but policy admitted none;
-- `abstained`: conflicting evidence prevented a safe answer;
+- `abstained`: evidence conflicted, or an established room produced no confident match;
 - `budget_exhausted`: relevant memory did not fit the approved budget.
 
 It also includes selected memory provenance, withheld and budget-dropped counts, packing use, and a digest binding the room, agent, purpose, policy, memory roots, and exact selected IDs.
+
+When an established room has active memory but retrieval finds no relevant candidate, `omissions.abstention.reason` is `no-relevant-memory`. That is intentionally distinct from a genuinely new room. Gateway can request review or fall back to separately supplied onboarding documents without pretending the room had no history.
 
 `POST /v1/inject` is an equivalent compatibility route and accepts `task` as an alias for `purpose`.
 

@@ -2,6 +2,14 @@
 
 All notable Zerker Memory alpha changes are summarized here.
 
+## Unreleased
+
+### Semantic Recall For Shared Rooms
+
+- Dense-enabled Rooms now maintain each room's local semantic index after writes and catch up missing or stale vectors before context preparation. No context request downloads a model.
+- Room write and context responses expose compact retrieval-index readiness, model identity, coverage, and zero-network status without exposing vectors or raw memory.
+- An established room that produces no confident candidate now returns `abstained` with `no-relevant-memory`; `empty` is reserved for a room with no prior active memory.
+
 ## 0.1.12 - 2026-08-10
 
 ### Guided Agent Connections

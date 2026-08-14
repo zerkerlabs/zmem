@@ -1,6 +1,6 @@
 # Zerker Rooms Memory Contract
 
-- Status: Shipped in ZMem v0.1.10; concurrency-hardened in v0.1.11
+- Status: Shipped in ZMem v0.1.10; concurrency-hardened in v0.1.11; semantic indexing candidate after v0.1.12
 - Source: `main`
 - Contract: `zerker.room_memory_context.v1`
 - Transport: authenticated JSON over HTTP
@@ -52,6 +52,8 @@ The tenant is server configuration, never caller input. A non-loopback bind requ
 
 ZMem creates one SQLite database for each `(tenant, room)` pair under an opaque SHA-256-derived directory. That provides a hard room boundary without trusting a free-form SQL scope convention. Room-shared memory and member-private memory remain separate inside that database.
 
+For semantic room goals, install `zerker-memory[dense]`, cache the local model explicitly with `zmem --db /var/lib/zmem/control.sqlite embeddings index --download-model --summary-only`, and add `--retrieval-mode dense-hybrid` to `serve`. Dense-enabled Rooms maintain each room's derived index after writes and catch up missing or stale vectors before reads. Request handling never downloads a model, and index readiness is returned as compact metadata.
+
 ## HTTP Surface
 
 Unauthenticated probes:
@@ -101,9 +103,9 @@ Context state is explicit:
 | --- | --- |
 | `ready` | Seat the member with the returned context. |
 | `partial` | Seat only if the product surfaces that some memory was omitted. |
-| `empty` | Seat with an explicit no-prior-memory state. |
+| `empty` | Seat with an explicit no-prior-active-memory state. |
 | `blocked` | Fail closed; memory existed but policy admitted none. |
-| `abstained` | Fail closed or request review; evidence conflicted. |
+| `abstained` | Fail closed or request review; evidence conflicted or an established room produced no confident match. |
 | `budget_exhausted` | Retry with an approved budget or fail closed. |
 
 Transport errors and malformed commitments fail closed. Consumers can recompute the commitment with `verify_room_context_commitment(...)`.
@@ -114,6 +116,8 @@ languages must reproduce its `canonical_json` and `room_context_digest`
 exactly. Abstention omissions expose only `applied`, `reason`, bounded
 `abstained_ids`, `abstained_count`, and bounded `conflict_reasons`; arbitrary
 retrieval metadata never crosses the HTTP boundary.
+
+An active room whose retrieval path returns no candidate uses the bounded abstention reason `no-relevant-memory`; a room with no active memory remains `empty`. This keeps a semantic miss distinguishable from a cold room without adding another context-state enum or changing the commitment schema.
 
 ### Record Accepted Room State
 
