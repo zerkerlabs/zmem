@@ -1,3 +1,19 @@
+## 2026-08-17 - Live agent session attachment candidate
+
+- Added a durable local invitation and attachment ledger for exact MCP connections. Invitations are agent-bound, expire after a bounded interval, are single-use, and store only a SHA-256 code digest.
+- Added `zmem session invite`, `connections`, and `detach`, with compact operator summaries and a copy-ready instruction for the selected agent.
+- Added agent-safe `memory.session_attach` and `memory.session_status` MCP tools. Attach consumes the invitation against the bound agent and current MCP connection; later calls update presence without widening the default agent capability profile.
+- Kept the claim boundary explicit: ZMem proves the attached connector and can retain a client-asserted chat/session id, but it does not claim that id was independently verified by the host. A Room id does not grant membership; Gateway remains authoritative.
+- Extended the console's agent network to distinguish configured, observed, active, live, idle, and detached states. Live cards show the agent, label, scope, presence, and identity assurance without exposing codes, secrets, transcripts, or memory content.
+- Fixed the pre-existing narrow-screen onboarding overlap by collapsing the hero grid below `900px`.
+
+Evidence:
+
+- Focused session/MCP/dashboard suites pass `54/54`; CLI onboarding passes `229/229`; store passes `355/355`.
+- The supported Python 3.11 full suite passes `1,422` tests with two expected optional skips; eval passes `11/11`; strict release smoke is ready.
+- Docs and site production builds plus site lint pass. A real subprocess dogfood completed invite, MCP attach, live listing, and detach while preserving stored memory.
+- Browser verification at `390`, `768`, and `1440` pixels found no horizontal overflow and confirmed live attachment state; the final console check was free of page errors.
+
 ## 2026-08-10 - v0.1.12 guided multi-agent setup published
 
 - Added `zmem setup [agents...]` as the daily-use connection path for Codex, Claude Code, Hermes, Cursor, OpenClaw, and generic MCP clients. Every selected client receives the same absolute project database and policy; directly managed configs and export-only configs report distinct activation states.

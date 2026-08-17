@@ -25,6 +25,12 @@ from .providers import (
     provider_import_settings,
     write_provider_config_template,
 )
+from .session_connections import (
+    DEFAULT_INVITATION_TTL_SECONDS,
+    create_session_invitation,
+    detach_session_attachment,
+    list_session_attachments,
+)
 from .store import MemoryStore, default_db_path, default_policy_path, merkle_root, sha256_text, stable_json
 from .workspaces import (
     current_workspace,
@@ -504,6 +510,44 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
 
     session = sub.add_parser("session", help="Manage persisted session lifecycle state")
     session_sub = session.add_subparsers(dest="session_command", required=True)
+    session_invite = session_sub.add_parser(
+        "invite",
+        help="Create a short-lived one-time code for one live agent session",
+    )
+    session_invite.add_argument("--agent", required=True, help="Agent identity already bound in its MCP config")
+    session_invite.add_argument("--scope", default="project")
+    session_invite.add_argument("--room-id", help="Optional Room context; Gateway still controls membership")
+    session_invite.add_argument("--label", help="Human-readable label for the session")
+    session_invite.add_argument("--ttl-seconds", type=int, default=DEFAULT_INVITATION_TTL_SECONDS)
+    session_invite.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Print a copy-ready activation prompt instead of JSON",
+    )
+    session_connections = session_sub.add_parser(
+        "connections",
+        help="List live, idle, and detached agent session attachments",
+    )
+    session_connections.add_argument("--agent")
+    session_connections.add_argument("--active-only", action="store_true")
+    session_connections.add_argument("--limit", type=int, default=50)
+    session_connections.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Print only a compact human-readable connection summary",
+    )
+    session_detach = session_sub.add_parser(
+        "detach",
+        help="Detach one live agent session without deleting its memory",
+    )
+    session_detach.add_argument("--attachment-id", required=True)
+    session_detach.add_argument("--actor-id", default="operator://local")
+    session_detach.add_argument("--reason")
+    session_detach.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Print only a compact human-readable detach result",
+    )
     session_start = session_sub.add_parser("start", help="Write a persisted session start marker")
     session_start.add_argument("--session-id", required=True)
     session_start.add_argument("--actor-id", required=True)
@@ -1915,6 +1959,44 @@ def main(argv: list[str] | None = None) -> int:
                     print_json(result)
                 return 0
         if args.command == "session":
+            if args.session_command == "invite":
+                result = create_session_invitation(
+                    store.conn,
+                    agent_id=args.agent,
+                    scope=args.scope,
+                    room_id=args.room_id,
+                    session_label=args.label,
+                    ttl_seconds=args.ttl_seconds,
+                )
+                if args.summary_only:
+                    print(render_session_invitation_summary(result), end="")
+                else:
+                    print_json(result)
+                return 0
+            if args.session_command == "connections":
+                result = list_session_attachments(
+                    store.conn,
+                    agent_id=args.agent,
+                    active_only=args.active_only,
+                    limit=args.limit,
+                )
+                if args.summary_only:
+                    print(render_session_connections_summary(result), end="")
+                else:
+                    print_json(result)
+                return 0
+            if args.session_command == "detach":
+                result = detach_session_attachment(
+                    store.conn,
+                    attachment_id=args.attachment_id,
+                    detached_by=args.actor_id,
+                    reason=args.reason,
+                )
+                if args.summary_only:
+                    print(render_session_detach_summary(result), end="")
+                else:
+                    print_json(result)
+                return 0
             if args.session_command == "start":
                 result = build_session_start_result(
                     store,
@@ -9442,6 +9524,70 @@ def _build_lifecycle_receipt_report_entry(store: MemoryStore, entry: dict[str, A
         "source_event_created_at": source_event.get("created_at") if isinstance(source_event, dict) else None,
     }
     return enriched
+
+
+def render_session_invitation_summary(result: dict[str, Any]) -> str:
+    arguments: dict[str, str] = {"activation_code": str(result["activation_code"])}
+    agent_id = str(result["agent_id"])
+    try:
+        agent_label = agent_display_name(agent_id)
+    except KeyError:
+        agent_label = agent_id
+    lines = [
+        "Live session invitation",
+        "",
+        f"Agent: {agent_label}",
+        f"Session: {result.get('session_label') or 'unnamed'}",
+        f"Scope: {result['scope']}",
+        f"Room: {result.get('room_id') or 'none'}",
+        f"Expires: {result['expires_at']}",
+        "",
+        f"Tell {agent_label}:",
+        f"  Call memory.session_attach with {json.dumps(arguments, separators=(',', ':'))}",
+        "  If your client exposes its chat/session id, include it as client_session_id.",
+        "",
+        "The code is one-time and stored only as a hash. It binds this MCP process; a client-provided session id remains asserted, not host-verified.",
+    ]
+    if result.get("room_id"):
+        lines.append("Room membership remains controlled by Gateway; this invitation does not grant access.")
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def render_session_connections_summary(result: dict[str, Any]) -> str:
+    attachments = list(result.get("attachments") or [])
+    lines = [
+        "Live agent sessions",
+        "",
+        f"Attachments: {result.get('attachment_count', 0)}",
+        f"Live / idle / detached: {result.get('live_count', 0)} / {result.get('idle_count', 0)} / {result.get('detached_count', 0)}",
+    ]
+    if not attachments:
+        lines.append("No session attachments found. Create one with `zmem session invite --agent <agent> --summary-only`.")
+        return "\n".join(lines).rstrip() + "\n"
+    lines.append("")
+    for attachment in attachments:
+        label = attachment.get("session_label") or attachment.get("client_session_id") or "unnamed session"
+        room = f" room={attachment['room_id']}" if attachment.get("room_id") else ""
+        lines.append(
+            f"[{attachment['presence']}] {attachment['agent_id']} / {label} "
+            f"({attachment['attachment_id']}) scope={attachment['scope']}{room} last_seen={attachment['last_seen_at']}"
+        )
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def render_session_detach_summary(result: dict[str, Any]) -> str:
+    return "\n".join(
+        [
+            "Agent session detached",
+            "",
+            f"Attachment: {result['attachment_id']}",
+            f"Agent: {result['agent_id']}",
+            f"Session: {result.get('session_label') or result.get('client_session_id') or 'unnamed'}",
+            f"Detached: {result.get('detached_at') or 'already detached'}",
+            f"Reason: {result.get('detach_reason') or 'none'}",
+            "Stored memory was not deleted.",
+        ]
+    ).rstrip() + "\n"
 
 
 def render_session_checkpoint_summary(result: dict[str, Any]) -> str:

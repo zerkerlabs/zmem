@@ -2,8 +2,8 @@ import Card from '@/components/Card';
 
 const updates = [
   {
-    title: 'Next: visible agent memory and safe transfer',
-    detail: 'The local console now separates configured clients from observed memory use, shows room-shared and member-private state without claiming membership authority, and binds restore to a read-only preview of the exact handoff and destination.',
+    title: 'Next: live agent sessions and safe transfer',
+    detail: 'One-time, agent-bound invitations now attach a named MCP connector without pretending ZMem can discover a UI chat. The console separates configured clients, historical memory use, and recent live presence; Room membership remains controlled by Gateway.',
   },
   {
     title: 'Next: semantic recall for shared Rooms',

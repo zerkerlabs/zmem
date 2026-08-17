@@ -3,6 +3,15 @@
 This is the short orchestration dashboard for Zerker Memory. Every autonomous build run should update this file after it updates `docs/BUILD_LOG.md`.
 
 ## Release Coordination
+`2026-08-17`
+
+- Built the isolated Live Session Attach v1 candidate on `codex/live-session-attach`. An operator can issue a short-lived, agent-bound, single-use invitation with `zmem session invite`; only the SHA-256 code digest is stored.
+- Added agent-safe `memory.session_attach` and `memory.session_status` MCP tools plus `zmem session connections` and `zmem session detach`. A successful attachment binds the invitation to the exact MCP process connection, records optional client-asserted session identity, refreshes presence on subsequent calls, and never deletes memory when detached.
+- The local console now separates configured clients, historically observed clients, active clients, and currently live session attachments. It exposes live/idle state, session labels, scopes, identity assurance, and Room context without exposing invitation codes or raw memory.
+- Room-scoped invitations carry context only. ZMem does not grant Room membership; Zerker Gateway remains the authority for tenant, Room, and member access.
+- Verification passes `1,422` tests with two expected optional skips under supported Python 3.11, eval `11/11`, strict release smoke, docs and site production builds, site lint, a real CLI-to-MCP attach/detach dogfood, and responsive console checks at `390`, `768`, and `1440` pixels with no overflow.
+- Next after landing: add host-native confirmation where Codex, Claude Code, Hermes, Cursor, OpenClaw, Buzz, or Gateway exposes a trustworthy session identifier; define the Gateway/Buzz attach and revocation handshake; then test two simultaneous agents sharing one governed scope end to end.
+
 `2026-08-10`
 
 - Published `v0.1.12` from release PR `#24` merge commit `25b1c7a1f125f4e42f43053e0de99fef2538a0f7` at `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.12`. Feature PR `#23` merged the guided setup implementation at `1f6b3001d4ccd3b99c0130657a24b92ded718fcb`.

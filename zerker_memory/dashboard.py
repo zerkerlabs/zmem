@@ -369,6 +369,7 @@ INDEX_HTML = """<!doctype html>
     .empty { color: var(--muted); padding: 16px 0; }
     @media (max-width: 900px) {
       .grid { grid-template-columns: 1fr; }
+      .hero-grid { grid-template-columns: 1fr; }
       .metrics { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
       .status-strip { grid-template-columns: 1fr; }
       .status-board { grid-template-columns: 1fr; }
@@ -447,7 +448,7 @@ INDEX_HTML = """<!doctype html>
     </section>
     <section>
       <h2>Agent Memory Network</h2>
-      <p class="helper">See which frameworks are configured for this exact store, which agents have actually written memory, and whether both facts line up. Configure an adapter once; ZMem records real use from provenance.</p>
+      <p class="helper">See which frameworks are configured for this exact store, which agents have written memory, and which attached connectors are live recently. Configuration, historical provenance, and live presence stay separate.</p>
       <div id="continuity" class="empty">Connected-agent state will appear here.</div>
     </section>
     <section>
@@ -1070,15 +1071,20 @@ INDEX_HTML = """<!doctype html>
       const agents = continuity.agents || [];
       const agentCards = agents.map((agent) => {
         const sessions = agent.chat_session_ids || [];
+        const attachedSessions = agent.session_attachments || [];
         const connectionLabel = String(agent.connection_state || 'not connected').replaceAll('_', ' ');
         const activity = agent.observed
           ? `${agent.memory_count || 0} memories · ${sessions.length} sessions`
           : 'No writes observed yet';
         const source = agent.latest_origin_summary || agent.source_uri_preview || 'No source provenance yet';
+        const attached = attachedSessions.length
+          ? attachedSessions.map((session) => `${session.session_label || session.client_session_id || 'unnamed'} (${session.presence})`).join(' · ')
+          : 'No explicit live-session attachment';
         return `<div class="story-card">
-          <div class="proof-status">${pill(connectionLabel)}${agent.shared_store_match ? pill('shared store') : ''}</div>
+          <div class="proof-status">${pill(connectionLabel)}${agent.live ? pill('live now') : ''}${agent.shared_store_match ? pill('shared store') : ''}</div>
           <strong>${escapeHtml(agent.label)}</strong>
           <p>${escapeHtml(activity)}</p>
+          <p>${escapeHtml(attached)}</p>
           <p>${escapeHtml(source)}</p>
           <code>${escapeHtml((agent.configured || agent.export_ready) ? (agent.path || 'configured') : agent.setup_command)}</code>
         </div>`;
@@ -1090,6 +1096,7 @@ INDEX_HTML = """<!doctype html>
           ${pill(`exports ${continuity.export_ready_count || 0}`)}
           ${pill(`observed ${continuity.observed_count || 0}`)}
           ${pill(`active ${continuity.active_count || 0}`)}
+          ${pill(`live sessions ${continuity.live_session_count || 0}`)}
           ${pill(continuity.shared_memory_ready ? 'multi-agent ready' : 'connect another agent')}
           ${pill(continuity.handoff_ready ? 'handoff ready' : 'handoff pending')}
         </div>
@@ -2160,6 +2167,7 @@ def build_agent_continuity_state(
 ) -> dict[str, Any]:
     from .cli import agent_default_config_path, agent_display_name, agent_export_config_path, agent_presets
     from .doctor import inspect_agent_connection
+    from .session_connections import list_session_attachments
 
     root = (root or Path.cwd()).resolve(strict=False)
     zerker_dir = store.db_path.parent
@@ -2176,6 +2184,11 @@ def build_agent_continuity_state(
         agent_id = str(item.get("agent_id") or "").strip()
         if agent_id:
             observed[aliases.get(agent_id, agent_id)] = item
+    attachment_report = list_session_attachments(store.conn, limit=200)
+    attachments_by_agent: dict[str, list[dict[str, Any]]] = {}
+    for attachment in attachment_report["attachments"]:
+        agent_id = aliases.get(str(attachment["agent_id"]), str(attachment["agent_id"]))
+        attachments_by_agent.setdefault(agent_id, []).append(attachment)
 
     agents: list[dict[str, Any]] = []
     overrides = config_paths or {}
@@ -2189,11 +2202,17 @@ def build_agent_continuity_state(
             working_dir=root,
         )
         provenance = observed.pop(preset, None)
+        session_attachments = attachments_by_agent.pop(preset, [])
+        live_session_count = sum(1 for item in session_attachments if item["presence"] == "live")
+        idle_session_count = sum(1 for item in session_attachments if item["presence"] == "idle")
+        is_live = live_session_count > 0
         inspection_state = str(inspection.get("state") or "not_connected")
         export_ready = inspection_state == "exported_awaiting_import"
         configured = bool(inspection.get("ok")) and not export_ready
         was_observed = provenance is not None
-        if configured and was_observed:
+        if is_live:
+            connection_state = "live"
+        elif configured and was_observed:
             connection_state = "active"
         elif configured:
             connection_state = "configured"
@@ -2217,6 +2236,10 @@ def build_agent_continuity_state(
                 "export_ready": export_ready,
                 "observed": was_observed,
                 "active": configured and was_observed,
+                "live": is_live,
+                "live_session_count": live_session_count,
+                "idle_session_count": idle_session_count,
+                "session_attachments": session_attachments,
                 "connection_state": connection_state,
                 "mode": "Direct config install" if preset in {"codex", "claude-code"} else "Manual MCP import",
                 "details": inspection.get("details"),
@@ -2238,6 +2261,10 @@ def build_agent_continuity_state(
         )
 
     for agent_id, provenance in sorted(observed.items()):
+        session_attachments = attachments_by_agent.pop(agent_id, [])
+        live_session_count = sum(1 for item in session_attachments if item["presence"] == "live")
+        idle_session_count = sum(1 for item in session_attachments if item["presence"] == "idle")
+        is_live = live_session_count > 0
         agents.append(
             {
                 "agent_id": agent_id,
@@ -2248,7 +2275,11 @@ def build_agent_continuity_state(
                 "export_ready": False,
                 "observed": True,
                 "active": False,
-                "connection_state": "observed",
+                "connection_state": "live" if is_live else "observed",
+                "live": is_live,
+                "live_session_count": live_session_count,
+                "idle_session_count": idle_session_count,
+                "session_attachments": session_attachments,
                 "mode": "Observed through memory provenance",
                 "details": "This agent wrote memory here, but no local adapter config is registered for it.",
                 "configured_db_path": None,
@@ -2264,10 +2295,46 @@ def build_agent_continuity_state(
             }
         )
 
+    for agent_id, session_attachments in sorted(attachments_by_agent.items()):
+        live_session_count = sum(1 for item in session_attachments if item["presence"] == "live")
+        idle_session_count = sum(1 for item in session_attachments if item["presence"] == "idle")
+        is_live = live_session_count > 0
+        agents.append(
+            {
+                "agent_id": agent_id,
+                "label": agent_id,
+                "path": None,
+                "ready": False,
+                "configured": False,
+                "export_ready": False,
+                "observed": False,
+                "active": False,
+                "live": is_live,
+                "live_session_count": live_session_count,
+                "idle_session_count": idle_session_count,
+                "session_attachments": session_attachments,
+                "connection_state": "live" if is_live else "idle",
+                "mode": "Explicit session attachment",
+                "details": "This connector attached with a one-time code; no matching local adapter config was found.",
+                "configured_db_path": None,
+                "shared_store_match": False,
+                "memory_count": 0,
+                "chat_session_ids": [],
+                "source_uri_preview": None,
+                "latest_origin_summary": None,
+                "latest_proof_lineage": None,
+                "ready_text": "Explicit connector attachment observed.",
+                "next_step": "Verify this framework's persistent MCP configuration.",
+                "setup_command": "zmem setup generic",
+            }
+        )
+
     configured_count = sum(1 for agent in agents if agent["configured"])
     export_ready_count = sum(1 for agent in agents if agent["export_ready"])
     observed_count = sum(1 for agent in agents if agent["observed"])
     active_count = sum(1 for agent in agents if agent["active"])
+    live_agent_count = sum(1 for agent in agents if agent["live"])
+    live_session_count = sum(agent["live_session_count"] for agent in agents)
     return {
         "schema": "zerker.agent_memory_network.v1",
         "db_path": str(store.db_path),
@@ -2281,10 +2348,14 @@ def build_agent_continuity_state(
         "export_ready_count": export_ready_count,
         "observed_count": observed_count,
         "active_count": active_count,
+        "live_agent_count": live_agent_count,
+        "live_session_count": live_session_count,
         "shared_memory_ready": configured_count >= 2,
         "agents": agents,
         "commands": [
             "zmem setup codex claude-code hermes",
+            "zmem session invite --agent codex --label current-chat --summary-only",
+            "zmem session connections --summary-only",
             "zmem agent pack --summary-only",
             "zmem status --summary-only",
             "zmem agent mcp-smoke --agent codex",

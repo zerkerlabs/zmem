@@ -75,6 +75,9 @@ from zerker_memory.cli import (
     render_operator_packet_summary,
     render_session_end_summary,
     render_session_ends_summary,
+    render_session_invitation_summary,
+    render_session_connections_summary,
+    render_session_detach_summary,
     render_public_verify_summary,
     render_return_packet_summary,
     render_release_pack_summary,
@@ -118,10 +121,124 @@ from zerker_memory.cli import (
     write_return_packet_archive,
 )
 from zerker_memory.retrieval_providers import retrieval_provider_config_template
+from zerker_memory.session_connections import consume_session_invitation
 from zerker_memory.store import MemoryStore
 
 
 class CliOnboardingTest(unittest.TestCase):
+    def test_session_connection_parser_exposes_invite_list_and_detach(self):
+        invite = build_parser().parse_args(
+            [
+                "session",
+                "invite",
+                "--agent",
+                "codex",
+                "--label",
+                "release chat",
+                "--room-id",
+                "rom_release",
+                "--summary-only",
+            ]
+        )
+        connections = build_parser().parse_args(["session", "connections", "--active-only"])
+        detach = build_parser().parse_args(
+            ["session", "detach", "--attachment-id", "att_123", "--reason", "handoff complete"]
+        )
+
+        self.assertEqual(invite.agent, "codex")
+        self.assertEqual(invite.label, "release chat")
+        self.assertEqual(invite.room_id, "rom_release")
+        self.assertTrue(invite.summary_only)
+        self.assertTrue(connections.active_only)
+        self.assertEqual(detach.attachment_id, "att_123")
+
+    def test_session_connection_cli_round_trip(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "memory.sqlite"
+            invite_output = io.StringIO()
+            with redirect_stdout(invite_output):
+                code = main(
+                    [
+                        "--db",
+                        str(db_path),
+                        "session",
+                        "invite",
+                        "--agent",
+                        "codex",
+                        "--label",
+                        "release chat",
+                    ]
+                )
+            invitation = json.loads(invite_output.getvalue())
+            store = MemoryStore(db_path)
+            attachment = consume_session_invitation(
+                store.conn,
+                activation_code=invitation["activation_code"],
+                agent_id="codex",
+                connection_id="conn_cli_test",
+            )
+            store.conn.close()
+
+            connections_output = io.StringIO()
+            with redirect_stdout(connections_output):
+                list_code = main(
+                    ["--db", str(db_path), "session", "connections", "--summary-only"]
+                )
+            self.assertEqual(code, 0)
+            self.assertEqual(list_code, 0)
+            self.assertIn("[live] codex / release chat", connections_output.getvalue())
+
+            detach_output = io.StringIO()
+            with redirect_stdout(detach_output):
+                detach_code = main(
+                    [
+                        "--db",
+                        str(db_path),
+                        "session",
+                        "detach",
+                        "--attachment-id",
+                        attachment["attachment_id"],
+                        "--reason",
+                        "handoff complete",
+                        "--summary-only",
+                    ]
+                )
+            self.assertEqual(detach_code, 0)
+            self.assertIn("Stored memory was not deleted.", detach_output.getvalue())
+
+    def test_session_invitation_summary_is_copy_ready_and_honest(self):
+        summary = render_session_invitation_summary(
+            {
+                "agent_id": "codex",
+                "activation_code": "zma_secret",
+                "scope": "project",
+                "room_id": "rom_release",
+                "session_label": "release chat",
+                "expires_at": "2026-08-17T10:10:00Z",
+            }
+        )
+
+        self.assertIn("Call memory.session_attach", summary)
+        self.assertIn("client_session_id", summary)
+        self.assertIn("Room membership remains controlled by Gateway", summary)
+        self.assertIn("asserted, not host-verified", summary)
+
+    def test_session_invitation_summary_supports_custom_agent_ids(self):
+        summary = render_session_invitation_summary(
+            {
+                "agent_id": "my-bot",
+                "activation_code": "zma_secret",
+                "scope": "project",
+                "room_id": None,
+                "session_label": "custom chat",
+                "expires_at": "2026-08-17T10:10:00Z",
+            }
+        )
+
+        self.assertIn("Agent: my-bot", summary)
+        self.assertIn("Tell my-bot:", summary)
+        self.assertIn("Call memory.session_attach", summary)
+
     def test_cli_expands_user_paths(self):
         with tempfile.TemporaryDirectory() as home, patch.dict(os.environ, {"HOME": home}):
             args = build_parser().parse_args(
