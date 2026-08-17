@@ -25,6 +25,23 @@ Setup configures the agent host, not a chat that is already running. Reload Code
 
 The MCP server supplies the operating instructions after it connects. `.zerker/AGENT_PROMPT.md` contains the same durable guidance for clients that need it added to project instructions manually.
 
+To make one current connector visible as a named live session, create a short-lived invitation:
+
+```bash
+zmem session invite --agent codex --label release-chat --summary-only
+```
+
+Paste the printed instruction into that chat. The agent calls `memory.session_attach` with the one-time code. Then inspect every live, idle, or detached attachment:
+
+```bash
+zmem session connections --summary-only
+zmem ui
+```
+
+The code is stored only as a hash, expires after ten minutes by default, is bound to the configured agent identity, and cannot be replayed. If the client exposes a stable chat id, the agent may include it as `client_session_id`; that value is explicitly client-asserted. Otherwise ZMem proves the MCP process attachment without pretending it knows the host's visible chat id.
+
+An invitation can carry a Room id for context, but it never grants Room membership. Gateway remains authoritative for Room access.
+
 ## What ZMem Knows
 
 Generated MCP entries bind a host identity such as `codex` or `claude-code`. Each running MCP process also gets a connection provenance id. That lets ZMem reject another agent name supplied in a tool call and trace proposals back to a connector process.
@@ -43,7 +60,8 @@ The local console separates three facts that are easy to conflate:
 
 - **configured:** the client points to this exact database and policy;
 - **observed:** ZMem has provenance from a real memory write by that agent;
-- **active:** both are true.
+- **active:** configured and observed are both true;
+- **live:** a named connector consumed a one-time invitation and contacted ZMem recently.
 
 This means a config file merely sitting on disk is not presented as proof that a chat used ZMem. The same view shows observed sessions, source provenance, shared-store alignment, and the latest transfer package. Unknown frameworks that write through generic MCP still appear by their recorded agent identity.
 
@@ -67,7 +85,7 @@ Use `zmem agent install <preset>` when you need the low-level single-client comm
 zmem --db .zerker/memory.sqlite mcp --profile agent
 ```
 
-Generated configs use this narrow `agent` profile and bind the selected agent identity. It exposes only `memory.propose`, `memory.inject`, `memory.why`, and `memory.verify`, so an agent cannot write trusted memory, approve its own proposal, inspect quarantine, or restore state.
+Generated configs use this narrow `agent` profile and bind the selected agent identity. It exposes `memory.session_attach`, `memory.session_status`, `memory.propose`, `memory.inject`, `memory.why`, and `memory.verify`. The session tools can only bind the current MCP process with a trusted one-time invitation; they cannot mint membership or modify memory. The remaining tools let an agent request governed memory and propose reviewable memory, but not write trusted memory, approve its own proposal, inspect quarantine, or restore state.
 
 Use `examples/mcp_config.example.json` as the reference shape for MCP-capable clients. Review and maintenance belong in the local CLI or UI:
 

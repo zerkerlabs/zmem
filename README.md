@@ -266,6 +266,15 @@ zmem agent pack --summary-only
 zmem doctor --agent codex --agent claude-code --agent cursor
 ```
 
+To bind one current connector as a named live session, create a one-time invitation and paste the printed instruction into that agent:
+
+```bash
+zmem session invite --agent codex --label release-chat --summary-only
+zmem session connections --summary-only
+```
+
+The agent consumes the code through `memory.session_attach`. Codes are hash-only, agent-bound, short-lived, and single-use. ZMem reports recent connector presence separately from configuration and historical memory provenance. A client-provided chat id remains explicitly asserted, and an optional Room id does not grant Gateway membership.
+
 For shared-memory transfer:
 
 ```bash
@@ -498,6 +507,8 @@ For Cursor, OpenClaw, Hermes, and generic MCP clients, the guide now mirrors the
 The default `agent` profile is deliberately narrow. It lets an agent request governed memory, propose new memory, explain an action, and verify its receipt:
 
 ```text
+memory.session_attach
+memory.session_status
 memory.propose
 memory.inject
 memory.why

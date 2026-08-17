@@ -34,6 +34,7 @@ from zerker_memory.dashboard import (
     re_receipt_action,
 )
 from zerker_memory.rooms import RoomMemoryService, RoomStoreResolver
+from zerker_memory.session_connections import consume_session_invitation, create_session_invitation
 from zerker_memory.store import MemoryStore
 from zerker_memory.workspaces import register_workspace
 
@@ -219,6 +220,56 @@ class DashboardTest(unittest.TestCase):
         self.assertEqual(agents["hermes"]["connection_state"], "export_ready")
         self.assertTrue(agents["hermes"]["export_ready"])
         self.assertFalse(agents["hermes"]["configured"])
+
+    def test_agent_memory_network_separates_live_attachment_from_historical_use(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            store = MemoryStore(root / ".zerker" / "memory.sqlite")
+            store.init()
+            invitation = create_session_invitation(
+                store.conn,
+                agent_id="claude-code",
+                session_label="current release chat",
+            )
+            consume_session_invitation(
+                store.conn,
+                activation_code=invitation["activation_code"],
+                agent_id="claude-code",
+                connection_id="conn_live",
+                client_session_id="chat_live",
+            )
+            config_paths = {
+                preset: root / "configs" / f"{preset}.json"
+                for preset in ("codex", "claude-code", "cursor", "openclaw", "hermes", "generic")
+            }
+
+            def inspect(preset, **_kwargs):
+                configured = preset == "claude-code"
+                return {
+                    "ok": configured,
+                    "state": "ready" if configured else "not_configured",
+                    "details": "configured" if configured else "missing",
+                    "configured_db_path": str(store.db_path) if configured else None,
+                }
+
+            with patch("zerker_memory.doctor.inspect_agent_connection", side_effect=inspect):
+                state = build_agent_continuity_state(
+                    store,
+                    root=root,
+                    config_paths=config_paths,
+                    source_report={"connected_agents": []},
+                )
+
+        agents = {agent["agent_id"]: agent for agent in state["agents"]}
+        claude = agents["claude-code"]
+        self.assertEqual(state["live_agent_count"], 1)
+        self.assertEqual(state["live_session_count"], 1)
+        self.assertEqual(state["observed_count"], 0)
+        self.assertEqual(claude["connection_state"], "live")
+        self.assertTrue(claude["live"])
+        self.assertFalse(claude["observed"])
+        self.assertEqual(claude["session_attachments"][0]["client_session_id"], "chat_live")
+        self.assertEqual(claude["session_attachments"][0]["identity_assurance"], "client_asserted")
 
     def test_room_inventory_separates_shared_and_private_memory_without_claiming_membership(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -23,6 +23,7 @@ from .retrieval_providers import (
     rerank_texts,
     retrieval_provider_config_hash,
 )
+from .session_connections import ensure_session_connection_schema
 
 
 MEMORY_TYPES = {"episodic", "semantic", "procedural", "policy"}
@@ -9065,6 +9066,7 @@ class MemoryStore:
         self._ensure_column("session_snapshot_payloads", "deleted_by", "TEXT")
         self._ensure_column("session_snapshot_payloads", "deleted_reason", "TEXT")
         self._ensure_column("session_snapshot_payloads", "deleted_event_hash", "TEXT")
+        ensure_session_connection_schema(self.conn)
         ensure_dense_schema(self.conn)
         self.conn.commit()
 

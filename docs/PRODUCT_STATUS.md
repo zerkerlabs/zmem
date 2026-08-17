@@ -8,6 +8,8 @@ Current published release: `v0.1.12` at `https://github.com/zerkerlabs/zmem/rele
 
 The release adds guided multi-agent setup over the existing local memory system. One `zmem setup` command can initialize a project and bind Codex, Claude Code, Hermes, Cursor, OpenClaw, and generic MCP clients to the same absolute database and policy. Direct clients report ready only after reload; export-only clients remain visibly awaiting import. Agent-host identity is bound in the MCP command, per-process connection provenance is recorded, and the product does not pretend that a process id is a UI chat id. The previously shipped tenant-local Rooms service, review-gated consolidation, digest-bound context proof, scheduled-agent continuity, typed failure memory, and opt-in local dense/FTS retrieval remain available.
 
+The current post-release candidate adds secure live-session attachment on top of setup. An operator issues a short-lived one-time invitation for one agent, the agent consumes it from its bound MCP connection, and the console shows the exact connector as live or idle. Optional UI session ids remain explicitly client-asserted until a host-native adapter can verify them.
+
 It is ready for:
 
 - local developer dogfooding,
@@ -32,20 +34,22 @@ Product signal note: the current wedge is validated by builder demand for local,
 
 ## Not Built Yet, In Priority Order
 
-1. Handoff ownership/lease metadata plus a provenance-preserving dry-run import preview.
-2. Reviewed live day/week/profile consolidation rollups before any periodic scheduler is considered.
-3. Efficiency tuning for the opt-in local dense/FTS candidate. Full local LoCoMo and LongMemEval comparisons completed with 347 and 91 gains, zero losses, and materially higher token and latency cost.
-4. Broader lifecycle maintenance for revalidation deadlines, decay, retention tombstones, and failed-claim reopen conditions. The first explicit-expiry transition is implemented in the post-release candidate.
-5. True bi-temporal graph storage and richer temporal filters when a concrete consumer requires them. Current contradiction-driven withholding and abstention are already receipt-visible.
-6. Governed tool and interface-contract trust records linked to Treeship canary proof without moving install/run authority into ZMem.
-7. A server-controlled MCP dense-retrieval mode after the CLI/library candidate is accepted; existing MCP tool schemas intentionally retain stable FTS behavior.
-8. An official model-judged BEAM submission path plus broader multi-conversation 1M and 10M coverage; the first isolated runs are complete.
-9. Graduate the published tenant-local Rooms adapter into production: Gateway Go client, durable Rooms state, load/timeout gates, separately authorized remote review, hosted tenant routing, collective receipts, customer-managed keys, SSO, audit retention, and VPC/on-prem guides.
+1. Host-native session confirmation adapters plus a Gateway/Buzz attachment and revocation handshake, followed by a real two-agent shared-scope test.
+2. Handoff ownership/lease metadata plus a provenance-preserving dry-run import preview.
+3. Reviewed live day/week/profile consolidation rollups before any periodic scheduler is considered.
+4. Efficiency tuning for the opt-in local dense/FTS candidate. Full local LoCoMo and LongMemEval comparisons completed with 347 and 91 gains, zero losses, and materially higher token and latency cost.
+5. Broader lifecycle maintenance for revalidation deadlines, decay, retention tombstones, and failed-claim reopen conditions. The first explicit-expiry transition is implemented in the post-release candidate.
+6. True bi-temporal graph storage and richer temporal filters when a concrete consumer requires them. Current contradiction-driven withholding and abstention are already receipt-visible.
+7. Governed tool and interface-contract trust records linked to Treeship canary proof without moving install/run authority into ZMem.
+8. A server-controlled MCP dense-retrieval mode after the CLI/library candidate is accepted; existing MCP tool schemas intentionally retain stable FTS behavior.
+9. An official model-judged BEAM submission path plus broader multi-conversation 1M and 10M coverage; the first isolated runs are complete.
+10. Graduate the published tenant-local Rooms adapter into production: Gateway Go client, durable Rooms state, load/timeout gates, separately authorized remote review, hosted tenant routing, collective receipts, customer-managed keys, SSO, audit retention, and VPC/on-prem guides.
 
 ## Functional Today
 
 - CLI.
 - `v0.1.12` guided setup with `zmem setup [agents...]`, exact database/policy/agent/profile verification, bound MCP host identity, per-process connection provenance, explicit reload/import states, and `zmem workspace prune` for stale registry entries.
+- Post-release Live Session Attach v1 candidate with hash-only, expiring, agent-bound invitations; exact MCP connection attachment; client-asserted optional session ids; live/idle presence; explicit detach; and a console that keeps configured, observed, active, and live state distinct.
 - `v0.1.11` Zerker Rooms integration preview with room-scoped shared/private memory, authenticated context/record/propose endpoints, explicit withheld/abstention state, retry-safe event writes, hard tenant-room storage isolation, and concurrent first-open hardening.
 - Read-only `zmem audit health` JSON and terminal summaries for observable memory-state findings, with no semantic-truth claim.
 - Review-gated consolidation through `preview`, `materialize`, `audit`, `inspect`, `admit`, and `discard`, with verified source coverage, private deterministic materialization, live recomputation, interruption recovery, and explicit ceiling-bound terminal decisions. CLI actor ids are asserted rather than authenticated, and Treeship anchoring remains separate.

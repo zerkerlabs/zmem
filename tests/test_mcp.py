@@ -7,6 +7,7 @@ from unittest.mock import Mock, patch
 
 from zerker_memory.mcp import AGENT_TOOL_NAMES, McpServer, run_stdio
 from zerker_memory.mcp_smoke import run_mcp_protocol_smoke
+from zerker_memory.session_connections import create_session_invitation
 from zerker_memory.store import MemoryStore
 
 
@@ -76,6 +77,62 @@ class McpServerTest(unittest.TestCase):
             server=server,
         )
         self.assertEqual(spoofed["error"]["message"], "memory.inject agent is bound to claude-code")
+
+    def test_bound_agent_attaches_exact_mcp_process_with_one_time_code(self):
+        invitation = create_session_invitation(
+            self.store.conn,
+            agent_id="codex",
+            scope="project",
+            session_label="release chat",
+        )
+        server = McpServer(
+            self.store,
+            agent_id="codex",
+            connection_id="conn_live",
+        )
+
+        response = self.call_tool(
+            "memory.session_attach",
+            {
+                "activation_code": invitation["activation_code"],
+                "client_session_id": "chat_123",
+            },
+            server=server,
+        )
+        self.assertNotIn("error", response)
+        attachment = json.loads(response["result"]["content"][0]["text"])
+        self.assertEqual(attachment["connection_id"], "conn_live")
+        self.assertEqual(attachment["client_session_id"], "chat_123")
+        self.assertEqual(attachment["presence"], "live")
+
+        status_response = self.call_tool("memory.session_status", server=server)
+        status = json.loads(status_response["result"]["content"][0]["text"])
+        self.assertEqual(status["live_count"], 1)
+        self.assertEqual(status["attachments"][0]["session_label"], "release chat")
+
+        replay = McpServer(self.store, agent_id="codex", connection_id="conn_replay")
+        replay_response = self.call_tool(
+            "memory.session_attach",
+            {"activation_code": invitation["activation_code"]},
+            server=replay,
+        )
+        self.assertEqual(replay_response["error"]["message"], "activation code has already been used")
+
+    def test_session_attach_requires_bound_agent_and_preserves_agent_binding(self):
+        invitation = create_session_invitation(self.store.conn, agent_id="codex")
+        unbound = self.call_tool(
+            "memory.session_attach",
+            {"activation_code": invitation["activation_code"]},
+        )
+        self.assertIn("requires an MCP connector bound", unbound["error"]["message"])
+
+        claude = McpServer(self.store, agent_id="claude-code", connection_id="conn_claude")
+        mismatch = self.call_tool(
+            "memory.session_attach",
+            {"activation_code": invitation["activation_code"]},
+            server=claude,
+        )
+        self.assertEqual(mismatch["error"]["message"], "activation code is bound to agent codex")
 
     def test_bound_agent_proposal_records_connection_provenance(self):
         server = McpServer(

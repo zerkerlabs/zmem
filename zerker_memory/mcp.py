@@ -17,6 +17,11 @@ from .providers import (
     default_provider_config_path,
     provider_import_settings,
 )
+from .session_connections import (
+    consume_session_invitation,
+    list_session_attachments,
+    touch_session_attachments,
+)
 from .store import MemoryStore, default_db_path, default_policy_path
 
 
@@ -33,12 +38,34 @@ AGENT_TOOL_NAMES = frozenset(
         "memory.inject",
         "memory.why",
         "memory.verify",
+        "memory.session_attach",
+        "memory.session_status",
     }
 )
 PROPOSAL_SOURCE_KINDS = frozenset({"agent", "tool", "document", "import"})
 
 
 TOOL_SCHEMAS: list[JSON] = [
+    {
+        "name": "memory.session_attach",
+        "description": "Use a one-time operator activation code to attach this MCP process to a named ZMem session.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "activation_code": {"type": "string"},
+                "client_session_id": {
+                    "type": "string",
+                    "description": "Optional session id exposed by the client. It remains client-asserted.",
+                },
+            },
+            "required": ["activation_code"],
+        },
+    },
+    {
+        "name": "memory.session_status",
+        "description": "Report session attachments for this exact MCP process without exposing activation secrets.",
+        "inputSchema": {"type": "object", "properties": {}},
+    },
     {
         "name": "memory.remember",
         "description": "Store an active memory, usually from a trusted human or system source.",
@@ -270,6 +297,7 @@ class McpServer:
         self.connection_id = connection_id or f"mcp_{uuid.uuid4().hex}"
         self.io_root = (io_root or store.db_path.parent).expanduser().resolve()
         self.provider_config_path = provider_config_path or default_provider_config_path()
+        self._session_attached = False
         self.allowed_tools = (
             AGENT_TOOL_NAMES if profile == "agent" else frozenset(tool["name"] for tool in TOOL_SCHEMAS)
         )
@@ -326,6 +354,8 @@ class McpServer:
             "memory.external_import": self._external_import,
             "memory.snapshot": self._snapshot,
             "memory.restore": self._restore,
+            "memory.session_attach": self._session_attach,
+            "memory.session_status": self._session_status,
         }
         if name not in handlers:
             raise ValueError(f"unknown tool: {name}")
@@ -335,7 +365,35 @@ class McpServer:
                 "agents should use memory.propose or memory.inject, while trusted local review "
                 "requires --profile operator"
             )
-        return handlers[name](args)
+        if self._session_attached and name != "memory.session_attach":
+            self._session_attached = bool(
+                touch_session_attachments(
+                    self.store.conn,
+                    connection_id=self.connection_id,
+                )
+            )
+        result = handlers[name](args)
+        if name == "memory.session_attach":
+            self._session_attached = True
+        return result
+
+    def _session_attach(self, args: JSON) -> JSON:
+        if not self.agent_id:
+            raise ValueError("memory.session_attach requires an MCP connector bound with --agent-id")
+        return consume_session_invitation(
+            self.store.conn,
+            activation_code=required_str(args, "activation_code"),
+            agent_id=self.agent_id,
+            connection_id=self.connection_id,
+            client_session_id=args.get("client_session_id"),
+        )
+
+    def _session_status(self, _args: JSON) -> JSON:
+        return list_session_attachments(
+            self.store.conn,
+            connection_id=self.connection_id,
+            active_only=False,
+        )
 
     def _remember(self, args: JSON) -> JSON:
         record = self.store.remember(
@@ -514,6 +572,7 @@ class McpServer:
         return (
             f"ZMem is connected to this workspace as {identity}. Request memory with memory.inject before acting; "
             "use only returned memories; propose durable learnings with memory.propose. "
+            "When an operator gives you a one-time activation code, call memory.session_attach. "
             f"Connection provenance id: {self.connection_id}. This identifies the MCP process, not necessarily a UI chat."
         )
 
