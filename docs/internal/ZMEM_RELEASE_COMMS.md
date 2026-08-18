@@ -1,5 +1,17 @@
 # ZMem Release Comms
 
+## 2026-08-18 - v0.1.16 publication
+
+Audience: internal Zerker product, engineering, developer experience, security review, Reason integration, Gateway integration, and release coordination.
+
+`v0.1.16` is published from release PR `#42` merge commit `1f7ede37a5aa1c59e50e2700b06aeb456b0f8aa4` at `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.16`; feature PR `#37` supplied governed premise export at `169e7e2f1a53dea64b3e2f36d978ee2e35598772`. Release, main, and tag CI passed every Python 3.10/3.11/3.12, ActiveGraph, site, docs, and release-smoke job. Downloaded GitHub assets match wheel `sha256:069c53dd...` and source distribution `sha256:d38de6c2...`.
+
+The release gives downstream reasoning systems a narrow, machine-checkable boundary. `zmem reason export` emits deterministic structured facts only from active memories carrying `reason:premise:v1`, with per-fact receipt provenance under one locked SQLite snapshot. `zmem reason verify` recomputes current governed state and fails closed when an artifact is malformed, tampered, stale, replayed, revoked, duplicated, or contains non-finite JSON.
+
+The responsibility split is explicit. ZMem establishes that the bytes came from the named governed memory and still match its current lifecycle and receipt state. It does not prove that the fact is true in the outside world, define Reason's ontology, or authorize an action. Reason remains responsible for authority policy, temporal interpretation, derivation, conflicts, and authorization.
+
+Production site and docs are live at `https://www.zmem.sh` and `https://docs.zmem.sh`; the changelog and `/docs/reason` canaries pass with clean console and network logs. External-agent PR `#8` is now the only open PR and remains excluded until rebased or replaced. The next cross-product gate is still Gateway's immutable `v0.1.15`-or-newer pin, cached-dense readiness, realistic load/timeout/isolation checks, and one host-native two-agent attach/revocation flow. `v0.1.16` leaves the Rooms HTTP contract unchanged.
+
 ## 2026-08-18 - v0.1.15 publication
 
 Audience: internal Zerker product, engineering, developer experience, security review, Gateway integration, and release coordination.
