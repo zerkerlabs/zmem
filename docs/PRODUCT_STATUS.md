@@ -4,9 +4,9 @@
 
 Zerker Memory is a functional open-source, local-first alpha with a public site, tagged releases, and a verified local proof path.
 
-Current published release: `v0.1.13` at `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.13`.
+Current published release: `v0.1.14` at `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.14`.
 
-The release turns guided setup into a live, inspectable agent memory network. Operators can issue short-lived one-time invitations, see configured and observed clients alongside live or idle MCP attachments, inspect Room-shared/member-private inventory and semantic-index readiness, detach sessions without deleting memory, and preview handoff or snapshot state before importing it. Gateway remains authoritative for tenant identity and Room membership, and optional UI session ids remain client-asserted until a host-native adapter can verify them. The previously shipped review-gated consolidation, digest-bound context proof, scheduled-agent continuity, typed failure memory, and opt-in local dense/FTS retrieval remain available.
+The current release makes that live agent memory network safer to deploy. Operators can create and detach agent-bound sessions from the local console, while dense-hybrid Room services now distinguish liveness from readiness and fail with HTTP `503` until the configured local runtime and cached model are available. FTS remains ready without the optional dense dependency, readiness never downloads a model, and Gateway remains authoritative for tenant identity and Room membership. The previously shipped visual shared-memory inventory, review-gated consolidation, digest-bound context proof, scheduled-agent continuity, typed failure memory, and local dense/FTS retrieval remain available.
 
 It is ready for:
 
@@ -41,11 +41,13 @@ Product signal note: the current wedge is validated by builder demand for local,
 7. Governed tool and interface-contract trust records linked to Treeship canary proof without moving install/run authority into ZMem.
 8. A server-controlled MCP dense-retrieval mode after the CLI/library candidate is accepted; existing MCP tool schemas intentionally retain stable FTS behavior.
 9. An official model-judged BEAM submission path plus broader multi-conversation 1M and 10M coverage; the first isolated runs are complete.
-10. Graduate the merged Rooms integration into production: update Gateway's immutable ZMem pin and abstention contract to `v0.1.13`, provision the cached local dense-hybrid profile, run load/timeout and live two-agent gates, and then add separately authorized remote review, hosted tenant routing, collective receipts, customer-managed keys, SSO, audit retention, and VPC/on-prem guides.
+10. Graduate the merged Rooms integration into production: update Gateway's immutable ZMem pin and abstention contract to `v0.1.14`, provision the cached local dense-hybrid profile, gate traffic on `/readyz`, run load/timeout and live two-agent gates, and then add separately authorized remote review, hosted tenant routing, collective receipts, customer-managed keys, SSO, audit retention, and VPC/on-prem guides.
 
 ## Functional Today
 
 - CLI.
+- `v0.1.14` deployment-safe Room readiness: `/healthz` is liveness-only; `/readyz` returns a versioned readiness contract and fails closed until a requested dense runtime plus cached local model are available, without loading or downloading a model during the probe.
+- `v0.1.14` console-native agent session controls: create a short-lived, agent-bound invitation, copy the exact attach instruction, and detach a connector without deleting memory or granting Room membership.
 - `v0.1.13` live agent sessions with hash-only, expiring, agent-bound invitations; exact MCP connection attachment; client-asserted optional session ids; live/idle presence; explicit detach; and a console that keeps configured, observed, active, and live state distinct.
 - `v0.1.13` visual agent memory network and preview-bound transfer flow with Room-shared/member-private inventory, contributors, proof roots, semantic-index coverage, and exact handoff/snapshot restore confirmation.
 - `v0.1.13` semantic recall and context-contract hardening for Rooms, including post-write index maintenance, compact readiness metadata, `empty` versus `abstained` state, and cross-language context commitment fixtures.
