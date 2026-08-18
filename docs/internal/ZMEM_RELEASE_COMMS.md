@@ -1,5 +1,17 @@
 # ZMem Release Comms
 
+## 2026-08-18 - v0.1.14 publication
+
+Audience: internal Zerker product, engineering, developer experience, security review, Gateway integration, and release coordination.
+
+`v0.1.14` is published from release PR `#36` merge commit `1a70f25fe9fc0df6680cd3fdbc5520192715d40f` at `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.14`. Feature PR `#35` supplied fail-closed dense Room readiness at `ebb6c96e72032c174f3188c4d262d48c2dc0f4d4`; console-native session controls and the patched docs runtime were already merged. Release, main, and tag CI passed every Python 3.10/3.11/3.12, ActiveGraph, site, docs, and release-smoke job. Downloaded GitHub assets match wheel `sha256:ec816163...` and source distribution `sha256:652e3052...`.
+
+This release closes an operational ambiguity in shared memory. `/healthz` answers only whether the tenant-local ZMem process is alive. `/readyz` answers whether the requested retrieval profile can actually serve traffic. FTS is immediately ready; dense-hybrid stays unavailable with HTTP `503` until FastEmbed and the configured cached local model are present. The probe never downloads or initializes a model, and startup prints the bounded reason plus setup command.
+
+The local console now also owns the ordinary session-control loop: select a configured agent, create a short-lived single-use invitation, copy the exact attach instruction, and detach the connector without deleting memory. This authenticates the invitation and consuming MCP connection; it does not grant Room membership or claim that a client-supplied UI session id was independently verified.
+
+Production site and docs are live at `https://www.zmem.sh` and `https://docs.zmem.sh`. Gateway issue `#49` has the exact release pin, hashes, readiness semantics, and remaining acceptance gates. The next cross-product work is to pin `v0.1.14`, pre-cache the dense model, gate traffic on `/readyz`, then pass realistic load/timeout and one live two-agent Room flow. Reason premise-export PR `#37` is post-release work and remains independently reviewable.
+
 ## 2026-08-18 - v0.1.13 publication
 
 Audience: internal Zerker product, engineering, developer experience, security review, Gateway integration, and release coordination.

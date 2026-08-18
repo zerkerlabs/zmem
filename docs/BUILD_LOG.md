@@ -1,3 +1,12 @@
+## 2026-08-18 - v0.1.14 deployment-safe shared memory published
+
+- Merged fail-closed dense Room readiness through PR `#35` at `ebb6c96e72032c174f3188c4d262d48c2dc0f4d4`, then merged release PR `#36` at `1a70f25fe9fc0df6680cd3fdbc5520192715d40f` and tagged that exact commit as `v0.1.14`.
+- `/healthz` remains liveness-only. `/readyz` now returns the versioned Room service readiness contract and fails with HTTP `503` until a requested dense runtime and cached local model are available; the probe performs no model load or download and FTS remains the dependency-light default.
+- Release PR run `32090900119`, main run `32091243484`, and tag run `32091758474` passed Python 3.10/3.11/3.12, ActiveGraph, site, docs, and release smoke. Strict local proof reports public verify `6/6`, launch assets `8/8`, and the return packet ready.
+- Built in a clean detached checkout and clean-installed the wheel; it reports `zmem 0.1.14` and passes eval `11/11`. Downloaded GitHub assets match wheel `sha256:ec8161630537d2b73196ed62c8ff52f7d15bc4f42d4c5f783aae8b26f2f0cc66` and source distribution `sha256:652e3052e17c66f9dd1a0b0b9a53fbd3ea84201f47d32502dbc39aa3987a4a79`.
+- Deployed site `dpl_GKJwFDovh4y3MxAamarCsm5YJZZf` and docs `dpl_Bg9wkURfaNsNXJoH2YHwKPJQJMLq` to production. Content canaries confirm both `v0.1.14` changelog entries and the ActiveGraph `0.1.14` pack contract.
+- Published the exact artifact and readiness rollout contract on Gateway issue `#49`. Post-release Reason premise-export PR `#37` remains under separate review; stale dashboard QA PR `#8` must not merge unchanged.
+
 ## 2026-08-18 - Dense Rooms deployment readiness candidate
 
 - Split service liveness from semantic readiness. `/healthz` remains a process probe, while `/readyz` now reports storage plus configured retrieval state and returns HTTP `503` when `dense-hybrid` lacks the FastEmbed runtime or cached local model.

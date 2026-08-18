@@ -1,5 +1,15 @@
 # Launch Lane Log
 
+## 2026-08-18 - v0.1.14 publication
+
+- Scope: shipped fail-closed dense Room readiness, console-native agent session controls, and the patched docs runtime through feature PR `#35` plus release PR `#36`.
+- Release: `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.14` from `1a70f25fe9fc0df6680cd3fdbc5520192715d40f`.
+- CI: release PR run `32090900119`, main run `32091243484`, and tag run `32091758474` passed every Python, ActiveGraph, site, docs, and release-smoke job.
+- Artifacts: GitHub reports wheel `sha256:ec8161630537d2b73196ed62c8ff52f7d15bc4f42d4c5f783aae8b26f2f0cc66` and source distribution `sha256:652e3052e17c66f9dd1a0b0b9a53fbd3ea84201f47d32502dbc39aa3987a4a79`; downloaded copies match.
+- Production: site deployment `dpl_GKJwFDovh4y3MxAamarCsm5YJZZf` and docs deployment `dpl_Bg9wkURfaNsNXJoH2YHwKPJQJMLq` are live. Content canaries show both release changelog entries and the ActiveGraph `0.1.14` version.
+- PR queue: Reason premise-export PR `#37` is a separate current candidate under review; external-agent PR `#8` is stale against Rooms/session surfaces and must not merge unchanged.
+- Next safe slice: complete Gateway's v0.1.14 pin, cached dense profile, load/timeout, and live two-agent acceptance before widening hosted or remote authority.
+
 ## 2026-08-18 - v0.1.13 publication
 
 - Scope: published Rooms contract hardening, semantic Room recall, the visual agent memory network, safe transfer previews, and live agent session attachments from feature PRs `#26` through `#29` plus release PR `#30`.
