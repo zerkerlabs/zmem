@@ -4,6 +4,15 @@
 - The command fails before issuing an invitation when workspace binding is not valid, reports reload versus manual-import state, and preserves the existing connector-only identity and Gateway Room-membership boundaries.
 - Added parser, successful attach, failed setup, and runtime-reexec coverage. The full suite passes `1,432` tests with two expected skips; eval passes `11/11`, the docs typecheck/build produces all `18` pages, and a real temporary-workspace smoke passes.
 
+## 2026-08-18 - v0.1.16 governed premises published
+
+- Merged the governed premise export through PR `#37` at `169e7e2f1a53dea64b3e2f36d978ee2e35598772`, then merged release PR `#42` at `1f7ede37a5aa1c59e50e2700b06aeb456b0f8aa4` and tagged that exact release commit as `v0.1.16`.
+- Added `zmem reason export` and `zmem reason verify` for deterministic structured facts from active, explicitly labeled policy memory. ZMem validates source bytes, lifecycle, governance, provenance, and freshness; Reason retains ontology, temporal, authority-policy, and authorization responsibility.
+- Hardened the artifact boundary against duplicate keys plus `NaN`, `Infinity`, and `-Infinity`. Malformed, tampered, stale, replayed, revoked, duplicate, and non-finite artifacts fail closed before a downstream reasoner consumes them.
+- PR run `32098845128`, main run `32099521236`, and tag run `32100090247` passed Python 3.10/3.11/3.12, ActiveGraph, site, docs, and release smoke. Local acceptance passed `1,446` tests with two expected skips, eval `11/11`, a clean wheel install, and an installed-wheel premise round trip.
+- Downloaded GitHub assets match wheel `sha256:069c53dd457ef363841392cf84add023a17fb59e3730b55daa0511ac1cf82913` and source distribution `sha256:d38de6c24aaa9a5a5688c844da9cfc88c5f6ee4a1f5350320fdfdcb71b0d7408`.
+- Deployed site `dpl_Gk8ZDFRCdCVVy2aRRCV9ssgTPr7q` and docs `dpl_8sx7PvcETpnDZzA4ruprcSxDRFyq`. Public canaries show the `v0.1.16` changelog and `/docs/reason`, every observed request returned HTTP `200`, both browser consoles are clean, and both production dependency audits report zero vulnerabilities.
+
 ## 2026-08-18 - v0.1.15 one-command agent connection published
 
 - Merged the one-command connection flow through PR `#39` at `91fee93a2427b8389a03654a460d8d5a6a0b4ba3`, then merged release PR `#40` at `e9f1bf9ac374339bec9de154683f5e8607cd8fc6` and tagged that exact commit as `v0.1.15`.

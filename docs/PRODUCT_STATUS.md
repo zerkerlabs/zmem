@@ -4,9 +4,9 @@
 
 Zerker Memory is a functional open-source, local-first alpha with a public site, tagged releases, and a verified local proof path.
 
-Current published release: `v0.1.15` at `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.15`.
+Current published release: `v0.1.16` at `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.16`.
 
-The current release makes the live agent memory network easier to enter without hiding its trust boundaries. `zmem connect <agent>` verifies one local workspace, configures one agent host, and issues one scoped, single-use attach instruction. The session becomes live only after that bound MCP process responds; UI chat ids remain asserted unless the host verifies them, and Gateway remains authoritative for tenant identity and Room membership. The previously shipped fail-closed dense Room readiness, visual shared-memory inventory, review-gated consolidation, digest-bound context proof, scheduled-agent continuity, typed failure memory, and local dense/FTS retrieval remain available.
+The current release makes governed memory consumable by a downstream reasoning system without collapsing the trust boundary. `zmem reason export` emits deterministic structured facts from active, explicitly labeled policy memory, and `zmem reason verify` rejects artifacts that are malformed, tampered, stale, replayed, revoked, duplicated, or non-finite. ZMem proves source bytes, lifecycle, provenance, governance, and freshness; Reason still owns ontology, temporal interpretation, authority policy, and authorization. The previously shipped one-command agent connection, fail-closed dense Room readiness, visual shared-memory inventory, review-gated consolidation, scheduled-agent continuity, and local dense/FTS retrieval remain available.
 
 It is ready for:
 
@@ -18,6 +18,7 @@ It is ready for:
 - receipt-backed local LoCoMo, LongMemEval, and BEAM development evidence,
 - ActiveGraph 1.9+ pack experiments, a runnable two-run host, and compact causal traces.
 - tenant-local Zerker Rooms integration experiments with durable shared/private room memory and explicit context state.
+- governed structured-premise integration experiments with Zerker Reason and other downstream consumers.
 
 It is not yet:
 
@@ -41,11 +42,12 @@ Product signal note: the current wedge is validated by builder demand for local,
 7. Governed tool and interface-contract trust records linked to Treeship canary proof without moving install/run authority into ZMem.
 8. A server-controlled MCP dense-retrieval mode after the CLI/library candidate is accepted; existing MCP tool schemas intentionally retain stable FTS behavior.
 9. An official model-judged BEAM submission path plus broader multi-conversation 1M and 10M coverage; the first isolated runs are complete.
-10. Graduate the merged Rooms integration into production: update Gateway's immutable ZMem pin and abstention contract to `v0.1.14`, provision the cached local dense-hybrid profile, gate traffic on `/readyz`, run load/timeout and live two-agent gates, and then add separately authorized remote review, hosted tenant routing, collective receipts, customer-managed keys, SSO, audit retention, and VPC/on-prem guides.
+10. Graduate the merged Rooms integration into production: pin Gateway to immutable ZMem `v0.1.15` or newer with the current abstention contract, provision the cached local dense-hybrid profile, gate traffic on `/readyz`, run load/timeout and live two-agent gates, and then add separately authorized remote review, hosted tenant routing, collective receipts, customer-managed keys, SSO, audit retention, and VPC/on-prem guides. `v0.1.16` does not change the Rooms HTTP contract.
 
 ## Functional Today
 
 - CLI.
+- `v0.1.16` governed premise export: deterministic strict-JSON facts from active labeled policy memory, per-fact receipt provenance, and fail-closed current-state verification for downstream Reason consumers.
 - `v0.1.15` one-command agent connection: initialize or verify one workspace, configure one agent host, and issue one unique scoped invitation without claiming Room membership or host-verified chat identity.
 - `v0.1.14` deployment-safe Room readiness: `/healthz` is liveness-only; `/readyz` returns a versioned readiness contract and fails closed until a requested dense runtime plus cached local model are available, without loading or downloading a model during the probe.
 - `v0.1.14` console-native agent session controls: create a short-lived, agent-bound invitation, copy the exact attach instruction, and detach a connector without deleting memory or granting Room membership.

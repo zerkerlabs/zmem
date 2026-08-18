@@ -35,10 +35,11 @@ Every push or meaningful automation drop should update this file alongside:
 | `v0.1.13` | Published | `6fe15c6` / `v0.1.13` | Live agent sessions, visual shared-memory inventory, safe transfer previews, semantic Room recall, and context-contract hardening. |
 | `v0.1.14` | Published | `1a70f25` / `v0.1.14` | Deployment-safe dense Room readiness, console-native session controls, and a patched docs runtime. |
 | `v0.1.15` | Published | `e9f1bf9` / `v0.1.15` | One-command current-agent connection with explicit reload, attachment, identity, and Room-authority state. |
+| `v0.1.16` | Published | `1f7ede3` / `v0.1.16` | Strict governed-premise export and current-state verification for Zerker Reason. |
 
 Current public release:
 
-- GitHub: `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.15`
+- GitHub: `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.16`
 - Site: `https://www.zmem.sh`
 - Raw installer: `https://raw.githubusercontent.com/zerkerlabs/zmem/main/install.sh`
 
@@ -159,6 +160,14 @@ Published `v0.1.15` checkpoint:
 - Production site deployment `dpl_DNwx7V2g6XwBZqcy2LrpH8ihqKdd` and docs deployment `dpl_EXKBMHXa6vkAebnA1sjG4Am8fbqP` are live with browser-verified release content.
 - A three-process Codex/operator/Claude Code acceptance passed shared governed recall and receipt verification. Next acceptance is a host-native attach and the production Gateway load/timeout/isolation gate.
 
+Published `v0.1.16` checkpoint:
+
+- Feature PR `#37` merged governed structured-premise export plus verification; release PR `#42` merged at `1f7ede37a5aa1c59e50e2700b06aeb456b0f8aa4`, which is tagged and published at `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.16`.
+- `zmem reason export` emits deterministic strict-JSON facts only from active, explicitly labeled policy memory with per-fact receipt provenance. `zmem reason verify` checks the artifact against current governed state.
+- Duplicate keys, non-finite numbers, malformed payloads, tampering, stale or replayed exports, revocation, and duplicate facts fail closed. The artifact proves governed source state, not outside-world truth or action authorization.
+- PR run `32098845128`, main run `32099521236`, and tag run `32100090247` passed every job. Downloaded GitHub assets match wheel `sha256:069c53dd...` and source distribution `sha256:d38de6c2...`; a clean wheel reports `0.1.16` and passes an installed-package premise round trip.
+- Production site deployment `dpl_Gk8ZDFRCdCVVy2aRRCV9ssgTPr7q` and docs deployment `dpl_8sx7PvcETpnDZzA4ruprcSxDRFyq` are live. Public changelog and Reason-guide canaries pass with no console or network errors; production dependency audits are clean.
+
 Included `v0.1.6` L3 checkpoint:
 
 - Bounded transcript-neighbor onset support passes the stable gate at `160/227` versus `159/227`, with one gain, zero losses, one changed retrieval context, and `+17` query tokens.
@@ -199,16 +208,16 @@ Percentages are practical launch-grade alpha estimates, not benchmark scores.
 
 | Lane | Focus | Alpha completion | Shipped state | Next acceptance target |
 | --- | --- | ---: | --- | --- |
-| L0 Trust Ledger | Receipts, Merkle lineage, context and restore/export proof | 92% | Mutation/lifecycle/restore receipts, compact v2 event witnesses, serialized event appends, digest-bound memory context, linked cold-start proof, mutation-chain summaries, and direct snapshot proof summaries exist; default MCP agents cannot claim trusted write/review authority | Add typed predicate validation when the Treeship registry is available, then design a backward-compatible Merkle successor |
+| L0 Trust Ledger | Receipts, Merkle lineage, context and restore/export proof | 92% | Mutation/lifecycle/restore receipts, compact v2 event witnesses, serialized event appends, digest-bound memory context, linked cold-start proof, governed Reason premise artifacts, mutation-chain summaries, and direct snapshot proof summaries exist; default MCP agents cannot claim trusted write/review authority | Add typed predicate validation when the Treeship registry is available, then design a backward-compatible Merkle successor |
 | L1 Temporal KG | Current/history/superseded temporal memory | 70% | `query_at`, supersession, omitted-memory envelopes, runtime temporal context, and receipt-visible contradiction abstention | Add richer filters and decide when a concrete consumer justifies a true bi-temporal graph schema |
 | L2 Lifecycle Compaction | Sessions, checkpoints, snapshots, retention | 82% | Session lifecycle, handoff/restore, cold-start gap audit, governed scheduled run, typed failure memory, and one-action receipted expiry maintenance are implemented | Add revalidation, decay, tombstone, and failed-claim reopen contracts without automating semantic judgment |
 | L3 Retrieval Baseline | FTS/BM25, local dense candidates, RRF, packing | 97% | Offline FastEmbed plus adaptive FTS passes the frozen gate and full LoCoMo/LongMemEval comparisons with 43/347/91 gains, zero losses, lexical recall preservation, and receipt-visible model/fusion evidence | Tune candidate/context cost, then profile whether ANN or `sqlite-vec` is warranted before exposing server-controlled MCP dense retrieval |
 | L4 Consolidation | Hierarchical summaries and job ledger | 75% | Verified live-source preview, private recoverable materialization, independent live-source inspection, and terminal admit/discard decisions with ceiling-bound lineage receipts | Extend the reviewed path to live day/week/profile rollups before designing any scheduler |
-| L5 Identity / Workspaces | Multi-agent source lineage and conflicts | 84% | Source reports, claim conflicts, exact-tie abstention, guided shared-store setup, one-command current-agent connection, bound host/connection provenance, live session attachments, console-native invitation/detach actions, visual shared-memory inventory, and preview-bound imports | Dogfood simultaneous Codex/Claude attachment, then add handoff ownership/lease metadata, persisted merge decisions, and host-verified session ids where available |
+| L5 Identity / Workspaces | Multi-agent source lineage and conflicts | 84% | Source reports, claim conflicts, exact-tie abstention, guided shared-store setup, one-command current-agent connection, bound host/connection provenance, live session attachments, console-native invitation/detach actions, visual shared-memory inventory, and preview-bound imports | Add host-verified session ids where available plus the Gateway/Buzz attach/revocation acceptance, then add handoff ownership/lease metadata and persisted merge decisions |
 | L6 Benchmark Harness | LoCoMo/LongMemEval/BEAM evidence | 100% for local harness and sampled scale | Verified LoCoMo/LongMemEval evidence plus official-layout BEAM 100K, 500K, 1M, and 10M runs exist; compact artifacts verify | Add broader evidence and an official model-judged path; do not report unjudged LLM answers as incorrect |
-| Launch Oversight | Release pack, proof evidence, public release | 100% for v0.1.15 | Public verify `6/6`, assets `8/8`, return packet ready, release assets published, exact package digests verified, and production canaries pass | Keep automation paused until the next bounded release candidate exists |
-| Website / Docs | Landing, proof page, docs, changelog | 100% for v0.1.15 | Release copy, one-command agent setup/session UX, Rooms behavior, transfer safety, benchmark boundary, and ActiveGraph pack version are synchronized and live | Keep release facts synchronized with the next shipped product change |
-| Rooms / Gateway | Multi-agent shared memory integration | 89% | ZMem's tenant-local service and fail-closed readiness contract are published; Gateway's real HTTP client, durable Room/event persistence, context/propose/record seam, commitment checks, and fail-closed join handling are merged; independent-process shared recall is verified | Pin Gateway to v0.1.15, enable a cached dense-hybrid production profile, then pass load/timeout and live host-native two-agent acceptance before remote review |
+| Launch Oversight | Release pack, proof evidence, public release | 100% for v0.1.16 | Public verify `6/6`, assets `8/8`, return packet ready, release assets published, exact package digests verified, and production canaries pass | Keep automation paused until the next bounded release candidate exists |
+| Website / Docs | Landing, proof page, docs, changelog | 100% for v0.1.16 | Release copy, agent setup/session UX, Rooms behavior, governed Reason premises, transfer safety, benchmark boundary, and ActiveGraph pack version are synchronized and live | Keep release facts synchronized with the next shipped product change |
+| Rooms / Gateway | Multi-agent shared memory integration | 89% | ZMem's tenant-local service and fail-closed readiness contract are published; Gateway's real HTTP client, durable Room/event persistence, context/propose/record seam, commitment checks, and fail-closed join handling are merged; independent-process shared recall is verified | Pin Gateway to immutable v0.1.15 or newer, enable a cached dense-hybrid production profile, then pass load/timeout and live host-native two-agent acceptance before remote review; v0.1.16 does not change the Rooms HTTP contract |
 | ActiveGraph Integration | Event substrate and compact traces | 100% | The real pack loads, persists events, batches traces, and ships a runnable two-run host with recorded/sent prompt equality | Keep larger selected-mode traces and aggregate Treeship artifacts as optional follow-ups |
 
 ## Lane Checklists

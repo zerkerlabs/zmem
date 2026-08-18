@@ -21,6 +21,14 @@ Primary mission brief:
 - Lane progress and release tracker: `docs/ZMEM_PROGRESS_TRACKER.md`
 - Lane logs: `docs/CONTINUOUS_BUILD/`
 
+Coordinator update `2026-08-18` (`v0.1.16` published and deployed):
+
+- Feature PR `#37` merged governed Reason premise export and current-state verification; release PR `#42` merged at `1f7ede37a5aa1c59e50e2700b06aeb456b0f8aa4`, which is tagged and published as `v0.1.16`.
+- Strict JSON rejects duplicate keys and non-finite numbers. Export and verification fail closed on malformed, tampered, stale, replayed, revoked, or duplicate facts without claiming outside-world truth or downstream authorization.
+- Release, main, and tag CI are green. Downloaded assets match wheel `069c53dd...` and source distribution `d38de6c2...`; production site/docs expose the release changelog and Reason guide with clean browser canaries.
+- External-agent PR `#8` is the only open PR and remains excluded until replaced or rebased against current product surfaces.
+- Broad recurring swarms and launch oversight remain paused. The next bounded cross-product gate is Gateway's immutable `v0.1.15`-or-newer package pin, cached-dense readiness, load/timeout/isolation acceptance, and a host-native two-agent attach/revocation flow. The Reason-only `v0.1.16` addition does not require Gateway churn.
+
 Coordinator update `2026-08-18` (`v0.1.15` published and deployed):
 
 - Feature PR `#39` merged the one-command current-agent connection flow; release PR `#40` merged at `e9f1bf9ac374339bec9de154683f5e8607cd8fc6`, which is tagged and published as `v0.1.15`.

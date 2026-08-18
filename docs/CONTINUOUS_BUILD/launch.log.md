@@ -1,5 +1,15 @@
 # Launch Lane Log
 
+## 2026-08-18 - v0.1.16 publication
+
+- Scope: shipped governed structured-premise export and fail-closed current-state verification through feature PR `#37` plus release PR `#42`.
+- Release: `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.16` from `1f7ede37a5aa1c59e50e2700b06aeb456b0f8aa4`.
+- CI: release PR run `32098845128`, main run `32099521236`, and tag run `32100090247` passed every Python, ActiveGraph, site, docs, and release-smoke job.
+- Artifacts: GitHub reports wheel `sha256:069c53dd457ef363841392cf84add023a17fb59e3730b55daa0511ac1cf82913` and source distribution `sha256:d38de6c24aaa9a5a5688c844da9cfc88c5f6ee4a1f5350320fdfdcb71b0d7408`; downloaded copies match.
+- Production: site deployment `dpl_Gk8ZDFRCdCVVy2aRRCV9ssgTPr7q` and docs deployment `dpl_8sx7PvcETpnDZzA4ruprcSxDRFyq` are live. Browser canaries show the release changelog and Reason guide with HTTP `200`, no console errors, and no failed requests.
+- Trust boundary: ZMem verifies source bytes, lifecycle, provenance, governance, and freshness. It does not establish outside-world truth or authorize a downstream Reason action.
+- PR queue: external-agent PR `#8` is the only open PR. It remains stale against current product surfaces and must not merge unchanged.
+
 ## 2026-08-18 - v0.1.15 publication
 
 - Scope: shipped the merged `zmem connect <agent>` current-session flow through feature PR `#39` plus version-only release PR `#40`.
