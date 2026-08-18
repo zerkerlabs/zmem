@@ -13,6 +13,11 @@ All notable Zerker Memory alpha changes are summarized here.
 - Added local-console controls to create an agent-bound one-time invitation, copy the exact attach instruction, and detach an active connector without deleting memory.
 - Reused the existing session invitation and attachment ledger; the UI does not create a second identity, membership, or storage model.
 
+### Rooms Deployment Readiness
+
+- Extended `/readyz` to report the configured retrieval mode and fail with HTTP `503` when `dense-hybrid` was requested without the local runtime or cached model.
+- Kept `/healthz` as a liveness probe and added an exact offline setup command to readiness and startup output, so deployment systems cannot mistake lexical fallback for healthy semantic recall.
+
 ## 0.1.13 - 2026-08-18
 
 ### Live Agent Sessions

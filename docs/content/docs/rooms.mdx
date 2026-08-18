@@ -39,6 +39,15 @@ zmem \
 
 No context request downloads a model. A dense-enabled Rooms service keeps each room's derived index current after writes and catches up missing or stale vectors before reads. The response reports compact `retrieval_index` readiness without exposing vectors or memory text.
 
+Use liveness and readiness separately:
+
+```bash
+curl -sS http://127.0.0.1:8766/healthz
+curl -sS -i http://127.0.0.1:8766/readyz
+```
+
+`/healthz` confirms the process is alive. `/readyz` confirms storage and the configured retrieval mode are usable. FTS is ready immediately. A service configured for `dense-hybrid` returns HTTP `503` with an exact setup command until FastEmbed is installed and the local model is cached; it returns HTTP `200` once semantic retrieval is ready. This prevents an orchestrator from treating lexical fallback as a healthy semantic deployment.
+
 ## Prepare Agent Context
 
 ```bash
