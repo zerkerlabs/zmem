@@ -2,7 +2,11 @@ import Card from '@/components/Card';
 
 const updates = [
   {
-    title: 'Next: console-native agent sessions',
+    title: 'v0.1.14 deployment-safe dense Rooms',
+    detail: 'Dense-hybrid Room services now fail readiness until the local runtime and cached model are present, while liveness stays separate and startup prints the exact offline setup step.',
+  },
+  {
+    title: 'v0.1.14 console-native agent sessions',
     detail: 'Create an agent-bound one-time invitation, copy the exact attach instruction, and detach a connector from the local memory console without deleting its memory or widening Room access.',
   },
   {
