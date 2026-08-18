@@ -4,6 +4,15 @@
 - The command fails before issuing an invitation when workspace binding is not valid, reports reload versus manual-import state, and preserves the existing connector-only identity and Gateway Room-membership boundaries.
 - Added parser, successful attach, failed setup, and runtime-reexec coverage. The full suite passes `1,432` tests with two expected skips; eval passes `11/11`, the docs typecheck/build produces all `18` pages, and a real temporary-workspace smoke passes.
 
+## 2026-08-18 - v0.1.15 one-command agent connection published
+
+- Merged the one-command connection flow through PR `#39` at `91fee93a2427b8389a03654a460d8d5a6a0b4ba3`, then merged release PR `#40` at `e9f1bf9ac374339bec9de154683f5e8607cd8fc6` and tagged that exact commit as `v0.1.15`.
+- `zmem connect <agent>` now initializes or verifies one workspace binding, configures one agent host, and issues one scoped, agent-bound, single-use attach instruction. It keeps reload/import state, client-asserted chat identity, and external Room membership explicit.
+- PR run `32095454163`, main run `32096018109`, and tag run `32096365042` passed Python 3.10/3.11/3.12, ActiveGraph, site, docs, and release smoke.
+- Built and clean-installed the distribution; it reports `zmem 0.1.15`, passes eval `11/11`, and completes the connection flow. Downloaded GitHub assets match wheel `sha256:9b6dcbd5fa3fc186e5149b9742747ee3d69b309377eedac8e8fce52d9817f6e0` and source distribution `sha256:ce89df3a26d40ae589c4fecdf84d2579889bfcce1807f78715f62740c315da60`.
+- A real three-process MCP acceptance passed with independent Codex and Claude Code invitations/connections: Codex proposed memory, a trusted operator promoted it, Claude Code recalled it, and the retrieval receipt verified. This proves the connector/store protocol, not host-native UI chat identity or Gateway Room membership.
+- Deployed site `dpl_DNwx7V2g6XwBZqcy2LrpH8ihqKdd` and docs `dpl_EXKBMHXa6vkAebnA1sjG4Am8fbqP`. Browser canaries show the `v0.1.15` changelog with no console errors, docs show ActiveGraph `0.1.15`, and the site production dependency audit reports zero vulnerabilities.
+
 ## 2026-08-18 - v0.1.14 deployment-safe shared memory published
 
 - Merged fail-closed dense Room readiness through PR `#35` at `ebb6c96e72032c174f3188c4d262d48c2dc0f4d4`, then merged release PR `#36` at `1a70f25fe9fc0df6680cd3fdbc5520192715d40f` and tagged that exact commit as `v0.1.14`.

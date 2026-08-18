@@ -1,5 +1,15 @@
 # Launch Lane Log
 
+## 2026-08-18 - v0.1.15 publication
+
+- Scope: shipped the merged `zmem connect <agent>` current-session flow through feature PR `#39` plus version-only release PR `#40`.
+- Release: `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.15` from `e9f1bf9ac374339bec9de154683f5e8607cd8fc6`.
+- CI: release PR run `32095454163`, main run `32096018109`, and tag run `32096365042` passed every Python, ActiveGraph, site, docs, and release-smoke job.
+- Artifacts: GitHub reports wheel `sha256:9b6dcbd5fa3fc186e5149b9742747ee3d69b309377eedac8e8fce52d9817f6e0` and source distribution `sha256:ce89df3a26d40ae589c4fecdf84d2579889bfcce1807f78715f62740c315da60`; downloaded copies match.
+- Production: site deployment `dpl_DNwx7V2g6XwBZqcy2LrpH8ihqKdd` and docs deployment `dpl_EXKBMHXa6vkAebnA1sjG4Am8fbqP` are live. Browser canaries show the new changelog with no console errors, and docs expose the ActiveGraph `0.1.15` version.
+- Acceptance: separate Codex, Claude Code, and operator MCP processes proved independent invitation use, review-gated shared memory, cross-agent recall, and receipt verification. Gateway Room authority and host-native UI identity remain outside this claim.
+- PR queue: Reason premise-export PR `#37` is blocked on strict non-finite JSON handling; external-agent PR `#8` remains stale and must not merge unchanged.
+
 ## 2026-08-18 - v0.1.14 publication
 
 - Scope: shipped fail-closed dense Room readiness, console-native agent session controls, and the patched docs runtime through feature PR `#35` plus release PR `#36`.

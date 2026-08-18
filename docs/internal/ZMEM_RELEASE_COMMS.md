@@ -1,5 +1,17 @@
 # ZMem Release Comms
 
+## 2026-08-18 - v0.1.15 publication
+
+Audience: internal Zerker product, engineering, developer experience, security review, Gateway integration, and release coordination.
+
+`v0.1.15` is published from release PR `#40` merge commit `e9f1bf9ac374339bec9de154683f5e8607cd8fc6` at `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.15`; feature PR `#39` supplied the one-command agent connection flow at `91fee93a2427b8389a03654a460d8d5a6a0b4ba3`. Release, main, and tag CI passed every Python 3.10/3.11/3.12, ActiveGraph, site, docs, and release-smoke job. Downloaded GitHub assets match wheel `sha256:9b6dcbd5...` and source distribution `sha256:ce89df3a...`.
+
+The release turns the existing setup plus invitation machinery into one ordinary agent-native action: run `zmem connect <agent>` inside the project. ZMem verifies the exact workspace binding, configures that one host, and prints one scoped, expiring instruction for the current connector. Direct clients may still need a reload; manual clients still need an import; and no session is called live until the invited MCP process attaches.
+
+The trust boundary remains narrow. Every agent receives a different single-use code and process identity. A client session id is asserted unless the host verifies it. A Room id supplies context but never grants Gateway membership. A real three-process acceptance proved that Codex can propose memory, a trusted operator can promote it, Claude Code can recall it through a distinct connection, and the retrieval receipt verifies.
+
+Production site and docs are live at `https://www.zmem.sh` and `https://docs.zmem.sh`. Gateway issue `#49` now has the exact `v0.1.15` pin and hashes. The next cross-product work is production cached-dense setup, load/timeout/isolation gates, and one host-native two-agent Room flow. Reason premise-export PR `#37` remains blocked until non-finite JSON fails closed; stale PR `#8` remains excluded.
+
 ## 2026-08-18 - v0.1.14 publication
 
 Audience: internal Zerker product, engineering, developer experience, security review, Gateway integration, and release coordination.

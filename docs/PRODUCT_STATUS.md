@@ -4,9 +4,9 @@
 
 Zerker Memory is a functional open-source, local-first alpha with a public site, tagged releases, and a verified local proof path.
 
-Current published release: `v0.1.14` at `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.14`.
+Current published release: `v0.1.15` at `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.15`.
 
-The current release makes that live agent memory network safer to deploy. Operators can create and detach agent-bound sessions from the local console, while dense-hybrid Room services now distinguish liveness from readiness and fail with HTTP `503` until the configured local runtime and cached model are available. FTS remains ready without the optional dense dependency, readiness never downloads a model, and Gateway remains authoritative for tenant identity and Room membership. The previously shipped visual shared-memory inventory, review-gated consolidation, digest-bound context proof, scheduled-agent continuity, typed failure memory, and local dense/FTS retrieval remain available.
+The current release makes the live agent memory network easier to enter without hiding its trust boundaries. `zmem connect <agent>` verifies one local workspace, configures one agent host, and issues one scoped, single-use attach instruction. The session becomes live only after that bound MCP process responds; UI chat ids remain asserted unless the host verifies them, and Gateway remains authoritative for tenant identity and Room membership. The previously shipped fail-closed dense Room readiness, visual shared-memory inventory, review-gated consolidation, digest-bound context proof, scheduled-agent continuity, typed failure memory, and local dense/FTS retrieval remain available.
 
 It is ready for:
 
@@ -32,7 +32,7 @@ Product signal note: the current wedge is validated by builder demand for local,
 
 ## Not Built Yet, In Priority Order
 
-1. Host-native session confirmation adapters plus a Gateway/Buzz attachment and revocation handshake and a real two-agent shared-scope test. Console-native invitation and detach actions are implemented on `main`.
+1. Host-native session confirmation adapters plus a Gateway/Buzz attachment and revocation handshake. The independent-process two-agent shared-scope protocol is verified; host-native UI identity and production Gateway acceptance remain open.
 2. Handoff ownership/lease metadata on top of the shipped provenance-preserving dry-run import preview.
 3. Reviewed live day/week/profile consolidation rollups before any periodic scheduler is considered.
 4. Efficiency tuning for the opt-in local dense/FTS candidate. Full local LoCoMo and LongMemEval comparisons completed with 347 and 91 gains, zero losses, and materially higher token and latency cost.
@@ -46,6 +46,7 @@ Product signal note: the current wedge is validated by builder demand for local,
 ## Functional Today
 
 - CLI.
+- `v0.1.15` one-command agent connection: initialize or verify one workspace, configure one agent host, and issue one unique scoped invitation without claiming Room membership or host-verified chat identity.
 - `v0.1.14` deployment-safe Room readiness: `/healthz` is liveness-only; `/readyz` returns a versioned readiness contract and fails closed until a requested dense runtime plus cached local model are available, without loading or downloading a model during the probe.
 - `v0.1.14` console-native agent session controls: create a short-lived, agent-bound invitation, copy the exact attach instruction, and detach a connector without deleting memory or granting Room membership.
 - `v0.1.13` live agent sessions with hash-only, expiring, agent-bound invitations; exact MCP connection attachment; client-asserted optional session ids; live/idle presence; explicit detach; and a console that keeps configured, observed, active, and live state distinct.
