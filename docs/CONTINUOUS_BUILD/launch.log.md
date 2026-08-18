@@ -1,5 +1,15 @@
 # Launch Lane Log
 
+## 2026-08-18 - v0.1.13 publication
+
+- Scope: published Rooms contract hardening, semantic Room recall, the visual agent memory network, safe transfer previews, and live agent session attachments from feature PRs `#26` through `#29` plus release PR `#30`.
+- Release: `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.13` from `6fe15c6b310fea6e1dd3b26206ca6172b680eea1`.
+- CI: release PR run `32085420850`, main run `32085751681`, and tag run `32086135511` passed every Python, ActiveGraph, site, docs, and release-smoke job.
+- Artifacts: GitHub reports wheel `sha256:c2450c6a8b3bdb1e12a012e3951fa0acab584949d157ab4f1129844f46d99126` and source distribution `sha256:44bdf177803db42c53bab532b0aeae6569cbece99d0b30607dcd12b76335aeab`; downloaded copies match.
+- Production: site deployment `dpl_8DABKk9jast6Cridc73TVHw7TzLN` and docs deployment `dpl_7oiiqfzaSdRi3eGpCrrcb7Fr7qgn` are live. Browser canaries show the v0.1.13 changelog and ActiveGraph pack version with no console errors.
+- PR queue: external-agent PR `#8` is the only open PR. It is a stale report-only QA workflow and must be rebased and revalidated before consideration.
+- Next safe slice: add invitation and detach actions to the local console without widening the existing agent, Room-membership, or operator-authority boundaries.
+
 ## 2026-08-10 - v0.1.12 publication
 
 - Scope: shipped guided multi-agent setup, merged feature PR `#23` and release PR `#24`, tagged the exact release merge, published clean distributions, deployed production site/docs, and dogfooded the same wheel against real local agent configs.

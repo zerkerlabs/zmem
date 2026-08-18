@@ -1,5 +1,19 @@
 # ZMem Release Comms
 
+## 2026-08-18 - v0.1.13 publication
+
+Audience: internal Zerker product, engineering, developer experience, security review, Gateway integration, and release coordination.
+
+`v0.1.13` is published from release PR `#30` merge commit `6fe15c6b310fea6e1dd3b26206ca6172b680eea1` at `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.13`. Feature PRs `#26` through `#29` supplied the Rooms contract, semantic recall, agent memory network/transfer, and live-session implementations. Release, main, and tag CI passed every Python 3.10/3.11/3.12, ActiveGraph, site, docs, and release-smoke job. GitHub assets match wheel `sha256:c2450c6a...` and source distribution `sha256:44bdf177...`.
+
+The release makes the daily multi-agent story tangible. Guided setup still gives supported agents one exact project store. Operators can now issue a short-lived one-time invitation for a named connector, see configured and historically observed agents next to live or idle attachments, detach a connection without deleting memory, inspect Room-shared/member-private inventory and proof roots, and preview handoff or snapshot state before importing it.
+
+The identity and authority boundary remains deliberately narrow. ZMem authenticates the invitation and consuming MCP connection; optional client session labels and ids are asserted until a host-native adapter verifies them. A Room id never grants membership. Gateway remains authoritative for tenant identity, Room membership, and access, while ZMem owns governed memory selection and its exact context commitment.
+
+Dense-enabled Rooms now maintain local semantic indexes after writes and disclose compact readiness without leaking vectors. Context preparation distinguishes a Room with no memory from an established Room with no confident match. The cross-language commitment fixture pins exactly what Gateway and ZMem must hash.
+
+Production site and docs are live at `https://www.zmem.sh` and `https://docs.zmem.sh`. The next ZMem slice is console-native invitation/detach actions; the next cross-product slice is host-confirmed session identity plus the Gateway/Buzz attach and revocation handshake. External-agent PR `#8` remains excluded until rebased and revalidated against current `main`.
+
 ## 2026-08-10 - v0.1.12 publication
 
 Audience: internal Zerker product, engineering, developer experience, security review, Gateway integration, and release coordination.

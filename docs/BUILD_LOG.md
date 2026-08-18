@@ -1,3 +1,16 @@
+## 2026-08-18 - v0.1.13 live multi-agent memory published
+
+- Published four already-reviewed feature slices together: Rooms context-contract hardening (`#26`), semantic recall for shared Rooms (`#27`), the visual agent memory network and preview-bound transfers (`#28`), and live agent session attachments (`#29`).
+- Live session invitations are short-lived, single-use, and bound to one configured agent plus the consuming MCP connection. The console distinguishes configured, observed, live, idle, and detached state without exposing codes or memory text.
+- The console now shows Room-shared and member-private inventory, review state, contributor provenance, proof roots, and semantic-index readiness. Preview-bound handoff and snapshot restore prevents an import from drifting away from the artifact the operator reviewed.
+- Dense-enabled Rooms refresh missing or stale local vectors after writes, expose compact index readiness, and distinguish a genuinely empty Room from an established Room with no confident answer. Gateway remains authoritative for tenant identity and Room membership.
+- Merged release PR `#30` at `6fe15c6b310fea6e1dd3b26206ca6172b680eea1`, tagged that exact commit as `v0.1.13`, and published `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.13`.
+- Release PR CI run `32085420850`, post-merge main run `32085751681`, and tag run `32086135511` passed Python 3.10/3.11/3.12, ActiveGraph, site, docs, and release smoke.
+- Built from a clean detached tag checkout and clean-installed the wheel; it reported `zmem 0.1.13` and passed eval `11/11`. GitHub asset digests match wheel `sha256:c2450c6a8b3bdb1e12a012e3951fa0acab584949d157ab4f1129844f46d99126` and source distribution `sha256:44bdf177803db42c53bab532b0aeae6569cbece99d0b30607dcd12b76335aeab`.
+- Deployed site `dpl_8DABKk9jast6Cridc73TVHw7TzLN` and docs `dpl_7oiiqfzaSdRi3eGpCrrcb7Fr7qgn` to `https://www.zmem.sh` and `https://docs.zmem.sh`. Browser canaries show the v0.1.13 changelog and ActiveGraph `0.1.13` pack page with no console errors.
+- Audited the agent PR queue. Only old report-only Vigilis PR `#8` remains open; it predates the current Rooms and session surfaces and is excluded until rebased and rerun against current `main`.
+- Broad recurring swarms remain paused. The next bounded product slice is one-click invitation and detach controls in the local console, followed by host-confirmed session identity and a Gateway/Buzz handshake.
+
 ## 2026-08-17 - Live agent session attachment candidate
 
 - Added a durable local invitation and attachment ledger for exact MCP connections. Invitations are agent-bound, expire after a bounded interval, are single-use, and store only a SHA-256 code digest.
