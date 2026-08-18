@@ -2,6 +2,13 @@
 
 All notable Zerker Memory alpha changes are summarized here.
 
+## Unreleased
+
+### Console-Native Agent Sessions
+
+- Added local-console controls to create an agent-bound one-time invitation, copy the exact attach instruction, and detach an active connector without deleting memory.
+- Reused the existing session invitation and attachment ledger; the UI does not create a second identity, membership, or storage model.
+
 ## 0.1.13 - 2026-08-18
 
 ### Live Agent Sessions

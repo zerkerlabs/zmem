@@ -2,6 +2,10 @@ import Card from '@/components/Card';
 
 const updates = [
   {
+    title: 'Next: console-native agent sessions',
+    detail: 'Create an agent-bound one-time invitation, copy the exact attach instruction, and detach a connector from the local memory console without deleting its memory or widening Room access.',
+  },
+  {
     title: 'v0.1.13 live multi-agent memory',
     detail: 'One-time, agent-bound invitations now attach a named MCP connector without pretending ZMem can discover a UI chat. The console separates configured clients, historical memory use, and recent live presence; Room membership remains controlled by Gateway.',
   },

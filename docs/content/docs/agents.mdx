@@ -25,13 +25,15 @@ Setup configures the agent host, not a chat that is already running. Reload Code
 
 The MCP server supplies the operating instructions after it connects. `.zerker/AGENT_PROMPT.md` contains the same durable guidance for clients that need it added to project instructions manually.
 
-To make one current connector visible as a named live session, create a short-lived invitation:
+To make one current connector visible as a named live session, open `zmem ui` and use **Agent Memory Network**. Choose the agent, label the chat, optionally add Room context, then create and copy the one-time instruction.
+
+The same operation is available in the terminal:
 
 ```bash
 zmem session invite --agent codex --label release-chat --summary-only
 ```
 
-Paste the printed instruction into that chat. The agent calls `memory.session_attach` with the one-time code. Then inspect every live, idle, or detached attachment:
+Paste the instruction into that chat. The agent calls `memory.session_attach` with the one-time code. The console shows the attachment as live or idle and can detach it without deleting stored memory. The terminal equivalents are:
 
 ```bash
 zmem session connections --summary-only
@@ -64,6 +66,8 @@ The local console separates three facts that are easy to conflate:
 - **live:** a named connector consumed a one-time invitation and contacted ZMem recently.
 
 This means a config file merely sitting on disk is not presented as proof that a chat used ZMem. The same view shows observed sessions, source provenance, shared-store alignment, and the latest transfer package. Unknown frameworks that write through generic MCP still appear by their recorded agent identity.
+
+Session controls in this view use the same durable local invitation and attachment ledger as the CLI and MCP tools. They do not grant Room membership, elevate an agent to operator authority, or copy chat transcripts into memory.
 
 ## Manual Clients
 
