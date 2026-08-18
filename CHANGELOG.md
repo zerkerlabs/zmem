@@ -4,6 +4,10 @@ All notable Zerker Memory alpha changes are summarized here.
 
 ## Unreleased
 
+### Documentation Runtime
+
+- Updated Next.js, React, and Fumadocs to current compatible releases and pinned patched transitive `nanoid` and `postcss` versions. The docs production dependency audit now reports zero vulnerabilities.
+
 ### Console-Native Agent Sessions
 
 - Added local-console controls to create an agent-bound one-time invitation, copy the exact attach instruction, and detach an active connector without deleting memory.
