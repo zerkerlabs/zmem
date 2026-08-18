@@ -1,5 +1,14 @@
 # Identity Workspaces Lane Log
 
+## 2026-08-18T01:17:21Z - L5 identity-workspaces - Codex
+
+- Scope: added console-native controls over the existing live-session ledger so an operator can connect a named current agent chat without reconstructing CLI commands.
+- Files touched: `zerker_memory/dashboard.py`, `tests/test_dashboard.py`, `docs/content/docs/agents.mdx`, `CHANGELOG.md`, `site/src/pages/ChangelogPage.tsx`, `docs/CONTINUOUS_BUILD/identity-workspaces.log.md`, `docs/CURRENT_STATE.md`, and `docs/BUILD_LOG.md`.
+- Behavior changed: Agent Memory Network now creates short-lived, agent-bound, single-use invitations, renders one copy-ready `memory.session_attach` instruction, and detaches active connectors without deleting memory. The flow reuses the existing invitation and attachment tables; Room ids remain context only and Gateway remains the membership authority.
+- Verification: focused dashboard/session tests, Python compilation, site lint/build, docs typecheck/build, and responsive browser dogfooding passed. The site production dependency audit is clean; five pre-existing high-severity docs production dependency advisories remain for a separate update.
+- Blockers: Codex, Claude Code, Hermes, Cursor, OpenClaw, Buzz, and Gateway still need host adapters where independently verified chat/session identity is required. Generic MCP attachment remains connection-verified plus client-session asserted.
+- Next safe slice: define and test one Gateway/Buzz attach and revocation handshake, preserving the same session ledger and keeping Room membership external to ZMem.
+
 ## 2026-07-06T08:54:27Z - L5 identity-workspaces - Codex
 
 - Scope: mirrored the existing connected-agent source URI lineage into dashboard cards through one dashboard-only preview field, so operators can see where a linked agent's local memory came from without opening recent-source rows or raw JSON.

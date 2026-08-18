@@ -10,6 +10,7 @@ from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 from .exporter import export_bundle, export_snapshot
+from .session_connections import create_session_invitation, detach_session_attachment
 from .store import MemoryStore, default_db_path, default_policy_path
 from .workspaces import workspace_source_report, workspace_status_for_paths
 
@@ -256,6 +257,19 @@ INDEX_HTML = """<!doctype html>
     .pill.revoked, .pill.deprecated { color: var(--bad); border-color: #e5b6bb; }
     .content { line-height: 1.45; margin-bottom: 10px; }
     .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .session-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .session-row span { min-width: 0; overflow-wrap: anywhere; }
+    .session-row button { flex: 0 0 auto; padding: 5px 8px; }
     .proof-grid { display: grid; grid-template-columns: repeat(3, minmax(160px, 1fr)); gap: 10px; margin-bottom: 12px; }
     .proof-cell {
       border: 1px solid var(--line);
@@ -449,6 +463,16 @@ INDEX_HTML = """<!doctype html>
     <section>
       <h2>Agent Memory Network</h2>
       <p class="helper">See which frameworks are configured for this exact store, which agents have written memory, and which attached connectors are live recently. Configuration, historical provenance, and live presence stay separate.</p>
+      <div class="form-grid">
+        <select id="sessionAgent" aria-label="Agent to invite"></select>
+        <input id="sessionLabel" value="current chat" maxlength="120" aria-label="Session label">
+        <input id="sessionScope" value="project" maxlength="256" aria-label="Memory scope">
+        <input id="sessionRoom" maxlength="256" placeholder="Room id (optional)" aria-label="Room id">
+      </div>
+      <div class="toolbar" style="margin-bottom:12px">
+        <button class="primary" id="sessionInviteBtn" data-session-action="invite">Create One-Time Invite</button>
+      </div>
+      <div id="sessionInviteResult" class="empty">Choose an agent, create an invite, then paste the one copy-ready instruction into that agent chat.</div>
       <div id="continuity" class="empty">Connected-agent state will appear here.</div>
     </section>
     <section>
@@ -560,6 +584,7 @@ INDEX_HTML = """<!doctype html>
   <script>
     const $ = (id) => document.getElementById(id);
     let handoffPreviewId = null;
+    let lastSessionInstruction = '';
 
     async function api(path, options = {}) {
       const response = await fetch(path, {
@@ -572,7 +597,8 @@ INDEX_HTML = """<!doctype html>
     }
 
     function pill(value) {
-      return `<span class="pill ${String(value).replace(/[^a-z0-9_-]/gi, '')}">${value}</span>`;
+      const text = String(value);
+      return `<span class="pill ${text.replace(/[^a-z0-9_-]/gi, '')}">${escapeHtml(text)}</span>`;
     }
 
     function memoryItem(memory, controls = true) {
@@ -1066,9 +1092,62 @@ INDEX_HTML = """<!doctype html>
       return `${proofCells}<div class="list">${memories.slice(0, 8).map((memory) => memoryItem(memory, false)).join('')}</div>`;
     }
 
+    function setSessionAgentOptions(agents) {
+      const select = $('sessionAgent');
+      const previous = select.value;
+      const available = (agents || []).filter((agent) => agent.agent_id);
+      select.innerHTML = available.map((agent) => `<option value="${escapeHtml(agent.agent_id)}">${escapeHtml(agent.label || agent.agent_id)}</option>`).join('');
+      if (available.some((agent) => agent.agent_id === previous)) {
+        select.value = previous;
+        return;
+      }
+      const preferred = available.find((agent) => agent.live)
+        || available.find((agent) => agent.configured)
+        || available.find((agent) => agent.observed)
+        || available[0];
+      if (preferred) select.value = preferred.agent_id;
+    }
+
+    function renderSessionInvitation(invitation) {
+      const attachArgs = JSON.stringify({activation_code: invitation.activation_code});
+      lastSessionInstruction = `Call memory.session_attach with ${attachArgs}\nIf your client exposes its chat/session id, include it as client_session_id.`;
+      $('sessionInviteResult').innerHTML = `
+        <div class="proof-grid">
+          ${proofCell('Agent', invitation.agent_id)}
+          ${proofCell('Scope', invitation.scope)}
+          ${proofCell('Expires', invitation.expires_at)}
+        </div>
+        <div class="content"><strong>Paste this into the selected agent chat</strong></div>
+        <pre><code>${escapeHtml(lastSessionInstruction)}</code></pre>
+        <div class="toolbar">
+          <button data-session-action="copy">Copy Instruction</button>
+          ${invitation.room_id ? pill(`Room ${invitation.room_id}`) : ''}
+          ${pill('one time')}
+        </div>
+        <p class="helper" style="margin-top:10px">The code is stored only as a hash. It binds the consuming MCP connector; any client session id remains asserted unless the host verifies it.</p>`;
+    }
+
+    async function createSessionInvite(agentOverride = null) {
+      const agentId = agentOverride || $('sessionAgent').value;
+      if (!agentId) throw new Error('Choose an agent first.');
+      $('sessionAgent').value = agentId;
+      const result = await api('/api/sessions/invitations', {
+        method: 'POST',
+        body: JSON.stringify({
+          agent_id: agentId,
+          session_label: $('sessionLabel').value.trim() || null,
+          scope: $('sessionScope').value.trim() || 'project',
+          room_id: $('sessionRoom').value.trim() || null,
+        }),
+      });
+      renderSessionInvitation(result);
+      return result;
+    }
+
     function renderContinuity(state) {
       const continuity = state.agent_continuity || {};
       const agents = continuity.agents || [];
+      setSessionAgentOptions(agents);
       const agentCards = agents.map((agent) => {
         const sessions = agent.chat_session_ids || [];
         const attachedSessions = agent.session_attachments || [];
@@ -1077,16 +1156,20 @@ INDEX_HTML = """<!doctype html>
           ? `${agent.memory_count || 0} memories · ${sessions.length} sessions`
           : 'No writes observed yet';
         const source = agent.latest_origin_summary || agent.source_uri_preview || 'No source provenance yet';
-        const attached = attachedSessions.length
-          ? attachedSessions.map((session) => `${session.session_label || session.client_session_id || 'unnamed'} (${session.presence})`).join(' · ')
-          : 'No explicit live-session attachment';
+        const attachmentRows = attachedSessions.length
+          ? attachedSessions.map((session) => `<div class="session-row">
+              <span>${escapeHtml(session.session_label || session.client_session_id || 'unnamed')} · ${escapeHtml(session.presence)} · ${escapeHtml(session.identity_assurance)}</span>
+              ${session.state === 'active' ? `<button class="danger" data-session-action="detach" data-id="${escapeHtml(session.attachment_id)}">Detach</button>` : ''}
+            </div>`).join('')
+          : '<p>No explicit live-session attachment</p>';
         return `<div class="story-card">
           <div class="proof-status">${pill(connectionLabel)}${agent.live ? pill('live now') : ''}${agent.shared_store_match ? pill('shared store') : ''}</div>
           <strong>${escapeHtml(agent.label)}</strong>
           <p>${escapeHtml(activity)}</p>
-          <p>${escapeHtml(attached)}</p>
+          ${attachmentRows}
           <p>${escapeHtml(source)}</p>
           <code>${escapeHtml((agent.configured || agent.export_ready) ? (agent.path || 'configured') : agent.setup_command)}</code>
+          <div class="actions" style="margin-top:10px"><button data-session-action="invite" data-agent="${escapeHtml(agent.agent_id)}">Invite This Agent</button></div>
         </div>`;
       }).join('');
       const commands = (continuity.commands || []).map((command) => `<code>${escapeHtml(command)}</code>`).join('<br>');
@@ -1775,6 +1858,56 @@ INDEX_HTML = """<!doctype html>
     }
 
     document.body.addEventListener('click', async (event) => {
+      const sessionButton = event.target.closest('button[data-session-action]');
+      if (sessionButton) {
+        const sessionAction = sessionButton.dataset.sessionAction;
+        if (sessionAction === 'copy') {
+          if (!lastSessionInstruction) return;
+          try {
+            if (navigator.clipboard?.writeText) {
+              await navigator.clipboard.writeText(lastSessionInstruction);
+            } else {
+              const scratch = document.createElement('textarea');
+              scratch.value = lastSessionInstruction;
+              scratch.style.position = 'fixed';
+              scratch.style.opacity = '0';
+              document.body.appendChild(scratch);
+              scratch.select();
+              document.execCommand('copy');
+              scratch.remove();
+            }
+            const originalText = sessionButton.textContent;
+            sessionButton.textContent = 'Copied';
+            setTimeout(() => { sessionButton.textContent = originalText; }, 1200);
+          } catch (error) {
+            $('sessionInviteResult').insertAdjacentHTML('beforeend', `<p class="helper">${escapeHtml(error.message)}</p>`);
+          }
+          return;
+        }
+        const originalText = sessionButton.textContent;
+        sessionButton.disabled = true;
+        sessionButton.textContent = 'Working...';
+        try {
+          if (sessionAction === 'invite') {
+            await createSessionInvite(sessionButton.dataset.agent || null);
+          } else if (sessionAction === 'detach') {
+            if (!window.confirm('Detach this connector? Stored memory will remain.')) return;
+            const result = await api(`/api/sessions/${sessionButton.dataset.id}/detach`, {
+              method: 'POST',
+              body: JSON.stringify({reason: 'detached from local console'}),
+            });
+            lastSessionInstruction = '';
+            $('sessionInviteResult').innerHTML = `<div class="empty">Detached ${escapeHtml(result.session_label || result.client_session_id || result.attachment_id)}. Stored memory was not deleted.</div>`;
+            await load();
+          }
+        } catch (error) {
+          $('sessionInviteResult').innerHTML = `<div class="empty">${escapeHtml(error.message)}</div>`;
+        } finally {
+          sessionButton.disabled = false;
+          sessionButton.textContent = originalText;
+        }
+        return;
+      }
       const button = event.target.closest('button[data-action]');
       if (!button) return;
       const action = button.dataset.action;
@@ -1989,6 +2122,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     )
                 )
                 return
+            if parsed.path == "/api/sessions/invitations":
+                self._send_json(create_dashboard_session_invitation(store, payload))
+                return
             if parsed.path == "/api/snapshot":
                 out_dir = Path(payload["out_dir"]) if payload.get("out_dir") else None
                 self._send_json(export_snapshot(store.snapshot(), out_dir=out_dir))
@@ -2019,6 +2155,18 @@ class DashboardHandler(BaseHTTPRequestHandler):
             if parsed.path == "/api/release/verify-return-packet":
                 self._send_json(create_dashboard_return_packet_verify(store))
                 return
+            session_match = re_session_action(parsed.path)
+            if session_match:
+                attachment_id, action = session_match
+                if action == "detach":
+                    self._send_json(
+                        create_dashboard_session_detach(
+                            store,
+                            attachment_id=attachment_id,
+                            reason=payload.get("reason"),
+                        )
+                    )
+                    return
             receipt_match = re_receipt_action(parsed.path)
             if receipt_match:
                 action_id, action = receipt_match
@@ -2083,6 +2231,40 @@ def re_receipt_action(path: str) -> tuple[str, str] | None:
     if len(parts) == 4 and parts[0] == "api" and parts[1] == "receipts":
         return parts[2], parts[3]
     return None
+
+
+def re_session_action(path: str) -> tuple[str, str] | None:
+    parts = path.strip("/").split("/")
+    if len(parts) == 4 and parts[0] == "api" and parts[1] == "sessions":
+        return parts[2], parts[3]
+    return None
+
+
+def create_dashboard_session_invitation(
+    store: MemoryStore,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    return create_session_invitation(
+        store.conn,
+        agent_id=required_str(payload, "agent_id"),
+        scope=payload.get("scope") or "project",
+        room_id=payload.get("room_id") or None,
+        session_label=payload.get("session_label") or None,
+    )
+
+
+def create_dashboard_session_detach(
+    store: MemoryStore,
+    *,
+    attachment_id: str,
+    reason: str | None = None,
+) -> dict[str, Any]:
+    return detach_session_attachment(
+        store.conn,
+        attachment_id=attachment_id,
+        detached_by="operator://dashboard",
+        reason=reason,
+    )
 
 
 def first(params: dict[str, list[str]], key: str) -> str | None:

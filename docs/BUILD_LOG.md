@@ -1,3 +1,11 @@
+## 2026-08-18 - Console-native agent session controls candidate
+
+- Added one local-console path to select an agent, label the current chat, optionally carry Room context, and create the existing short-lived, agent-bound, single-use invitation.
+- The console renders the exact `memory.session_attach` instruction for pasting into the selected agent and can detach an active connector without deleting stored memory.
+- Reused the shipped session invitation and attachment ledger. Activation codes remain hash-only at rest, client session identity remains asserted unless the host verifies it, and Zerker Gateway remains authoritative for Room membership.
+- Added dashboard API coverage for invitation and detach operations, public agent documentation, and an unreleased product changelog entry.
+- Focused dashboard/session tests, Python compilation, site lint/build, docs typecheck/build, and responsive browser dogfooding passed. The site production dependency audit is clean; the docs production tree still reports five pre-existing high-severity dependency advisories and requires a separate dependency update.
+
 ## 2026-08-18 - v0.1.13 live multi-agent memory published
 
 - Published four already-reviewed feature slices together: Rooms context-contract hardening (`#26`), semantic recall for shared Rooms (`#27`), the visual agent memory network and preview-bound transfers (`#28`), and live agent session attachments (`#29`).

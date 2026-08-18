@@ -30,8 +30,11 @@ from zerker_memory.dashboard import (
     create_dashboard_launch_proof,
     create_dashboard_release_pack,
     create_dashboard_return_packet_verify,
+    create_dashboard_session_detach,
+    create_dashboard_session_invitation,
     re_memory_action,
     re_receipt_action,
+    re_session_action,
 )
 from zerker_memory.rooms import RoomMemoryService, RoomStoreResolver
 from zerker_memory.session_connections import consume_session_invitation, create_session_invitation
@@ -46,6 +49,9 @@ class DashboardTest(unittest.TestCase):
         self.assertIn("Workspace Profile", INDEX_HTML)
         self.assertIn("Memory Provenance", INDEX_HTML)
         self.assertIn("Agent Memory Network", INDEX_HTML)
+        self.assertIn("Create One-Time Invite", INDEX_HTML)
+        self.assertIn("/api/sessions/invitations", INDEX_HTML)
+        self.assertIn("Copy Instruction", INDEX_HTML)
         self.assertIn("Shared Rooms", INDEX_HTML)
         self.assertIn("Context Transfer", INDEX_HTML)
         self.assertIn("Claim Conflicts", INDEX_HTML)
@@ -270,6 +276,42 @@ class DashboardTest(unittest.TestCase):
         self.assertFalse(claude["observed"])
         self.assertEqual(claude["session_attachments"][0]["client_session_id"], "chat_live")
         self.assertEqual(claude["session_attachments"][0]["identity_assurance"], "client_asserted")
+
+    def test_dashboard_session_controls_reuse_the_session_ledger(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = MemoryStore(Path(tmp) / ".zerker" / "memory.sqlite")
+            store.init()
+            invitation = create_dashboard_session_invitation(
+                store,
+                {
+                    "agent_id": "codex",
+                    "session_label": "current chat",
+                    "scope": "project",
+                    "room_id": "launch-room",
+                },
+            )
+            stored = store.conn.execute(
+                "SELECT code_hash FROM session_invitations WHERE invitation_id = ?",
+                (invitation["invitation_id"],),
+            ).fetchone()
+            attachment = consume_session_invitation(
+                store.conn,
+                activation_code=invitation["activation_code"],
+                agent_id="codex",
+                connection_id="conn_dashboard",
+            )
+            detached = create_dashboard_session_detach(
+                store,
+                attachment_id=attachment["attachment_id"],
+                reason="finished in console",
+            )
+
+        self.assertTrue(invitation["activation_code"].startswith("zma_"))
+        self.assertNotEqual(stored["code_hash"], invitation["activation_code"])
+        self.assertEqual(invitation["room_membership_authority"], "gateway")
+        self.assertEqual(detached["presence"], "detached")
+        self.assertEqual(detached["detached_by"], "operator://dashboard")
+        self.assertEqual(detached["detach_reason"], "finished in console")
 
     def test_room_inventory_separates_shared_and_private_memory_without_claiming_membership(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -972,6 +1014,10 @@ class DashboardTest(unittest.TestCase):
     def test_parses_receipt_action_paths(self):
         self.assertEqual(re_receipt_action("/api/receipts/act_123/bundle"), ("act_123", "bundle"))
         self.assertIsNone(re_receipt_action("/api/receipts/act_123"))
+
+    def test_parses_session_action_paths(self):
+        self.assertEqual(re_session_action("/api/sessions/att_123/detach"), ("att_123", "detach"))
+        self.assertIsNone(re_session_action("/api/sessions/att_123"))
 
     def test_receipt_bundle_api_exports_bundle(self):
         with tempfile.TemporaryDirectory() as tmp:
