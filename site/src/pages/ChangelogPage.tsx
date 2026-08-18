@@ -2,12 +2,12 @@ import Card from '@/components/Card';
 
 const updates = [
   {
-    title: 'Next: live agent sessions and safe transfer',
+    title: 'v0.1.13 live multi-agent memory',
     detail: 'One-time, agent-bound invitations now attach a named MCP connector without pretending ZMem can discover a UI chat. The console separates configured clients, historical memory use, and recent live presence; Room membership remains controlled by Gateway.',
   },
   {
-    title: 'Next: semantic recall for shared Rooms',
-    detail: 'Dense-enabled Rooms keep their local semantic index current after writes, expose index readiness without leaking vectors, and distinguish a new empty room from an established room with no relevant match.',
+    title: 'v0.1.13 semantic recall for shared Rooms',
+    detail: 'Dense-enabled Rooms keep their local semantic index current after writes, expose index readiness without leaking vectors, distinguish empty from abstained context, and pin the Gateway context commitment with a cross-language fixture.',
   },
   {
     title: 'v0.1.12 guided multi-agent setup',
