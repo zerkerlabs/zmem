@@ -43,6 +43,13 @@ class RoomMemoryConflict(ValueError):
     pass
 
 
+class _InitializedRoomMemoryStore(MemoryStore):
+    """Use a resolver-verified schema without replaying initialization per operation."""
+
+    def init(self) -> None:
+        return
+
+
 def room_storage_key(tenant_id: str, room_id: str) -> str:
     tenant = _required_text(tenant_id, "tenant_id", max_chars=256)
     room = validate_room_id(room_id)
@@ -155,6 +162,7 @@ class RoomStoreResolver:
         self.policy_path = Path(policy_path).expanduser().resolve(strict=False) if policy_path is not None else None
         self._initialization_locks: dict[str, threading.Lock] = {}
         self._initialization_locks_guard = threading.Lock()
+        self._schema_versions: dict[str, int] = {}
         self.storage_root.mkdir(parents=True, exist_ok=True)
         try:
             self.storage_root.chmod(0o700)
@@ -206,9 +214,45 @@ class RoomStoreResolver:
         with self._initialization_locks_guard:
             return self._initialization_locks.setdefault(storage_key, threading.Lock())
 
+    def _open_initialized_store(self, room_id: str, path: Path, storage_key: str) -> MemoryStore:
+        expected_version = self._schema_versions.get(storage_key)
+        if expected_version is not None:
+            self._ensure_descriptor(room_id)
+            store = _InitializedRoomMemoryStore(
+                path,
+                policy_path=self.policy_path,
+                _set_journal_mode=False,
+            )
+            if _sqlite_schema_version(store) == expected_version:
+                return store
+            store.conn.close()
+
+        with self._initialization_lock(room_id):
+            expected_version = self._schema_versions.get(storage_key)
+            if expected_version is not None:
+                store = _InitializedRoomMemoryStore(
+                    path,
+                    policy_path=self.policy_path,
+                    _set_journal_mode=False,
+                )
+                if _sqlite_schema_version(store) == expected_version:
+                    return store
+                store.conn.close()
+
+            self._ensure_descriptor(room_id)
+            store = MemoryStore(path, policy_path=self.policy_path)
+            try:
+                store.init()
+            except BaseException:
+                store.conn.close()
+                raise
+            self._schema_versions[storage_key] = _sqlite_schema_version(store)
+            return store
+
     @contextmanager
     def open(self, room_id: str) -> Iterator[MemoryStore]:
         path = self.db_path(room_id)
+        storage_key = room_storage_key(self.tenant_id, room_id)
         if path.parent.is_symlink():
             raise ValueError("room storage directory cannot be a symlink")
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -220,18 +264,15 @@ class RoomStoreResolver:
             path.parent.chmod(0o700)
         except OSError:
             pass
-        with self._initialization_lock(room_id):
-            self._ensure_descriptor(room_id)
-            store = MemoryStore(path, policy_path=self.policy_path)
-            try:
-                store.init()
-            except BaseException:
-                store.conn.close()
-                raise
+        store = self._open_initialized_store(room_id, path, storage_key)
         try:
             yield store
         finally:
             store.conn.close()
+
+
+def _sqlite_schema_version(store: MemoryStore) -> int:
+    return int(store.conn.execute("PRAGMA schema_version").fetchone()[0])
 
 
 class RoomMemoryService:

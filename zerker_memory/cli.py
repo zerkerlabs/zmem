@@ -1209,6 +1209,39 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
     serve.add_argument("--retrieval-mode", choices=["fts", "dense-hybrid"], default="fts")
     serve.add_argument("--retrieval-provider-config", type=expand_user_path)
 
+    rooms_acceptance = sub.add_parser(
+        "rooms-acceptance",
+        help="Verify the local Rooms HTTP contract, isolation, and concurrent context preparation",
+    )
+    rooms_acceptance.add_argument(
+        "--requests",
+        type=int,
+        default=50,
+        help="Concurrent context requests to measure after contract checks (default: 50)",
+    )
+    rooms_acceptance.add_argument(
+        "--concurrency",
+        type=int,
+        default=4,
+        help="Maximum concurrent request workers (default: 4)",
+    )
+    rooms_acceptance.add_argument(
+        "--timeout-seconds",
+        type=float,
+        default=3.0,
+        help="Per-request loopback HTTP timeout (default: 3)",
+    )
+    rooms_acceptance.add_argument(
+        "--max-p95-ms",
+        type=float,
+        help="Fail when measured p95 exceeds this explicit engineering budget",
+    )
+    rooms_acceptance.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Print only the compact human-readable acceptance summary",
+    )
+
     launch_proof = sub.add_parser("launch-proof", help="Generate launch-ready proof artifacts in one command")
     launch_proof.add_argument("--out-dir", type=expand_user_path)
     launch_proof.add_argument("--agent", default="codex")
@@ -1371,6 +1404,24 @@ def main(argv: list[str] | None = None) -> int:
     reexec_code = maybe_reexec_with_supported_python(args.command, argv)
     if reexec_code is not None:
         return reexec_code
+    if args.command == "rooms-acceptance":
+        from .rooms_acceptance import render_rooms_acceptance_summary, run_local_rooms_acceptance
+
+        try:
+            result = run_local_rooms_acceptance(
+                requests=args.requests,
+                concurrency=args.concurrency,
+                timeout_seconds=args.timeout_seconds,
+                max_p95_ms=args.max_p95_ms,
+            )
+        except (OSError, ValueError) as exc:
+            print_json({"ok": False, "error": str(exc)})
+            return 1
+        if args.summary_only:
+            print(render_rooms_acceptance_summary(result), end="")
+        else:
+            print_json(result)
+        return 0 if result["ok"] else 1
     if args.command == "serve":
         from .rooms import RoomMemoryService, RoomStoreResolver
         from .service import serve_room_memory

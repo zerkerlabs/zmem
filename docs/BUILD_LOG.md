@@ -1,3 +1,9 @@
+## 2026-08-18 - Rooms HTTP acceptance gate candidate
+
+- Added `zmem rooms-acceptance`, a self-contained loopback HTTP gate over ephemeral tenant stores. It verifies authentication, caller-independent tenant identity, room/member/tenant isolation, commitments, abstention, retry safety, conflict rejection, and concurrent context preparation without writing to a deployed tenant.
+- The command reports p50, p95, maximum latency, completed requests, and bounded failures. Latency becomes a pass/fail condition only when the operator supplies `--max-p95-ms`; Gateway still owns its production network, timeout, retry, and join-path SLO.
+- Removed repeated schema and WAL setup from warm Room requests while preserving serialized first-open initialization. Focused Rooms coverage passes `34/34`; the combined Rooms/store/CLI gate passes `623/623`; the full suite passes `1,453` tests with two expected skips; eval passes `11/11`; strict release smoke, compilation, docs typecheck, and the `19`-page docs build pass. The default 50-request, four-worker acceptance run passes all `13/13` correctness checks.
+
 ## 2026-08-18 - One-command live agent connection candidate
 
 - Added `zmem connect <agent>` as a daily-use wrapper over the existing guided setup and live-session invitation primitives. It configures exactly one selected agent against the current workspace, then prints one expiring copy-ready `memory.session_attach` instruction.
