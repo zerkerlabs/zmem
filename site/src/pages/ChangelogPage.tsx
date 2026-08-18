@@ -2,6 +2,10 @@ import Card from '@/components/Card';
 
 const updates = [
   {
+    title: 'v0.1.15 one-command agent connection',
+    detail: 'Configure one agent host and issue one scoped, agent-bound live-session invitation with zmem connect, while keeping reload, attachment, chat identity, and Room membership states explicit.',
+  },
+  {
     title: 'v0.1.14 deployment-safe dense Rooms',
     detail: 'Dense-hybrid Room services now fail readiness until the local runtime and cached model are present, while liveness stays separate and startup prints the exact offline setup step.',
   },
