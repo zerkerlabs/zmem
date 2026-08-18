@@ -26,13 +26,13 @@ It is not yet:
 - a semantic-truth oracle; receipts prove integrity, provenance, and influence rather than truth,
 - a full vector/graph memory replacement,
 - a fully polished hosted review workflow.
-- a deployed zerker.ai Rooms backend; the ZMem service is published, but the Gateway Go client and durable Rooms event persistence still need to land.
+- a deployed zerker.ai Rooms backend; the ZMem service plus Gateway client and durable Rooms persistence are implemented, but the Gateway release pin, production retrieval profile, load/timeout gates, and live two-agent acceptance still need to land.
 
 Product signal note: the current wedge is validated by builder demand for local, inspectable, structured, curated, and verifiable agent memory. See `docs/MOLTBOOK_ZMEM_PRODUCT_SIGNAL.md`.
 
 ## Not Built Yet, In Priority Order
 
-1. Console-native invitation and detach actions, followed by host-native session confirmation adapters plus a Gateway/Buzz attachment and revocation handshake and a real two-agent shared-scope test.
+1. Host-native session confirmation adapters plus a Gateway/Buzz attachment and revocation handshake and a real two-agent shared-scope test. Console-native invitation and detach actions are implemented on `main`.
 2. Handoff ownership/lease metadata on top of the shipped provenance-preserving dry-run import preview.
 3. Reviewed live day/week/profile consolidation rollups before any periodic scheduler is considered.
 4. Efficiency tuning for the opt-in local dense/FTS candidate. Full local LoCoMo and LongMemEval comparisons completed with 347 and 91 gains, zero losses, and materially higher token and latency cost.
@@ -41,7 +41,7 @@ Product signal note: the current wedge is validated by builder demand for local,
 7. Governed tool and interface-contract trust records linked to Treeship canary proof without moving install/run authority into ZMem.
 8. A server-controlled MCP dense-retrieval mode after the CLI/library candidate is accepted; existing MCP tool schemas intentionally retain stable FTS behavior.
 9. An official model-judged BEAM submission path plus broader multi-conversation 1M and 10M coverage; the first isolated runs are complete.
-10. Graduate the published tenant-local Rooms adapter into production: Gateway Go client, durable Rooms state, load/timeout gates, separately authorized remote review, hosted tenant routing, collective receipts, customer-managed keys, SSO, audit retention, and VPC/on-prem guides.
+10. Graduate the merged Rooms integration into production: update Gateway's immutable ZMem pin and abstention contract to `v0.1.13`, provision the cached local dense-hybrid profile, run load/timeout and live two-agent gates, and then add separately authorized remote review, hosted tenant routing, collective receipts, customer-managed keys, SSO, audit retention, and VPC/on-prem guides.
 
 ## Functional Today
 
@@ -49,6 +49,7 @@ Product signal note: the current wedge is validated by builder demand for local,
 - `v0.1.13` live agent sessions with hash-only, expiring, agent-bound invitations; exact MCP connection attachment; client-asserted optional session ids; live/idle presence; explicit detach; and a console that keeps configured, observed, active, and live state distinct.
 - `v0.1.13` visual agent memory network and preview-bound transfer flow with Room-shared/member-private inventory, contributors, proof roots, semantic-index coverage, and exact handoff/snapshot restore confirmation.
 - `v0.1.13` semantic recall and context-contract hardening for Rooms, including post-write index maintenance, compact readiness metadata, `empty` versus `abstained` state, and cross-language context commitment fixtures.
+- The Gateway repository now has the durable Room/event store, real authenticated ZMem HTTP client, `PrepareContext`/`Propose`/`Record` seam, commitment verification, fail-closed joins, accepted-event recording, and quarantined proposal handling. Production rollout and current-release acceptance remain separate gates.
 - `v0.1.12` guided setup with `zmem setup [agents...]`, exact database/policy/agent/profile verification, bound MCP host identity, per-process connection provenance, explicit reload/import states, and `zmem workspace prune` for stale registry entries.
 - `v0.1.11` concurrent first-open hardening over the `v0.1.10` room-scoped shared/private memory service, authenticated context/record/propose endpoints, explicit withheld/abstention state, retry-safe writes, and hard tenant-room isolation.
 - Read-only `zmem audit health` JSON and terminal summaries for observable memory-state findings, with no semantic-truth claim.
