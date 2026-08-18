@@ -112,12 +112,15 @@ bash examples/first_run.sh
 Connect agent clients to this project:
 
 ```bash
+zmem connect codex --label current-chat
+
+# Or configure several clients at once.
 zmem setup codex claude-code hermes --summary-only
 zmem status --summary-only
 zmem doctor --agent codex --agent claude-code
 ```
 
-Codex and Claude Code use directly written MCP entries. Hermes and other manual clients get a project-local export to import. Every generated entry points to the same absolute workspace database and carries its agent-host identity. The per-process connection id is provenance, not a guaranteed UI chat id.
+`zmem connect` initializes the workspace if needed and prints the one-time `memory.session_attach` instruction for one current chat. Codex and Claude Code use directly written MCP entries. Hermes and other manual clients get a project-local export to import. Every generated entry points to the same absolute workspace database and carries its agent-host identity. The per-process connection id is provenance, not a guaranteed UI chat id.
 
 For individual or manual config work:
 

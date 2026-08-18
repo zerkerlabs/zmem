@@ -5,6 +5,7 @@ This is the short orchestration dashboard for Zerker Memory. Every autonomous bu
 ## Release Coordination
 `2026-08-18`
 
+- Built an isolated one-command agent connection candidate after `v0.1.14`: `zmem connect <agent>` initializes or verifies the exact workspace binding and issues one unique, expiring instruction for the current agent session. The command does not mark a session live until that agent calls `memory.session_attach`, does not claim a host-verified chat id, and does not grant Room membership.
 - Published `v0.1.14` from release PR `#36` merge commit `1a70f25fe9fc0df6680cd3fdbc5520192715d40f` at `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.14`. Feature PR `#35` supplied fail-closed dense Room readiness at `ebb6c96e72032c174f3188c4d262d48c2dc0f4d4`; console-native session controls and the patched docs runtime were already merged.
 - Release PR CI run `32090900119`, post-merge main run `32091243484`, and tag run `32091758474` passed every Python 3.10/3.11/3.12, ActiveGraph, site, docs, and release-smoke job. Strict local proof remains green with public verify `6/6`, launch assets `8/8`, and the return packet ready.
 - GitHub assets downloaded back with matching digests: wheel `sha256:ec8161630537d2b73196ed62c8ff52f7d15bc4f42d4c5f783aae8b26f2f0cc66`; source distribution `sha256:652e3052e17c66f9dd1a0b0b9a53fbd3ea84201f47d32502dbc39aa3987a4a79`. A clean wheel install reports `0.1.14` and passes eval `11/11`.

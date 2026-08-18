@@ -1,3 +1,9 @@
+## 2026-08-18 - One-command live agent connection candidate
+
+- Added `zmem connect <agent>` as a daily-use wrapper over the existing guided setup and live-session invitation primitives. It configures exactly one selected agent against the current workspace, then prints one expiring copy-ready `memory.session_attach` instruction.
+- The command fails before issuing an invitation when workspace binding is not valid, reports reload versus manual-import state, and preserves the existing connector-only identity and Gateway Room-membership boundaries.
+- Added parser, successful attach, failed setup, and runtime-reexec coverage. The full suite passes `1,432` tests with two expected skips; eval passes `11/11`, the docs typecheck/build produces all `18` pages, and a real temporary-workspace smoke passes.
+
 ## 2026-08-18 - v0.1.14 deployment-safe shared memory published
 
 - Merged fail-closed dense Room readiness through PR `#35` at `ebb6c96e72032c174f3188c4d262d48c2dc0f4d4`, then merged release PR `#36` at `1a70f25fe9fc0df6680cd3fdbc5520192715d40f` and tagged that exact commit as `v0.1.14`.
