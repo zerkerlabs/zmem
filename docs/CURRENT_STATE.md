@@ -5,8 +5,8 @@ This is the short orchestration dashboard for Zerker Memory. Every autonomous bu
 ## Release Coordination
 `2026-08-18`
 
-- Built the next isolated candidate on `codex/console-session-controls`: the local Agent Memory Network can create an agent-bound one-time invitation, copy the exact `memory.session_attach` instruction, and detach a live connector without deleting memory. It reuses the v0.1.13 session ledger and does not grant Room membership or claim host-verified chat identity.
-- Focused dashboard/session tests, Python compilation, site lint/build, docs typecheck/build, and responsive browser dogfooding pass. A separate docs dependency update is required for five pre-existing high-severity production advisories; the site production dependency audit remains clean.
+- Merged console-native session controls through PR `#32` at `ecb0beb762ec02f6bde228f62900caf3502c0f1f`. The local Agent Memory Network can create an agent-bound one-time invitation, copy the exact `memory.session_attach` instruction, and detach a live connector without deleting memory. It reuses the v0.1.13 session ledger and does not grant Room membership or claim host-verified chat identity.
+- PR `#32` passed all seven CI jobs, including the Python 3.10/3.11/3.12 matrix and strict release smoke. A separate dependency-only candidate updates the docs runtime and reduces its production audit from five high-severity advisories to zero while preserving typecheck and all 18 generated pages.
 - Published `v0.1.13` from release PR `#30` merge commit `6fe15c6b310fea6e1dd3b26206ca6172b680eea1` at `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.13`. Feature PRs `#26` through `#29` supplied the Rooms contract, semantic recall, agent console/transfer, and live-session implementations.
 - Operators can issue short-lived one-time invitations for one configured agent, inspect attached connectors as live or idle, and detach them without deleting memory. Optional client session labels and ids remain asserted unless a host-native adapter verifies them.
 - The local console now joins configured clients, observed provenance, live session state, Room-shared/member-private inventory, review state, proof roots, and semantic-index readiness in one local surface. Handoff and snapshot restore require a preview bound to the exact artifact and destination state.
@@ -14,7 +14,7 @@ This is the short orchestration dashboard for Zerker Memory. Every autonomous bu
 - Release PR CI run `32085420850`, post-merge main run `32085751681`, and tag run `32086135511` passed every Python 3.10/3.11/3.12, ActiveGraph, site, docs, and release-smoke job.
 - Exact GitHub assets verify as wheel `sha256:c2450c6a8b3bdb1e12a012e3951fa0acab584949d157ab4f1129844f46d99126` and source distribution `sha256:44bdf177803db42c53bab532b0aeae6569cbece99d0b30607dcd12b76335aeab`. A clean wheel install reports `0.1.13` and passes eval `11/11`.
 - Production site deployment `dpl_8DABKk9jast6Cridc73TVHw7TzLN` and docs deployment `dpl_7oiiqfzaSdRi3eGpCrrcb7Fr7qgn` are live. Public browser canaries show the new changelog and ActiveGraph docs with no console errors.
-- Only external-agent PR `#8` remains open. It predates current `main` and is not part of the release until rebased and rerun. Broad swarms stay paused; after the console-controls candidate, the next product boundary is host-confirmed session identity and Gateway/Buzz attach/revocation.
+- Only external-agent PR `#8` remains open. It predates current `main` and is not part of the release until rebased and rerun. Broad swarms stay paused; the next product boundary is host-confirmed session identity and Gateway/Buzz attach/revocation.
 
 `2026-08-17`
 
