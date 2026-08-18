@@ -2,7 +2,13 @@
 
 All notable Zerker Memory alpha changes are summarized here.
 
-## Unreleased
+## 0.1.13 - 2026-08-18
+
+### Live Agent Sessions
+
+- Added hash-only, short-lived, agent-bound, single-use invitations through `zmem session invite`, `connections`, and `detach`, plus agent-safe MCP attach and status tools.
+- The local console now separates configured, historically observed, active, live, idle, and detached agent states without exposing invitation codes or raw memory.
+- Session labels and optional client session ids are asserted metadata, not host-verified UI chat identity. A Room id supplies context and never grants Room membership or access.
 
 ### Agent Memory Network And Safe Transfer
 
@@ -17,6 +23,10 @@ All notable Zerker Memory alpha changes are summarized here.
 - Dense-enabled Rooms now maintain each room's local semantic index after writes and catch up missing or stale vectors before context preparation. No context request downloads a model.
 - Room write and context responses expose compact retrieval-index readiness, model identity, coverage, and zero-network status without exposing vectors or raw memory.
 - An established room that produces no confident candidate now returns `abstained` with `no-relevant-memory`; `empty` is reserved for a room with no prior active memory.
+
+### Rooms Contract Hardening
+
+- Pinned the exact room-context commitment bytes and digest with a cross-language golden fixture, constrained temporal abstention output to a fixed allowlist, and removed caller-supplied tenant identity from the Gateway request contract.
 
 ## 0.1.12 - 2026-08-10
 
