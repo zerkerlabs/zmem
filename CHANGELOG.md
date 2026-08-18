@@ -2,6 +2,15 @@
 
 All notable Zerker Memory alpha changes are summarized here.
 
+## 0.1.16 - 2026-08-18
+
+### Governed Premises For Zerker Reason
+
+- Added `zmem reason export` to turn active, explicitly labeled policy memories into a deterministic structured-fact artifact with per-fact receipt provenance.
+- Added `zmem reason verify` to reject malformed, tampered, stale, replayed, or revoked premise artifacts against current governed memory.
+- Kept the boundary explicit: ZMem verifies source bytes, lifecycle, governance, and artifact freshness; Reason owns ontology, authority policy, temporal derivation, and authorization semantics.
+- Rejected duplicate keys and non-finite JSON numbers during parsing, digesting, output, and verification so cross-language consumers receive strict JSON.
+
 ## 0.1.15 - 2026-08-18
 
 ### One-Command Agent Connection

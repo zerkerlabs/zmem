@@ -21,10 +21,15 @@ const areas = [
     href: '/docs/receipts',
     body: 'Trace what memory influenced an answer, package evidence, and compare retrieval quality with reproducible benchmark runs.',
   },
+  {
+    title: 'Feed Governed Facts to Reason',
+    href: '/docs/reason',
+    body: 'Export active, receipt-verified policy memories as deterministic structured premises for Zerker Reason.',
+  },
 ];
 
 const stats = [
-  ['8', 'core guides'],
+  ['16', 'guides'],
   ['MCP', 'agent ready'],
   ['Local', 'proof-first'],
 ];

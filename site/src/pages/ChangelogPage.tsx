@@ -2,6 +2,10 @@ import Card from '@/components/Card';
 
 const updates = [
   {
+    title: 'v0.1.16 governed premises for Zerker Reason',
+    detail: 'Export active, receipt-verified policy facts as deterministic strict JSON, then reject malformed, tampered, stale, replayed, or revoked premise artifacts before Reason evaluates them.',
+  },
+  {
     title: 'v0.1.15 one-command agent connection',
     detail: 'Configure one agent host and issue one scoped, agent-bound live-session invitation with zmem connect, while keeping reload, attachment, chat identity, and Room membership states explicit.',
   },

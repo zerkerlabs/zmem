@@ -1,0 +1,61 @@
+---
+title: Zerker Reason
+description: Export active governed memory as deterministic structured premises for Zerker Reason.
+---
+
+ZMem can supply Zerker Reason with structured facts whose source bytes and memory lifecycle are locally verifiable. ZMem does not extract facts from prose or decide what they mean. It exports only memories that were deliberately authored in the premise schema and admitted through the memory policy.
+
+## Store A Premise
+
+Create a strict JSON envelope:
+
+```json
+{
+  "schema": "zerker.memory.reason-premise.v1",
+  "fact": {
+    "id": "fact_tests_abc",
+    "predicate": "tests_passed",
+    "arguments": ["commit_abc"],
+    "authority": "tool-reported",
+    "observed_at": "2026-08-14T11:00:00Z"
+  }
+}
+```
+
+Store it as an explicitly labeled policy memory:
+
+```bash
+zmem remember "$(cat premise.json)" \
+  --type policy \
+  --scope project:release \
+  --source human \
+  --label reason:premise:v1
+```
+
+Human- and system-authored premises can be active immediately under the configured policy. Agent-, tool-, document-, and import-authored premises must have an explicit promotion receipt before export. Quarantined candidates appear in the artifact's withheld list and never enter its facts.
+
+## Export And Verify
+
+```bash
+zmem reason export \
+  --scope project:release \
+  --out .zerker/exports/reason-premises.json
+
+zmem reason verify .zerker/exports/reason-premises.json
+```
+
+The export is generated under one locked SQLite snapshot and contains:
+
+- deterministically ordered facts;
+- the governing memory and receipt identity for each fact;
+- labeled candidates withheld by lifecycle state;
+- the source snapshot Merkle root and event counts;
+- a digest over the complete unsigned artifact.
+
+Verification recomputes the artifact and compares it with current governed memory. Changed content, missing or invalid receipts, duplicate fact IDs, direct status tampering, stale exports, and post-export revocation fail closed. Parsing and output use strict JSON: duplicate keys plus `NaN`, `Infinity`, and `-Infinity` are rejected.
+
+## Responsibility Boundary
+
+ZMem proves that the exported bytes came from the named memory, that its write-receipt chain verifies, that the governing lifecycle admitted it, and that the artifact still matches current state.
+
+Zerker Reason remains responsible for ontology, authority policy, temporal interpretation, derivation, conflict semantics, and authorization. A valid ZMem artifact is admissible evidence, not proof that every premise is true or that a requested action is authorized.
