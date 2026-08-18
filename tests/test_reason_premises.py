@@ -11,6 +11,7 @@ from zerker_memory.reason_premises import (
     PREMISE_CONTENT_SCHEMA,
     PREMISE_LABEL,
     build_reason_premises,
+    load_reason_premises,
     verify_reason_premises,
     write_reason_premises,
 )
@@ -176,6 +177,50 @@ class ReasonPremisesTest(unittest.TestCase):
             write_reason_premises(output, artifact)
 
         self.assertFalse(output.exists())
+
+    def test_non_finite_memory_arguments_fail_closed(self):
+        for index, constant in enumerate(("NaN", "Infinity", "-Infinity")):
+            with self.subTest(constant=constant):
+                db_path = Path(self.tempdir.name) / f"non-finite-{index}.sqlite"
+                store = MemoryStore(db_path)
+                store.init()
+                self.addCleanup(store.conn.close)
+                store.remember(
+                    (
+                        '{"schema":"zerker.memory.reason-premise.v1","fact":'
+                        '{"id":"fact_bad","predicate":"tests_passed",'
+                        f'"arguments":[{constant}],'
+                        '"authority":"tool-reported","observed_at":"2026-08-14T11:00:00Z"}}'
+                    ),
+                    memory_type="policy",
+                    scope="project:release",
+                    source_kind="human",
+                    labels=[PREMISE_LABEL],
+                )
+
+                with self.assertRaisesRegex(ValueError, "non-finite JSON number"):
+                    build_reason_premises(db_path, scope="project:release")
+
+    def test_non_finite_artifacts_fail_parse_write_and_verify(self):
+        for constant in ("NaN", "Infinity", "-Infinity"):
+            with self.subTest(constant=constant):
+                path = Path(self.tempdir.name) / f"artifact-{constant}.json"
+                path.write_text(f'{{"schema":"{PREMISE_CONTENT_SCHEMA}","value":{constant}}}', encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, "non-finite JSON number"):
+                    load_reason_premises(path)
+
+        self.remember_premise(memory_id="mem_policy")
+        artifact = build_reason_premises(self.db_path, scope="project:release")
+        artifact["facts"][0]["arguments"] = [float("nan")]
+        output = Path(self.tempdir.name) / "non-finite-output.json"
+
+        with self.assertRaisesRegex(ValueError, "non-finite JSON number"):
+            write_reason_premises(output, artifact)
+        self.assertFalse(output.exists())
+
+        verification = verify_reason_premises(self.db_path, artifact)
+        self.assertFalse(verification["ok"])
+        self.assertIn("non-finite JSON number", verification["error"])
 
     def test_oversized_active_premise_fails_closed(self):
         oversized = json.dumps(

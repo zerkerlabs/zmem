@@ -6,7 +6,7 @@ import tempfile
 from pathlib import Path
 from typing import Any, Mapping
 
-from .store import MemoryStore, digest_uri, sha256_text, stable_json
+from .store import MemoryStore, digest_uri, sha256_text
 
 PREMISE_CONTENT_SCHEMA = "zerker.memory.reason-premise.v1"
 PREMISES_ARTIFACT_SCHEMA = "zerker.memory.reason-premises.v1"
@@ -27,13 +27,29 @@ def _strict_json_object(value: str, *, memory_id: str) -> dict[str, Any]:
             result[key] = item
         return result
 
+    def reject_non_finite(constant: str) -> None:
+        raise ValueError(
+            f"Reason premise memory {memory_id} contains non-finite JSON number {constant!r}"
+        )
+
     try:
-        loaded = json.loads(value, object_pairs_hook=reject_duplicate_keys)
+        loaded = json.loads(
+            value,
+            object_pairs_hook=reject_duplicate_keys,
+            parse_constant=reject_non_finite,
+        )
     except json.JSONDecodeError as exc:
         raise ValueError(f"Reason premise memory {memory_id} is not valid JSON: {exc.msg}") from exc
     if not isinstance(loaded, dict):
         raise ValueError(f"Reason premise memory {memory_id} must contain a JSON object")
     return loaded
+
+
+def _stable_strict_json(value: Any) -> str:
+    try:
+        return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    except ValueError as exc:
+        raise ValueError("Reason premises artifact contains a non-finite JSON number") from exc
 
 
 def _parse_fact(content: str, *, memory_id: str) -> dict[str, Any]:
@@ -157,7 +173,7 @@ def _verified_premise_provenance(
 def _artifact_digest(payload: Mapping[str, Any]) -> str:
     unsigned = dict(payload)
     unsigned.pop("artifact_digest", None)
-    return "sha256:" + sha256_text(stable_json(unsigned))
+    return "sha256:" + sha256_text(_stable_strict_json(unsigned))
 
 
 def build_reason_premises(db_path: Path, *, scope: str) -> dict[str, Any]:
@@ -218,7 +234,7 @@ def build_reason_premises(db_path: Path, *, scope: str) -> dict[str, Any]:
             facts.append(fact)
             provenance.append({"fact_id": fact_id, **premise_provenance})
 
-        facts.sort(key=lambda fact: (str(fact["id"]), stable_json(fact)))
+        facts.sort(key=lambda fact: (str(fact["id"]), _stable_strict_json(fact)))
         provenance.sort(key=lambda item: (str(item["fact_id"]), str(item["memory_id"])))
         withheld.sort(key=lambda item: item["memory_id"])
         payload: dict[str, Any] = {
@@ -256,10 +272,11 @@ def verify_reason_premises(db_path: Path, artifact: Mapping[str, Any]) -> dict[s
         "ok": False,
         "schema": artifact.get("schema"),
         "artifact_digest": artifact.get("artifact_digest"),
-        "computed_artifact_digest": _artifact_digest(artifact),
+        "computed_artifact_digest": None,
         "current": False,
     }
     try:
+        result["computed_artifact_digest"] = _artifact_digest(artifact)
         if artifact.get("schema") != PREMISES_ARTIFACT_SCHEMA:
             raise ValueError("unsupported Reason premises artifact schema")
         if artifact.get("artifact_digest") != result["computed_artifact_digest"]:
@@ -268,7 +285,7 @@ def verify_reason_premises(db_path: Path, artifact: Mapping[str, Any]) -> dict[s
         if not isinstance(scope, str) or not scope:
             raise ValueError("Reason premises artifact scope is invalid")
         current = build_reason_premises(db_path, scope=scope)
-        if stable_json(dict(artifact)) != stable_json(current):
+        if _stable_strict_json(dict(artifact)) != _stable_strict_json(current):
             raise ValueError("Reason premises artifact is stale or does not match current governed memory")
         result["ok"] = True
         result["current"] = True
@@ -284,7 +301,10 @@ def write_reason_premises(path: Path, artifact: Mapping[str, Any], *, force: boo
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists() and not force:
         raise FileExistsError(f"Reason premises artifact already exists: {path}")
-    encoded = json.dumps(dict(artifact), indent=2, sort_keys=True) + "\n"
+    try:
+        encoded = json.dumps(dict(artifact), indent=2, sort_keys=True, allow_nan=False) + "\n"
+    except ValueError as exc:
+        raise ValueError("Reason premises artifact contains a non-finite JSON number") from exc
     fd, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
     temporary_path = Path(temporary_name)
     try:
