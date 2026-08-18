@@ -62,6 +62,8 @@ Unauthenticated probes:
 - `GET /readyz`
 - `GET /version`
 
+`/healthz` is liveness-only. `/readyz` returns `zerker.room_memory_service_readiness.v1` and must gate Gateway traffic: FTS returns HTTP `200` immediately, while a configured `dense-hybrid` service returns HTTP `503` until the FastEmbed runtime and cached local model are available. The response includes the retrieval state and setup command; it never loads or downloads a model. Gateway must not treat a live process with failed retrieval readiness as ready for joins.
+
 Authenticated operations:
 
 - `POST /v1/contexts:prepare`

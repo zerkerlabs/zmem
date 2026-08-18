@@ -41,12 +41,10 @@ class RoomMemoryHandler(BaseHTTPRequestHandler):
             self._send_json({"ok": True, "service": "zmem-room-memory"})
             return
         if path == "/readyz":
+            readiness = self.server.service.readiness()
             self._send_json(
-                {
-                    "ok": True,
-                    "service": "zmem-room-memory",
-                    "storage_ready": self.server.service.resolver.storage_root.is_dir(),
-                }
+                readiness,
+                status=HTTPStatus.OK if readiness.get("ok") else HTTPStatus.SERVICE_UNAVAILABLE,
             )
             return
         if path == "/version":
@@ -161,6 +159,10 @@ def serve_room_memory(
     print(f"ZMem Room Memory API running at http://{host}:{server.server_port}")
     print(f"Tenant: {service.resolver.tenant_id}")
     print(f"Authentication: {'bearer token' if bearer_token else 'loopback only'}")
+    retrieval = service.readiness()["retrieval"]
+    print(f"Retrieval: {retrieval['mode']} ({retrieval['state']})")
+    if retrieval.get("next_command"):
+        print(f"Next: {retrieval['next_command']}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

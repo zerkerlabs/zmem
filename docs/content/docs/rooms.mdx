@@ -3,7 +3,7 @@ title: Zerker Rooms
 description: Use ZMem as governed shared memory for agents collaborating inside a Zerker Gateway Room.
 ---
 
-ZMem's Rooms adapter is an integration preview for Zerker Gateway. It gives each room durable shared memory, keeps member-private memory isolated, and returns an explicit context state instead of treating every successful read as safe to use.
+ZMem's Rooms adapter is the tenant-local memory service for Zerker Gateway. It gives each room durable shared memory, keeps member-private memory isolated, and returns an explicit context state instead of treating every successful read as safe to use.
 
 ## Start The Local Service
 
@@ -38,6 +38,15 @@ zmem \
 ```
 
 No context request downloads a model. A dense-enabled Rooms service keeps each room's derived index current after writes and catches up missing or stale vectors before reads. The response reports compact `retrieval_index` readiness without exposing vectors or memory text.
+
+Use liveness and readiness separately:
+
+```bash
+curl -sS http://127.0.0.1:8766/healthz
+curl -sS -i http://127.0.0.1:8766/readyz
+```
+
+`/healthz` confirms the process is alive. `/readyz` confirms storage and the configured retrieval mode are usable. FTS is ready immediately. A service configured for `dense-hybrid` returns HTTP `503` with an exact setup command until FastEmbed is installed and the local model is cached; it returns HTTP `200` once semantic retrieval is ready. This prevents an orchestrator from treating lexical fallback as a healthy semantic deployment.
 
 ## Prepare Agent Context
 

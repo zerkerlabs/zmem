@@ -53,6 +53,57 @@ class RoomMemoryServiceTest(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
+    def test_fts_service_readiness_is_immediate(self):
+        readiness = self.service.readiness()
+
+        self.assertTrue(readiness["ok"])
+        self.assertTrue(readiness["storage_ready"])
+        self.assertEqual(readiness["retrieval"]["mode"], "fts")
+        self.assertEqual(readiness["retrieval"]["state"], "ready")
+        self.assertFalse(readiness["retrieval"]["network_calls_enabled"])
+
+    @patch("zerker_memory.retrieval_providers.retrieval_provider_readiness")
+    def test_dense_service_readiness_requires_runtime_and_cached_model(self, provider_readiness):
+        service = RoomMemoryService(
+            self.resolver,
+            retrieval_config=dense_hybrid_retrieval_config(),
+            retrieval_provider_config=local_dense_provider_config(cache_dir=self.root / "models"),
+        )
+
+        for runtime_ready, model_cached, expected_state, expected_reason in (
+            (False, False, "unavailable", "dense-runtime-unavailable"),
+            (True, False, "unavailable", "dense-model-unavailable"),
+            (True, True, "ready", None),
+        ):
+            with self.subTest(runtime_ready=runtime_ready, model_cached=model_cached):
+                provider_readiness.return_value = {
+                    "schema": "zerker.retrieval_provider_readiness.v1",
+                    "ok": True,
+                    "config_hash": "sha256:test-config",
+                    "checks": [
+                        {
+                            "kind": "embedding",
+                            "provider_id": "local:fastembed",
+                            "enabled": True,
+                            "network": False,
+                            "runtime_ready": runtime_ready,
+                            "model_cached": model_cached,
+                        }
+                    ],
+                }
+
+                readiness = service.readiness()
+
+                self.assertEqual(readiness["ok"], expected_state == "ready")
+                self.assertEqual(readiness["retrieval"]["state"], expected_state)
+                self.assertEqual(readiness["retrieval"].get("reason"), expected_reason)
+                self.assertEqual(readiness["retrieval"]["provider_id"], "local:fastembed")
+                self.assertFalse(readiness["retrieval"]["network_calls_enabled"])
+                if expected_reason is None:
+                    self.assertNotIn("next_command", readiness["retrieval"])
+                else:
+                    self.assertIn("embeddings index --download-model", readiness["retrieval"]["next_command"])
+
     def context(self, room_id="rom_alpha", agent_id="agt_a", purpose="continue the release", **updates):
         request = {
             "room_id": room_id,
@@ -438,6 +489,7 @@ class RoomMemoryHTTPTest(unittest.TestCase):
 
     def test_health_version_and_authenticated_room_flow(self):
         health_status, health = self.request("/healthz")
+        readiness_status, readiness = self.request("/readyz")
         version_status, version = self.request("/version")
         write_status, write = self.request(
             "/v1/memories:record",
@@ -461,12 +513,44 @@ class RoomMemoryHTTPTest(unittest.TestCase):
 
         self.assertEqual(health_status, 200)
         self.assertTrue(health["ok"])
+        self.assertEqual(readiness_status, 200)
+        self.assertTrue(readiness["ok"])
+        self.assertEqual(readiness["retrieval"]["mode"], "fts")
         self.assertEqual(version_status, 200)
         self.assertIn("version", version)
         self.assertEqual(write_status, 201)
         self.assertEqual(context_status, 200)
         self.assertEqual(context["state"], "ready")
         self.assertEqual(context["memories"][0]["id"], write["memory"]["id"])
+
+    @patch("zerker_memory.retrieval_providers.retrieval_provider_readiness")
+    def test_dense_readyz_fails_closed_until_model_is_cached(self, provider_readiness):
+        provider_readiness.return_value = {
+            "schema": "zerker.retrieval_provider_readiness.v1",
+            "ok": True,
+            "config_hash": "sha256:test-config",
+            "checks": [
+                {
+                    "kind": "embedding",
+                    "provider_id": "local:fastembed",
+                    "enabled": True,
+                    "network": False,
+                    "runtime_ready": True,
+                    "model_cached": False,
+                }
+            ],
+        }
+        self.server.service = RoomMemoryService(
+            self.server.service.resolver,
+            retrieval_config=dense_hybrid_retrieval_config(),
+            retrieval_provider_config=local_dense_provider_config(cache_dir=Path(self.tmp.name) / "models"),
+        )
+
+        status, readiness = self.request("/readyz")
+
+        self.assertEqual(status, 503)
+        self.assertFalse(readiness["ok"])
+        self.assertEqual(readiness["retrieval"]["reason"], "dense-model-unavailable")
 
     def test_inject_alias_accepts_gateway_task_vocabulary(self):
         self.request(

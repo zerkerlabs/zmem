@@ -20,6 +20,7 @@ ROOM_CONTEXT_COMMITMENT_SCHEMA = "zerker.room_memory_context_commitment.v1"
 ROOM_MEMORY_WRITE_SCHEMA = "zerker.room_memory_write.v1"
 ROOM_STORAGE_SCHEMA = "zerker.room_memory_storage.v1"
 ROOM_STORAGE_DESCRIPTOR_SCHEMA = "zerker.room_memory_storage_descriptor.v1"
+ROOM_SERVICE_READINESS_SCHEMA = "zerker.room_memory_service_readiness.v1"
 ROOM_CONTEXT_STATES = frozenset({"ready", "partial", "empty", "blocked", "abstained", "budget_exhausted"})
 ROOM_MEMORY_VISIBILITIES = frozenset({"room", "member"})
 ROOM_MEMORY_TYPES = frozenset({"episodic", "semantic", "procedural", "policy"})
@@ -244,6 +245,80 @@ class RoomMemoryService:
         self.resolver = resolver
         self.retrieval_config = retrieval_config
         self.retrieval_provider_config = retrieval_provider_config
+
+    def readiness(self) -> dict[str, Any]:
+        storage_ready = self.resolver.storage_root.is_dir()
+        dense = self.retrieval_config.get("dense") if isinstance(self.retrieval_config, Mapping) else None
+        if not isinstance(dense, Mapping) or dense.get("enabled") is not True:
+            retrieval = {
+                "mode": "fts",
+                "state": "ready",
+                "network_calls_enabled": False,
+            }
+            return {
+                "schema": ROOM_SERVICE_READINESS_SCHEMA,
+                "ok": storage_ready,
+                "service": "zmem-room-memory",
+                "storage_ready": storage_ready,
+                "retrieval": retrieval,
+            }
+
+        from .retrieval_providers import local_dense_provider_config, retrieval_provider_readiness
+
+        provider_id = str(dense.get("provider_id") or "local:fastembed")
+        provider_config = self.retrieval_provider_config or local_dense_provider_config()
+        next_command = (
+            "python3 -m pip install 'zerker-memory[dense]' && "
+            "zmem embeddings index --download-model --summary-only"
+        )
+        try:
+            provider_status = retrieval_provider_readiness(provider_config)
+            check = next(
+                (
+                    item
+                    for item in provider_status.get("checks", [])
+                    if item.get("kind") == "embedding" and item.get("provider_id") == provider_id
+                ),
+                None,
+            )
+        except (KeyError, TypeError, ValueError):
+            check = None
+            provider_status = {"config_hash": None}
+
+        enabled = bool(check and check.get("enabled"))
+        local_only = bool(check and not check.get("network"))
+        runtime_ready = bool(check and check.get("runtime_ready"))
+        model_cached = bool(check and check.get("model_cached"))
+        if check is None or not enabled:
+            reason = "dense-provider-unavailable"
+        elif not local_only:
+            reason = "dense-provider-must-be-local"
+        elif not runtime_ready:
+            reason = "dense-runtime-unavailable"
+        elif not model_cached:
+            reason = "dense-model-unavailable"
+        else:
+            reason = None
+        retrieval_ready = reason is None
+        retrieval = {
+            "mode": "dense-hybrid",
+            "state": "ready" if retrieval_ready else "unavailable",
+            "provider_id": provider_id,
+            "config_hash": provider_status.get("config_hash"),
+            "runtime_ready": runtime_ready,
+            "model_cached": model_cached,
+            "network_calls_enabled": False,
+        }
+        if reason is not None:
+            retrieval["reason"] = reason
+            retrieval["next_command"] = next_command
+        return {
+            "schema": ROOM_SERVICE_READINESS_SCHEMA,
+            "ok": bool(storage_ready and retrieval_ready),
+            "service": "zmem-room-memory",
+            "storage_ready": storage_ready,
+            "retrieval": retrieval,
+        }
 
     def prepare_context(self, request: Mapping[str, Any]) -> dict[str, Any]:
         started = time.perf_counter()

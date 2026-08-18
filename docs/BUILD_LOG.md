@@ -1,3 +1,9 @@
+## 2026-08-18 - Dense Rooms deployment readiness candidate
+
+- Split service liveness from semantic readiness. `/healthz` remains a process probe, while `/readyz` now reports storage plus configured retrieval state and returns HTTP `503` when `dense-hybrid` lacks the FastEmbed runtime or cached local model.
+- Readiness and startup output carry the local provider/config state and exact setup command without loading a model, downloading on request, exposing vectors, or changing FTS defaults.
+- Added focused service and real HTTP regressions for immediate FTS readiness, missing runtime, missing model, cached-model readiness, and HTTP fail-closed behavior.
+
 ## 2026-08-18 - Gateway Rooms acceptance reconciliation
 
 - Audited current `zerkerlabs/gateway` rather than relying on the older integration checklist. Gateway has merged durable Room/event persistence, the real authenticated ZMem HTTP client, `PrepareContext`/`Propose`/`Record`, exact context-commitment verification, machine-readable errors, fail-closed joins, accepted-event recording, and quarantined proposals.
