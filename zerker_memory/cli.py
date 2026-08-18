@@ -930,6 +930,21 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
     context_verify.add_argument("path", type=expand_user_path)
     context_verify.add_argument("--summary-only", action="store_true", help="Print only a compact verification summary")
 
+    reason = sub.add_parser("reason", help="Export governed structured premises for Zerker Reason")
+    reason_sub = reason.add_subparsers(dest="reason_command", required=True)
+    reason_export = reason_sub.add_parser(
+        "export",
+        help="Export active, receipt-verified Reason facts without natural-language compilation",
+    )
+    reason_export.add_argument("--scope", required=True, help="Exact project scope; global premises are also included")
+    reason_export.add_argument("--out", required=True, type=expand_user_path, help="Output artifact path")
+    reason_export.add_argument("--force", action="store_true", help="Replace an existing output artifact")
+    reason_verify = reason_sub.add_parser(
+        "verify",
+        help="Verify an artifact digest and compare it with current governed memory",
+    )
+    reason_verify.add_argument("path", type=expand_user_path, help="Reason premises artifact path")
+
     why = sub.add_parser("why", help="Explain which memories were used for an action")
     why.add_argument("action_id")
     why.add_argument("--summary", action="store_true", help="Print a compact explanation before the JSON receipt")
@@ -1681,6 +1696,39 @@ def main(argv: list[str] | None = None) -> int:
                     print_json(result)
                 return 0
         except (FileExistsError, KeyError, OSError, ValueError) as exc:
+            print_json({"ok": False, "error": str(exc)})
+            return 1
+    if args.command == "reason":
+        from .reason_premises import (
+            build_reason_premises,
+            load_reason_premises,
+            verify_reason_premises,
+            write_reason_premises,
+        )
+
+        try:
+            if args.reason_command == "export":
+                artifact = build_reason_premises(args.db, scope=args.scope)
+                write_reason_premises(args.out, artifact, force=args.force)
+                print_json(
+                    {
+                        "ok": True,
+                        "path": str(args.out),
+                        "schema": artifact["schema"],
+                        "artifact_digest": artifact["artifact_digest"],
+                        "fact_count": len(artifact["facts"]),
+                        "governed_memory_ids": [item["memory_id"] for item in artifact["provenance"]],
+                        "withheld_memory_ids": [item["memory_id"] for item in artifact["withheld"]],
+                        "snapshot_merkle_root": artifact["source"]["snapshot_merkle_root"],
+                    }
+                )
+                return 0
+            artifact = load_reason_premises(args.path)
+            result = verify_reason_premises(args.db, artifact)
+            result["path"] = str(args.path)
+            print_json(result)
+            return 0 if result["ok"] else 1
+        except (FileExistsError, OSError, ValueError) as exc:
             print_json({"ok": False, "error": str(exc)})
             return 1
     store = MemoryStore(args.db, policy_path=args.policy)

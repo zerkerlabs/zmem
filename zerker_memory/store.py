@@ -12362,8 +12362,9 @@ class MemoryStore:
             "descendants": descendants,
         }
 
-    def memory_write_receipt(self, memory_id: str) -> dict[str, Any]:
-        self.init()
+    def memory_write_receipt(self, memory_id: str, *, initialize: bool = True) -> dict[str, Any]:
+        if initialize:
+            self.init()
         row = self.conn.execute(
             """
             SELECT receipts.*
@@ -12954,8 +12955,9 @@ class MemoryStore:
         receipt["memories"] = [m.to_dict() for m in injected]
         return receipt
 
-    def why(self, action_id: str) -> dict[str, Any]:
-        self.init()
+    def why(self, action_id: str, *, initialize: bool = True) -> dict[str, Any]:
+        if initialize:
+            self.init()
         row = self.conn.execute("SELECT * FROM receipts WHERE action_id = ?", (action_id,)).fetchone()
         if row is None:
             raise KeyError(f"action receipt not found: {action_id}")
@@ -12991,7 +12993,7 @@ class MemoryStore:
             "memory_tree": memory_tree,
             "injected_memory_proofs": injected_memory_proofs,
             "injected_memory_write_receipts": {
-                memory_id: self.memory_write_receipt(memory_id)
+                memory_id: self.memory_write_receipt(memory_id, initialize=initialize)
                 for memory_id in injected_ids
                 if self._has_write_receipt(memory_id)
             },
@@ -13280,8 +13282,9 @@ class MemoryStore:
             result["trusted_provenance_verified"] = bool(result["ok"] and result["supporting_provenance_verified"])
         return result
 
-    def snapshot(self) -> dict[str, Any]:
-        self.init()
+    def snapshot(self, *, initialize: bool = True) -> dict[str, Any]:
+        if initialize:
+            self.init()
         memories = [
             MemoryRecord.from_row(row).to_dict()
             for row in self.conn.execute("SELECT * FROM memories ORDER BY created_at, id").fetchall()
@@ -13305,7 +13308,7 @@ class MemoryStore:
                 }
             )
         receipts = [
-            self.why(row["action_id"])
+            self.why(row["action_id"], initialize=initialize)
             for row in self.conn.execute("SELECT action_id FROM receipts ORDER BY created_at, action_id").fetchall()
         ]
         write_receipts = [

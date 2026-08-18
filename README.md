@@ -592,6 +592,36 @@ zmem failure record \
 
 Agent-authored failure memories enter quarantine and require review before promotion.
 
+Export structured, governed premises for Zerker Reason without compiling natural language:
+
+```bash
+cat > /tmp/reason-premise.json <<'JSON'
+{
+  "schema": "zerker.memory.reason-premise.v1",
+  "fact": {
+    "id": "fact_tests_abc",
+    "predicate": "tests_passed",
+    "arguments": ["commit_abc"],
+    "authority": "tool-reported",
+    "observed_at": "2026-08-14T11:00:00Z"
+  }
+}
+JSON
+
+zmem remember "$(cat /tmp/reason-premise.json)" \
+  --type policy \
+  --scope project:release \
+  --source human \
+  --label reason:premise:v1
+
+zmem reason export \
+  --scope project:release \
+  --out .zerker/exports/reason-premises.json
+zmem reason verify .zerker/exports/reason-premises.json
+```
+
+The export contains a deterministically ordered `facts` array for a Reason `program.v2` policy plus per-fact ZMem receipt provenance. Only active `policy` memories carrying the exact `reason:premise:v1` label are candidates. Agent, tool, document, and import sources remain excluded until their verified lifecycle contains an explicit operator promotion. Malformed or oversized labeled premises, duplicate fact IDs, content or status tampering, missing receipts, stale exports, and revoked premises fail closed. ZMem checks governance and byte provenance; Reason remains responsible for ontology, authority-policy, temporal, derivation, and authorization semantics.
+
 Export and verify a portable memory-state snapshot:
 
 ```bash
