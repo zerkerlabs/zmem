@@ -13,6 +13,7 @@
     "dense-retrieval",
     "scheduled-agents",
     "receipts",
+    "reason",
     "handoff",
     "benchmarks",
     "activegraph"
