@@ -14,12 +14,12 @@ Use this language precisely:
 
 ## Current Product Truth
 
-As of 2026-08-18, the product has a published `v0.1.13` release and a lane-by-lane progress board:
+As of 2026-08-18, the product has a published `v0.1.15` release and a lane-by-lane progress board:
 
 - Progress tracker: [`ZMEM_PROGRESS_TRACKER.md`](ZMEM_PROGRESS_TRACKER.md)
-- Current public release: `v0.1.13` at `6fe15c6b310fea6e1dd3b26206ca6172b680eea1`; `main` may contain only the docs-only publication record after that tagged release commit.
-- The release adds live agent session attachments, one visual shared-memory view, preview-bound handoff/snapshot restore, semantic Room recall, and a pinned Gateway context contract on top of guided setup.
-- There is no active broad release candidate. Broad swarms and launch oversight remain paused while console-native session controls and the Gateway/Buzz session handshake are handled as bounded slices.
+- Current public release: `v0.1.15` at `e9f1bf9ac374339bec9de154683f5e8607cd8fc6`; `main` may contain only the docs-only publication record after that tagged release commit.
+- The release adds `zmem connect <agent>` on top of the deployment-safe dense Room readiness, live agent memory network, shared-memory view, preview-bound transfer, and semantic Room recall shipped through `v0.1.14`.
+- There is no active broad release candidate. Broad swarms and launch oversight remain paused while Gateway pins `v0.1.15` and completes cached-dense, load/timeout, and live host-native two-agent acceptance as bounded work.
 
 The product already has meaningful working surface:
 
@@ -78,7 +78,7 @@ Score projections, competitor comparisons, and "official benchmark" language sta
 
 ## Current Diff Review
 
-- `v0.1.13` points to the shipped live multi-agent memory release; the publication bookkeeping pass after it is docs-only and must not alter package behavior or move the release tag.
+- `v0.1.15` points to the shipped one-command agent connection release; this publication bookkeeping pass is docs-only and must not alter package behavior or move the release tag.
 - Two pre-existing untracked duplicate files remain outside the release and must not be added or deleted by this pass.
 - Console-native invitation/detach controls are merged. Gateway's real ZMem client and durable Room/event store are also merged in their owning repository. The next Rooms work must stay split by ownership: Gateway updates its immutable ZMem pin and abstention contract; ZMem may improve cached dense-hybrid setup/readiness and host-confirmed session identity. Unrelated consolidation, retrieval, and scheduler work stays separate.
 
@@ -101,7 +101,7 @@ Use this when the user is present and actively working with Codex. Do not wait h
 
 Current live-session stance:
 
-- Keep broad recurring swarms and launch oversight paused after `v0.1.13` publication.
+- Keep broad recurring swarms and launch oversight paused after `v0.1.15` publication.
 - Coordinate one bounded Rooms/Gateway integration at a time, with explicit ownership for the ZMem service, Gateway client, and Rooms event store.
 - Keep periodic scheduling, Merkle `v2`, consolidation, and unrelated retrieval work on separate branches with separate acceptance evidence.
 

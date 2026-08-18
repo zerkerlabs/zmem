@@ -33,10 +33,12 @@ Every push or meaningful automation drop should update this file alongside:
 | `v0.1.11` | Published | `ca42769` / `v0.1.11` | Concurrent first-open hardening for tenant-room SQLite initialization without serializing normal room writes. |
 | `v0.1.12` | Published | `25b1c7a` / `v0.1.12` | Guided multi-agent setup, exact connection diagnostics, bound host identity, connection provenance, and registry-safe test/release tooling. |
 | `v0.1.13` | Published | `6fe15c6` / `v0.1.13` | Live agent sessions, visual shared-memory inventory, safe transfer previews, semantic Room recall, and context-contract hardening. |
+| `v0.1.14` | Published | `1a70f25` / `v0.1.14` | Deployment-safe dense Room readiness, console-native session controls, and a patched docs runtime. |
+| `v0.1.15` | Published | `e9f1bf9` / `v0.1.15` | One-command current-agent connection with explicit reload, attachment, identity, and Room-authority state. |
 
 Current public release:
 
-- GitHub: `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.13`
+- GitHub: `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.15`
 - Site: `https://www.zmem.sh`
 - Raw installer: `https://raw.githubusercontent.com/zerkerlabs/zmem/main/install.sh`
 
@@ -141,6 +143,22 @@ Published `v0.1.13` checkpoint:
 - GitHub assets match wheel `sha256:c2450c6a8b3bdb1e12a012e3951fa0acab584949d157ab4f1129844f46d99126` and source distribution `sha256:44bdf177803db42c53bab532b0aeae6569cbece99d0b30607dcd12b76335aeab`.
 - Production site deployment `dpl_8DABKk9jast6Cridc73TVHw7TzLN` and docs deployment `dpl_7oiiqfzaSdRi3eGpCrrcb7Fr7qgn` are live; browser canaries show the v0.1.13 changelog and ActiveGraph docs with no console errors.
 
+Published `v0.1.14` checkpoint:
+
+- Feature PR `#35` merged fail-closed dense Room readiness at `ebb6c96e72032c174f3188c4d262d48c2dc0f4d4`; release PR `#36` merged at `1a70f25fe9fc0df6680cd3fdbc5520192715d40f`, which is tagged and published at `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.14`.
+- `/healthz` remains liveness-only. `/readyz` reports the versioned Room service readiness state and returns HTTP `503` until a requested dense runtime and cached local model are available. Readiness performs no model load or download.
+- PR run `32090900119`, main run `32091243484`, and tag run `32091758474` passed every job. Downloaded GitHub assets match wheel `sha256:ec816163...` and source distribution `sha256:652e3052...`; a clean wheel reports `0.1.14` and passes eval `11/11`.
+- Production site deployment `dpl_GKJwFDovh4y3MxAamarCsm5YJZZf` and docs deployment `dpl_Bg9wkURfaNsNXJoH2YHwKPJQJMLq` are live with the `v0.1.14` changelog and ActiveGraph pack version.
+
+Published `v0.1.15` checkpoint:
+
+- `zmem connect <agent>` composes the existing guided setup and live-session invitation into one current-chat path while keeping one unique code per agent process.
+- Invalid workspace binding fails before invitation creation. Direct-config reload state, manual import state, client-asserted chat identity, and external Room membership remain explicit.
+- PR `#39` merged the feature; release PR `#40` merged at `e9f1bf9ac374339bec9de154683f5e8607cd8fc6`, which is tagged and published at `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.15`.
+- PR run `32095454163`, main run `32096018109`, and tag run `32096365042` passed every job. Downloaded GitHub assets match wheel `sha256:9b6dcbd5...` and source distribution `sha256:ce89df3a...`; a clean wheel reports `0.1.15` and passes eval `11/11`.
+- Production site deployment `dpl_DNwx7V2g6XwBZqcy2LrpH8ihqKdd` and docs deployment `dpl_EXKBMHXa6vkAebnA1sjG4Am8fbqP` are live with browser-verified release content.
+- A three-process Codex/operator/Claude Code acceptance passed shared governed recall and receipt verification. Next acceptance is a host-native attach and the production Gateway load/timeout/isolation gate.
+
 Included `v0.1.6` L3 checkpoint:
 
 - Bounded transcript-neighbor onset support passes the stable gate at `160/227` versus `159/227`, with one gain, zero losses, one changed retrieval context, and `+17` query tokens.
@@ -186,11 +204,11 @@ Percentages are practical launch-grade alpha estimates, not benchmark scores.
 | L2 Lifecycle Compaction | Sessions, checkpoints, snapshots, retention | 82% | Session lifecycle, handoff/restore, cold-start gap audit, governed scheduled run, typed failure memory, and one-action receipted expiry maintenance are implemented | Add revalidation, decay, tombstone, and failed-claim reopen contracts without automating semantic judgment |
 | L3 Retrieval Baseline | FTS/BM25, local dense candidates, RRF, packing | 97% | Offline FastEmbed plus adaptive FTS passes the frozen gate and full LoCoMo/LongMemEval comparisons with 43/347/91 gains, zero losses, lexical recall preservation, and receipt-visible model/fusion evidence | Tune candidate/context cost, then profile whether ANN or `sqlite-vec` is warranted before exposing server-controlled MCP dense retrieval |
 | L4 Consolidation | Hierarchical summaries and job ledger | 75% | Verified live-source preview, private recoverable materialization, independent live-source inspection, and terminal admit/discard decisions with ceiling-bound lineage receipts | Extend the reviewed path to live day/week/profile rollups before designing any scheduler |
-| L5 Identity / Workspaces | Multi-agent source lineage and conflicts | 82% | Source reports, claim conflicts, exact-tie abstention, guided shared-store setup, bound host/connection provenance, live session attachments, console-native invitation/detach actions, visual shared-memory inventory, and preview-bound imports | Add handoff ownership/lease metadata, persisted merge decisions, and host-verified session ids where available |
+| L5 Identity / Workspaces | Multi-agent source lineage and conflicts | 84% | Source reports, claim conflicts, exact-tie abstention, guided shared-store setup, one-command current-agent connection, bound host/connection provenance, live session attachments, console-native invitation/detach actions, visual shared-memory inventory, and preview-bound imports | Dogfood simultaneous Codex/Claude attachment, then add handoff ownership/lease metadata, persisted merge decisions, and host-verified session ids where available |
 | L6 Benchmark Harness | LoCoMo/LongMemEval/BEAM evidence | 100% for local harness and sampled scale | Verified LoCoMo/LongMemEval evidence plus official-layout BEAM 100K, 500K, 1M, and 10M runs exist; compact artifacts verify | Add broader evidence and an official model-judged path; do not report unjudged LLM answers as incorrect |
-| Launch Oversight | Release pack, proof evidence, public release | 100% for v0.1.13 | Public verify `6/6`, assets `8/8`, return packet ready, release assets published, exact package digests verified, and production canaries pass | Keep automation paused until the next bounded release candidate exists |
-| Website / Docs | Landing, proof page, docs, changelog | 100% for v0.1.13 | Release copy, agent setup/session UX, Rooms behavior, transfer safety, benchmark boundary, and ActiveGraph pack version are synchronized and live | Keep release facts synchronized with the next shipped product change |
-| Rooms / Gateway | Multi-agent shared memory integration | 85% | ZMem's tenant-local service is published; Gateway's real HTTP client, durable Room/event persistence, context/propose/record seam, commitment checks, and fail-closed join handling are merged | Update Gateway's pinned ZMem release and abstention assertion, enable a cached dense-hybrid production profile, then pass load/timeout and live two-agent acceptance before remote review |
+| Launch Oversight | Release pack, proof evidence, public release | 100% for v0.1.15 | Public verify `6/6`, assets `8/8`, return packet ready, release assets published, exact package digests verified, and production canaries pass | Keep automation paused until the next bounded release candidate exists |
+| Website / Docs | Landing, proof page, docs, changelog | 100% for v0.1.15 | Release copy, one-command agent setup/session UX, Rooms behavior, transfer safety, benchmark boundary, and ActiveGraph pack version are synchronized and live | Keep release facts synchronized with the next shipped product change |
+| Rooms / Gateway | Multi-agent shared memory integration | 89% | ZMem's tenant-local service and fail-closed readiness contract are published; Gateway's real HTTP client, durable Room/event persistence, context/propose/record seam, commitment checks, and fail-closed join handling are merged; independent-process shared recall is verified | Pin Gateway to v0.1.15, enable a cached dense-hybrid production profile, then pass load/timeout and live host-native two-agent acceptance before remote review |
 | ActiveGraph Integration | Event substrate and compact traces | 100% | The real pack loads, persists events, batches traces, and ships a runnable two-run host with recorded/sent prompt equality | Keep larger selected-mode traces and aggregate Treeship artifacts as optional follow-ups |
 
 ## Lane Checklists

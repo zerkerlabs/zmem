@@ -1,5 +1,5 @@
 name: zmem
-version: "0.1.14"
+version: "0.1.15"
 description: "Cross-session memory and bench runner for ActiveGraph agents"
 entry_point: zerker_memory.pack:pack
 behaviors:

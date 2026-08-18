@@ -21,12 +21,29 @@ Primary mission brief:
 - Lane progress and release tracker: `docs/ZMEM_PROGRESS_TRACKER.md`
 - Lane logs: `docs/CONTINUOUS_BUILD/`
 
+Coordinator update `2026-08-18` (`v0.1.15` published and deployed):
+
+- Feature PR `#39` merged the one-command current-agent connection flow; release PR `#40` merged at `e9f1bf9ac374339bec9de154683f5e8607cd8fc6`, which is tagged and published as `v0.1.15`.
+- Release, main, and tag CI are green. Downloaded assets match wheel `9b6dcbd5...` and source distribution `ce89df3a...`; production site/docs expose the matching changelog and ActiveGraph pack version.
+- A separate-process Codex/operator/Claude Code acceptance passed independent invitation use, review-gated shared memory, cross-agent recall, and receipt verification. Host-native UI identity and Gateway Room authority remain outside the claim.
+- Gateway issue `#49` carries the exact `v0.1.15` package pin and remaining cached-dense, load/timeout, isolation, and live host-native two-agent acceptance.
+- Reason premise-export PR `#37` is blocked on strict non-finite JSON validation. Old external-agent PR `#8` remains excluded until replaced or rebased against current product surfaces.
+- Broad recurring swarms and launch oversight remain paused. Continue with bounded Gateway acceptance or one separately reviewed post-release feature at a time.
+
+Coordinator update `2026-08-18` (`v0.1.14` published and deployed):
+
+- PR `#35` merged fail-closed dense Room readiness; release PR `#36` merged at `1a70f25fe9fc0df6680cd3fdbc5520192715d40f`, which is tagged and published as `v0.1.14`.
+- Release, main, and tag CI are green. Downloaded assets match wheel `ec816163...` and source distribution `652e3052...`; production site/docs expose the matching changelog and ActiveGraph pack version.
+- Gateway issue `#49` carries the exact package pin and rollout contract. Remaining acceptance is cached dense setup, load/timeout behavior, and one live two-agent Room flow.
+- New Reason premise-export PR `#37` stays independent from the release and is under current-base review. Old external-agent PR `#8` remains excluded until replaced or rebased against current product surfaces.
+- Broad recurring swarms and launch oversight remain paused. Continue with bounded cross-product acceptance or one separately reviewed post-release feature at a time.
+
 Coordinator update `2026-08-18` (`v0.1.13` published and deployed):
 
 - Feature PRs `#26` through `#29` and release PR `#30` are merged. Release merge `6fe15c6b310fea6e1dd3b26206ca6172b680eea1` is tagged and published as `v0.1.13`.
 - Live session attachments, the visual agent memory network, preview-bound transfers, semantic Room recall, and the pinned Gateway context contract now ship together without widening Gateway's authority over tenant identity or Room membership.
 - Release, main, and tag CI are green. GitHub assets match wheel `c2450c6a...` and source distribution `44bdf177...`; production site/docs expose the matching release and pass browser canaries.
-- External-agent PR `#8` is the only remaining open PR. It is report-only, predates the current product surfaces, and stays out until rebased and revalidated.
+- At the `v0.1.13` checkpoint, external-agent PR `#8` was the only remaining open PR. It is report-only, predates the current product surfaces, and stays out until rebased and revalidated.
 - Broad recurring swarms remain paused. Continue with one bounded console-native invitation/detach slice, then a separately reviewed host-confirmed session/Gateway handshake.
 
 Coordinator update `2026-08-10` (`v0.1.12` published and dogfooded):

@@ -4,9 +4,9 @@
 
 Zerker Memory is a functional open-source, local-first alpha with a public site, tagged releases, and a verified local proof path.
 
-Current published release: `v0.1.13` at `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.13`.
+Current published release: `v0.1.15` at `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.15`.
 
-The release turns guided setup into a live, inspectable agent memory network. Operators can issue short-lived one-time invitations, see configured and observed clients alongside live or idle MCP attachments, inspect Room-shared/member-private inventory and semantic-index readiness, detach sessions without deleting memory, and preview handoff or snapshot state before importing it. Gateway remains authoritative for tenant identity and Room membership, and optional UI session ids remain client-asserted until a host-native adapter can verify them. The previously shipped review-gated consolidation, digest-bound context proof, scheduled-agent continuity, typed failure memory, and opt-in local dense/FTS retrieval remain available.
+The current release makes the live agent memory network easier to enter without hiding its trust boundaries. `zmem connect <agent>` verifies one local workspace, configures one agent host, and issues one scoped, single-use attach instruction. The session becomes live only after that bound MCP process responds; UI chat ids remain asserted unless the host verifies them, and Gateway remains authoritative for tenant identity and Room membership. The previously shipped fail-closed dense Room readiness, visual shared-memory inventory, review-gated consolidation, digest-bound context proof, scheduled-agent continuity, typed failure memory, and local dense/FTS retrieval remain available.
 
 It is ready for:
 
@@ -32,7 +32,7 @@ Product signal note: the current wedge is validated by builder demand for local,
 
 ## Not Built Yet, In Priority Order
 
-1. Host-native session confirmation adapters plus a Gateway/Buzz attachment and revocation handshake and a real two-agent shared-scope test. Console-native invitation and detach actions are implemented on `main`.
+1. Host-native session confirmation adapters plus a Gateway/Buzz attachment and revocation handshake. The independent-process two-agent shared-scope protocol is verified; host-native UI identity and production Gateway acceptance remain open.
 2. Handoff ownership/lease metadata on top of the shipped provenance-preserving dry-run import preview.
 3. Reviewed live day/week/profile consolidation rollups before any periodic scheduler is considered.
 4. Efficiency tuning for the opt-in local dense/FTS candidate. Full local LoCoMo and LongMemEval comparisons completed with 347 and 91 gains, zero losses, and materially higher token and latency cost.
@@ -41,11 +41,14 @@ Product signal note: the current wedge is validated by builder demand for local,
 7. Governed tool and interface-contract trust records linked to Treeship canary proof without moving install/run authority into ZMem.
 8. A server-controlled MCP dense-retrieval mode after the CLI/library candidate is accepted; existing MCP tool schemas intentionally retain stable FTS behavior.
 9. An official model-judged BEAM submission path plus broader multi-conversation 1M and 10M coverage; the first isolated runs are complete.
-10. Graduate the merged Rooms integration into production: update Gateway's immutable ZMem pin and abstention contract to `v0.1.13`, provision the cached local dense-hybrid profile, run load/timeout and live two-agent gates, and then add separately authorized remote review, hosted tenant routing, collective receipts, customer-managed keys, SSO, audit retention, and VPC/on-prem guides.
+10. Graduate the merged Rooms integration into production: update Gateway's immutable ZMem pin and abstention contract to `v0.1.14`, provision the cached local dense-hybrid profile, gate traffic on `/readyz`, run load/timeout and live two-agent gates, and then add separately authorized remote review, hosted tenant routing, collective receipts, customer-managed keys, SSO, audit retention, and VPC/on-prem guides.
 
 ## Functional Today
 
 - CLI.
+- `v0.1.15` one-command agent connection: initialize or verify one workspace, configure one agent host, and issue one unique scoped invitation without claiming Room membership or host-verified chat identity.
+- `v0.1.14` deployment-safe Room readiness: `/healthz` is liveness-only; `/readyz` returns a versioned readiness contract and fails closed until a requested dense runtime plus cached local model are available, without loading or downloading a model during the probe.
+- `v0.1.14` console-native agent session controls: create a short-lived, agent-bound invitation, copy the exact attach instruction, and detach a connector without deleting memory or granting Room membership.
 - `v0.1.13` live agent sessions with hash-only, expiring, agent-bound invitations; exact MCP connection attachment; client-asserted optional session ids; live/idle presence; explicit detach; and a console that keeps configured, observed, active, and live state distinct.
 - `v0.1.13` visual agent memory network and preview-bound transfer flow with Room-shared/member-private inventory, contributors, proof roots, semantic-index coverage, and exact handoff/snapshot restore confirmation.
 - `v0.1.13` semantic recall and context-contract hardening for Rooms, including post-write index maintenance, compact readiness metadata, `empty` versus `abstained` state, and cross-language context commitment fixtures.

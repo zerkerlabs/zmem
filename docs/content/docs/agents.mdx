@@ -7,6 +7,17 @@ Agents should use memory through a narrow, auditable interface. ZMem can bind se
 
 ## Connect This Project
 
+To connect one current agent session, run:
+
+```bash
+cd your-project
+zmem connect codex --label current-chat
+```
+
+ZMem initializes the workspace if needed, configures that agent host, and prints one copy-ready `memory.session_attach` instruction. Reload the client if it has not picked up the MCP entry, then paste the instruction into that chat. The invitation is agent-bound, single-use, and expires after ten minutes by default.
+
+To configure several clients against the same project memory store in one pass, use:
+
 ```bash
 cd your-project
 zmem setup codex claude-code hermes --summary-only
@@ -25,9 +36,9 @@ Setup configures the agent host, not a chat that is already running. Reload Code
 
 The MCP server supplies the operating instructions after it connects. `.zerker/AGENT_PROMPT.md` contains the same durable guidance for clients that need it added to project instructions manually.
 
-To make one current connector visible as a named live session, open `zmem ui` and use **Agent Memory Network**. Choose the agent, label the chat, optionally add Room context, then create and copy the one-time instruction.
+To make another current connector visible as a named live session, use `zmem connect <agent>` or open `zmem ui` and use **Agent Memory Network**. Choose the agent, label the chat, optionally add Room context, then create and copy the one-time instruction.
 
-The same operation is available in the terminal:
+The lower-level invitation command remains available when the client is already configured:
 
 ```bash
 zmem session invite --agent codex --label release-chat --summary-only
