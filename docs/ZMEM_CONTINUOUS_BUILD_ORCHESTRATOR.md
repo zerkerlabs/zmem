@@ -80,7 +80,7 @@ Score projections, competitor comparisons, and "official benchmark" language sta
 
 - `v0.1.13` points to the shipped live multi-agent memory release; the publication bookkeeping pass after it is docs-only and must not alter package behavior or move the release tag.
 - Two pre-existing untracked duplicate files remain outside the release and must not be added or deleted by this pass.
-- The next ZMem implementation branch should contain only the local-console invitation/detach controls or service changes required by reviewed Gateway client findings. The Gateway Go client and durable Rooms event store belong in their owning repository; unrelated consolidation, retrieval, and scheduler work stays separate.
+- Console-native invitation/detach controls are merged. Gateway's real ZMem client and durable Room/event store are also merged in their owning repository. The next Rooms work must stay split by ownership: Gateway updates its immutable ZMem pin and abstention contract; ZMem may improve cached dense-hybrid setup/readiness and host-confirmed session identity. Unrelated consolidation, retrieval, and scheduler work stays separate.
 
 ## Live Session Protocol
 

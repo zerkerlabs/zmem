@@ -1,3 +1,10 @@
+## 2026-08-18 - Gateway Rooms acceptance reconciliation
+
+- Audited current `zerkerlabs/gateway` rather than relying on the older integration checklist. Gateway has merged durable Room/event persistence, the real authenticated ZMem HTTP client, `PrepareContext`/`Propose`/`Record`, exact context-commitment verification, machine-readable errors, fail-closed joins, accepted-event recording, and quarantined proposals.
+- Ran Gateway's real-backend Rooms integration suite against current ZMem source. Memory-present, fresh-room empty, and quarantined-policy blocked scenarios passed. The fourth scenario reached ZMem's safer `v0.1.13` behavior: an established Room with no sufficiently relevant admissible memory returned HTTP `409`, `code=memory_abstained`, and `reason=evidence_conflicted`; Gateway still expected the older `201 empty` contract from its pinned `v0.1.12` package.
+- Opened `zerkerlabs/gateway#49` to update the immutable package hash and integration assertion. ZMem should keep fail-closed abstention, avoid a lexical special case, and use its existing local dense-hybrid path for semantic Room-goal recall after the model is installed and cached outside request handling.
+- Remaining production gates are current-release Gateway acceptance, a declared dense-versus-FTS runtime profile, realistic load/timeout evidence, one live two-agent Room flow, separately authorized remote review, and asynchronous Treeship publication.
+
 ## 2026-08-18 - Documentation dependency security candidate
 
 - Updated the docs runtime to Next.js `16.3.1`, React `19.2.8`, Fumadocs Core/UI `16.14.4`, and Fumadocs MDX `15.2.3`.
