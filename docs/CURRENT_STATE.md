@@ -3,6 +3,17 @@
 This is the short orchestration dashboard for Zerker Memory. Every autonomous build run should update this file after it updates `docs/BUILD_LOG.md`.
 
 ## Release Coordination
+`2026-08-18`
+
+- Published `v0.1.13` from release PR `#30` merge commit `6fe15c6b310fea6e1dd3b26206ca6172b680eea1` at `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.13`. Feature PRs `#26` through `#29` supplied the Rooms contract, semantic recall, agent console/transfer, and live-session implementations.
+- Operators can issue short-lived one-time invitations for one configured agent, inspect attached connectors as live or idle, and detach them without deleting memory. Optional client session labels and ids remain asserted unless a host-native adapter verifies them.
+- The local console now joins configured clients, observed provenance, live session state, Room-shared/member-private inventory, review state, proof roots, and semantic-index readiness in one local surface. Handoff and snapshot restore require a preview bound to the exact artifact and destination state.
+- Dense-enabled Rooms maintain their local semantic index after writes and report `empty` separately from `abstained`. Gateway remains authoritative for tenant identity, Room membership, and access.
+- Release PR CI run `32085420850`, post-merge main run `32085751681`, and tag run `32086135511` passed every Python 3.10/3.11/3.12, ActiveGraph, site, docs, and release-smoke job.
+- Exact GitHub assets verify as wheel `sha256:c2450c6a8b3bdb1e12a012e3951fa0acab584949d157ab4f1129844f46d99126` and source distribution `sha256:44bdf177803db42c53bab532b0aeae6569cbece99d0b30607dcd12b76335aeab`. A clean wheel install reports `0.1.13` and passes eval `11/11`.
+- Production site deployment `dpl_8DABKk9jast6Cridc73TVHw7TzLN` and docs deployment `dpl_7oiiqfzaSdRi3eGpCrrcb7Fr7qgn` are live. Public browser canaries show the new changelog and ActiveGraph docs with no console errors.
+- Only external-agent PR `#8` remains open. It predates current `main` and is not part of the release until rebased and rerun. Broad swarms stay paused; the next isolated slice is console-native invitation/detach UX, then host-confirmed session identity and Gateway/Buzz attach/revocation.
+
 `2026-08-17`
 
 - Built the isolated Live Session Attach v1 candidate on `codex/live-session-attach`. An operator can issue a short-lived, agent-bound, single-use invitation with `zmem session invite`; only the SHA-256 code digest is stored.
