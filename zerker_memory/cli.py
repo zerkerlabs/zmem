@@ -173,6 +173,22 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
         help="Print only the concise setup result and next steps",
     )
 
+    connect = sub.add_parser(
+        "connect",
+        help="Configure one agent and create a one-time live-session invitation",
+    )
+    connect.add_argument("agent", type=parse_agent_preset, metavar="AGENT")
+    connect.add_argument("--scope", default="project")
+    connect.add_argument("--room-id", help="Optional Room context; Gateway still controls membership")
+    connect.add_argument("--label", help="Human-readable label for the current agent session")
+    connect.add_argument("--ttl-seconds", type=int, default=DEFAULT_INVITATION_TTL_SECONDS)
+    connect.add_argument(
+        "--force",
+        action="store_true",
+        help="Rebind an existing zerker-memory entry that points at another workspace",
+    )
+    connect.add_argument("--json", action="store_true", help="Print the machine-readable connection result")
+
     sub.add_parser("eval", help="Run the built-in Zerker Memory evaluation harness")
     sub.add_parser("cto-smoke", help="Run the fast CTO quality smoke across the canonical audit rows")
 
@@ -1309,7 +1325,7 @@ RUNTIME_REEXEC_ENV = "ZERKER_MEMORY_RUNTIME_REEXEC"
 
 
 def command_supports_runtime_reexec(command: str) -> bool:
-    return command in {"doctor", "setup", "status"}
+    return command in {"connect", "doctor", "setup", "status"}
 
 
 def maybe_reexec_with_supported_python(command: str, argv: list[str]) -> int | None:
@@ -1754,6 +1770,22 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 print(render_setup_summary(result), end="")
                 print_json(result)
+            return 0 if result["ok"] else 1
+        if args.command == "connect":
+            result = run_agent_connect(
+                store,
+                providers_path=args.providers,
+                agent_id=args.agent,
+                scope=args.scope,
+                room_id=args.room_id,
+                session_label=args.label,
+                ttl_seconds=args.ttl_seconds,
+                force=args.force,
+            )
+            if args.json:
+                print_json(result)
+            else:
+                print(render_agent_connect_summary(result), end="")
             return 0 if result["ok"] else 1
         if args.command == "demo":
             print_json(run_demo(store, scope=args.scope, agent_id=args.agent))
@@ -4166,6 +4198,58 @@ def run_guided_setup(
     }
 
 
+def run_agent_connect(
+    store: MemoryStore,
+    *,
+    providers_path: Path,
+    agent_id: str,
+    scope: str = "project",
+    room_id: str | None = None,
+    session_label: str | None = None,
+    ttl_seconds: int = DEFAULT_INVITATION_TTL_SECONDS,
+    force: bool = False,
+    cwd: Path | None = None,
+) -> dict[str, Any]:
+    setup = run_guided_setup(
+        store,
+        providers_path=providers_path,
+        presets=[agent_id],
+        force=force,
+        cwd=cwd,
+    )
+    connection = setup["connections"][0] if setup["connections"] else None
+    if not setup["ok"] or connection is None:
+        return {
+            "schema": "zerker.agent_connect.v1",
+            "ok": False,
+            "state": "setup_required",
+            "agent_id": agent_id,
+            "setup": setup,
+            "connection": connection,
+            "invitation": None,
+        }
+
+    invitation = create_session_invitation(
+        store.conn,
+        agent_id=agent_id,
+        scope=scope,
+        room_id=room_id,
+        session_label=session_label,
+        ttl_seconds=ttl_seconds,
+    )
+    return {
+        "schema": "zerker.agent_connect.v1",
+        "ok": True,
+        "state": "awaiting_agent_attach",
+        "agent_id": agent_id,
+        "workspace": setup["workspace"],
+        "setup": setup,
+        "connection": connection,
+        "invitation": invitation,
+        "verify_command": f"zmem session connections --agent {agent_id} --active-only --summary-only",
+    }
+
+
 def agent_display_name(preset: str) -> str:
     return {
         "codex": "Codex",
@@ -4207,6 +4291,57 @@ def render_setup_summary(result: dict[str, Any]) -> str:
         ]
     )
     lines.extend(f"  {step}" for step in result["next_steps"])
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def render_agent_connect_summary(result: dict[str, Any]) -> str:
+    agent_id = str(result["agent_id"])
+    agent_label = agent_display_name(agent_id)
+    connection = result.get("connection") or {}
+    if not result["ok"]:
+        details = connection.get("details") or "Agent setup is not ready for this workspace."
+        return "\n".join(
+            [
+                "ZMem connection needs attention",
+                "",
+                f"Agent: {agent_label}",
+                f"Reason: {details}",
+                f"Next: zmem setup {agent_id} --force --summary-only",
+            ]
+        ).rstrip() + "\n"
+
+    invitation = result["invitation"]
+    workspace = result["workspace"]
+    arguments = {"activation_code": str(invitation["activation_code"])}
+    lines = [
+        "ZMem connection ready",
+        "",
+        f"Agent: {agent_label}",
+        f"Workspace: {workspace['root']}",
+        f"Shared DB: {workspace['db_path']}",
+        f"Config: {str(connection['state']).replace('_', ' ')}",
+        f"Session: {invitation.get('session_label') or 'unnamed'}",
+        f"Scope: {invitation['scope']}",
+        f"Room: {invitation.get('room_id') or 'none'}",
+        f"Expires: {invitation['expires_at']}",
+        "",
+    ]
+    if connection["state"] == "ready_after_reload":
+        lines.append(f"Restart or reload {agent_label} if it has not picked up the MCP config yet.")
+    elif connection["state"] == "exported_awaiting_import":
+        lines.append(f"Import {connection['config_path']} into {agent_label}, then reload it.")
+    lines.extend(
+        [
+            f"Tell {agent_label}:",
+            f"  Call memory.session_attach with {json.dumps(arguments, separators=(',', ':'))}",
+            "  If the client exposes its chat/session id, include it as client_session_id.",
+            "",
+            f"Verify: {result['verify_command']}",
+            "The one-time code binds the responding MCP process. It does not claim a host-verified chat id.",
+        ]
+    )
+    if invitation.get("room_id"):
+        lines.append("Room context does not grant Room membership; Gateway remains authoritative.")
     return "\n".join(lines).rstrip() + "\n"
 
 

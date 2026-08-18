@@ -2,6 +2,13 @@
 
 All notable Zerker Memory alpha changes are summarized here.
 
+## Unreleased
+
+### One-Command Agent Connection
+
+- Added `zmem connect <agent>` to initialize or verify one workspace binding and issue one copy-ready, agent-bound live-session invitation.
+- Kept setup truth explicit: direct clients may need a reload, manual clients still require import, the session becomes live only after the agent calls `memory.session_attach`, and optional Room context never grants membership.
+
 ## 0.1.14 - 2026-08-18
 
 ### Documentation Runtime

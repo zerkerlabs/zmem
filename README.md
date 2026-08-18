@@ -252,11 +252,14 @@ Preview verifies the global event chain and each source write-receipt chain, gro
 For day-1 agent setup:
 
 ```bash
+zmem connect codex --label current-chat
+
+# Or configure several clients against the same project memory.
 zmem setup codex claude-code hermes --summary-only
 zmem status --summary-only
 ```
 
-This binds supported clients to the same absolute workspace database. Codex and Claude Code are ready after reload; Hermes and other manual clients receive a project-local import file. A connector identifies the agent host and MCP process, not necessarily a visible UI chat. In a new or reloaded chat, say: `Use the zerker-memory tools for this project. Request relevant memory before work.` For low-level or custom config paths:
+`zmem connect` initializes the workspace if needed, configures one agent, and prints a unique one-time instruction to paste into that chat. `zmem setup` binds several supported clients to the same absolute workspace database. Codex and Claude Code are ready after reload; Hermes and other manual clients receive a project-local import file. A connector identifies the agent host and MCP process, not necessarily a visible UI chat. In a new or reloaded chat, say: `Use the zerker-memory tools for this project. Request relevant memory before work.` For low-level or custom config paths:
 
 ```bash
 zmem agent install codex
@@ -266,7 +269,7 @@ zmem agent pack --summary-only
 zmem doctor --agent codex --agent claude-code --agent cursor
 ```
 
-To bind one current connector as a named live session, create a one-time invitation and paste the printed instruction into that agent:
+When an agent is already configured, the lower-level way to bind one current connector as a named live session is:
 
 ```bash
 zmem session invite --agent codex --label release-chat --summary-only

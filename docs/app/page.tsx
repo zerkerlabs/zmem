@@ -2,9 +2,9 @@ import Link from 'next/link';
 
 const areas = [
   {
-    title: 'Install and Connect',
-    href: '/docs/install',
-    body: 'Bootstrap ZMem locally, verify readiness, and connect Codex, Claude Code, Cursor, OpenClaw, Hermes, or a generic MCP client.',
+    title: 'Connect an Agent',
+    href: '/docs/agents',
+    body: 'Connect Codex, Claude Code, Cursor, OpenClaw, Hermes, or a generic MCP client to one local memory workspace.',
   },
   {
     title: 'Build With ZMem',
@@ -57,11 +57,11 @@ export default function HomePage() {
               <span />
             </div>
             <div className="zmem-terminal-body">
-              <p><span>$</span> zmem status --summary-only</p>
-              <p>Workspace ready: <strong>yes</strong></p>
-              <p>Memory proof: <strong>ready</strong></p>
-              <p>Agent handoff: <strong>ready</strong></p>
-              <p className="zmem-terminal-muted">receipt root sha256:7bb4...91e2</p>
+              <p><span>$</span> zmem connect codex --label current-chat</p>
+              <p>Workspace: <strong>ready</strong></p>
+              <p>Agent: <strong>Codex</strong></p>
+              <p>Session: <strong>awaiting agent attach</strong></p>
+              <p className="zmem-terminal-muted">Paste the one-time instruction into this chat.</p>
             </div>
           </aside>
         </section>

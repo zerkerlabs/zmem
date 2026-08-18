@@ -1,5 +1,14 @@
 # Identity Workspaces Lane Log
 
+## 2026-08-18T02:51:52Z - L5 identity-workspaces - Codex
+
+- Scope: collapsed initial workspace setup plus one current-session invitation into the agent-native `zmem connect <agent>` command.
+- Files touched: `zerker_memory/cli.py`, `tests/test_cli_onboarding.py`, `README.md`, `QUICKSTART.md`, `CHANGELOG.md`, `docs/content/docs/agents.mdx`, `docs/app/page.tsx`, and the canonical build trackers.
+- Behavior changed: one selected Codex, Claude Code, Cursor, OpenClaw, Hermes, or generic MCP client is configured against the exact local workspace and receives one copy-ready, agent-bound invitation. Multiple hosts still use `zmem setup`; each live session gets its own one-time code.
+- Verification: parser, successful attach, failed-binding, runtime-reexec, CLI onboarding, session/doctor, the `1,432`-test full suite with two expected skips, eval `11/11`, the `18`-page docs build, and a real temporary-workspace smoke pass. The summary keeps reload/import state, asserted session identity, and external Room membership explicit.
+- Blockers: host-native adapters are still required before ZMem can claim that a connector-supplied UI chat id was independently verified. Gateway remains authoritative for Room membership and access.
+- Next safe slice: dogfood one simultaneous Codex and Claude Code attachment to the same scope, then define a host-confirmed identity extension only where the host supplies a trustworthy session identifier.
+
 ## 2026-08-18T01:17:21Z - L5 identity-workspaces - Codex
 
 - Scope: added console-native controls over the existing live-session ledger so an operator can connect a named current agent chat without reconstructing CLI commands.
