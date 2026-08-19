@@ -1,5 +1,17 @@
 # ZMem Release Comms
 
+## 2026-08-19 - v0.1.17 publication
+
+Audience: internal Zerker product, engineering, developer experience, security review, Gateway integration, and release coordination.
+
+`v0.1.17` is published from release PR `#45` merge commit `c645914cbee484ffaafd3d5f50daac0c97d0a93a` at `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.17`; feature PR `#44` supplied the Rooms gate and warm-request optimization at `11c3f6a89e5d258a801f6fdefb86c65d53454bf5`. Release, main, and tag CI passed Python 3.10/3.11/3.12, ActiveGraph, site, docs, and release smoke. Downloaded assets match wheel `sha256:c0b35403...` and source distribution `sha256:5cd02ea9...`.
+
+The release gives Gateway and ZMem operators one package-level acceptance command. `zmem rooms-acceptance` checks authenticated room-shared and member-private memory, tenant isolation, exact commitments, abstention, retries, conflicts, concurrency, and an optional explicit p95 budget over isolated ephemeral local stores. Warm requests no longer replay schema and WAL setup after a serialized first open.
+
+The claim remains narrow. This proves the local ZMem contract, not Gateway's production network, membership authority, retrieval profile, timeout/retry policy, realistic load, or host-native two-agent behavior. Gateway should pin the immutable `v0.1.17` wheel and hash, enable cached dense-hybrid readiness, and pass those external gates before production acceptance.
+
+Production site deployment `dpl_3iBjXrGo3YAnCJF4qW4q5SiDiy9j` and docs deployment `dpl_9if2vGMhWcYUQFxhazH4dYWThVSa` expose the release and Rooms guide. The site build surfaced four fixable npm advisories, tracked as an isolated remediation rather than folded into the release. External-agent PR `#8` remains the only open PR and must not merge unchanged.
+
 ## 2026-08-18 - v0.1.16 publication
 
 Audience: internal Zerker product, engineering, developer experience, security review, Reason integration, Gateway integration, and release coordination.

@@ -1,6 +1,6 @@
 # ZMem Progress Tracker
 
-Last updated: 2026-08-18
+Last updated: 2026-08-19
 
 This is the shared progress board for ZMem release and frontier work. It turns the
 continuous-build lanes into a checkpointable product plan: what is built, what is
@@ -36,10 +36,11 @@ Every push or meaningful automation drop should update this file alongside:
 | `v0.1.14` | Published | `1a70f25` / `v0.1.14` | Deployment-safe dense Room readiness, console-native session controls, and a patched docs runtime. |
 | `v0.1.15` | Published | `e9f1bf9` / `v0.1.15` | One-command current-agent connection with explicit reload, attachment, identity, and Room-authority state. |
 | `v0.1.16` | Published | `1f7ede3` / `v0.1.16` | Strict governed-premise export and current-state verification for Zerker Reason. |
+| `v0.1.17` | Published | `c645914` / `v0.1.17` | Self-contained Rooms contract acceptance, explicit local p95 budgeting, and leaner warm shared-memory requests. |
 
 Current public release:
 
-- GitHub: `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.16`
+- GitHub: `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.17`
 - Site: `https://www.zmem.sh`
 - Raw installer: `https://raw.githubusercontent.com/zerkerlabs/zmem/main/install.sh`
 
@@ -168,6 +169,14 @@ Published `v0.1.16` checkpoint:
 - PR run `32098845128`, main run `32099521236`, and tag run `32100090247` passed every job. Downloaded GitHub assets match wheel `sha256:069c53dd...` and source distribution `sha256:d38de6c2...`; a clean wheel reports `0.1.16` and passes an installed-package premise round trip.
 - Production site deployment `dpl_Gk8ZDFRCdCVVy2aRRCV9ssgTPr7q` and docs deployment `dpl_8sx7PvcETpnDZzA4ruprcSxDRFyq` are live. Public changelog and Reason-guide canaries pass with no console or network errors; production dependency audits are clean.
 
+Published `v0.1.17` checkpoint:
+
+- Feature PR `#44` merged the self-contained Rooms acceptance gate and warm-request optimization; release PR `#45` merged at `c645914cbee484ffaafd3d5f50daac0c97d0a93a`, which is tagged and published at `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.17`.
+- The local gate checks authenticated room/member/tenant isolation, exact context commitments, abstention, retry safety, conflict rejection, concurrent preparation, and an optional explicit p95 budget without claiming a production Gateway SLO.
+- PR run `32205002637`, main run `32205354275`, and tag run `32205381124` passed every job. Downloaded assets match wheel `sha256:c0b354035d75695293d52fac81fdc7d188a30f5ab06bfe14969844181eb4961f` and source distribution `sha256:5cd02ea92c2b0842accabbcd905720abca5e0a00bc56ee07002b7f240cc5c8c7`; a clean downloaded wheel reports `0.1.17` and passes the gate.
+- Production site deployment `dpl_3iBjXrGo3YAnCJF4qW4q5SiDiy9j` and docs deployment `dpl_9if2vGMhWcYUQFxhazH4dYWThVSa` are live with HTTP `200` and release/Rooms content canaries. The site build has four fixable npm advisories queued for an isolated remediation PR.
+- Gateway still must pin the immutable release, provision cached dense retrieval, run realistic load and timeout checks, and pass one host-native two-agent Room flow.
+
 Included `v0.1.6` L3 checkpoint:
 
 - Bounded transcript-neighbor onset support passes the stable gate at `160/227` versus `159/227`, with one gain, zero losses, one changed retrieval context, and `+17` query tokens.
@@ -215,9 +224,9 @@ Percentages are practical launch-grade alpha estimates, not benchmark scores.
 | L4 Consolidation | Hierarchical summaries and job ledger | 75% | Verified live-source preview, private recoverable materialization, independent live-source inspection, and terminal admit/discard decisions with ceiling-bound lineage receipts | Extend the reviewed path to live day/week/profile rollups before designing any scheduler |
 | L5 Identity / Workspaces | Multi-agent source lineage and conflicts | 84% | Source reports, claim conflicts, exact-tie abstention, guided shared-store setup, one-command current-agent connection, bound host/connection provenance, live session attachments, console-native invitation/detach actions, visual shared-memory inventory, and preview-bound imports | Add host-verified session ids where available plus the Gateway/Buzz attach/revocation acceptance, then add handoff ownership/lease metadata and persisted merge decisions |
 | L6 Benchmark Harness | LoCoMo/LongMemEval/BEAM evidence | 100% for local harness and sampled scale | Verified LoCoMo/LongMemEval evidence plus official-layout BEAM 100K, 500K, 1M, and 10M runs exist; compact artifacts verify | Add broader evidence and an official model-judged path; do not report unjudged LLM answers as incorrect |
-| Launch Oversight | Release pack, proof evidence, public release | 100% for v0.1.16 | Public verify `6/6`, assets `8/8`, return packet ready, release assets published, exact package digests verified, and production canaries pass | Keep automation paused until the next bounded release candidate exists |
-| Website / Docs | Landing, proof page, docs, changelog | 100% for v0.1.16 | Release copy, agent setup/session UX, Rooms behavior, governed Reason premises, transfer safety, benchmark boundary, and ActiveGraph pack version are synchronized and live | Keep release facts synchronized with the next shipped product change |
-| Rooms / Gateway | Multi-agent shared memory integration | 91% | ZMem's tenant-local service and fail-closed readiness contract are published; Gateway's real HTTP client, durable Room/event persistence, context/propose/record seam, commitment checks, and fail-closed join handling are merged; independent-process shared recall is verified; the ephemeral local HTTP acceptance gate covers auth, isolation, commitments, retries, abstention, and concurrent prepares | Pin Gateway to immutable v0.1.15 or newer, enable a cached dense-hybrid production profile, then run the gate with an explicit deployment latency budget and pass live Gateway timeout plus host-native two-agent acceptance before remote review; v0.1.16 does not change the Rooms HTTP contract |
+| Launch Oversight | Release pack, proof evidence, public release | 100% for v0.1.17 | Public verify `6/6`, assets `8/8`, return packet ready, release assets published, exact package digests verified, and production content canaries pass | Keep broad launch automation paused until the next bounded release candidate exists |
+| Website / Docs | Landing, proof page, docs, changelog | 98% for v0.1.17 | Release copy, agent setup/session UX, Rooms behavior, governed Reason premises, transfer safety, benchmark boundary, and ActiveGraph pack version are synchronized and live | Clear the four fixable site build advisories, then retain release-surface canaries |
+| Rooms / Gateway | Multi-agent shared memory integration | 93% | ZMem's tenant-local service and fail-closed readiness contract are published; Gateway's real HTTP client, durable Room/event persistence, context/propose/record seam, commitment checks, and fail-closed join handling are merged; independent-process shared recall is verified; `zmem rooms-acceptance` covers the local contract | Pin Gateway to immutable v0.1.17, enable a cached dense-hybrid production profile, run the gate with an explicit deployment budget, and pass live Gateway timeout plus host-native two-agent acceptance before remote review |
 | ActiveGraph Integration | Event substrate and compact traces | 100% | The real pack loads, persists events, batches traces, and ships a runnable two-run host with recorded/sent prompt equality | Keep larger selected-mode traces and aggregate Treeship artifacts as optional follow-ups |
 
 ## Lane Checklists

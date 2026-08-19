@@ -1,3 +1,12 @@
+## 2026-08-19 - v0.1.17 Rooms acceptance published
+
+- Merged feature PR `#44` at `11c3f6a89e5d258a801f6fdefb86c65d53454bf5`, merged release PR `#45` at `c645914cbee484ffaafd3d5f50daac0c97d0a93a`, and tagged that exact release commit as `v0.1.17`.
+- Published `zmem rooms-acceptance` for authenticated local HTTP checks across room/member/tenant isolation, commitments, abstention, retries, conflicts, concurrency, and an optional explicit p95 budget. Warm requests avoid repeated schema/WAL setup after first open.
+- PR, main, and tag CI passed the full Python 3.10/3.11/3.12 matrix (`1,453` tests with two expected skips per lane), ActiveGraph, site, docs, eval, and release smoke.
+- Rebuilt from a clean detached tag checkout after detecting that setuptools would otherwise include two unrelated untracked duplicate files. The published distributions exclude those files; downloaded asset digests match wheel `c0b35403...` and source distribution `5cd02ea9...`.
+- Deployed site `dpl_3iBjXrGo3YAnCJF4qW4q5SiDiy9j` and docs `dpl_9if2vGMhWcYUQFxhazH4dYWThVSa`. HTTP and content canaries expose the release. The site build reports four fixable npm advisories for an isolated follow-up.
+- Gateway production acceptance remains open and must not be inferred from the local gate.
+
 ## 2026-08-18 - Rooms HTTP acceptance gate candidate
 
 - Added `zmem rooms-acceptance`, a self-contained loopback HTTP gate over ephemeral tenant stores. It verifies authentication, caller-independent tenant identity, room/member/tenant isolation, commitments, abstention, retry safety, conflict rejection, and concurrent context preparation without writing to a deployed tenant.

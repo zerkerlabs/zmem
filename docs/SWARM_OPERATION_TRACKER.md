@@ -21,6 +21,14 @@ Primary mission brief:
 - Lane progress and release tracker: `docs/ZMEM_PROGRESS_TRACKER.md`
 - Lane logs: `docs/CONTINUOUS_BUILD/`
 
+Coordinator update `2026-08-19` (`v0.1.17` published and deployed):
+
+- Feature PR `#44` merged the local Rooms acceptance gate and warm-request optimization; release PR `#45` merged at `c645914cbee484ffaafd3d5f50daac0c97d0a93a`, which is tagged and published as `v0.1.17`.
+- Release, main, and tag CI are green. Downloaded assets match wheel `c0b35403...` and source distribution `5cd02ea9...`; clean-wheel Rooms acceptance passes 20/20 requests and 14/14 isolation/fail-closed checks.
+- Production site/docs expose the release and Rooms guide. Four fixable site build advisories are queued as a separate bounded PR.
+- External-agent PR `#8` is the only open PR and remains excluded until replaced or rebased against current product surfaces.
+- Broad recurring swarms and launch oversight remain paused. The bounded eight-run heartbeat may advance only one isolated slice per run. Gateway's immutable `v0.1.17` pin, cached-dense readiness, load/timeout gate, and host-native two-agent flow remain the cross-product priority.
+
 Coordinator update `2026-08-18` (`v0.1.16` published and deployed):
 
 - Feature PR `#37` merged governed Reason premise export and current-state verification; release PR `#42` merged at `1f7ede37a5aa1c59e50e2700b06aeb456b0f8aa4`, which is tagged and published as `v0.1.16`.

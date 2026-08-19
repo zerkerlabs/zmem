@@ -1,5 +1,14 @@
 # Launch Lane Log
 
+## 2026-08-19 - v0.1.17 publication
+
+- Scope: shipped the self-contained Rooms contract acceptance gate and warm-request optimization through feature PR `#44` plus release PR `#45`.
+- Release: `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.17` from `c645914cbee484ffaafd3d5f50daac0c97d0a93a`.
+- CI: release PR run `32205002637`, main run `32205354275`, and tag run `32205381124` passed every Python, ActiveGraph, site, docs, and release-smoke job.
+- Artifacts: downloaded wheel `sha256:c0b354035d75695293d52fac81fdc7d188a30f5ab06bfe14969844181eb4961f` and source distribution `sha256:5cd02ea92c2b0842accabbcd905720abca5e0a00bc56ee07002b7f240cc5c8c7` match the release. The downloaded wheel reports `0.1.17` and passes 20/20 requests plus 14/14 isolation/fail-closed checks.
+- Production: site `dpl_3iBjXrGo3YAnCJF4qW4q5SiDiy9j` and docs `dpl_9if2vGMhWcYUQFxhazH4dYWThVSa` are live with HTTP and release-content canaries. Four fixable site build advisories remain a separate open slice.
+- Boundary: Gateway still owns its immutable package pin, production network, membership authority, cached retrieval profile, load/timeouts, and live two-agent acceptance.
+
 ## 2026-08-18 - v0.1.16 publication
 
 - Scope: shipped governed structured-premise export and fail-closed current-state verification through feature PR `#37` plus release PR `#42`.
