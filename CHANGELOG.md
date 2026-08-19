@@ -2,6 +2,15 @@
 
 All notable Zerker Memory alpha changes are summarized here.
 
+## 0.1.17 - 2026-08-19
+
+### Rooms Acceptance And Warm Requests
+
+- Added `zmem rooms-acceptance`, a self-contained authenticated loopback gate over ephemeral tenant stores for room/member/tenant isolation, exact context commitments, abstention, retry safety, conflict rejection, and concurrent context preparation.
+- Added an optional explicit p95 engineering budget without presenting a local loopback measurement as a production Gateway SLO.
+- Avoided replaying SQLite schema and WAL setup on every warm Room operation while retaining first-open serialization and detecting database replacement or schema drift.
+- Kept the deployment boundary explicit: Gateway still owns its pinned package, production network, timeout and retry behavior, realistic Room load, membership authority, and live two-agent acceptance.
+
 ## 0.1.16 - 2026-08-18
 
 ### Governed Premises For Zerker Reason
