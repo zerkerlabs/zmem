@@ -2,6 +2,10 @@ import Card from '@/components/Card';
 
 const updates = [
   {
+    title: 'v0.1.17 Rooms acceptance and warm requests',
+    detail: 'Verify authenticated room, member, and tenant isolation plus commitments, abstention, retries, conflicts, and concurrent context preparation without mutating a deployment. Warm Room operations no longer replay schema setup.',
+  },
+  {
     title: 'v0.1.16 governed premises for Zerker Reason',
     detail: 'Export active, receipt-verified policy facts as deterministic strict JSON, then reject malformed, tampered, stale, replayed, or revoked premise artifacts before Reason evaluates them.',
   },

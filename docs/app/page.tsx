@@ -26,6 +26,11 @@ const areas = [
     href: '/docs/reason',
     body: 'Export active, receipt-verified policy memories as deterministic structured premises for Zerker Reason.',
   },
+  {
+    title: 'Integrate Shared Rooms',
+    href: '/docs/rooms',
+    body: 'Run tenant-local shared memory, preserve member-private state, verify commitments, and exercise the Rooms contract before Gateway integration.',
+  },
 ];
 
 const stats = [
