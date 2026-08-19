@@ -214,11 +214,19 @@ The concrete Go client should:
 
 ## Performance And Reliability Gate
 
-The implementation uses one SQLite connection per request with WAL and the existing five-second busy timeout. Local development measurements on 2026-08-09 showed an empty-context cold call around `34 ms`, warm mean around `7 ms`, and warm p95 around `9 ms`. These are engineering observations, not a production SLO.
+The implementation uses one SQLite connection per request with WAL and the existing five-second busy timeout. Schema and WAL initialization run once per tenant-room store in one service process; subsequent requests do not replay the schema script. Local measurements are engineering observations, not a production SLO.
+
+Run the dependency-free ZMem preflight first:
+
+```bash
+zmem rooms-acceptance --summary-only
+```
+
+The preflight is ephemeral and covers authentication, tenant assertion rejection, room/member/tenant isolation, commitment verification, abstention, retry conflicts, and concurrent context preparation. Add `--max-p95-ms` only when the deployment has an explicit latency budget.
 
 Before zerker.ai production traffic:
 
-- run a Gateway-to-ZMem load test with realistic room sizes;
+- pass the local ZMem preflight, then run a Gateway-to-ZMem load test with realistic room sizes;
 - set and test the Gateway timeout and retry policy;
 - verify concurrent identical writes replay rather than duplicate;
 - verify cross-room, cross-member, and cross-tenant isolation;

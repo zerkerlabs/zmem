@@ -8901,6 +8901,7 @@ class MemoryStore:
         treeship_auto_sign: bool | None = None,
         treeship_config_path: Path | None = None,
         treeship_strict: bool | None = None,
+        _set_journal_mode: bool = True,
     ):
         self.db_path = expand_user_path(db_path or default_db_path())
         self.policy_path = expand_user_path(policy_path) if policy_path is not None else None
@@ -8922,7 +8923,8 @@ class MemoryStore:
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA foreign_keys = ON")
         self.conn.execute("PRAGMA busy_timeout = 5000")
-        self.conn.execute("PRAGMA journal_mode = WAL")
+        if _set_journal_mode:
+            self.conn.execute("PRAGMA journal_mode = WAL")
         self.conn.execute("PRAGMA synchronous = NORMAL")
 
     @classmethod

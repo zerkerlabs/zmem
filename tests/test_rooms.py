@@ -9,6 +9,7 @@ from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
+from zerker_memory.cli import build_parser
 from zerker_memory.rooms import (
     MAX_ABSTENTION_IDS,
     ROOM_STORAGE_DESCRIPTOR_SCHEMA,
@@ -19,10 +20,15 @@ from zerker_memory.rooms import (
     room_storage_key,
     verify_room_context_commitment,
 )
+from zerker_memory.rooms_acceptance import (
+    ROOM_ACCEPTANCE_SCHEMA,
+    render_rooms_acceptance_summary,
+    run_local_rooms_acceptance,
+)
 from zerker_memory.dense import dense_hybrid_retrieval_config
 from zerker_memory.retrieval_providers import EmbeddingProviderResult, local_dense_provider_config
 from zerker_memory.service import RoomMemoryHTTPServer, host_is_loopback, serve_room_memory
-from zerker_memory.store import sha256_text, stable_json
+from zerker_memory.store import MemoryStore, sha256_text, stable_json
 
 
 def _fake_room_embed_texts(provider_entry, texts, *, input_type="document", allow_model_download=False, **_kwargs):
@@ -181,6 +187,59 @@ class RoomMemoryServiceTest(unittest.TestCase):
             self.write(content="Do not overwrite local storage identity")
 
         self.assertEqual(json.loads(descriptor_path.read_text(encoding="utf-8"))["schema"], "unknown")
+
+    def test_room_schema_initialization_runs_once_per_resolver(self):
+        original_init = MemoryStore.init
+        calls = 0
+
+        def counted_init(store):
+            nonlocal calls
+            calls += 1
+            original_init(store)
+
+        with patch("zerker_memory.rooms.MemoryStore.init", new=counted_init):
+            with self.resolver.open("rom_alpha") as store:
+                self.assertEqual(store.conn.execute("SELECT 1").fetchone()[0], 1)
+            with self.resolver.open("rom_alpha") as store:
+                self.assertEqual(store.list_memories(), [])
+
+        self.assertEqual(calls, 1)
+
+    def test_room_schema_cache_recovers_after_database_replacement(self):
+        with self.resolver.open("rom_alpha") as store:
+            store.remember(
+                "Original room memory",
+                memory_type="semantic",
+                scope="global",
+                source_kind="system",
+            )
+
+        db_path = self.resolver.db_path("rom_alpha")
+        db_path.unlink()
+        Path(f"{db_path}-wal").unlink(missing_ok=True)
+        Path(f"{db_path}-shm").unlink(missing_ok=True)
+
+        with self.resolver.open("rom_alpha") as store:
+            self.assertEqual(store.list_memories(), [])
+            tables = {
+                row[0]
+                for row in store.conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'").fetchall()
+            }
+
+        self.assertIn("memories", tables)
+
+    def test_room_schema_cache_repairs_a_changed_schema(self):
+        with self.resolver.open("rom_alpha") as store:
+            store.conn.execute("DROP INDEX events_memory_id_seq_idx")
+            store.conn.commit()
+
+        with self.resolver.open("rom_alpha") as store:
+            indexes = {
+                row[1]
+                for row in store.conn.execute("PRAGMA index_list(events)").fetchall()
+            }
+
+        self.assertIn("events_memory_id_seq_idx", indexes)
 
     def test_nonempty_room_with_no_relevant_fts_match_abstains(self):
         self.write(
@@ -636,6 +695,72 @@ class RoomMemoryHTTPTest(unittest.TestCase):
             )
 
         server.server_close.assert_called_once_with()
+
+
+class RoomMemoryAcceptanceTest(unittest.TestCase):
+    def test_local_acceptance_covers_isolation_fail_closed_and_concurrent_reads(self):
+        result = run_local_rooms_acceptance(
+            requests=12,
+            concurrency=4,
+            timeout_seconds=3,
+            max_p95_ms=5_000,
+        )
+
+        self.assertEqual(result["schema"], ROOM_ACCEPTANCE_SCHEMA)
+        self.assertTrue(result["ok"], result)
+        self.assertEqual(result["latency"]["completed_requests"], 12)
+        self.assertTrue(all(result["checks"].values()), result["checks"])
+        self.assertEqual(result["failures"], [])
+        self.assertEqual(result["profile"]["storage"], "ephemeral-sqlite")
+
+    def test_local_acceptance_rejects_invalid_load_parameters(self):
+        for kwargs, message in (
+            ({"requests": 0}, "requests"),
+            ({"requests": 10_001}, "requests"),
+            ({"concurrency": 0}, "concurrency"),
+            ({"concurrency": 129}, "concurrency"),
+            ({"timeout_seconds": 0}, "timeout_seconds"),
+            ({"timeout_seconds": float("nan")}, "timeout_seconds"),
+            ({"max_p95_ms": 0}, "max_p95_ms"),
+            ({"max_p95_ms": float("inf")}, "max_p95_ms"),
+        ):
+            with self.subTest(kwargs=kwargs):
+                with self.assertRaisesRegex(ValueError, message):
+                    run_local_rooms_acceptance(**kwargs)
+
+    @patch("zerker_memory.rooms_acceptance._run_contract_checks", side_effect=RuntimeError("backend failed"))
+    def test_local_acceptance_reports_contract_failure_without_traceback(self, _contract_checks):
+        result = run_local_rooms_acceptance(requests=2, concurrency=1)
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["latency"]["completed_requests"], 0)
+        self.assertEqual(result["failures"], [{"phase": "contract", "error": "backend failed"}])
+        summary = render_rooms_acceptance_summary(result)
+        self.assertIn("p50 n/a ms", summary)
+        self.assertNotIn("None ms", summary)
+
+    def test_rooms_acceptance_cli_arguments_are_explicit(self):
+        args = build_parser("zmem").parse_args(
+            [
+                "rooms-acceptance",
+                "--requests",
+                "20",
+                "--concurrency",
+                "5",
+                "--timeout-seconds",
+                "2.5",
+                "--max-p95-ms",
+                "400",
+                "--summary-only",
+            ]
+        )
+
+        self.assertEqual(args.command, "rooms-acceptance")
+        self.assertEqual(args.requests, 20)
+        self.assertEqual(args.concurrency, 5)
+        self.assertEqual(args.timeout_seconds, 2.5)
+        self.assertEqual(args.max_p95_ms, 400)
+        self.assertTrue(args.summary_only)
 
 
 if __name__ == "__main__":

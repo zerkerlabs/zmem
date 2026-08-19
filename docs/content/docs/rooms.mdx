@@ -48,6 +48,24 @@ curl -sS -i http://127.0.0.1:8766/readyz
 
 `/healthz` confirms the process is alive. `/readyz` confirms storage and the configured retrieval mode are usable. FTS is ready immediately. A service configured for `dense-hybrid` returns HTTP `503` with an exact setup command until FastEmbed is installed and the local model is cached; it returns HTTP `200` once semantic retrieval is ready. This prevents an orchestrator from treating lexical fallback as a healthy semantic deployment.
 
+## Verify The Rooms Contract
+
+Run the self-contained local acceptance gate before wiring Gateway:
+
+```bash
+zmem rooms-acceptance --summary-only
+```
+
+It uses ephemeral SQLite stores and loopback HTTP services, then checks authentication, caller-independent tenant identity, shared and member-private memory, room and tenant isolation, exact context commitments, abstention, idempotent replay, conflict rejection, and concurrent context preparation. It does not write to a deployed tenant.
+
+Latency is reported rather than judged against an invented default SLO. Apply an explicit engineering budget when your deployment has one:
+
+```bash
+zmem rooms-acceptance --requests 200 --concurrency 8 --max-p95-ms 500 --summary-only
+```
+
+Gateway must still run its own end-to-end test with the production network path, timeout, retry policy, Room sizes, and join behavior.
+
 ## Prepare Agent Context
 
 ```bash
