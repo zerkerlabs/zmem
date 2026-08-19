@@ -1,0 +1,100 @@
+name: vigilis-qa
+
+# Report-only: this workflow never blocks a PR. It runs the Vigilis-driven E2E
+# gate against the ZMem review dashboard, attests the actual run (bound to the
+# report digest + commit), and uploads the report + attestation bundle.
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  vigilis-qa:
+    runs-on: ubuntu-latest
+    continue-on-error: true # <-- report-only; do not fail the PR
+    env:
+      # NOTE: `runner.*` is not available in job-level env — ZMEM_DB is set in the
+      # first step below (where $RUNNER_TEMP exists) via $GITHUB_ENV.
+      ZMEM_DASHBOARD_URL: http://127.0.0.1:8765
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up job env (DB path + optional secrets)
+        run: |
+          echo "ZMEM_DB=$RUNNER_TEMP/zmem-ci.db" >> "$GITHUB_ENV"
+          echo "HAS_ANTHROPIC=${{ secrets.ANTHROPIC_API_KEY != '' }}" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -e .
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Seed deterministic review state
+        run: python scripts/seed_review_state.py --db "$ZMEM_DB"
+
+      - name: Boot the review dashboard
+        run: |
+          python -m zerker_memory.dashboard --db "$ZMEM_DB" --host 127.0.0.1 --port 8765 &
+          for i in $(seq 1 30); do
+            curl -sf "$ZMEM_DASHBOARD_URL/" >/dev/null && break || sleep 1
+          done
+          curl -sf "$ZMEM_DASHBOARD_URL/" >/dev/null
+
+      - name: Install Playwright + Vigilis (pinned, from lockfile)
+        working-directory: qa
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Run E2E specs (report-only)
+        id: e2e
+        working-directory: qa
+        continue-on-error: true
+        run: |
+          set +e
+          npx playwright test
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+
+      - name: Attest the QA run (bound receipt — no secrets)
+        working-directory: qa
+        run: |
+          npx --no-install vigilis attest-run results.json \
+            --commit "$GITHUB_SHA" \
+            --exit-code "${{ steps.e2e.outputs.exit_code }}"
+
+      - name: Vigilis heal the failing spec (only on failure; needs ANTHROPIC_API_KEY)
+        if: ${{ env.HAS_ANTHROPIC == 'true' && steps.e2e.outputs.exit_code != '0' }}
+        working-directory: qa
+        continue-on-error: true
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          FAILING=$(node ci-first-failing.mjs results.json)
+          if [ -n "$FAILING" ]; then
+            echo "Healing failing spec: $FAILING"
+            npx --no-install vigilis heal "$ZMEM_DASHBOARD_URL" \
+              --spec "e2e/$FAILING" \
+              --error "CI QA gate: spec $FAILING failed" \
+              --no-pr --no-publish
+          fi
+
+      - name: Upload Playwright report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: zmem-playwright-report
+          path: qa/playwright-report/
+          if-no-files-found: warn
+
+      - name: Upload attestation bundle
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: zmem-vigilis-attestation
+          # attest-run always writes a bound QA-run receipt here; a missing bundle
+          # is a real failure, so surface it rather than silently ignoring.
+          path: qa/.vigilis/attestation/
+          if-no-files-found: error

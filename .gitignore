@@ -15,3 +15,4 @@ dist/
 .zerker-clean-public-verify-*/
 data/
 .env.local
+.vigilis/
