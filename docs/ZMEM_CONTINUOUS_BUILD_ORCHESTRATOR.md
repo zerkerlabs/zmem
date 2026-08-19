@@ -19,7 +19,7 @@ As of 2026-08-19, the product has a published `v0.1.17` release and a lane-by-la
 - Progress tracker: [`ZMEM_PROGRESS_TRACKER.md`](ZMEM_PROGRESS_TRACKER.md)
 - Current public release: `v0.1.17` at `c645914cbee484ffaafd3d5f50daac0c97d0a93a`; `main` may contain only the docs-only publication record after that tagged release commit.
 - The release adds a self-contained local Rooms acceptance gate and leaner warm Room requests on top of governed Reason premises, one-command agent connection, deployment-safe dense readiness, the live agent memory network, shared-memory views, and preview-bound transfer.
-- There is no active broad release candidate. The bounded eight-run product heartbeat is active; broad swarms and launch oversight remain paused while Gateway pins immutable `v0.1.17` and completes cached-dense, load/timeout, and live host-native two-agent acceptance. The four fixable site build advisories remain a separate near-term hygiene slice.
+- There is no active broad release candidate. The bounded eight-run product heartbeat is active; broad swarms and launch oversight remain paused while Gateway pins immutable `v0.1.17` and completes cached-dense, load/timeout, and live host-native two-agent acceptance. Dependency-only PR `#47` cleared the four site build advisories and the production install reports zero vulnerabilities.
 
 The product already has meaningful working surface:
 

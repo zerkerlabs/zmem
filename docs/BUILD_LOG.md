@@ -1,3 +1,10 @@
+## 2026-08-19 - Site build dependency advisories cleared
+
+- Merged dependency-only PR `#47` at `16c050a0dd6f4f90cb721559c634a986f29b737e`, updating only `site/package-lock.json` to patched `brace-expansion`, `js-yaml`, `nanoid`, and `postcss` versions.
+- Local audit, lint, production build, and the complete PR CI matrix passed. No application code or direct dependency ranges changed.
+- Deployed production site `dpl_42EpxEFRMyH847eqFsQ273rZNK7W`; Vercel's clean install reports zero vulnerabilities.
+- Live HTTP/content canaries pass, and the production JavaScript bundle digest matches the locally verified build.
+
 ## 2026-08-19 - v0.1.17 Rooms acceptance published
 
 - Merged feature PR `#44` at `11c3f6a89e5d258a801f6fdefb86c65d53454bf5`, merged release PR `#45` at `c645914cbee484ffaafd3d5f50daac0c97d0a93a`, and tagged that exact release commit as `v0.1.17`.
