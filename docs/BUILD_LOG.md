@@ -1,3 +1,10 @@
+## 2026-08-19 - Batch current-agent connection candidate
+
+- Extended `zmem connect` to accept several agent hosts in one command, for example `zmem connect codex claude-code hermes --label release-work`. ZMem performs one workspace setup and issues one distinct, agent-bound, single-use invitation per requested host.
+- Host names are deduplicated in first-seen order. If any workspace binding fails, no invitation is written; the batch insert is transactional, so invitation persistence is all-or-nothing.
+- Preserved the existing one-agent command output and trust boundaries. A connection id proves MCP-process provenance, a client session id remains asserted, and optional Room context does not grant Gateway membership.
+- Verification passes `243` focused session/CLI tests, the full `1,459`-test suite with two expected skips, eval `11/11`, Python compilation, docs typecheck/build (`19` static pages), strict release smoke, an isolated three-host command smoke, and a clean staged-tree wheel install plus duplicate-file package scan.
+
 ## 2026-08-19 - Site build dependency advisories cleared
 
 - Merged dependency-only PR `#47` at `16c050a0dd6f4f90cb721559c634a986f29b737e`, updating only `site/package-lock.json` to patched `brace-expansion`, `js-yaml`, `nanoid`, and `postcss` versions.

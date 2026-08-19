@@ -18,3 +18,14 @@
 - Deployed: production site `dpl_42EpxEFRMyH847eqFsQ273rZNK7W` is ready and aliased to `https://www.zmem.sh`; Vercel's clean install reports zero vulnerabilities.
 - Canaried: home and changelog return HTTP `200`, the release content is present, and the live JavaScript digest matches the local verified build.
 - Next: batch multi-agent connection with one shared workspace and a separate agent-bound one-time invitation for each requested host.
+
+## 2026-08-19 - Run 2: connect several current agents in one command
+
+- Priority: remove the repeated setup/invitation work between Codex, Claude Code, Hermes, and other supported hosts while preserving one explicit identity boundary per connector.
+- Candidate: `zmem connect codex claude-code hermes --label release-work` initializes one workspace and prints one distinct agent-bound invitation plus verification command for each requested host.
+- Failure behavior: host presets are deduplicated; all workspace bindings must pass before invitation creation; invitation inserts commit as one transaction or roll back together.
+- Boundaries: Room ids remain context only, Gateway remains membership authority, MCP connection ids prove process provenance, and client session ids remain asserted unless the host verifies them.
+- Verified: `243` focused tests, `1,459` full-suite tests with two expected skips, eval `11/11`, compilation, docs typecheck/build (`19` static pages), strict release smoke, and a real isolated three-host CLI run.
+- Packaged: built from Git's staged tree in a clean source directory, installed the wheel into a fresh virtual environment, passed eval `11/11` and the three-host command, and confirmed neither protected duplicate filename entered the wheel or source distribution.
+- Newly observed: the fallback setuptools build emits future license-metadata and direct-`setup.py` deprecation warnings. Treat modernizing the packaging frontend and SPDX metadata as separate maintenance, not part of this connection feature.
+- Next: open one reviewable PR without merging or releasing it; the following loop should monitor that PR before selecting another product lane.

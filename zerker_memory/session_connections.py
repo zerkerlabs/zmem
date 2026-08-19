@@ -73,8 +73,36 @@ def create_session_invitation(
     now: datetime | None = None,
     code: str | None = None,
 ) -> dict[str, Any]:
+    return create_session_invitations(
+        connection,
+        agent_ids=[agent_id],
+        scope=scope,
+        room_id=room_id,
+        session_label=session_label,
+        ttl_seconds=ttl_seconds,
+        now=now,
+        codes=[code] if code is not None else None,
+    )[0]
+
+
+def create_session_invitations(
+    connection: sqlite3.Connection,
+    *,
+    agent_ids: list[str],
+    scope: str = "project",
+    room_id: str | None = None,
+    session_label: str | None = None,
+    ttl_seconds: int = DEFAULT_INVITATION_TTL_SECONDS,
+    now: datetime | None = None,
+    codes: list[str] | None = None,
+) -> list[dict[str, Any]]:
     ensure_session_connection_schema(connection)
-    agent_id = _identifier(agent_id, label="agent id", maximum=128, forbid_slash=True)
+    if not agent_ids:
+        raise ValueError("at least one agent id is required")
+    normalized_agent_ids = [
+        _identifier(agent_id, label="agent id", maximum=128, forbid_slash=True)
+        for agent_id in agent_ids
+    ]
     scope = _identifier(scope, label="scope", maximum=256)
     room_id = _optional_identifier(room_id, label="room id", maximum=256)
     session_label = _optional_identifier(session_label, label="session label", maximum=120)
@@ -82,45 +110,58 @@ def create_session_invitation(
         raise ValueError("invitation ttl must be an integer number of seconds")
     if ttl_seconds < 30 or ttl_seconds > MAX_INVITATION_TTL_SECONDS:
         raise ValueError(f"invitation ttl must be between 30 and {MAX_INVITATION_TTL_SECONDS} seconds")
+    if codes is not None and len(codes) != len(normalized_agent_ids):
+        raise ValueError("invitation code count must match agent id count")
 
     created = _as_utc(now)
-    invitation_code = code or f"zma_{secrets.token_urlsafe(24)}"
-    if not invitation_code.startswith("zma_") or len(invitation_code) < 20:
-        raise ValueError("activation code must use the zma_ prefix and contain sufficient entropy")
-    invitation_id = f"inv_{uuid.uuid4().hex}"
     expires = created + timedelta(seconds=ttl_seconds)
-    connection.execute(
-        """
-        INSERT INTO session_invitations (
-          invitation_id, code_hash, agent_id, scope, room_id, session_label,
-          created_at, expires_at, consumed_at, consumed_attachment_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)
-        """,
-        (
-            invitation_id,
-            _code_hash(invitation_code),
-            agent_id,
-            scope,
-            room_id,
-            session_label,
-            _format_time(created),
-            _format_time(expires),
-        ),
-    )
-    connection.commit()
-    return {
-        "schema": SESSION_INVITATION_SCHEMA,
-        "invitation_id": invitation_id,
-        "activation_code": invitation_code,
-        "agent_id": agent_id,
-        "scope": scope,
-        "room_id": room_id,
-        "session_label": session_label,
-        "created_at": _format_time(created),
-        "expires_at": _format_time(expires),
-        "one_time": True,
-        "room_membership_authority": "gateway" if room_id else None,
-    }
+    invitations: list[dict[str, Any]] = []
+    for index, agent_id in enumerate(normalized_agent_ids):
+        invitation_code = codes[index] if codes is not None else f"zma_{secrets.token_urlsafe(24)}"
+        if not invitation_code.startswith("zma_") or len(invitation_code) < 20:
+            raise ValueError("activation code must use the zma_ prefix and contain sufficient entropy")
+        invitations.append(
+            {
+                "schema": SESSION_INVITATION_SCHEMA,
+                "invitation_id": f"inv_{uuid.uuid4().hex}",
+                "activation_code": invitation_code,
+                "agent_id": agent_id,
+                "scope": scope,
+                "room_id": room_id,
+                "session_label": session_label,
+                "created_at": _format_time(created),
+                "expires_at": _format_time(expires),
+                "one_time": True,
+                "room_membership_authority": "gateway" if room_id else None,
+            }
+        )
+
+    connection.execute("BEGIN IMMEDIATE")
+    try:
+        for invitation in invitations:
+            connection.execute(
+                """
+                INSERT INTO session_invitations (
+                  invitation_id, code_hash, agent_id, scope, room_id, session_label,
+                  created_at, expires_at, consumed_at, consumed_attachment_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)
+                """,
+                (
+                    invitation["invitation_id"],
+                    _code_hash(invitation["activation_code"]),
+                    invitation["agent_id"],
+                    invitation["scope"],
+                    invitation["room_id"],
+                    invitation["session_label"],
+                    invitation["created_at"],
+                    invitation["expires_at"],
+                ),
+            )
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    return invitations
 
 
 def consume_session_invitation(
