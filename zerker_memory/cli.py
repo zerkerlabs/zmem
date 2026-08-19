@@ -28,6 +28,7 @@ from .providers import (
 from .session_connections import (
     DEFAULT_INVITATION_TTL_SECONDS,
     create_session_invitation,
+    create_session_invitations,
     detach_session_attachment,
     list_session_attachments,
 )
@@ -175,9 +176,16 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
 
     connect = sub.add_parser(
         "connect",
-        help="Configure one agent and create a one-time live-session invitation",
+        help="Configure agent hosts and create separate one-time live-session invitations",
     )
     connect.add_argument("agent", type=parse_agent_preset, metavar="AGENT")
+    connect.add_argument(
+        "additional_agents",
+        nargs="*",
+        type=parse_agent_preset,
+        metavar="AGENT",
+        help="Additional agent hosts to connect to the same workspace; list all hosts before options",
+    )
     connect.add_argument("--scope", default="project")
     connect.add_argument("--room-id", help="Optional Room context; Gateway still controls membership")
     connect.add_argument("--label", help="Human-readable label for the current agent session")
@@ -1871,18 +1879,32 @@ def main(argv: list[str] | None = None) -> int:
                 print_json(result)
             return 0 if result["ok"] else 1
         if args.command == "connect":
-            result = run_agent_connect(
-                store,
-                providers_path=args.providers,
-                agent_id=args.agent,
-                scope=args.scope,
-                room_id=args.room_id,
-                session_label=args.label,
-                ttl_seconds=args.ttl_seconds,
-                force=args.force,
-            )
+            if args.additional_agents:
+                result = run_agent_connect_batch(
+                    store,
+                    providers_path=args.providers,
+                    agent_ids=[args.agent, *args.additional_agents],
+                    scope=args.scope,
+                    room_id=args.room_id,
+                    session_label=args.label,
+                    ttl_seconds=args.ttl_seconds,
+                    force=args.force,
+                )
+            else:
+                result = run_agent_connect(
+                    store,
+                    providers_path=args.providers,
+                    agent_id=args.agent,
+                    scope=args.scope,
+                    room_id=args.room_id,
+                    session_label=args.label,
+                    ttl_seconds=args.ttl_seconds,
+                    force=args.force,
+                )
             if args.json:
                 print_json(result)
+            elif args.additional_agents:
+                print(render_agent_connect_batch_summary(result), end="")
             else:
                 print(render_agent_connect_summary(result), end="")
             return 0 if result["ok"] else 1
@@ -4349,6 +4371,92 @@ def run_agent_connect(
     }
 
 
+def run_agent_connect_batch(
+    store: MemoryStore,
+    *,
+    providers_path: Path,
+    agent_ids: list[str],
+    scope: str = "project",
+    room_id: str | None = None,
+    session_label: str | None = None,
+    ttl_seconds: int = DEFAULT_INVITATION_TTL_SECONDS,
+    force: bool = False,
+    cwd: Path | None = None,
+) -> dict[str, Any]:
+    unique_agent_ids = list(dict.fromkeys(agent_ids))
+    if not unique_agent_ids:
+        raise ValueError("at least one agent host is required")
+    setup = run_guided_setup(
+        store,
+        providers_path=providers_path,
+        presets=unique_agent_ids,
+        force=force,
+        cwd=cwd,
+    )
+    connections_by_agent = {
+        connection["preset"]: connection for connection in setup.get("connections", [])
+    }
+    setup_ready = bool(setup.get("ok")) and all(
+        connections_by_agent.get(agent_id, {}).get("ok") for agent_id in unique_agent_ids
+    )
+    if not setup_ready:
+        return {
+            "schema": "zerker.agent_connect_batch.v1",
+            "ok": False,
+            "state": "setup_required",
+            "agent_ids": unique_agent_ids,
+            "workspace": setup.get("workspace"),
+            "setup": setup,
+            "targets": [
+                {
+                    "agent_id": agent_id,
+                    "connection": connections_by_agent.get(agent_id),
+                    "invitation": None,
+                    "verify_command": None,
+                }
+                for agent_id in unique_agent_ids
+            ],
+            "room_context": _agent_connect_room_context(room_id),
+        }
+
+    invitations = create_session_invitations(
+        store.conn,
+        agent_ids=unique_agent_ids,
+        scope=scope,
+        room_id=room_id,
+        session_label=session_label,
+        ttl_seconds=ttl_seconds,
+    )
+    targets = []
+    for agent_id, invitation in zip(unique_agent_ids, invitations):
+        targets.append(
+            {
+                "agent_id": agent_id,
+                "connection": connections_by_agent[agent_id],
+                "invitation": invitation,
+                "verify_command": f"zmem session connections --agent {agent_id} --active-only --summary-only",
+            }
+        )
+    return {
+        "schema": "zerker.agent_connect_batch.v1",
+        "ok": True,
+        "state": "awaiting_agent_attachments",
+        "agent_ids": unique_agent_ids,
+        "workspace": setup["workspace"],
+        "setup": setup,
+        "targets": targets,
+        "room_context": _agent_connect_room_context(room_id),
+    }
+
+
+def _agent_connect_room_context(room_id: str | None) -> dict[str, Any]:
+    return {
+        "room_id": room_id,
+        "membership_authority": "gateway" if room_id else None,
+        "membership_evaluation": "not_performed_by_zmem" if room_id else None,
+    }
+
+
 def agent_display_name(preset: str) -> str:
     return {
         "codex": "Codex",
@@ -4440,6 +4548,74 @@ def render_agent_connect_summary(result: dict[str, Any]) -> str:
         ]
     )
     if invitation.get("room_id"):
+        lines.append("Room context does not grant Room membership; Gateway remains authoritative.")
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def render_agent_connect_batch_summary(result: dict[str, Any]) -> str:
+    agent_ids = list(result["agent_ids"])
+    agent_labels = [agent_display_name(agent_id) for agent_id in agent_ids]
+    if not result["ok"]:
+        lines = [
+            "ZMem multi-agent connection needs attention",
+            "",
+            f"Agents: {', '.join(agent_labels)}",
+            "No invitations were issued.",
+        ]
+        for target in result["targets"]:
+            connection = target.get("connection") or {}
+            if not connection.get("ok"):
+                details = connection.get("details") or "Agent setup is not ready for this workspace."
+                lines.append(f"  {agent_display_name(target['agent_id'])}: {details}")
+        lines.extend(
+            [
+                "",
+                f"Next: zmem setup {' '.join(agent_ids)} --force --summary-only",
+            ]
+        )
+        return "\n".join(lines).rstrip() + "\n"
+
+    workspace = result["workspace"]
+    first_invitation = result["targets"][0]["invitation"]
+    lines = [
+        "ZMem multi-agent connection ready",
+        "",
+        f"Workspace: {workspace['root']}",
+        f"Shared DB: {workspace['db_path']}",
+        f"Agents: {', '.join(agent_labels)}",
+        f"Scope: {first_invitation['scope']}",
+        f"Room: {first_invitation.get('room_id') or 'none'}",
+        "",
+    ]
+    for target in result["targets"]:
+        agent_id = target["agent_id"]
+        agent_label = agent_display_name(agent_id)
+        connection = target["connection"]
+        invitation = target["invitation"]
+        lines.extend(
+            [
+                agent_label,
+                f"  Config: {str(connection['state']).replace('_', ' ')}",
+                f"  Session: {invitation.get('session_label') or 'unnamed'}",
+                f"  Expires: {invitation['expires_at']}",
+            ]
+        )
+        if connection["state"] == "ready_after_reload":
+            lines.append(f"  Restart or reload {agent_label} if it has not picked up the MCP config yet.")
+        elif connection["state"] == "exported_awaiting_import":
+            lines.append(f"  Import {connection['config_path']} into {agent_label}, then reload it.")
+        arguments = {"activation_code": str(invitation["activation_code"])}
+        lines.extend(
+            [
+                f"  Tell {agent_label}:",
+                f"    Call memory.session_attach with {json.dumps(arguments, separators=(',', ':'))}",
+                "    If the client exposes its chat/session id, include it as client_session_id.",
+                f"  Verify: {target['verify_command']}",
+                "",
+            ]
+        )
+    lines.append("Each one-time code is bound to its configured agent identity; connection ids prove MCP-process provenance, not UI chat identity.")
+    if result["room_context"]["room_id"]:
         lines.append("Room context does not grant Room membership; Gateway remains authoritative.")
     return "\n".join(lines).rstrip() + "\n"
 

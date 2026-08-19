@@ -65,6 +65,7 @@ from zerker_memory.cli import (
     provider_live_overrides,
     provider_overrides,
     render_agent_guide,
+    render_agent_connect_batch_summary,
     render_agent_connect_summary,
     render_handoff_summary,
     render_inject_summary,
@@ -109,6 +110,7 @@ from zerker_memory.cli import (
     verify_return_packet_archive,
     run_agent_smoke,
     run_agent_connect,
+    run_agent_connect_batch,
     run_launch_proof,
     run_release_pack,
     run_guided_setup,
@@ -1621,6 +1623,15 @@ class CliOnboardingTest(unittest.TestCase):
         self.assertEqual(args.ttl_seconds, 900)
         self.assertTrue(args.json)
 
+    def test_connect_parser_accepts_additional_agent_hosts(self):
+        args = build_parser().parse_args(
+            ["connect", "codex", "claude-code", "hermes", "--label", "release room"]
+        )
+
+        self.assertEqual(args.agent, "codex")
+        self.assertEqual(args.additional_agents, ["claude-code", "hermes"])
+        self.assertEqual(args.label, "release room")
+
     def test_agent_connect_cli_defaults_to_copy_ready_summary(self):
         with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as home:
             root = Path(tmp)
@@ -1650,6 +1661,39 @@ class CliOnboardingTest(unittest.TestCase):
         self.assertIn("ZMem connection ready", output.getvalue())
         self.assertIn("Call memory.session_attach", output.getvalue())
         self.assertNotIn('"schema": "zerker.agent_connect.v1"', output.getvalue())
+
+    def test_agent_connect_cli_connects_multiple_hosts_to_one_workspace(self):
+        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as home:
+            root = Path(tmp)
+            output = io.StringIO()
+            previous_cwd = Path.cwd()
+            try:
+                os.chdir(root)
+                with patch.dict(os.environ, {"HOME": home}, clear=False), redirect_stdout(output):
+                    return_code = main(
+                        [
+                            "--db",
+                            str(root / ".zerker" / "memory.sqlite"),
+                            "--policy",
+                            str(root / ".zerker" / "policy.json"),
+                            "--providers",
+                            str(root / ".zerker" / "providers.json"),
+                            "connect",
+                            "codex",
+                            "claude-code",
+                            "hermes",
+                            "--label",
+                            "shared release work",
+                        ]
+                    )
+            finally:
+                os.chdir(previous_cwd)
+
+        summary = output.getvalue()
+        self.assertEqual(return_code, 0)
+        self.assertIn("ZMem multi-agent connection ready", summary)
+        self.assertIn("Agents: Codex, Claude Code, Hermes", summary)
+        self.assertEqual(summary.count("Call memory.session_attach"), 3)
 
     def test_agent_connect_configures_workspace_and_issues_one_copy_ready_invitation(self):
         with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as home:
@@ -1697,6 +1741,88 @@ class CliOnboardingTest(unittest.TestCase):
         self.assertIn("zmem session connections --agent codex --active-only --summary-only", summary)
         self.assertIn("does not grant Room membership", summary)
         self.assertIn("does not claim a host-verified chat id", summary)
+
+    def test_agent_connect_batch_configures_one_workspace_and_issues_one_invitation_per_host(self):
+        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as home:
+            root = Path(tmp)
+            store = MemoryStore(root / ".zerker" / "memory.sqlite", policy_path=root / ".zerker" / "policy.json")
+            previous_cwd = Path.cwd()
+            try:
+                os.chdir(root)
+                with patch.dict(os.environ, {"HOME": home}, clear=False):
+                    result = run_agent_connect_batch(
+                        store,
+                        providers_path=root / ".zerker" / "providers.json",
+                        agent_ids=["codex", "claude-code", "hermes", "codex"],
+                        scope="project:release",
+                        room_id="rom_release",
+                        session_label="release room",
+                        ttl_seconds=900,
+                        force=False,
+                        cwd=root,
+                    )
+            finally:
+                os.chdir(previous_cwd)
+
+            self.assertEqual(result["schema"], "zerker.agent_connect_batch.v1")
+            self.assertTrue(result["ok"])
+            self.assertEqual(result["agent_ids"], ["codex", "claude-code", "hermes"])
+            self.assertEqual(result["setup"]["selected_agents"], ["codex", "claude-code", "hermes"])
+            self.assertEqual(result["room_context"]["membership_authority"], "gateway")
+            self.assertEqual(len(result["targets"]), 3)
+            codes = [target["invitation"]["activation_code"] for target in result["targets"]]
+            self.assertEqual(len(set(codes)), 3)
+
+            for index, target in enumerate(result["targets"]):
+                attachment = consume_session_invitation(
+                    store.conn,
+                    activation_code=target["invitation"]["activation_code"],
+                    agent_id=target["agent_id"],
+                    connection_id=f"conn_batch_{index}",
+                )
+                self.assertEqual(attachment["agent_id"], target["agent_id"])
+                self.assertEqual(attachment["room_id"], "rom_release")
+            store.conn.close()
+
+        summary = render_agent_connect_batch_summary(result)
+        self.assertIn("ZMem multi-agent connection ready", summary)
+        self.assertIn("Agents: Codex, Claude Code, Hermes", summary)
+        self.assertEqual(summary.count("Call memory.session_attach"), 3)
+        self.assertIn("bound to its configured agent identity", summary)
+        self.assertIn("Gateway remains authoritative", summary)
+
+    def test_agent_connect_batch_issues_no_invitations_when_any_workspace_binding_fails(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = MemoryStore(Path(tmp) / "memory.sqlite")
+            failed_setup = {
+                "ok": False,
+                "workspace": {"root": tmp, "db_path": str(Path(tmp) / "memory.sqlite")},
+                "selected_agents": ["codex", "claude-code"],
+                "connections": [
+                    {"preset": "codex", "ok": True, "state": "ready_after_reload"},
+                    {
+                        "preset": "claude-code",
+                        "ok": False,
+                        "state": "conflict",
+                        "details": "configured for another workspace",
+                    },
+                ],
+            }
+            with patch("zerker_memory.cli.run_guided_setup", return_value=failed_setup):
+                result = run_agent_connect_batch(
+                    store,
+                    providers_path=Path(tmp) / "providers.json",
+                    agent_ids=["codex", "claude-code"],
+                )
+            invitation_table_count = store.conn.execute(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'session_invitations'"
+            ).fetchone()[0]
+            store.conn.close()
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["state"], "setup_required")
+        self.assertTrue(all(target["invitation"] is None for target in result["targets"]))
+        self.assertEqual(invitation_table_count, 0)
 
     def test_agent_connect_does_not_issue_invitation_when_workspace_binding_fails(self):
         with tempfile.TemporaryDirectory() as tmp:

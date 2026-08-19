@@ -254,14 +254,15 @@ For day-1 agent setup:
 ```bash
 zmem connect codex --label current-chat
 
-# Or configure several clients against the same project memory.
-zmem setup codex claude-code hermes --summary-only
+# Or connect several current agents to the same project memory.
+zmem connect codex claude-code hermes --label release-work
 zmem status --summary-only
 ```
 
-`zmem connect` initializes the workspace if needed, configures one agent, and prints a unique one-time instruction to paste into that chat. `zmem setup` binds several supported clients to the same absolute workspace database. Codex and Claude Code are ready after reload; Hermes and other manual clients receive a project-local import file. A connector identifies the agent host and MCP process, not necessarily a visible UI chat. In a new or reloaded chat, say: `Use the zerker-memory tools for this project. Request relevant memory before work.` For low-level or custom config paths:
+`zmem connect` initializes the workspace once, binds every requested host to the same absolute database, and prints a separate one-time instruction bound to each configured agent identity. Codex and Claude Code are ready after reload; Hermes and other manual clients receive a project-local import file. If any host cannot be configured, ZMem issues no invitations. A connector identifies the agent host and MCP process, not necessarily a visible UI chat. List every host before command options. In a new or reloaded chat, say: `Use the zerker-memory tools for this project. Request relevant memory before work.` For config-only setup or custom paths:
 
 ```bash
+zmem setup codex claude-code hermes --summary-only
 zmem agent install codex
 zmem agent install claude-code
 zmem agent install cursor --summary-only

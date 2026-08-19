@@ -1,3 +1,4 @@
+import sqlite3
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
@@ -6,6 +7,7 @@ from pathlib import Path
 from zerker_memory.session_connections import (
     consume_session_invitation,
     create_session_invitation,
+    create_session_invitations,
     detach_session_attachment,
     list_session_attachments,
     touch_session_attachments,
@@ -74,6 +76,42 @@ class SessionConnectionsTest(unittest.TestCase):
                 connection_id="conn_replay",
                 now=self.now,
             )
+
+    def test_batch_invitations_are_atomic(self):
+        repeated_code = "zma_repeated-code-with-enough-entropy"
+
+        with self.assertRaises(sqlite3.IntegrityError):
+            create_session_invitations(
+                self.store.conn,
+                agent_ids=["codex", "claude-code"],
+                now=self.now,
+                codes=[repeated_code, repeated_code],
+            )
+
+        stored_count = self.store.conn.execute("SELECT COUNT(*) FROM session_invitations").fetchone()[0]
+        self.assertEqual(stored_count, 0)
+
+    def test_batch_collision_with_existing_invitation_rolls_back_new_invitations(self):
+        existing_code = "zma_existing-code-with-enough-entropy"
+        create_session_invitation(
+            self.store.conn,
+            agent_id="codex",
+            now=self.now,
+            code=existing_code,
+        )
+
+        with self.assertRaises(sqlite3.IntegrityError):
+            create_session_invitations(
+                self.store.conn,
+                agent_ids=["claude-code", "hermes"],
+                now=self.now,
+                codes=["zma_new-code-with-enough-entropy", existing_code],
+            )
+
+        stored_codes = self.store.conn.execute(
+            "SELECT agent_id FROM session_invitations ORDER BY created_at, invitation_id"
+        ).fetchall()
+        self.assertEqual([row[0] for row in stored_codes], ["codex"])
 
     def test_expired_invitation_is_rejected(self):
         code = "zma_expired-code-with-enough-entropy"

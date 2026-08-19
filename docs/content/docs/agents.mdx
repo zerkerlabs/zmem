@@ -7,16 +7,19 @@ Agents should use memory through a narrow, auditable interface. ZMem can bind se
 
 ## Connect This Project
 
-To connect one current agent session, run:
+To connect current agent sessions, run:
 
 ```bash
 cd your-project
 zmem connect codex --label current-chat
+
+# One workspace, one separate invitation per current agent.
+zmem connect codex claude-code hermes --label release-work
 ```
 
-ZMem initializes the workspace if needed, configures that agent host, and prints one copy-ready `memory.session_attach` instruction. Reload the client if it has not picked up the MCP entry, then paste the instruction into that chat. The invitation is agent-bound, single-use, and expires after ten minutes by default.
+ZMem initializes the workspace once, configures every requested agent host, and prints a separate copy-ready `memory.session_attach` instruction for each one. List every host before command options. Reload a client if it has not picked up the MCP entry, then paste only its named instruction into that chat. Invitations are bound to the configured agent identity, single-use, and expire after ten minutes by default. If any host cannot be configured, ZMem issues no invitations.
 
-To configure several clients against the same project memory store in one pass, use:
+For config-only setup without creating current-session invitations, use:
 
 ```bash
 cd your-project
