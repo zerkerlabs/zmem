@@ -4,9 +4,9 @@
 
 Zerker Memory is a functional open-source, local-first alpha with a public site, tagged releases, and a verified local proof path.
 
-Current published release: `v0.1.16` at `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.16`.
+Current published release: `v0.1.17` at `https://github.com/zerkerlabs/zmem/releases/tag/v0.1.17`.
 
-The current release makes governed memory consumable by a downstream reasoning system without collapsing the trust boundary. `zmem reason export` emits deterministic structured facts from active, explicitly labeled policy memory, and `zmem reason verify` rejects artifacts that are malformed, tampered, stale, replayed, revoked, duplicated, or non-finite. ZMem proves source bytes, lifecycle, provenance, governance, and freshness; Reason still owns ontology, temporal interpretation, authority policy, and authorization. The previously shipped one-command agent connection, fail-closed dense Room readiness, visual shared-memory inventory, review-gated consolidation, scheduled-agent continuity, and local dense/FTS retrieval remain available.
+The current release makes the tenant-local Rooms contract repeatable before Gateway rollout. `zmem rooms-acceptance` verifies authenticated room-shared and member-private memory, tenant isolation, commitments, abstention, retries, conflicts, and concurrent preparation over ephemeral local stores. It does not claim that Gateway's production network, membership authority, load, timeout, or live two-agent gates have passed. The previously shipped governed Reason premise boundary, one-command agent connection, fail-closed dense Room readiness, visual shared-memory inventory, review-gated consolidation, scheduled-agent continuity, and local dense/FTS retrieval remain available.
 
 It is ready for:
 
@@ -33,7 +33,7 @@ Product signal note: the current wedge is validated by builder demand for local,
 
 ## Not Built Yet, In Priority Order
 
-1. Host-native session confirmation adapters plus a Gateway/Buzz attachment and revocation handshake. The independent-process two-agent shared-scope protocol is verified; host-native UI identity and production Gateway acceptance remain open.
+1. Pin Gateway to immutable ZMem `v0.1.17`, provision its cached dense-hybrid profile, gate on `/readyz`, and pass realistic load/timeout plus host-native two-agent attach/revocation acceptance. The local package gate is shipped; these production claims remain open.
 2. Handoff ownership/lease metadata on top of the shipped provenance-preserving dry-run import preview.
 3. Reviewed live day/week/profile consolidation rollups before any periodic scheduler is considered.
 4. Efficiency tuning for the opt-in local dense/FTS candidate. Full local LoCoMo and LongMemEval comparisons completed with 347 and 91 gains, zero losses, and materially higher token and latency cost.
@@ -42,11 +42,12 @@ Product signal note: the current wedge is validated by builder demand for local,
 7. Governed tool and interface-contract trust records linked to Treeship canary proof without moving install/run authority into ZMem.
 8. A server-controlled MCP dense-retrieval mode after the CLI/library candidate is accepted; existing MCP tool schemas intentionally retain stable FTS behavior.
 9. An official model-judged BEAM submission path plus broader multi-conversation 1M and 10M coverage; the first isolated runs are complete.
-10. Graduate the merged Rooms integration into production: pin Gateway to immutable ZMem `v0.1.15` or newer with the current abstention contract, provision the cached local dense-hybrid profile, gate traffic on `/readyz`, run load/timeout and live two-agent gates, and then add separately authorized remote review, hosted tenant routing, collective receipts, customer-managed keys, SSO, audit retention, and VPC/on-prem guides. `v0.1.16` does not change the Rooms HTTP contract.
+10. After the live Rooms gate passes, add separately authorized remote review, hosted tenant routing, collective receipts, customer-managed keys, SSO, audit retention, and VPC/on-prem guides without weakening the tenant-local default.
 
 ## Functional Today
 
 - CLI.
+- `v0.1.17` Rooms acceptance: authenticated local HTTP checks for room/member/tenant isolation, exact context commitments, abstention, retry safety, conflict rejection, concurrent preparation, and an optional operator-supplied p95 budget.
 - `v0.1.16` governed premise export: deterministic strict-JSON facts from active labeled policy memory, per-fact receipt provenance, and fail-closed current-state verification for downstream Reason consumers.
 - `v0.1.15` one-command agent connection: initialize or verify one workspace, configure one agent host, and issue one unique scoped invitation without claiming Room membership or host-verified chat identity.
 - `v0.1.14` deployment-safe Room readiness: `/healthz` is liveness-only; `/readyz` returns a versioned readiness contract and fails closed until a requested dense runtime plus cached local model are available, without loading or downloading a model during the probe.
