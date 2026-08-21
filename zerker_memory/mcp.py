@@ -29,6 +29,7 @@ JSON = dict[str, Any]
 
 
 MCP_PROFILES = ("agent", "operator")
+RETRIEVAL_MODES = ("fts", "dense-hybrid")
 MCP_MAX_REQUEST_CHARS = 16 * 1024 * 1024
 MCP_MAX_JSON_DEPTH = 32
 MCP_MAX_RESULT_LIMIT = 100
@@ -129,6 +130,11 @@ TOOL_SCHEMAS: list[JSON] = [
                 "agent": {"type": "string"},
                 "risk": {"type": "string", "enum": ["low", "medium", "high"], "default": "medium"},
                 "scope": {"type": "string"},
+                "retrieval_mode": {
+                    "type": "string",
+                    "enum": list(RETRIEVAL_MODES),
+                    "description": "Retrieval strategy for this call. Defaults to the server retrieval mode.",
+                },
             },
             "required": ["task", "agent"],
         },
@@ -285,9 +291,12 @@ class McpServer:
         connection_id: str | None = None,
         io_root: Path | None = None,
         provider_config_path: Path | None = None,
+        retrieval_mode: str = "fts",
     ):
         if profile not in MCP_PROFILES:
             raise ValueError(f"unknown MCP profile: {profile}")
+        if retrieval_mode not in RETRIEVAL_MODES:
+            raise ValueError(f"unsupported retrieval_mode: {retrieval_mode}")
         normalized_agent_id = agent_id.strip() if agent_id is not None else None
         if normalized_agent_id == "" or (normalized_agent_id is not None and "/" in normalized_agent_id):
             raise ValueError("MCP agent id must be a non-empty URI path segment")
@@ -297,6 +306,7 @@ class McpServer:
         self.connection_id = connection_id or f"mcp_{uuid.uuid4().hex}"
         self.io_root = (io_root or store.db_path.parent).expanduser().resolve()
         self.provider_config_path = provider_config_path or default_provider_config_path()
+        self.retrieval_mode = retrieval_mode
         self._session_attached = False
         self.allowed_tools = (
             AGENT_TOOL_NAMES if profile == "agent" else frozenset(tool["name"] for tool in TOOL_SCHEMAS)
@@ -448,6 +458,17 @@ class McpServer:
             )
         ]
 
+    def _retrieval_configs(self, requested_mode: Any) -> tuple[JSON | None, JSON | None]:
+        mode = self.retrieval_mode if requested_mode is None else str(requested_mode)
+        if mode not in RETRIEVAL_MODES:
+            raise ValueError(f"unsupported retrieval_mode: {mode}")
+        if mode == "fts":
+            return None, None
+        from .dense import dense_hybrid_retrieval_config
+        from .retrieval_providers import local_dense_provider_config
+
+        return dense_hybrid_retrieval_config(), local_dense_provider_config()
+
     def _inject(self, args: JSON) -> JSON:
         supplied_agent = args.get("agent")
         if self.agent_id:
@@ -456,11 +477,14 @@ class McpServer:
             agent_id = self.agent_id
         else:
             agent_id = required_str(args, "agent")
+        retrieval_config, retrieval_provider_config = self._retrieval_configs(args.get("retrieval_mode"))
         return self.store.inject(
             required_str(args, "task"),
             agent_id=agent_id,
             risk=args.get("risk", "medium"),
             scope=args.get("scope"),
+            retrieval_config=retrieval_config,
+            retrieval_provider_config=retrieval_provider_config,
         )
 
     def _inspect(self, args: JSON) -> JSON:
