@@ -20,6 +20,30 @@ zmem --db .zerker/memory.sqlite --policy .zerker/policy.json mcp --profile agent
 
 `agent` is the default and exposes only `memory.propose`, `memory.inject`, `memory.why`, and `memory.verify`. It cannot write trusted memory, approve its own proposals, inspect quarantine, or restore state.
 
+## Retrieval Mode
+
+`memory.inject` uses lexical FTS retrieval by default. Set the server default with
+`--retrieval-mode` (or `ZMEM_MCP_RETRIEVAL_MODE`), the same way `zmem inject` and
+`zmem serve` already accept it:
+
+```bash
+zmem --db .zerker/memory.sqlite mcp --profile agent --retrieval-mode dense-hybrid
+```
+
+A single call can also override the server default by passing `retrieval_mode`
+(`fts` or `dense-hybrid`) in the `memory.inject` arguments.
+
+`dense-hybrid` needs the local embedding index. Build it once, offline, before
+serving:
+
+```bash
+zmem embeddings index --download-model   # first run only
+zmem embeddings index                    # after adding memory
+```
+
+Retrieval mode never changes authorization: quarantined memory stays withheld
+whether a candidate was found lexically or by the dense index.
+
 ## Agent Loop
 
 Agents should treat ZMem as their durable memory layer, not as free-form background context.

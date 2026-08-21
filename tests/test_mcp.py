@@ -356,6 +356,63 @@ class McpServerTest(unittest.TestCase):
         self.assertIn("trusted provider config", inline_response["error"]["message"])
         self.assertEqual(limit_response["error"]["message"], "limit must be between 1 and 100")
 
+    def test_inject_defaults_to_lexical_retrieval(self):
+        with patch.object(self.store, "inject", return_value={}) as inject:
+            self.call_tool("memory.inject", {"task": "deploy", "agent": "codex"})
+
+        kwargs = inject.call_args.kwargs
+        self.assertIsNone(kwargs["retrieval_config"])
+        self.assertIsNone(kwargs["retrieval_provider_config"])
+
+    def test_inject_accepts_dense_hybrid_retrieval_mode(self):
+        with patch.object(self.store, "inject", return_value={}) as inject:
+            self.call_tool(
+                "memory.inject",
+                {"task": "deploy", "agent": "codex", "retrieval_mode": "dense-hybrid"},
+            )
+
+        kwargs = inject.call_args.kwargs
+        self.assertTrue(kwargs["retrieval_config"]["dense"]["enabled"])
+        embedding = kwargs["retrieval_provider_config"]["embedding"]
+        self.assertEqual(embedding["default"], "local:fastembed")
+        self.assertFalse(embedding["providers"]["local:fastembed"]["network"])
+
+    def test_server_retrieval_mode_sets_the_default_for_inject(self):
+        server = McpServer(self.store, retrieval_mode="dense-hybrid")
+        with patch.object(self.store, "inject", return_value={}) as inject:
+            self.call_tool("memory.inject", {"task": "deploy", "agent": "codex"}, server=server)
+
+        self.assertTrue(inject.call_args.kwargs["retrieval_config"]["dense"]["enabled"])
+
+    def test_call_retrieval_mode_overrides_the_server_default(self):
+        server = McpServer(self.store, retrieval_mode="dense-hybrid")
+        with patch.object(self.store, "inject", return_value={}) as inject:
+            self.call_tool(
+                "memory.inject",
+                {"task": "deploy", "agent": "codex", "retrieval_mode": "fts"},
+                server=server,
+            )
+
+        self.assertIsNone(inject.call_args.kwargs["retrieval_config"])
+
+    def test_inject_rejects_unknown_retrieval_mode(self):
+        response = self.call_tool(
+            "memory.inject",
+            {"task": "deploy", "agent": "codex", "retrieval_mode": "vector-magic"},
+        )
+
+        self.assertEqual(response["error"]["message"], "unsupported retrieval_mode: vector-magic")
+
+    def test_unknown_server_retrieval_mode_is_rejected(self):
+        with self.assertRaises(ValueError):
+            McpServer(self.store, retrieval_mode="vector-magic")
+
+    def test_inject_schema_documents_retrieval_modes(self):
+        tools = self.request("tools/list")["result"]["tools"]
+        schema = next(tool for tool in tools if tool["name"] == "memory.inject")["inputSchema"]
+        self.assertEqual(schema["properties"]["retrieval_mode"]["enum"], ["fts", "dense-hybrid"])
+        self.assertNotIn("retrieval_mode", schema["required"])
+
     def test_unexpected_mcp_errors_do_not_echo_internal_details(self):
         with patch.object(self.store, "inject", side_effect=RuntimeError("database secret detail")):
             response = self.call_tool(

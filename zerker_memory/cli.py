@@ -1359,6 +1359,12 @@ def build_parser(prog: str = "zerker-memory") -> argparse.ArgumentParser:
         help="Bind this MCP process to one agent host identity (normally set by `zmem setup`)",
     )
     mcp.add_argument(
+        "--retrieval-mode",
+        choices=["fts", "dense-hybrid"],
+        default=os.environ.get("ZMEM_MCP_RETRIEVAL_MODE", "fts"),
+        help="Default retrieval mode for memory.inject (default: fts)",
+    )
+    mcp.add_argument(
         "--io-root",
         type=expand_user_path,
         help="Root directory allowed for operator snapshot and restore paths (default: database directory)",
@@ -3012,6 +3018,7 @@ def main(argv: list[str] | None = None) -> int:
                     agent_id=args.agent_id,
                     io_root=args.io_root,
                     provider_config_path=args.providers,
+                    retrieval_mode=args.retrieval_mode,
                 )
             )
             return 0
