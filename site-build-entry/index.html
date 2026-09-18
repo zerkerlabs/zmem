@@ -38,11 +38,21 @@
   </head>
   <body>
     <div id="root">
-      <main style="min-height:100vh;display:grid;place-items:center;background:#030303;color:#f5f8f2;font-family:Inter,Arial,sans-serif;padding:32px;text-align:center">
-        <div>
-          <strong style="color:#92D66F;font-size:28px">ZMem</strong>
-          <p style="max-width:420px;color:#a6b0a4;line-height:1.5">Loading local-first memory for AI agents.</p>
-        </div>
+      <!-- Static fallback. React replaces this on mount; a crawler, an LLM, or
+           a reader with scripts off gets the real copy instead of a spinner. -->
+      <main style="min-height:100vh;background:#030303;color:#f5f8f2;font-family:Inter,Arial,sans-serif;padding:64px 24px;max-width:760px;margin:0 auto;line-height:1.55">
+        <p style="color:#92D66F;font-size:13px;letter-spacing:.12em;text-transform:uppercase;margin:0 0 16px">Open-source, local-first memory for AI agents</p>
+        <h1 style="font-size:44px;line-height:1.05;letter-spacing:-.03em;margin:0 0 20px">Agent memory you can trust.</h1>
+        <p style="font-size:18px;color:#D8D8D8;max-width:640px;margin:0 0 28px">ZMem gives agents persistent project memory across runs. Review what they learn, revoke what goes stale, and verify what shaped their work.</p>
+        <p style="margin:0 0 28px"><a href="https://github.com/zerkerlabs/zmem" style="color:#92D66F">GitHub</a> &middot; <a href="/docs" style="color:#92D66F">Docs</a> &middot; <a href="/proof" style="color:#92D66F">Proof of work</a></p>
+        <h2 style="font-size:24px;letter-spacing:-.02em;margin:40px 0 8px">Install locally. Verify before you trust it.</h2>
+        <p style="color:#a6b0a4;margin:0 0 20px">The installer creates the local workspace, runs the readiness checks, and generates the manual-agent pack. Agent config installs are explicit, so nothing is silently wired into your tools.</p>
+        <ol style="padding-left:20px;color:#D8D8D8;margin:0">
+          <li style="margin-bottom:14px"><strong>Install ZMem.</strong> Run the installer. It creates the local environment, initializes .zerker, runs doctor, and prints readiness.<br><code style="font-family:'Space Mono',Menlo,monospace;font-size:13px;color:#D9E3D0">curl -fsSL https://raw.githubusercontent.com/zerkerlabs/zmem/main/install.sh | bash</code></li>
+          <li style="margin-bottom:14px"><strong>Connect an agent.</strong> Install or export the MCP config for Codex, Claude Code, Cursor, OpenClaw, Hermes, or generic MCP.<br><code style="font-family:'Space Mono',Menlo,monospace;font-size:13px;color:#D9E3D0">zmem agent install cursor --summary-only</code></li>
+          <li><strong>Prove the setup.</strong> Run the compact status check, agent smoke, or local UI before handing memory to real work.<br><code style="font-family:'Space Mono',Menlo,monospace;font-size:13px;color:#D9E3D0">zmem status --summary-only</code></li>
+        </ol>
+        <p style="color:#a6b0a4;font-size:14px;margin:40px 0 0">ZMem is the governed-memory half of the Zerker stack: <a href="https://zerker.ai/reason" style="color:#92D66F">Zerker Reason</a> checks actions against facts a team has reviewed here, and <a href="https://treeship.dev" style="color:#92D66F">Treeship</a> signs the receipt.</p>
       </main>
     </div>
     <script type="module" src="./src/main.tsx"></script>
